@@ -44,7 +44,7 @@
 
 ```bash
 # 下载 docker-compose.yml
-curl -O https://raw.githubusercontent.com/saturndec/waoowaoo/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/suncodes/waoowaoo/main/docker-compose.yml
 
 # 启动所有服务
 docker compose up -d
@@ -54,8 +54,8 @@ docker compose up -d
 
 ```bash
 docker compose down -v
-docker rmi ghcr.io/saturndec/waoowaoo:latest
-curl -O https://raw.githubusercontent.com/saturndec/waoowaoo/main/docker-compose.yml
+docker rmi ghcr.nju.edu.cn/suncodes/waoowaoo:latest
+curl -O https://raw.githubusercontent.com/suncodes/waoowaoo/main/docker-compose.yml
 docker compose up -d
 ```
 
@@ -64,7 +64,7 @@ docker compose up -d
 ### 方式二：克隆仓库 + Docker 构建（完全控制）
 
 ```bash
-git clone https://github.com/saturndec/waoowaoo.git
+git clone https://github.com/suncodes/waoowaoo.git
 cd waoowaoo
 docker compose up -d
 ```
@@ -78,7 +78,7 @@ docker compose down && docker compose up -d --build
 ### 方式三：本地开发模式（开发者）
 
 ```bash
-git clone https://github.com/saturndec/waoowaoo.git
+git clone https://github.com/suncodes/waoowaoo.git
 cd waoowaoo
 
 # 复制环境变量配置文件（必须在 npm install 之前完成）

@@ -37,7 +37,7 @@ No need to clone the repository. Just download and run:
 
 ```bash
 # Download docker-compose.yml
-curl -O https://raw.githubusercontent.com/saturndec/waoowaoo/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/suncodes/waoowaoo/main/docker-compose.yml
 
 # Start all services
 docker compose up -d
@@ -47,8 +47,8 @@ docker compose up -d
 
 ```bash
 docker compose down -v
-docker rmi ghcr.io/saturndec/waoowaoo:latest
-curl -O https://raw.githubusercontent.com/saturndec/waoowaoo/main/docker-compose.yml
+docker rmi ghcr.nju.edu.cn/suncodes/waoowaoo:latest
+curl -O https://raw.githubusercontent.com/suncodes/waoowaoo/main/docker-compose.yml
 docker compose up -d
 ```
 
@@ -57,7 +57,7 @@ docker compose up -d
 ### Method 2: Clone & Docker Build (Full Control)
 
 ```bash
-git clone https://github.com/saturndec/waoowaoo.git
+git clone https://github.com/suncodes/waoowaoo.git
 cd waoowaoo
 docker compose up -d
 ```
@@ -71,7 +71,7 @@ docker compose down && docker compose up -d --build
 ### Method 3: Local Development (For Developers)
 
 ```bash
-git clone https://github.com/saturndec/waoowaoo.git
+git clone https://github.com/suncodes/waoowaoo.git
 cd waoowaoo
 
 # Copy environment config (must be done before npm install)
