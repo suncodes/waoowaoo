@@ -29,7 +29,7 @@ describe('ART_STYLES registry', () => {
 
   it('appends style reference image after semantic references', () => {
     const references = appendArtStyleReferenceImage(['images/character.png'], 'paper-cut-3d')
-    expect(references).toEqual(['images/character.png', '/art-styles/paper-cut-3d.png'])
+    expect(references).toEqual(['images/character.png', '/art-styles/paper-cut-3d.jpg'])
   })
 
   it('returns localized prompt text', () => {

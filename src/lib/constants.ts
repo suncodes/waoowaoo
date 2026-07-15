@@ -187,8 +187,8 @@ export const ART_STYLES = [
     preview: '水',
     promptZh: '柔和透明的水彩插画风格，自然纸张纹理，轻盈颜料晕染边缘，低对比柔光，温暖治愈的手绘质感。',
     promptEn: 'Soft transparent watercolor illustration with natural paper texture, gentle pigment bleeding, low-contrast soft light, and a warm hand-painted feeling.',
-    previewImage: '/art-styles/watercolor-illustration.png',
-    referenceImage: '/art-styles/watercolor-illustration.png',
+    previewImage: '/art-styles/watercolor-illustration.jpg',
+    referenceImage: '/art-styles/watercolor-illustration.jpg',
   },
   {
     value: 'chinese-ink-wash',
@@ -196,8 +196,8 @@ export const ART_STYLES = [
     preview: '墨',
     promptZh: '国风水墨画风格，留白构图，墨色浓淡层次，淡雅色彩点染，东方诗意氛围，线条克制流畅。',
     promptEn: 'Chinese ink wash style with elegant negative space, layered ink tones, restrained color accents, poetic Eastern atmosphere, and fluid controlled brushwork.',
-    previewImage: '/art-styles/chinese-ink-wash.png',
-    referenceImage: '/art-styles/chinese-ink-wash.png',
+    previewImage: '/art-styles/chinese-ink-wash.jpg',
+    referenceImage: '/art-styles/chinese-ink-wash.jpg',
   },
   {
     value: '3d-animation',
@@ -223,8 +223,8 @@ export const ART_STYLES = [
     preview: '纸',
     promptZh: '立体纸雕风格，多层剪纸结构，清晰纸张边缘，柔和投影，轻微手作纹理，像精致纸艺场景盒。',
     promptEn: 'Layered 3D paper-cut style with crisp paper edges, soft cast shadows, subtle handmade texture, and a refined paper craft diorama look.',
-    previewImage: '/art-styles/paper-cut-3d.png',
-    referenceImage: '/art-styles/paper-cut-3d.png',
+    previewImage: '/art-styles/paper-cut-3d.jpg',
+    referenceImage: '/art-styles/paper-cut-3d.jpg',
   },
   {
     value: 'claymation',
@@ -232,8 +232,8 @@ export const ART_STYLES = [
     preview: '泥',
     promptZh: '黏土定格动画风格，手塑黏土材质，微小指纹和不规则表面，柔和棚拍灯光，温暖可触摸的手作质感。',
     promptEn: 'Claymation stop-motion style with hand-molded clay material, tiny fingerprints and irregular surfaces, soft studio lighting, and a warm tactile handmade feel.',
-    previewImage: '/art-styles/claymation.png',
-    referenceImage: '/art-styles/claymation.png',
+    previewImage: '/art-styles/claymation.jpg',
+    referenceImage: '/art-styles/claymation.jpg',
   },
   {
     value: 'gongbi-heavy-color',
@@ -241,8 +241,8 @@ export const ART_STYLES = [
     preview: '工',
     promptZh: '工笔重彩风格，精细线描，浓郁矿物色彩，装饰性图案，层次清晰，典雅华丽的中式绘画质感。',
     promptEn: 'Gongbi heavy-color painting style with precise fine linework, rich mineral colors, decorative patterns, clear layering, and an elegant ornate Chinese painting texture.',
-    previewImage: '/art-styles/gongbi-heavy-color.png',
-    referenceImage: '/art-styles/gongbi-heavy-color.png',
+    previewImage: '/art-styles/gongbi-heavy-color.jpg',
+    referenceImage: '/art-styles/gongbi-heavy-color.jpg',
   },
   {
     value: 'modern-american-cartoon',
@@ -250,8 +250,8 @@ export const ART_STYLES = [
     preview: '卡',
     promptZh: '美式现代卡通风格，简洁夸张造型，清晰轮廓线，明亮色块，轻松幽默的动画质感，画面干净友好。',
     promptEn: 'Modern American cartoon style with simplified exaggerated shapes, clean outlines, bright color blocks, a playful animated feel, and a clean friendly image.',
-    previewImage: '/art-styles/modern-american-cartoon.png',
-    referenceImage: '/art-styles/modern-american-cartoon.png',
+    previewImage: '/art-styles/modern-american-cartoon.jpg',
+    referenceImage: '/art-styles/modern-american-cartoon.jpg',
   },
 ] as const satisfies readonly ArtStyleDefinition[]
 
