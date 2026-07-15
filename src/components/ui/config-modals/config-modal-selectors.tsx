@@ -10,13 +10,13 @@ import { AppIcon } from '@/components/ui/icons'
 interface RatioSelectorProps {
   value: string
   onChange: (value: string) => void
-  options: Array<{ value: string; label: string }>
+  options: readonly { value: string; label: string }[]
 }
 
 interface StyleSelectorProps {
   value: string
   onChange: (value: string) => void
-  options: Array<{ value: string; label: string }>
+  options: readonly { value: string; label: string }[]
 }
 
 /** 线框比例预览块 */

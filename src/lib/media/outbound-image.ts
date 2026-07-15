@@ -1,8 +1,9 @@
 import path from 'node:path'
+import fs from 'node:fs/promises'
 import { createScopedLogger } from '@/lib/logging/core'
 import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
 
-type StorageHelpers = Pick<typeof import('@/lib/storage'), 'getSignedUrl' | 'toFetchableUrl'>
+type StorageHelpers = Pick<typeof import('@/lib/storage'), 'extractStorageKey' | 'getObjectBuffer' | 'getSignedUrl' | 'toFetchableUrl'>
 
 type InputIssueReason =
   | 'next_image_unwrapped'
@@ -26,6 +27,7 @@ export type OutboundImageNormalizeErrorCode =
   | 'OUTBOUND_IMAGE_EMPTY_INPUT'
   | 'OUTBOUND_IMAGE_UNSUPPORTED_INPUT'
   | 'OUTBOUND_IMAGE_MEDIA_ROUTE_UNRESOLVED'
+  | 'OUTBOUND_IMAGE_STYLE_ASSET_UNRESOLVED'
   | 'OUTBOUND_IMAGE_FETCH_FAILED'
   | 'OUTBOUND_IMAGE_FETCH_EXCEPTION'
   | 'OUTBOUND_IMAGE_REFERENCE_ALL_FAILED'
@@ -55,6 +57,15 @@ export type OutboundImageNormalizationIssue = {
   code: OutboundImageNormalizeErrorCode | 'OUTBOUND_IMAGE_UNKNOWN'
   stage: OutboundImageNormalizeStage
   message: string
+}
+
+export type ImageBinarySourceKind = 'data-url' | 'style-asset' | 'storage' | 'remote-url'
+
+export interface ImageBinaryResource {
+  bytes: Buffer
+  mimeType: string
+  filename: string
+  sourceKind: ImageBinarySourceKind
 }
 
 const logger = createScopedLogger({
@@ -88,6 +99,8 @@ let storageHelpersPromise: Promise<StorageHelpers> | null = null
 async function getStorageHelpers(): Promise<StorageHelpers> {
   if (!storageHelpersPromise) {
     storageHelpersPromise = import('@/lib/storage').then((mod) => ({
+      extractStorageKey: mod.extractStorageKey,
+      getObjectBuffer: mod.getObjectBuffer,
       getSignedUrl: mod.getSignedUrl,
       toFetchableUrl: mod.toFetchableUrl,
     }))
@@ -112,6 +125,25 @@ function isDataUrl(value: string): boolean {
   return value.startsWith('data:')
 }
 
+function parseDataUrl(value: string): { mimeType: string; bytes: Buffer } | null {
+  const marker = ';base64,'
+  const markerIndex = value.indexOf(marker)
+  if (!value.startsWith('data:') || markerIndex === -1) return null
+  const mimeType = value.slice(5, markerIndex).trim()
+  const base64 = value.slice(markerIndex + marker.length).trim()
+  if (!mimeType || !base64) return null
+  return {
+    mimeType,
+    bytes: Buffer.from(base64, 'base64'),
+  }
+}
+
+function isLikelyRawBase64(value: string): boolean {
+  if (value.length < 32) return false
+  if (value.includes('/') || value.includes('\\') || value.includes(':')) return false
+  return /^[A-Za-z0-9+/]+={0,2}$/.test(value) && value.length % 4 === 0
+}
+
 function isHttpUrl(value: string): boolean {
   return value.startsWith('http://') || value.startsWith('https://')
 }
@@ -122,6 +154,10 @@ function isAbsoluteOrRootPath(value: string): boolean {
 
 function isStorageKey(value: string): boolean {
   return STORAGE_KEY_PREFIXES.some((prefix) => value.startsWith(prefix))
+}
+
+function isStyleAssetPath(value: string): boolean {
+  return value.startsWith('/art-styles/')
 }
 
 function isNextImagePath(pathname: string): boolean {
@@ -288,6 +324,85 @@ async function toFetchableAbsoluteUrl(value: string): Promise<string> {
   return toFetchableUrl(value)
 }
 
+function resolveStyleAssetPath(input: string): string {
+  const parsed = toUrlMaybe(input)
+  const pathname = parsed?.pathname ?? input
+  if (!pathname.startsWith('/art-styles/')) {
+    throw new OutboundImageNormalizeError({
+      code: 'OUTBOUND_IMAGE_STYLE_ASSET_UNRESOLVED',
+      stage: 'normalize_original',
+      input,
+      message: `unsupported style asset path: ${input}`,
+    })
+  }
+
+  const rawRelativePath = pathname.replace(/^\/art-styles\//, '')
+  const relativePath = decodeRepeatedly(rawRelativePath)
+  const root = path.resolve(process.cwd(), 'public', 'art-styles')
+  const filePath = path.resolve(root, relativePath)
+  if (filePath !== root && filePath.startsWith(`${root}${path.sep}`)) {
+    return filePath
+  }
+
+  throw new OutboundImageNormalizeError({
+    code: 'OUTBOUND_IMAGE_STYLE_ASSET_UNRESOLVED',
+    stage: 'normalize_original',
+    input,
+    message: `style asset path escapes /art-styles: ${input}`,
+  })
+}
+
+function filenameFromInput(input: string, fallback: string): string {
+  const parsed = toUrlMaybe(input)
+  const pathname = parsed?.pathname ?? input
+  const filename = path.basename(pathname)
+  return filename && filename !== '/' && filename !== '.' ? filename : fallback
+}
+
+async function resolveStorageKeyForDirectRead(input: string): Promise<string | null> {
+  if (isStorageKey(input)) return input
+
+  const parsed = toUrlMaybe(input)
+  if (parsed?.pathname.startsWith('/m/')) {
+    const storageKey = await resolveStorageKeyFromMediaValue(parsed.pathname)
+    if (!storageKey) {
+      throw new OutboundImageNormalizeError({
+        code: 'OUTBOUND_IMAGE_MEDIA_ROUTE_UNRESOLVED',
+        stage: 'normalize_original',
+        input,
+        message: `failed to resolve /m route to storage key: ${parsed.pathname}`,
+      })
+    }
+    return storageKey
+  }
+
+  if (parsed?.pathname.startsWith('/api/files/')) {
+    return decodeRepeatedly(parsed.pathname.replace(/^\/api\/files\//, ''))
+  }
+
+  if (parsed?.pathname === '/api/storage/sign') {
+    const storageKey = parsed.searchParams.get('key')
+    return storageKey ? decodeRepeatedly(storageKey) : null
+  }
+
+  if (input.startsWith('/')) {
+    const rootStorageKey = input.slice(1)
+    if (isStorageKey(rootStorageKey)) return rootStorageKey
+    return null
+  }
+
+  if (isHttpUrl(input)) {
+    return null
+  }
+
+  const storageKeyFromMediaValue = await resolveStorageKeyFromMediaValue(input)
+  if (storageKeyFromMediaValue) return storageKeyFromMediaValue
+
+  const { extractStorageKey } = await getStorageHelpers()
+  const extracted = extractStorageKey(input)
+  return extracted && isStorageKey(extracted) ? extracted : null
+}
+
 function unwrapNextImageInternal(input: string): string {
   let current = input.trim()
   for (let i = 0; i < MAX_NEXT_IMAGE_UNWRAP_DEPTH; i += 1) {
@@ -386,10 +501,58 @@ export async function normalizeToOriginalMediaUrl(input: string): Promise<string
   })
 }
 
-export async function normalizeToBase64ForGeneration(input: string): Promise<string> {
-  const normalizedUrl = await normalizeToOriginalMediaUrl(input)
+export async function loadImageResource(input: string): Promise<ImageBinaryResource> {
+  const normalizedInput = normalizeInput(input)
+  const unwrappedInput = unwrapNextImageInternal(normalizedInput)
+  if (unwrappedInput !== normalizedInput) {
+    return await loadImageResource(unwrappedInput)
+  }
+
+  const parsedDataUrl = parseDataUrl(unwrappedInput)
+  if (parsedDataUrl) {
+    return {
+      bytes: parsedDataUrl.bytes,
+      mimeType: parsedDataUrl.mimeType,
+      filename: filenameFromInput(unwrappedInput, 'reference.png'),
+      sourceKind: 'data-url',
+    }
+  }
+
+  if (isStyleAssetPath(unwrappedInput)) {
+    const filePath = resolveStyleAssetPath(unwrappedInput)
+    const bytes = await fs.readFile(filePath)
+    return {
+      bytes,
+      mimeType: guessContentType(unwrappedInput, null, bytes),
+      filename: path.basename(filePath),
+      sourceKind: 'style-asset',
+    }
+  }
+
+  const storageKey = await resolveStorageKeyForDirectRead(unwrappedInput)
+  if (storageKey) {
+    const { getObjectBuffer } = await getStorageHelpers()
+    const bytes = await getObjectBuffer(storageKey)
+    return {
+      bytes,
+      mimeType: guessContentType(storageKey, null, bytes),
+      filename: filenameFromInput(storageKey, 'reference.png'),
+      sourceKind: 'storage',
+    }
+  }
+
+  if (isLikelyRawBase64(unwrappedInput)) {
+    return {
+      bytes: Buffer.from(unwrappedInput, 'base64'),
+      mimeType: 'image/png',
+      filename: 'reference.png',
+      sourceKind: 'data-url',
+    }
+  }
+
+  const normalizedUrl = await normalizeToOriginalMediaUrl(unwrappedInput)
   if (isDataUrl(normalizedUrl)) {
-    return normalizedUrl
+    return await loadImageResource(normalizedUrl)
   }
 
   const fetchUrl = await toFetchableAbsoluteUrl(normalizedUrl)
@@ -401,7 +564,7 @@ export async function normalizeToBase64ForGeneration(input: string): Promise<str
       code: 'OUTBOUND_IMAGE_FETCH_EXCEPTION',
       stage: 'normalize_base64',
       input: normalizedUrl,
-      message: `normalizeToBase64ForGeneration fetch exception: ${fetchUrl}`,
+      message: `loadImageResource fetch exception: ${fetchUrl}`,
     })
   }
 
@@ -410,13 +573,33 @@ export async function normalizeToBase64ForGeneration(input: string): Promise<str
       code: 'OUTBOUND_IMAGE_FETCH_FAILED',
       stage: 'normalize_base64',
       input: normalizedUrl,
-      message: `normalizeToBase64ForGeneration fetch failed (${response.status}): ${fetchUrl}`,
+      message: `loadImageResource fetch failed (${response.status}): ${fetchUrl}`,
     })
   }
 
-  const buffer = Buffer.from(await response.arrayBuffer())
-  const mimeType = guessContentType(normalizedUrl, response.headers.get('content-type'), buffer)
-  return `data:${mimeType};base64,${buffer.toString('base64')}`
+  const bytes = Buffer.from(await response.arrayBuffer())
+  return {
+    bytes,
+    mimeType: guessContentType(normalizedUrl, response.headers.get('content-type'), bytes),
+    filename: filenameFromInput(normalizedUrl, 'reference.png'),
+    sourceKind: 'remote-url',
+  }
+}
+
+export function imageResourceToDataUrl(resource: ImageBinaryResource): string {
+  return `data:${resource.mimeType};base64,${resource.bytes.toString('base64')}`
+}
+
+export function imageResourceToInlineData(resource: ImageBinaryResource): { mimeType: string; data: string } {
+  return {
+    mimeType: resource.mimeType,
+    data: resource.bytes.toString('base64'),
+  }
+}
+
+export async function normalizeToBase64ForGeneration(input: string): Promise<string> {
+  const resource = await loadImageResource(input)
+  return imageResourceToDataUrl(resource)
 }
 
 function toNormalizationIssue(

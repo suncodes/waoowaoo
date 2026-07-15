@@ -7,6 +7,8 @@ import { resolveTextareaTargetHeight } from '@/lib/ui/textarea-height'
 interface StoryInputComposerOption {
   value: string
   label: string
+  preview?: string
+  previewImage?: string
   recommended?: boolean
 }
 

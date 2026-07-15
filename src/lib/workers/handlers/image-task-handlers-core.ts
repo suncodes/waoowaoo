@@ -14,10 +14,6 @@ import {
   withLabelBar,
 } from '../utils'
 import {
-  normalizeReferenceImagesForGeneration,
-  normalizeToBase64ForGeneration,
-} from '@/lib/media/outbound-image'
-import {
   type LocationAvailableSlot,
   stringifyLocationAvailableSlots,
 } from '@/lib/location-available-slots'
@@ -94,8 +90,7 @@ export async function handleModifyAssetImageTask(job: Job<TaskJobData>) {
         }
       }
     }
-    const normalizedExtras = await normalizeReferenceImagesForGeneration(extraReferenceInputs)
-    const referenceImages = Array.from(new Set([requiredReference, ...normalizedExtras]))
+    const referenceImages = Array.from(new Set([requiredReference, ...extraReferenceInputs]))
     const currentDescription = readIndexedDescription({
       descriptions: appearance.descriptions,
       fallbackDescription: appearance.description,
@@ -137,7 +132,7 @@ export async function handleModifyAssetImageTask(job: Job<TaskJobData>) {
             type: 'character',
             currentDescription,
             modifyInstruction,
-            referenceImages: normalizedExtras,
+            referenceImages: extraReferenceInputs,
             projectId: job.data.projectId,
           })
           descriptionFields = buildCharacterDescriptionFields({
@@ -202,8 +197,7 @@ export async function handleModifyAssetImageTask(job: Job<TaskJobData>) {
         }
       }
     }
-    const normalizedExtras = await normalizeReferenceImagesForGeneration(extraReferenceInputs)
-    const referenceImages = Array.from(new Set([requiredReference, ...normalizedExtras]))
+    const referenceImages = Array.from(new Set([requiredReference, ...extraReferenceInputs]))
 
     const isProp = type === 'prop'
     const prompt = isProp
@@ -241,7 +235,7 @@ export async function handleModifyAssetImageTask(job: Job<TaskJobData>) {
             type: isProp ? 'prop' : 'location',
             currentDescription: locationImage.description,
             modifyInstruction,
-            referenceImages: normalizedExtras,
+            referenceImages: extraReferenceInputs,
             locationName: locationImage.location?.name || '场景',
             propName: isProp ? (locationImage.location?.name || '道具') : undefined,
             projectId: job.data.projectId,
@@ -311,7 +305,7 @@ export async function handleModifyAssetImageTask(job: Job<TaskJobData>) {
     const projectData = await resolveNovelData(job.data.projectId)
     if (!projectData.videoRatio) throw new Error('Project videoRatio not configured')
     const aspectRatio = projectData.videoRatio
-    const requiredReference = await normalizeToBase64ForGeneration(currentUrl)
+    const requiredReference = currentUrl
     const extraReferenceInputs: string[] = []
 
     const selectedAssets = Array.isArray(payload.selectedAssets)
@@ -333,8 +327,7 @@ export async function handleModifyAssetImageTask(job: Job<TaskJobData>) {
       }
     }
 
-    const normalizedExtras = await normalizeReferenceImagesForGeneration(extraReferenceInputs)
-    const uniqueReferences = Array.from(new Set([requiredReference, ...normalizedExtras]))
+    const uniqueReferences = Array.from(new Set([requiredReference, ...extraReferenceInputs]))
     const prompt = `请根据以下指令修改分镜图片，保持镜头语言和主体一致：\n${modifyPrompt}`
     const source = await resolveImageSourceFromGeneration(job, {
       userId: job.data.userId,

@@ -1,7 +1,6 @@
 import { GoogleGenAI, HarmBlockThreshold, HarmCategory } from '@google/genai'
 import { getProviderConfig } from '@/lib/api-config'
-import { getInternalBaseUrl } from '@/lib/env'
-import { getImageBase64Cached } from '@/lib/image-cache'
+import { imageResourceToInlineData, loadImageResource } from '@/lib/media/outbound-image'
 import { BaseImageGenerator, type GenerateResult, type ImageGenerateParams } from '../base'
 import { setProxy } from '../../../../lib/prompts/proxy'
 
@@ -13,12 +12,6 @@ type GeminiCompatibleOptions = {
   provider?: string
   modelId?: string
   modelKey?: string
-}
-
-function toAbsoluteUrlIfNeeded(value: string): string {
-  if (!value.startsWith('/')) return value
-  const baseUrl = getInternalBaseUrl()
-  return `${baseUrl}${value}`
 }
 
 function parseDataUrl(value: string): { mimeType: string; base64: string } | null {
@@ -37,14 +30,7 @@ async function toInlineData(imageSource: string): Promise<{ mimeType: string; da
     return { mimeType: parsedDataUrl.mimeType, data: parsedDataUrl.base64 }
   }
 
-  if (imageSource.startsWith('http://') || imageSource.startsWith('https://') || imageSource.startsWith('/')) {
-    const cachedDataUrl = await getImageBase64Cached(toAbsoluteUrlIfNeeded(imageSource))
-    const parsedCachedDataUrl = parseDataUrl(cachedDataUrl)
-    if (!parsedCachedDataUrl) return null
-    return { mimeType: parsedCachedDataUrl.mimeType, data: parsedCachedDataUrl.base64 }
-  }
-
-  return { mimeType: 'image/png', data: imageSource }
+  return imageResourceToInlineData(await loadImageResource(imageSource))
 }
 
 function assertAllowedOptions(options: Record<string, unknown>) {

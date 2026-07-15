@@ -1,6 +1,6 @@
 import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
-import { LOCATION_IMAGE_RATIO, PROP_IMAGE_RATIO, addLocationPromptSuffix, addPropPromptSuffix, getArtStylePrompt, isArtStyleValue, type ArtStyleValue } from '@/lib/constants'
+import { LOCATION_IMAGE_RATIO, PROP_IMAGE_RATIO, addLocationPromptSuffix, addPropPromptSuffix, appendArtStyleReferenceImage, getArtStylePrompt, isArtStyleValue, type ArtStyleValue } from '@/lib/constants'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
 import { type TaskJobData } from '@/lib/task/types'
 import { reportTaskProgress } from '../shared'
@@ -67,7 +67,9 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
   const requestedCount = resolveRequestedLocationCount(payload)
 
   const payloadArtStyle = resolvePayloadArtStyle(payload)
-  const artStyle = getArtStylePrompt(payloadArtStyle ?? models.artStyle, job.data.locale)
+  const artStyleValue = payloadArtStyle ?? models.artStyle
+  const artStyle = getArtStylePrompt(artStyleValue, job.data.locale)
+  const styleReferenceImages = appendArtStyleReferenceImage([], artStyleValue)
   const assetType = payload.type === 'prop' ? 'prop' : 'location'
 
   // targetId may be locationId (group) or locationImageId (single)
@@ -172,6 +174,7 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
       targetId: item.id,
       keyPrefix: 'location',
       options: {
+        referenceImages: styleReferenceImages.length > 0 ? styleReferenceImages : undefined,
         aspectRatio,
       },
     })

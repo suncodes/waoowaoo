@@ -25,6 +25,21 @@ const mustIncludeRules: Rule[] = [
   },
   {
     file: 'src/lib/media/outbound-image.ts',
+    pattern: /export\s+async\s+function\s+loadImageResource\s*\(/,
+    message: 'missing loadImageResource export',
+  },
+  {
+    file: 'src/lib/media/outbound-image.ts',
+    pattern: /export\s+function\s+imageResourceToInlineData\s*\(/,
+    message: 'missing imageResourceToInlineData export',
+  },
+  {
+    file: 'src/lib/media/outbound-image.ts',
+    pattern: /export\s+function\s+imageResourceToDataUrl\s*\(/,
+    message: 'missing imageResourceToDataUrl export',
+  },
+  {
+    file: 'src/lib/media/outbound-image.ts',
     pattern: /export\s+async\s+function\s+normalizeReferenceImagesForGeneration\s*\(/,
     message: 'missing normalizeReferenceImagesForGeneration export',
   },
@@ -44,39 +59,34 @@ const mustIncludeRules: Rule[] = [
     message: 'outbound-image.ts must fail explicitly when all references fail to normalize',
   },
   {
-    file: 'src/lib/workers/handlers/image-task-handlers-core.ts',
-    pattern: /normalizeToBase64ForGeneration\(currentUrl\)/,
-    message: 'image-task-handlers-core.ts must convert currentUrl to base64 before outbound',
+    file: 'src/lib/workers/handlers/panel-image-task-handler.ts',
+    pattern: /appendArtStyleReferenceImage\(refs,\s*modelConfig\.artStyle\)/,
+    message: 'panel-image-task-handler.ts must append style reference after semantic references',
   },
   {
-    file: 'src/lib/workers/handlers/image-task-handlers-core.ts',
-    pattern: /normalizeReferenceImagesForGeneration\(extraReferenceInputs\)/,
-    message: 'image-task-handlers-core.ts must normalize extra references before outbound',
+    file: 'src/lib/workers/handlers/character-image-task-handler.ts',
+    pattern: /appendArtStyleReferenceImage\(primaryReferenceInputs,\s*artStyleValue\)/,
+    message: 'character-image-task-handler.ts must append style reference after character references',
   },
   {
-    file: 'src/lib/workers/video.worker.ts',
-    pattern: /const\s+sourceImageBase64\s*=\s*await\s+normalizeToBase64ForGeneration\(sourceImageUrl\)/,
-    message: 'video.worker.ts must normalize source frame to base64',
+    file: 'src/lib/model-gateway/openai-compat/common.ts',
+    pattern: /loadImageResource\(imageSource\)/,
+    message: 'OpenAI compatible multipart uploads must use loadImageResource',
   },
   {
-    file: 'src/lib/workers/video.worker.ts',
-    pattern: /lastFrameImageBase64\s*=\s*await\s+normalizeToBase64ForGeneration\(lastFrameUrl\)/,
-    message: 'video.worker.ts must normalize last frame to base64',
+    file: 'src/lib/generators/image/gemini-compatible.ts',
+    pattern: /imageResourceToInlineData\(await\s+loadImageResource\(imageSource\)\)/,
+    message: 'Gemini compatible image references must use loadImageResource inlineData conversion',
   },
   {
-    file: 'src/app/api/novel-promotion/[projectId]/modify-asset-image/route.ts',
+    file: 'src/lib/assets/services/asset-actions.ts',
     pattern: /sanitizeImageInputsForTaskPayload/,
-    message: 'modify-asset-image route must sanitize image inputs',
+    message: 'asset modify submission must sanitize image inputs',
   },
   {
     file: 'src/app/api/novel-promotion/[projectId]/modify-storyboard-image/route.ts',
     pattern: /sanitizeImageInputsForTaskPayload/,
     message: 'modify-storyboard-image route must sanitize image inputs',
-  },
-  {
-    file: 'src/app/api/asset-hub/modify-image/route.ts',
-    pattern: /sanitizeImageInputsForTaskPayload/,
-    message: 'asset-hub modify-image route must sanitize image inputs',
   },
   {
     file: 'src/components/ui/ImagePreviewModal.tsx',
@@ -95,21 +105,21 @@ const mustIncludeRules: Rule[] = [
   },
   {
     file: 'src/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/video/panel-card/VideoPanelCardHeader.tsx',
-    pattern: /className="absolute left-1\/2 top-1\/2 z-10 h-16 w-16 -translate-x-1\/2 -translate-y-1\/2 rounded-full"/,
-    message: 'VideoPanelCard play trigger must be centered small button (preview/play separation)',
+    pattern: /absolute inset-0 flex items-center justify-center/,
+    message: 'VideoPanelCard play trigger must keep centered overlay (preview/play separation)',
   },
 ]
 
 const mustNotIncludeRules: Rule[] = [
   {
     file: 'src/lib/workers/handlers/image-task-handlers-core.ts',
-    pattern: /referenceImages:\s*\[currentUrl\]/,
-    message: 'image-task-handlers-core.ts must not pass raw currentUrl directly as outbound reference',
+    pattern: /normalizeReferenceImagesForGeneration/,
+    message: 'image-task-handlers-core.ts must not normalize optional references before provider adapters',
   },
   {
     file: 'src/lib/workers/video.worker.ts',
-    pattern: /imageUrl:\s*sourceImageUrl/,
-    message: 'video.worker.ts must not pass raw sourceImageUrl to generator',
+    pattern: /sourceImageBase64|lastFrameImageBase64/,
+    message: 'video.worker.ts must not pre-normalize frames to base64',
   },
   {
     file: 'src/lib/media/outbound-image.ts',

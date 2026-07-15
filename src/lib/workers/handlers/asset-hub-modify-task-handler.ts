@@ -10,9 +10,6 @@ import {
   uploadImageSourceToCos,
 } from '../utils'
 import {
-  normalizeReferenceImagesForGeneration,
-} from '@/lib/media/outbound-image'
-import {
   type LocationAvailableSlot,
   stringifyLocationAvailableSlots,
 } from '@/lib/location-available-slots'
@@ -123,8 +120,7 @@ export async function handleAssetHubModifyTask(job: Job<TaskJobData>) {
         }
       }
     }
-    const normalizedExtras = await normalizeReferenceImagesForGeneration(extraReferenceInputs)
-    const referenceImages = Array.from(new Set([currentUrl, ...normalizedExtras]))
+    const referenceImages = Array.from(new Set([currentUrl, ...extraReferenceInputs]))
     const currentDescription = readIndexedDescription({
       descriptions: appearance.descriptions,
       fallbackDescription: appearance.description,
@@ -161,7 +157,7 @@ export async function handleAssetHubModifyTask(job: Job<TaskJobData>) {
           type: 'character',
           currentDescription,
           modifyInstruction,
-          referenceImages: normalizedExtras,
+          referenceImages: extraReferenceInputs,
         })
         descriptionFields = buildCharacterDescriptionFields({
           descriptions: appearance.descriptions,
@@ -213,8 +209,7 @@ export async function handleAssetHubModifyTask(job: Job<TaskJobData>) {
         }
       }
     }
-    const normalizedExtras = await normalizeReferenceImagesForGeneration(extraReferenceInputs)
-    const referenceImages = Array.from(new Set([currentUrl, ...normalizedExtras]))
+    const referenceImages = Array.from(new Set([currentUrl, ...extraReferenceInputs]))
 
     const isProp = payload.type === 'prop'
     const prompt = isProp
@@ -247,7 +242,7 @@ export async function handleAssetHubModifyTask(job: Job<TaskJobData>) {
           type: isProp ? 'prop' : 'location',
           currentDescription: locationImage.description,
           modifyInstruction,
-          referenceImages: normalizedExtras,
+          referenceImages: extraReferenceInputs,
           locationName: location.name,
           propName: isProp ? location.name : undefined,
         })

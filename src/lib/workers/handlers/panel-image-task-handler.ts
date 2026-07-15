@@ -1,6 +1,6 @@
 import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
-import { getArtStylePrompt } from '@/lib/constants'
+import { appendArtStyleReferenceImage, getArtStylePrompt } from '@/lib/constants'
 import { createScopedLogger } from '@/lib/logging/core'
 import { type TaskJobData } from '@/lib/task/types'
 import { reportTaskProgress } from '../shared'
@@ -10,7 +10,6 @@ import {
   resolveImageSourceFromGeneration,
   uploadImageSourceToCos,
 } from '../utils'
-import { normalizeReferenceImagesForGeneration } from '@/lib/media/outbound-image'
 import {
   AnyObj,
   clampCount,
@@ -175,7 +174,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
 
   const candidateCount = clampCount(payload.candidateCount ?? payload.count, 1, 4, 1)
   const refs = await collectPanelReferenceImages(projectData, panel)
-  const normalizedRefs = await normalizeReferenceImagesForGeneration(refs)
+  const referenceImages = appendArtStyleReferenceImage(refs, modelConfig.artStyle)
 
   const logger = createScopedLogger({
     module: 'worker.panel-image',
@@ -192,9 +191,9 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
       modelKey,
       candidateCount,
       referenceImagesRawCount: refs.length,
-      referenceImagesNormalizedCount: normalizedRefs.length,
+      referenceImagesFinalCount: referenceImages.length,
       rawUrls: refs.map((u) => u.substring(0, 100)),
-      normalizedUrls: normalizedRefs.map((u) => u.substring(0, 100)),
+      referenceUrls: referenceImages.map((u) => u.substring(0, 100)),
       panelCharacters: panel.characters,
       panelLocation: panel.location,
       artStyle: modelConfig.artStyle,
@@ -248,7 +247,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
       modelId: modelKey,
       prompt,
       options: {
-        referenceImages: normalizedRefs,
+        referenceImages,
         aspectRatio,
       },
       // 单个任务内会串行生成多候选，若允许按 task.externalId 续接会复用上一候选外部任务结果。

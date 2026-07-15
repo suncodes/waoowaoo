@@ -10,6 +10,7 @@ import { getUserModelConfig } from '@/lib/config-service'
 import {
   CHARACTER_IMAGE_BANANA_RATIO,
   addCharacterPromptSuffix,
+  appendArtStyleReferenceImage,
   getArtStylePrompt,
 } from '@/lib/constants'
 import { encodeImageUrls } from '@/lib/contracts/image-urls-contract'
@@ -198,6 +199,7 @@ export async function handleReferenceToCharacterTask(job: Job<TaskJobData>) {
   }
 
   const artStylePrompt = getArtStylePrompt(artStyle, job.data.locale)
+  const generationReferenceImages = appendArtStyleReferenceImage(allReferenceImages, artStyle)
 
   const basePrompt = customDescription || buildPrompt({
     promptId: PROMPT_IDS.CHARACTER_REFERENCE_TO_SHEET,
@@ -226,7 +228,7 @@ export async function handleReferenceToCharacterTask(job: Job<TaskJobData>) {
       userId: job.data.userId,
       imageModel,
       prompt,
-      referenceImages: useReferenceImages ? allReferenceImages : undefined,
+      referenceImages: useReferenceImages ? generationReferenceImages : undefined,
       falApiKey,
       keyPrefix,
       ...(isProject ? { labelText: characterName } : {}),

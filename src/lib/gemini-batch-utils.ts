@@ -12,6 +12,7 @@
 import { GoogleGenAI } from '@google/genai'
 import { getInternalBaseUrl } from '@/lib/env'
 import { getImageBase64Cached } from './image-cache'
+import { imageResourceToInlineData, loadImageResource } from '@/lib/media/outbound-image'
 import { logInternal } from './logging/semantic'
 
 type UnknownRecord = Record<string, unknown>
@@ -84,7 +85,7 @@ export async function submitGeminiBatch(
           const data = imageData.substring(base64Start + 8)
           contentParts.push({ inlineData: { mimeType, data } })
         }
-      } else if (imageData.startsWith('http') || imageData.startsWith('/')) {
+      } else if (imageData.startsWith('http') || (imageData.startsWith('/') && !imageData.startsWith('/art-styles/'))) {
         // URL 格式（包括本地相对路径 /api/files/...）：下载转 base64
         try {
           // 🔧 本地模式修复：相对路径需要补全完整 URL
@@ -104,10 +105,11 @@ export async function submitGeminiBatch(
           logInternal('GeminiBatch', 'WARN', `下载参考图片 ${i + 1} 失败`, { error: getErrorMessage(e) })
         }
       } else {
-        // 纯 base64
-        contentParts.push({
-          inlineData: { mimeType: 'image/png', data: imageData }
-        })
+        try {
+          contentParts.push({ inlineData: imageResourceToInlineData(await loadImageResource(imageData)) })
+        } catch (e: unknown) {
+          logInternal('GeminiBatch', 'WARN', `解析参考图片 ${i + 1} 失败`, { error: getErrorMessage(e) })
+        }
       }
     }
 

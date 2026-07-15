@@ -181,6 +181,39 @@ export function RatioSelector({
   )
 }
 
+interface StyleSelectorOption {
+  value: string
+  label: string
+  preview?: string
+  previewImage?: string
+  recommended?: boolean
+}
+
+function StylePreview({ option, selected }: { option: StyleSelectorOption; selected: boolean }) {
+  if (option.previewImage) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={option.previewImage}
+        alt=""
+        className={`h-7 w-7 shrink-0 rounded-md object-cover border ${
+          selected ? 'border-[var(--glass-accent-from)]' : 'border-[var(--glass-stroke-soft)]'
+        }`}
+      />
+    )
+  }
+
+  return (
+    <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border text-xs ${
+      selected
+        ? 'border-[var(--glass-accent-from)] bg-[var(--glass-accent-from)]/10 text-[var(--glass-accent-from)]'
+        : 'border-[var(--glass-stroke-soft)] text-[var(--glass-text-tertiary)]'
+    }`}>
+      {option.preview || option.label.slice(0, 1)}
+    </span>
+  )
+}
+
 export function StyleSelector({
   value,
   onChange,
@@ -188,7 +221,7 @@ export function StyleSelector({
 }: {
   value: string
   onChange: (value: string) => void
-  options: { value: string; label: string; recommended?: boolean }[]
+  options: StyleSelectorOption[]
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const { triggerRef, panelRef, panelStyle } = useFloatingDropdown(isOpen, 320)
@@ -226,7 +259,7 @@ export function StyleSelector({
       {isOpen && typeof document !== 'undefined' && createPortal(
         <div
           ref={panelRef}
-          className="glass-surface-modal z-[9999] p-3"
+          className="glass-surface-modal z-[9999] p-3 overflow-y-auto app-scrollbar"
           style={panelStyle}
         >
           <div className="grid grid-cols-2 gap-2">
@@ -240,13 +273,14 @@ export function StyleSelector({
                     onChange(option.value)
                     setIsOpen(false)
                   }}
-                  className={`flex items-center p-3 rounded-xl border text-left transition-all ${
+                  className={`flex items-center gap-2 p-2.5 rounded-xl border text-left transition-all ${
                     isSelected
                       ? 'border-[var(--glass-accent-from)] bg-[var(--glass-accent-from)]/5 shadow-sm'
                       : 'border-[var(--glass-stroke-soft)] hover:border-[var(--glass-stroke-strong)]'
                   }`}
                 >
-                  <span className={`text-sm whitespace-nowrap ${isSelected ? 'font-semibold text-[var(--glass-accent-from)]' : 'text-[var(--glass-text-secondary)]'}`}>
+                  <StylePreview option={option} selected={isSelected} />
+                  <span className={`min-w-0 truncate text-sm ${isSelected ? 'font-semibold text-[var(--glass-accent-from)]' : 'text-[var(--glass-text-secondary)]'}`}>
                     {option.label}
                   </span>
                 </button>

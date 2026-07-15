@@ -134,41 +134,167 @@ export const TTS_VOICES = [
   { value: 'zh-CN-XiaoyiNeural', label: '晓伊 (女声)', preview: '女' }
 ]
 
+export interface ArtStyleDefinition {
+  value: string
+  label: string
+  preview: string
+  promptZh: string
+  promptEn: string
+  previewImage?: string
+  referenceImage?: string
+}
+
 export const ART_STYLES = [
   {
     value: 'american-comic',
     label: '漫画风',
     preview: '漫',
-    promptZh: '日式动漫风格',
-    promptEn: 'Japanese anime style'
+    promptZh: '现代美式漫画风格，清晰有力的墨线，饱满平涂色块，适度网点和动态构图，画面干净利落。',
+    promptEn: 'Modern American comic style with bold clean ink lines, saturated flat colors, subtle halftone texture, dynamic composition, and a crisp polished look.',
+    previewImage: '/art-styles/american-comic.png',
+    referenceImage: '/art-styles/american-comic.png',
   },
   {
     value: 'chinese-comic',
     label: '精致国漫',
     preview: '国',
     promptZh: '现代高质量漫画风格，动漫风格，细节丰富精致，线条锐利干净，质感饱满，超清，干净的画面风格，2D风格，动漫风格。',
-    promptEn: 'Modern premium Chinese comic style, rich details, clean sharp line art, full texture, ultra-clear 2D anime aesthetics.'
+    promptEn: 'Modern premium Chinese comic style, rich details, clean sharp line art, full texture, ultra-clear 2D anime aesthetics.',
+    previewImage: '/art-styles/chinese-comic.png',
+    referenceImage: '/art-styles/chinese-comic.png',
   },
   {
     value: 'japanese-anime',
     label: '日系动漫风',
     preview: '日',
     promptZh: '现代日系动漫风格，赛璐璐上色，清晰干净的线条，视觉小说CG感。高质量2D风格',
-    promptEn: 'Modern Japanese anime style, cel shading, clean line art, visual-novel CG look, high-quality 2D style.'
+    promptEn: 'Modern Japanese anime style, cel shading, clean line art, visual-novel CG look, high-quality 2D style.',
+    previewImage: '/art-styles/japanese-anime.png',
+    referenceImage: '/art-styles/japanese-anime.png',
   },
   {
     value: 'realistic',
     label: '真人风格',
     preview: '实',
     promptZh: '真实电影级画面质感，真实现实场景，色彩饱满通透，画面干净精致，真实感',
-    promptEn: 'Realistic cinematic look, real-world scene fidelity, rich transparent colors, clean and refined image quality.'
+    promptEn: 'Realistic cinematic look, real-world scene fidelity, rich transparent colors, clean and refined image quality.',
+    previewImage: '/art-styles/realistic.png',
+    referenceImage: '/art-styles/realistic.png',
+  },
+  {
+    value: 'watercolor-illustration',
+    label: '水彩插画',
+    preview: '水',
+    promptZh: '柔和透明的水彩插画风格，自然纸张纹理，轻盈颜料晕染边缘，低对比柔光，温暖治愈的手绘质感。',
+    promptEn: 'Soft transparent watercolor illustration with natural paper texture, gentle pigment bleeding, low-contrast soft light, and a warm hand-painted feeling.',
+    previewImage: '/art-styles/watercolor-illustration.png',
+    referenceImage: '/art-styles/watercolor-illustration.png',
+  },
+  {
+    value: 'chinese-ink-wash',
+    label: '国风水墨',
+    preview: '墨',
+    promptZh: '国风水墨画风格，留白构图，墨色浓淡层次，淡雅色彩点染，东方诗意氛围，线条克制流畅。',
+    promptEn: 'Chinese ink wash style with elegant negative space, layered ink tones, restrained color accents, poetic Eastern atmosphere, and fluid controlled brushwork.',
+    previewImage: '/art-styles/chinese-ink-wash.png',
+    referenceImage: '/art-styles/chinese-ink-wash.png',
+  },
+  {
+    value: '3d-animation',
+    label: '3D 动画',
+    preview: '3D',
+    promptZh: '风格化 3D 动画画面，圆润造型，柔和全局光照，干净材质，明快色彩，适合家庭向和儿童内容。',
+    promptEn: 'Stylized 3D animation look with rounded shapes, soft global illumination, clean materials, bright colors, suitable for family-friendly and children-oriented content.',
+    previewImage: '/art-styles/3d-animation.png',
+    referenceImage: '/art-styles/3d-animation.png',
+  },
+  {
+    value: 'cinematic-cg',
+    label: '电影 CG',
+    preview: 'CG',
+    promptZh: '电影级 CG 画面质感，高细节材质，体积光和景深，戏剧化布光，史诗感构图，精致数字渲染。',
+    promptEn: 'Cinematic CG look with highly detailed materials, volumetric light, depth of field, dramatic lighting, epic composition, and polished digital rendering.',
+    previewImage: '/art-styles/cinematic-cg.png',
+    referenceImage: '/art-styles/cinematic-cg.png',
+  },
+  {
+    value: 'paper-cut-3d',
+    label: '立体纸雕',
+    preview: '纸',
+    promptZh: '立体纸雕风格，多层剪纸结构，清晰纸张边缘，柔和投影，轻微手作纹理，像精致纸艺场景盒。',
+    promptEn: 'Layered 3D paper-cut style with crisp paper edges, soft cast shadows, subtle handmade texture, and a refined paper craft diorama look.',
+    previewImage: '/art-styles/paper-cut-3d.png',
+    referenceImage: '/art-styles/paper-cut-3d.png',
+  },
+  {
+    value: 'claymation',
+    label: '黏土定格',
+    preview: '泥',
+    promptZh: '黏土定格动画风格，手塑黏土材质，微小指纹和不规则表面，柔和棚拍灯光，温暖可触摸的手作质感。',
+    promptEn: 'Claymation stop-motion style with hand-molded clay material, tiny fingerprints and irregular surfaces, soft studio lighting, and a warm tactile handmade feel.',
+    previewImage: '/art-styles/claymation.png',
+    referenceImage: '/art-styles/claymation.png',
+  },
+  {
+    value: 'gongbi-heavy-color',
+    label: '工笔重彩',
+    preview: '工',
+    promptZh: '工笔重彩风格，精细线描，浓郁矿物色彩，装饰性图案，层次清晰，典雅华丽的中式绘画质感。',
+    promptEn: 'Gongbi heavy-color painting style with precise fine linework, rich mineral colors, decorative patterns, clear layering, and an elegant ornate Chinese painting texture.',
+    previewImage: '/art-styles/gongbi-heavy-color.png',
+    referenceImage: '/art-styles/gongbi-heavy-color.png',
+  },
+  {
+    value: 'modern-american-cartoon',
+    label: '美式现代卡通',
+    preview: '卡',
+    promptZh: '美式现代卡通风格，简洁夸张造型，清晰轮廓线，明亮色块，轻松幽默的动画质感，画面干净友好。',
+    promptEn: 'Modern American cartoon style with simplified exaggerated shapes, clean outlines, bright color blocks, a playful animated feel, and a clean friendly image.',
+    previewImage: '/art-styles/modern-american-cartoon.png',
+    referenceImage: '/art-styles/modern-american-cartoon.png',
+  },
+] as const satisfies readonly ArtStyleDefinition[]
+
+function assertArtStylesValid(styles: readonly ArtStyleDefinition[]) {
+  const seen = new Set<string>()
+  for (const style of styles) {
+    if (seen.has(style.value)) {
+      throw new Error(`Duplicate ART_STYLES value: ${style.value}`)
+    }
+    seen.add(style.value)
+    if (!style.promptZh.trim() || !style.promptEn.trim()) {
+      throw new Error(`ART_STYLES prompt is required: ${style.value}`)
+    }
   }
-]
+}
+
+assertArtStylesValid(ART_STYLES)
 
 export type ArtStyleValue = (typeof ART_STYLES)[number]['value']
 
 export function isArtStyleValue(value: unknown): value is ArtStyleValue {
   return typeof value === 'string' && ART_STYLES.some((style) => style.value === value)
+}
+
+export function getArtStyleDefinition(artStyle: string | null | undefined): ArtStyleDefinition | null {
+  if (!artStyle) return null
+  return ART_STYLES.find((style) => style.value === artStyle) ?? null
+}
+
+export function getArtStyleReferenceImage(artStyle: string | null | undefined): string | null {
+  return getArtStyleDefinition(artStyle)?.referenceImage ?? null
+}
+
+export function appendArtStyleReferenceImage(
+  referenceImages: readonly string[],
+  artStyle: string | null | undefined,
+): string[] {
+  const styleReferenceImage = getArtStyleReferenceImage(artStyle)
+  const merged = [...referenceImages]
+  if (styleReferenceImage) {
+    merged.push(styleReferenceImage)
+  }
+  return Array.from(new Set(merged.filter((item) => typeof item === 'string' && item.trim().length > 0)))
 }
 
 /**
@@ -183,7 +309,7 @@ export function getArtStylePrompt(
   locale: 'zh' | 'en',
 ): string {
   if (!artStyle) return ''
-  const style = ART_STYLES.find(s => s.value === artStyle)
+  const style = getArtStyleDefinition(artStyle)
   if (!style) return ''
   return locale === 'en' ? style.promptEn : style.promptZh
 }

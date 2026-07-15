@@ -1,14 +1,7 @@
 import OpenAI, { toFile } from 'openai'
 import { getProviderConfig } from '@/lib/api-config'
-import { getInternalBaseUrl } from '@/lib/env'
-import { getImageBase64Cached } from '@/lib/image-cache'
+import { loadImageResource } from '@/lib/media/outbound-image'
 import type { OpenAICompatClientConfig } from '../types'
-
-function toAbsoluteUrlIfNeeded(value: string): string {
-  if (!value.startsWith('/')) return value
-  const baseUrl = getInternalBaseUrl()
-  return `${baseUrl}${value}`
-}
 
 export function parseDataUrl(value: string): { mimeType: string; base64: string } | null {
   const marker = ';base64,'
@@ -52,22 +45,6 @@ export function createOpenAICompatClient(config: OpenAICompatClientConfig): Open
 }
 
 export async function toUploadFile(imageSource: string, index: number): Promise<File> {
-  const parsedDataUrl = parseDataUrl(imageSource)
-  if (parsedDataUrl) {
-    const bytes = Buffer.from(parsedDataUrl.base64, 'base64')
-    return await toFile(bytes, `reference-${index}.png`, { type: parsedDataUrl.mimeType })
-  }
-
-  if (imageSource.startsWith('http://') || imageSource.startsWith('https://') || imageSource.startsWith('/')) {
-    const cachedDataUrl = await getImageBase64Cached(toAbsoluteUrlIfNeeded(imageSource))
-    const parsedCached = parseDataUrl(cachedDataUrl)
-    if (!parsedCached) {
-      throw new Error(`OPENAI_COMPAT_REFERENCE_INVALID: failed to parse image source ${index}`)
-    }
-    const bytes = Buffer.from(parsedCached.base64, 'base64')
-    return await toFile(bytes, `reference-${index}.png`, { type: parsedCached.mimeType })
-  }
-
-  const bytes = Buffer.from(imageSource, 'base64')
-  return await toFile(bytes, `reference-${index}.png`, { type: 'image/png' })
+  const resource = await loadImageResource(imageSource)
+  return await toFile(resource.bytes, resource.filename || `reference-${index}.png`, { type: resource.mimeType })
 }

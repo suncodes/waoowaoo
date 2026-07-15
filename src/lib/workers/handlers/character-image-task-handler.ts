@@ -1,6 +1,6 @@
 import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
-import { CHARACTER_ASSET_IMAGE_RATIO, addCharacterPromptSuffix, getArtStylePrompt, isArtStyleValue, PRIMARY_APPEARANCE_INDEX, type ArtStyleValue } from '@/lib/constants'
+import { CHARACTER_ASSET_IMAGE_RATIO, addCharacterPromptSuffix, appendArtStyleReferenceImage, getArtStylePrompt, isArtStyleValue, PRIMARY_APPEARANCE_INDEX, type ArtStyleValue } from '@/lib/constants'
 import { type TaskJobData } from '@/lib/task/types'
 import { encodeImageUrls } from '@/lib/contracts/image-urls-contract'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
@@ -10,7 +10,6 @@ import {
   getProjectModels,
   toSignedUrlIfCos,
 } from '../utils'
-import { normalizeReferenceImagesForGeneration } from '@/lib/media/outbound-image'
 import {
   AnyObj,
   generateProjectLabeledImageToStorage,
@@ -107,7 +106,8 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
   if (!appearance) throw new Error('Character appearance not found')
 
   const payloadArtStyle = resolvePayloadArtStyle(payload)
-  const artStyle = getArtStylePrompt(payloadArtStyle ?? models.artStyle, job.data.locale)
+  const artStyleValue = payloadArtStyle ?? models.artStyle
+  const artStyle = getArtStylePrompt(artStyleValue, job.data.locale)
   const descriptions = parseJsonStringArray(appearance.descriptions)
   const baseDescriptions = descriptions.length > 0 ? descriptions : [appearance.description || '']
 
@@ -130,7 +130,7 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
       }
     }
   }
-  const primaryReferenceImages = await normalizeReferenceImagesForGeneration(primaryReferenceInputs)
+  const referenceImages = appendArtStyleReferenceImage(primaryReferenceInputs, artStyleValue)
 
   const singleIndex = payload.imageIndex ?? payload.descriptionIndex
   const count = normalizeImageGenerationCount('character', payload.count)
@@ -161,7 +161,7 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
       targetId: `${appearance.id}-${index}`,
       keyPrefix: 'character',
       options: {
-        referenceImages: primaryReferenceImages.length > 0 ? primaryReferenceImages : undefined,
+        referenceImages: referenceImages.length > 0 ? referenceImages : undefined,
         aspectRatio: CHARACTER_ASSET_IMAGE_RATIO,
       },
     })

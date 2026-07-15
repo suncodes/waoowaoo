@@ -248,6 +248,26 @@ describe('bailian video provider', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('fails fast when frame url is not external https', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+
+    await expect(
+      generateBailianVideo({
+        userId: 'user-1',
+        imageUrl: '/api/files/images%2Fframe.png',
+        prompt: 'test',
+        options: {
+          provider: 'bailian',
+          modelId: 'wan2.6-i2v',
+          modelKey: 'bailian::wan2.6-i2v',
+        },
+      }),
+    ).rejects.toThrow(/BAILIAN_VIDEO_FIRST_FRAME_PUBLIC_HTTPS_URL_REQUIRED/)
+
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('fails fast when options contain unsupported field', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)

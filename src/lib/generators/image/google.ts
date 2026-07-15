@@ -9,10 +9,9 @@ import { logInfo as _ulogInfo, logWarn as _ulogWarn } from '@/lib/logging/core'
  */
 
 import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from '@google/genai'
-import { getInternalBaseUrl } from '@/lib/env'
 import { BaseImageGenerator, ImageGenerateParams, GenerateResult } from '../base'
 import { getProviderConfig } from '@/lib/api-config'
-import { getImageBase64Cached } from '@/lib/image-cache'
+import { imageResourceToInlineData, loadImageResource } from '@/lib/media/outbound-image'
 import { setProxy } from '../../../../lib/prompts/proxy'
 
 type ContentPart = { inlineData: { mimeType: string; data: string } } | { text: string }
@@ -89,30 +88,12 @@ export class GoogleGeminiImageGenerator extends BaseImageGenerator {
                     const data = imageData.substring(base64Start + 8)
                     contentParts.push({ inlineData: { mimeType, data } })
                 }
-            } else if (imageData.startsWith('http') || imageData.startsWith('/')) {
-                // URL 格式（包括本地相对路径 /api/files/...）：下载转 base64
-                try {
-                    // 🔧 本地模式修复：相对路径需要补全完整 URL
-                    let fullUrl = imageData
-                    if (imageData.startsWith('/')) {
-                        const baseUrl = getInternalBaseUrl()
-                        fullUrl = `${baseUrl}${imageData}`
-                    }
-                    const base64DataUrl = await getImageBase64Cached(fullUrl)
-                    const base64Start = base64DataUrl.indexOf(';base64,')
-                    if (base64Start !== -1) {
-                        const mimeType = base64DataUrl.substring(5, base64Start)
-                        const data = base64DataUrl.substring(base64Start + 8)
-                        contentParts.push({ inlineData: { mimeType, data } })
-                    }
-                } catch (e) {
-                    _ulogWarn(`下载参考图片 ${i + 1} 失败:`, e)
-                }
             } else {
-                // 纯 base64
-                contentParts.push({
-                    inlineData: { mimeType: 'image/png', data: imageData }
-                })
+                try {
+                    contentParts.push({ inlineData: imageResourceToInlineData(await loadImageResource(imageData)) })
+                } catch (e) {
+                    _ulogWarn(`解析参考图片 ${i + 1} 失败:`, e)
+                }
             }
         }
 

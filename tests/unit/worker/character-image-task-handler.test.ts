@@ -9,10 +9,6 @@ const utilsMock = vi.hoisted(() => ({
   toSignedUrlIfCos: vi.fn((url: string | null | undefined) => (url ? `https://signed.example/${url}` : null)),
 }))
 
-const outboundMock = vi.hoisted(() => ({
-  normalizeReferenceImagesForGeneration: vi.fn(async () => ['normalized-primary-ref']),
-}))
-
 const prismaMock = vi.hoisted(() => ({
   characterAppearance: {
     findUnique: vi.fn(),
@@ -33,7 +29,6 @@ const sharedMock = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/workers/utils', () => utilsMock)
-vi.mock('@/lib/media/outbound-image', () => outboundMock)
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('@/lib/workers/shared', () => ({ reportTaskProgress: vi.fn(async () => undefined) }))
 vi.mock('@/lib/workers/handlers/image-task-handler-shared', async () => {
@@ -115,7 +110,7 @@ describe('worker character-image-task-handler behavior', () => {
     expect(generationInput.prompt.split(realisticStylePrompt).length - 1).toBe(1)
     expect(generationInput.label).toBe('Hero - 战斗形态')
     expect(generationInput.options).toEqual(expect.objectContaining({
-      referenceImages: ['normalized-primary-ref'],
+      referenceImages: ['https://signed.example/cos/primary.png', '/art-styles/realistic.png'],
       aspectRatio: '3:2',
     }))
 
@@ -134,9 +129,11 @@ describe('worker character-image-task-handler behavior', () => {
 
     const generationInput = sharedMock.generateProjectLabeledImageToStorage.mock.calls[0]?.[0] as {
       prompt: string
+      options?: { referenceImages?: string[] }
     }
     expect(generationInput.prompt).toContain(getArtStylePrompt('japanese-anime', 'zh'))
     expect(generationInput.prompt).not.toContain(getArtStylePrompt('realistic', 'zh'))
+    expect(generationInput.options?.referenceImages).toContain('/art-styles/japanese-anime.png')
   })
 
   it('invalid payload artStyle -> explicit error', async () => {

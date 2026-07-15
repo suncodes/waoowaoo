@@ -83,6 +83,43 @@ function isFirstLastFrameOnlyModel(modelId: string): boolean {
   return BAILIAN_FIRST_LAST_FRAME_ONLY_MODELS.has(modelId)
 }
 
+function isPrivateHostname(hostname: string): boolean {
+  const normalized = hostname.toLowerCase()
+  if (
+    normalized === 'localhost'
+    || normalized === '127.0.0.1'
+    || normalized === '0.0.0.0'
+    || normalized === '::1'
+    || normalized.endsWith('.local')
+    || normalized.endsWith('.internal')
+  ) {
+    return true
+  }
+
+  const parts = normalized.split('.').map((part) => Number(part))
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+    return false
+  }
+  const [a, b] = parts
+  return a === 10
+    || (a === 172 && b >= 16 && b <= 31)
+    || (a === 192 && b === 168)
+    || (a === 169 && b === 254)
+}
+
+function assertExternalHttpsUrl(value: string, fieldName: string): string {
+  let parsed: URL
+  try {
+    parsed = new URL(value)
+  } catch {
+    throw new Error(`BAILIAN_VIDEO_${fieldName}_PUBLIC_HTTPS_URL_REQUIRED`)
+  }
+  if (parsed.protocol !== 'https:' || isPrivateHostname(parsed.hostname)) {
+    throw new Error(`BAILIAN_VIDEO_${fieldName}_PUBLIC_HTTPS_URL_REQUIRED`)
+  }
+  return parsed.toString()
+}
+
 function assertNoUnsupportedOptions(options: BailianGenerateRequestOptions): void {
   const allowedOptionKeys = new Set([
     'provider',
@@ -117,7 +154,7 @@ function buildSubmitRequest(params: BailianVideoGenerateParams): {
     throw new Error('BAILIAN_VIDEO_MODEL_ID_REQUIRED')
   }
 
-  const firstFrameUrl = toFetchableUrl(imageUrl)
+  const firstFrameUrl = assertExternalHttpsUrl(toFetchableUrl(imageUrl), 'FIRST_FRAME')
   const lastFrameImageUrl = readTrimmedString(params.options.lastFrameImageUrl)
   const firstLastFrame = !!lastFrameImageUrl
   if (isFirstLastFrameOnlyModel(modelId) && !firstLastFrame) {
@@ -139,7 +176,7 @@ function buildSubmitRequest(params: BailianVideoGenerateParams): {
     input: firstLastFrame
       ? {
         first_frame_url: firstFrameUrl,
-        last_frame_url: toFetchableUrl(lastFrameImageUrl),
+        last_frame_url: assertExternalHttpsUrl(toFetchableUrl(lastFrameImageUrl), 'LAST_FRAME'),
       }
       : {
         img_url: firstFrameUrl,
