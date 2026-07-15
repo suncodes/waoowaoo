@@ -9,6 +9,7 @@ import { useImageGenerationCount } from '@/lib/image-generation/use-image-genera
 import TaskStatusInline from '@/components/task/TaskStatusInline'
 import { resolveTaskPresentationState } from '@/lib/task/presentation'
 import { AppIcon } from '@/components/ui/icons'
+import { ArtStyleGallerySelector } from '@/components/selectors/ArtStyleGallerySelector'
 import type { LocationAvailableSlot } from '@/lib/location-available-slots'
 
 interface AddLocationModalProps {
@@ -169,21 +170,13 @@ export function AddLocationModal({ folderId, onClose, onSuccess }: AddLocationMo
                             <label className="glass-field-label block">
                                 画面风格
                             </label>
-                            <div className="grid grid-cols-2 gap-2">
-                                {ART_STYLES.map((style) => (
-                                    <button
-                                        key={style.value}
-                                        type="button"
-                                        onClick={() => setArtStyle(style.value)}
-                                        className={`glass-btn-base px-3 py-2 rounded-lg text-sm border flex items-center justify-start transition-all ${artStyle === style.value
-                                            ? 'glass-btn-tone-info border-[var(--glass-stroke-focus)]'
-                                            : 'glass-btn-soft border-[var(--glass-stroke-base)] text-[var(--glass-text-secondary)] hover:border-[var(--glass-stroke-strong)]'
-                                            }`}
-                                    >
-                                        <span>{style.label}</span>
-                                    </button>
-                                ))}
-                            </div>
+                            <ArtStyleGallerySelector
+                                value={artStyle}
+                                onChange={setArtStyle}
+                                options={ART_STYLES}
+                                columnsClassName="grid-cols-2"
+                                imageClassName="h-24"
+                            />
                         </div>
 
                         {/* 场景描述 */}

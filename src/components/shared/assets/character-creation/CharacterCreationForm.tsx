@@ -4,6 +4,7 @@ import type { DragEvent, RefObject } from 'react'
 import { useTranslations } from 'next-intl'
 import { ART_STYLES } from '@/lib/constants'
 import CharacterCreationPreview from './CharacterCreationPreview'
+import { ArtStyleGallerySelector } from '@/components/selectors/ArtStyleGallerySelector'
 import { AppIcon } from '@/components/ui/icons'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
 
@@ -174,21 +175,13 @@ export default function CharacterCreationForm({
           <label className="glass-field-label block">
             {t('artStyle.title')}
           </label>
-          <div className="grid grid-cols-2 gap-2">
-            {ART_STYLES.map((style) => (
-              <button
-                key={style.value}
-                type="button"
-                onClick={() => setArtStyle(style.value)}
-                className={`glass-btn-base px-3 py-2 rounded-lg text-sm border transition-all justify-start ${artStyle === style.value
-                  ? 'glass-btn-tone-info border-[var(--glass-stroke-focus)]'
-                  : 'glass-btn-soft border-[var(--glass-stroke-base)] text-[var(--glass-text-secondary)]'
-                  }`}
-              >
-                <span>{style.label}</span>
-              </button>
-            ))}
-          </div>
+          <ArtStyleGallerySelector
+            value={artStyle}
+            onChange={setArtStyle}
+            options={ART_STYLES}
+            columnsClassName="grid-cols-2"
+            imageClassName="h-24"
+          />
         </div>
       )}
 

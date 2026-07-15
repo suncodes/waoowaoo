@@ -9,7 +9,7 @@ services:
       MYSQL_DATABASE: waoowaoo
       MYSQL_ROOT_HOST: "%"
     ports:
-      - "13306:3306"
+      - "23306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     command:
@@ -28,7 +28,7 @@ services:
     container_name: waoowaoo-redis
     restart: unless-stopped
     ports:
-      - "16379:6379"
+      - "26379:6379"
     volumes:
       - redis_data:/data
     command: ["redis-server", "--appendonly", "yes"]
@@ -49,8 +49,8 @@ services:
       MINIO_ROOT_PASSWORD: minioadmin
     command: server /data --console-address ":9001"
     ports:
-      - "19000:9000"
-      - "19001:9001"
+      - "29000:9000"
+      - "29001:9001"
     volumes:
       - minio_data:/data
     healthcheck:
@@ -117,8 +117,8 @@ services:
       # 流式
       LLM_STREAM_EPHEMERAL_ENABLED: "true"
     ports:
-      - "13000:3000"
-      - "13010:3010"
+      - "23000:3000"
+      - "23010:3010"
     volumes:
       - ./data:/app/data
       - ./docker-logs:/app/logs

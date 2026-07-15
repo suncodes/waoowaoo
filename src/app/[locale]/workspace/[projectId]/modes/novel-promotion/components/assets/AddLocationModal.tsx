@@ -10,6 +10,7 @@ import { useAiCreateProjectLocation, useCreateProjectLocation } from '@/lib/quer
 import TaskStatusInline from '@/components/task/TaskStatusInline'
 import { resolveTaskPresentationState } from '@/lib/task/presentation'
 import { AppIcon } from '@/components/ui/icons'
+import { ArtStyleGallerySelector } from '@/components/selectors/ArtStyleGallerySelector'
 import type { LocationAvailableSlot } from '@/lib/location-available-slots'
 
 interface AddLocationModalProps {
@@ -168,21 +169,13 @@ export default function AddLocationModal({
               <label className="block text-sm font-medium text-[var(--glass-text-secondary)]">
                 {t('modal.artStyle')}
               </label>
-              <div className="grid grid-cols-2 gap-2">
-                {ART_STYLES.map((style) => (
-                  <button
-                    key={style.value}
-                    type="button"
-                    onClick={() => setArtStyle(style.value)}
-                    className={`px-3 py-2 rounded-lg text-sm border transition-all flex items-center ${artStyle === style.value
-                      ? 'border-[var(--glass-stroke-focus)] bg-[var(--glass-tone-info-bg)] text-[var(--glass-tone-info-fg)]'
-                      : 'border-[var(--glass-stroke-base)] hover:border-[var(--glass-stroke-strong)] text-[var(--glass-text-secondary)]'
-                      }`}
-                  >
-                    <span>{style.label}</span>
-                  </button>
-                ))}
-              </div>
+              <ArtStyleGallerySelector
+                value={artStyle}
+                onChange={setArtStyle}
+                options={ART_STYLES}
+                columnsClassName="grid-cols-2"
+                imageClassName="h-24"
+              />
             </div>
 
             {/* AI 设计区域 */}

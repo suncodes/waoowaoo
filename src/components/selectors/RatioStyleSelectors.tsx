@@ -8,6 +8,7 @@
  */
 import { createPortal } from 'react-dom'
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, type CSSProperties } from 'react'
+import { ArtStyleGallerySelector, type ArtStyleGalleryOption } from '@/components/selectors/ArtStyleGallerySelector'
 import { AppIcon } from '@/components/ui/icons'
 
 const TRIGGER_CLASSNAME = 'glass-input-base flex h-10 w-full items-center justify-between gap-2 px-2.5 transition-colors'
@@ -16,7 +17,7 @@ const TRIGGER_TEXT_CLASSNAME = 'text-[13px] font-medium text-[var(--glass-text-p
 const VIEWPORT_EDGE_GAP = 8
 const DEFAULT_MAX_HEIGHT = 280
 
-function useFloatingDropdown(isOpen: boolean, minWidth: number) {
+function useFloatingDropdown(isOpen: boolean, minWidth: number, maxHeight = DEFAULT_MAX_HEIGHT) {
   const triggerRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const [panelStyle, setPanelStyle] = useState<CSSProperties>({})
@@ -44,12 +45,12 @@ function useFloatingDropdown(isOpen: boolean, minWidth: number) {
       position: 'fixed',
       left,
       width,
-      maxHeight: Math.max(120, Math.min(DEFAULT_MAX_HEIGHT, availableSpace)),
+      maxHeight: Math.max(120, Math.min(maxHeight, availableSpace)),
       ...(openUpward
         ? { bottom: viewportHeight - rect.top + 4 }
         : { top: rect.bottom + 4 }),
     })
-  }, [minWidth])
+  }, [maxHeight, minWidth])
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -181,13 +182,7 @@ export function RatioSelector({
   )
 }
 
-interface StyleSelectorOption {
-  value: string
-  label: string
-  preview?: string
-  previewImage?: string
-  recommended?: boolean
-}
+type StyleSelectorOption = ArtStyleGalleryOption
 
 function StylePreview({ option, selected }: { option: StyleSelectorOption; selected: boolean }) {
   if (option.previewImage) {
@@ -224,7 +219,7 @@ export function StyleSelector({
   options: StyleSelectorOption[]
 }) {
   const [isOpen, setIsOpen] = useState(false)
-  const { triggerRef, panelRef, panelStyle } = useFloatingDropdown(isOpen, 320)
+  const { triggerRef, panelRef, panelStyle } = useFloatingDropdown(isOpen, 520, 520)
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -250,7 +245,7 @@ export function StyleSelector({
         className={`${TRIGGER_CLASSNAME} cursor-pointer`}
       >
         <div className="flex min-w-0 items-center gap-2">
-          <AppIcon name="sparklesAlt" className="h-4 w-4 text-[var(--glass-accent-from)]" />
+          <StylePreview option={selectedOption} selected />
           <span className={`${TRIGGER_TEXT_CLASSNAME} truncate`}>{selectedOption.label}</span>
         </div>
         <AppIcon name="chevronDown" className={`w-4 h-4 text-[var(--glass-text-tertiary)] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
@@ -262,31 +257,14 @@ export function StyleSelector({
           className="glass-surface-modal z-[9999] p-3 overflow-y-auto app-scrollbar"
           style={panelStyle}
         >
-          <div className="grid grid-cols-2 gap-2">
-            {options.map((option) => {
-              const isSelected = value === option.value
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => {
-                    onChange(option.value)
-                    setIsOpen(false)
-                  }}
-                  className={`flex items-center gap-2 p-2.5 rounded-xl border text-left transition-all ${
-                    isSelected
-                      ? 'border-[var(--glass-accent-from)] bg-[var(--glass-accent-from)]/5 shadow-sm'
-                      : 'border-[var(--glass-stroke-soft)] hover:border-[var(--glass-stroke-strong)]'
-                  }`}
-                >
-                  <StylePreview option={option} selected={isSelected} />
-                  <span className={`min-w-0 truncate text-sm ${isSelected ? 'font-semibold text-[var(--glass-accent-from)]' : 'text-[var(--glass-text-secondary)]'}`}>
-                    {option.label}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
+          <ArtStyleGallerySelector
+            value={value}
+            onChange={onChange}
+            options={options}
+            onAfterChange={() => setIsOpen(false)}
+            columnsClassName="grid-cols-2"
+            imageClassName="h-24"
+          />
         </div>,
         document.body,
       )}
