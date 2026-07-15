@@ -110,7 +110,7 @@ describe('worker character-image-task-handler behavior', () => {
     expect(generationInput.prompt.split(realisticStylePrompt).length - 1).toBe(1)
     expect(generationInput.label).toBe('Hero - 战斗形态')
     expect(generationInput.options).toEqual(expect.objectContaining({
-      referenceImages: ['https://signed.example/cos/primary.png', '/art-styles/realistic.png'],
+      referenceImages: ['https://signed.example/cos/primary.png', '/art-styles/realistic.jpg'],
       aspectRatio: '3:2',
     }))
 
@@ -133,7 +133,7 @@ describe('worker character-image-task-handler behavior', () => {
     }
     expect(generationInput.prompt).toContain(getArtStylePrompt('japanese-anime', 'zh'))
     expect(generationInput.prompt).not.toContain(getArtStylePrompt('realistic', 'zh'))
-    expect(generationInput.options?.referenceImages).toContain('/art-styles/japanese-anime.png')
+    expect(generationInput.options?.referenceImages).toContain('/art-styles/japanese-anime.jpg')
   })
 
   it('invalid payload artStyle -> explicit error', async () => {

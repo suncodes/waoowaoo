@@ -127,9 +127,9 @@ describe('outbound-image normalization', () => {
   })
 
   it('loads style asset directly from public art-styles directory', async () => {
-    const resource = await loadImageResource('/art-styles/american-comic.png')
+    const resource = await loadImageResource('/art-styles/american-comic.jpg')
     expect(resource.sourceKind).toBe('style-asset')
-    expect(resource.mimeType).toBe('image/png')
+    expect(resource.mimeType).toBe('image/jpeg')
     expect(resource.bytes.length).toBeGreaterThan(0)
   })
 
