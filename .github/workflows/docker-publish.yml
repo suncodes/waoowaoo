@@ -3,12 +3,16 @@ name: Build & Push Docker Image
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, preview]
     tags: ['v*']
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-and-push:
@@ -35,6 +39,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=preview,enable=${{ github.ref == 'refs/heads/preview' }}
             type=semver,pattern={{version}}
             type=sha,prefix=
 
