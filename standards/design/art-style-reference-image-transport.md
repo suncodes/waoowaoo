@@ -1,8 +1,8 @@
 # 画面风格扩展与参考图传输方案
 
-- 状态：已定稿，待实施
+- 状态：已实施，待风格质量优化
 - 适用项目：`waoowaoo`
-- 更新时间：2026-07-15
+- 更新时间：2026-07-16
 - 方案范围：内置画面风格扩展、风格参考图管理、图片/视频模型参考图传输
 
 ## 1. 决策摘要
@@ -22,22 +22,25 @@
 
 ### 2.1 当前风格体系
 
-当前四种风格集中定义在 [`ART_STYLES`](../../src/lib/constants.ts)，注册项包含：
+当前风格集中定义在 [`ART_STYLES`](../../src/lib/constants.ts)，注册项包含：
 
 - `value`
 - `label`
 - `preview`
 - `promptZh`
 - `promptEn`
+- `previewImage`
+- `referenceImage`
 
 该数组同时承担前端选项、API 白名单和生成提示词解析职责。数据库中的 `artStyle` 是普通字符串，因此新增风格不需要数据库迁移。
 
 当前问题：
 
-- 风格仅依赖文本提示词，跨角色、场景和分镜的一致性有限。
-- `american-comic` 实际使用日式动漫提示词，名称与效果不一致。
-- 四种风格中动漫类占比较高，媒介和题材覆盖不足。
-- 风格没有真实图片预览，也没有可选的生成参考图。
+- 已从早期 4 类扩展到 12 类，均具备中英文提示词和 JPG 参考图，但提示词质量分层明显。
+- 6 个从 `ai-fusion-video` 映射来的基础风格参考图已接入，但当前提示词普遍比 `ai-fusion-video` 原版弱。
+- `american-comic` 已不再是日漫提示词，但仍更接近“干净漫画风”，未达到 `ai-fusion-video` 中 `comic_us` 的强美漫效果。
+- `watercolor-illustration` 当前参考图实际来自 VideoLens 的“治愈手绘插画”，不是严格水彩，存在命名和素材不完全一致问题。
+- 风格参考图当前追加到参考图列表末尾；当同时存在角色、场景、道具参考图时，风格权重可能被稀释。
 
 ### 2.2 当前媒体存储
 
@@ -133,10 +136,10 @@ export interface ArtStyleDefinition {
 ```ts
 {
   value: 'watercolor-illustration',
-  label: '水彩插画',
-  preview: '水',
-  promptZh: '柔和透明的水彩插画风格，保留自然纸张纹理与颜料晕染边缘...',
-  promptEn: 'Soft transparent watercolor illustration with natural paper texture...',
+  label: '治愈手绘',
+  preview: '绘',
+  promptZh: '温暖治愈的手绘插画风格，柔和低对比色彩，细腻纸张纹理...',
+  promptEn: 'Warm healing hand-painted illustration style with soft low-contrast colors...',
   previewImage: '/art-styles/watercolor-illustration.jpg',
   referenceImage: '/art-styles/watercolor-illustration.jpg',
 }
@@ -232,6 +235,70 @@ VideoLens《短视频视觉风格大全：21 种爆款风格 + AI 提示词》�
 | 移轴微缩写实 | 作为镜头效果预设 | 属于摄影/景深效果，不是媒介画风 |
 | 治愈微距 3D·萌宠 | 拆为镜头和角色标签 | “微距”“萌宠”会污染主体和构图 |
 | 复古赛博动画·90s 中的赛博语义 | 作为主题标签 | 赛博是题材氛围，应与 90s 赛璐璐画风解耦 |
+
+### 5.4 当前 12 类风格质量审计
+
+截至 2026-07-16，`ART_STYLES` 已落地 12 类风格，且 `public/art-styles/` 中仅保留 12 张 JPG 运行时参考图。
+
+审计基准：
+
+- 对照 `ai-fusion-video` 的 6 个原始预设：`comic_us`、`anime_cn`、`anime_jp`、`realistic`、`cartoon_3d`、`cg`。
+- 对照 VideoLens 本地 21 张参考图映射关系。
+- 参考主流图片生成提示词写法：提示词应明确媒介、线条、色彩、光照、材质/纹理、构图/镜头和负向约束；多参考图场景应清楚说明每张参考图的用途。
+
+没有统一的“行业标准提示词”，但可采用以下通用结构：
+
+```text
+<媒介/风格类型>，<线条/形体特征>，<色彩系统>，<光照与氛围>，
+<材质/纹理>，<构图或镜头语言>，<质量约束>，<避免项>
+```
+
+第一轮优化前逐项结论：
+
+| value | 当前判断 | 主要问题 | 优先级 |
+|---|---|---|---|
+| `american-comic` | 不合适，需修正 | 提示词比 `ai-fusion-video` 的 `comic_us` 弱，显示名“漫画风”也弱化了“美漫”预期 | P0 |
+| `chinese-comic` | 不稳定，需重新定位 | 当前提示词重复“漫画/动漫”，不像 `ai-fusion-video` 的新国风高级动画，也不是清晰的现代国漫漫画 | P0 |
+| `japanese-anime` | 可用，可增强 | 方向正确，但缺少硬边阴影、空气感、手绘背景和动画截图质感等稳定特征 | P1 |
+| `realistic` | 过泛，需增强 | 当前“真实电影级”描述不足，容易退化为普通写实 | P0 |
+| `watercolor-illustration` | 命名与参考图不完全一致 | 当前参考图来自 VideoLens `06-healing-illustration`，不是严格水彩 | P0 |
+| `chinese-ink-wash` | 可用，可增强 | 水墨方向明确，可补宣纸、干湿笔、飞白和墨色晕染等媒介特征 | P1 |
+| `3d-animation` | 过泛，需增强 | 比 `ai-fusion-video` 的 `cartoon_3d` 弱，缺少渲染、材质和角色比例描述 | P0 |
+| `cinematic-cg` | 过泛，需增强 | 比 `ai-fusion-video` 的 `cg` 弱，缺少 PBR、光追、AO、粒子和硬表面反射等特征 | P0 |
+| `paper-cut-3d` | 合适 | 材质、层次和阴影清楚，可小幅增强纸张纤维和裁切边缘 | P2 |
+| `claymation` | 合适 | 材质表达清楚，可小幅增强定格帧感和微缩棚拍 | P2 |
+| `gongbi-heavy-color` | 基本合适 | 可补矿物颜料、绢本质感、金线装饰和平面装饰构图 | P1 |
+| `modern-american-cartoon` | 合适，但需与美漫区分 | 它是轻松美式卡通，不应作为 `american-comic` 的替代 | P2 |
+
+### 5.5 推荐提示词优化方向
+
+第一轮代码调整优先做 prompt-only 改动，避免同时改提示词、参考图和传输策略导致效果问题难以归因。该轮已于 2026-07-16 落地到 `ART_STYLES`，保留全部 `value` 和图片路径，仅调整 `label`、`preview`、`promptZh`、`promptEn`。
+
+| value | 显示名建议 | 中文提示词方向 | 英文提示词方向 |
+|---|---|---|---|
+| `american-comic` | 美漫 | 现代美式漫画与前卫动作动画，粗犷动感黑色轮廓线，夸张爆发透视，高对比波普色彩，印刷半调网点，色散偏移，故障残影，风格化动态模糊，浓重墨迹阴影 | modern American comic and avant-garde action animation, bold dynamic black outlines, exaggerated explosive perspective, high-contrast pop colors, printed halftone dots, chromatic aberration, glitch-like afterimages, stylized motion blur, heavy ink shadows |
+| `chinese-comic` | 新国风动画 | 新国风高级动画，融合写意水墨、工笔线描和现代数字插画，东方传统色彩，武侠/东方奇幻氛围，流畅飘逸线条，2D 与 3D 融合的高级手绘质感 | premium neo-Chinese animation, expressive ink wash, gongbi linework, modern digital illustration, traditional Eastern colors, wuxia/oriental fantasy atmosphere, flowing elegant lines, hybrid 2D/3D hand-painted feel |
+| `japanese-anime` | 日系动漫风 | 高品质 2D 日式动画，赛璐璐涂装，清晰细腻线稿，平涂上色，层次分明硬边阴影，高饱和动漫色彩，空气感光影，精致手绘背景，动画截图质感 | high-quality 2D Japanese anime, cel shading, clean detailed line art, flat colors, crisp hard-edge shadows, saturated anime palette, atmospheric lighting, refined hand-painted backgrounds, animation still quality |
+| `realistic` | 真人电影感 | 好莱坞电影级写实摄影，35mm 镜头，浅景深，专业电影灯光，边缘光，变形镜头眩光，胶片颗粒，青橙调色，真实皮肤和材质细节 | Hollywood cinematic realism, 35mm lens, shallow depth of field, professional film lighting, rim light, anamorphic lens flare, film grain, teal-orange grading, realistic skin and material details |
+| `watercolor-illustration` | 治愈手绘 | 保留当前参考图，显示名改为“治愈手绘”，提示词改为温暖治愈的手绘插画；若后续坚持水彩，应另换真正水彩参考图 | Keep the current reference image, rename the display label to healing hand-painted illustration, and align the prompt with warm healing illustration; if strict watercolor is required later, replace it with a true watercolor reference |
+| `3d-animation` | 3D 动画 | 高品质风格化 3D 卡通动画，夸张有表现力的角色比例，柔和全局光照，体积光，SSS 通透皮肤，细腻毛发与织物纹理，鲜明温暖色彩，电影级构图 | high-quality stylized 3D cartoon animation, expressive exaggerated proportions, soft global illumination, volumetric light, subsurface scattering, detailed hair and fabric textures, bright warm colors, cinematic composition |
+| `cinematic-cg` | 电影 CG | 次世代电影级 CG，PBR 材质，光线追踪，环境光遮蔽，复杂粒子特效，硬表面反射，戏剧性打光，强明暗对比，史诗感构图 | next-generation cinematic CG, PBR materials, ray tracing, ambient occlusion, complex particles, hard-surface reflections, dramatic lighting, strong contrast, epic composition |
+
+### 5.6 参考图顺序优化策略
+
+当前实现通过 `appendArtStyleReferenceImage()` 将风格参考图追加到参考图列表末尾。该策略能保护人物和场景一致性，但在多参考图场景下会削弱风格参考图权重。
+
+下一轮建议拆分“引用顺序”和“保留优先级”：
+
+- 引用顺序：在非图片编辑场景中，风格参考图优先放在第 1 位，prompt 明确写“仅参考图片1的画面风格、线条、色彩、材质和光影，不参考其中的主体、物品和构图”。
+- 业务参考图：角色、场景、道具参考图从图片2开始，并在 prompt 中按顺序说明用途。
+- 保留优先级：当模型参考图数量超限时，编辑目标图、首帧图和人物身份参考图仍高于风格图；风格图可以优先丢弃并降级为纯文本风格。
+- 图片编辑场景：编辑目标图必须保持第一优先级，风格图只在模型允许且槽位充足时加入。
+
+该策略兼顾两点：
+
+1. 模型更容易理解“图片1是风格参考图”。
+2. 不让风格图挤掉编辑目标和人物身份参考。
 
 ## 6. 图片资源解析层
 
@@ -354,29 +421,45 @@ Worker 不再负责：
 
 ### 8.2 参考图排序
 
-统一顺序：
+参考图排序分为“模型引用顺序”和“超限保留优先级”两层，不能混为一谈。
+
+非图片编辑场景的推荐引用顺序：
+
+1. 风格参考图。
+2. 角色身份和主要外观参考。
+3. 场景、地点和道具参考。
+4. 用户上传的草图或补充参考。
+
+图片编辑或首帧强约束场景的推荐引用顺序：
 
 1. 编辑目标图或首帧图。
-2. 用户上传的草图。
+2. 风格参考图。
 3. 角色身份和主要外观参考。
 4. 场景、地点和道具参考。
-5. 风格参考图。
+5. 用户上传的草图或补充参考。
+
+当风格图位于第 1 位时，prompt 必须显式声明：
+
+```text
+仅参考图片1的画面风格、线条、色彩、材质和光影，不参考其中的主体、物品和构图。
+```
 
 超过模型上限时：
 
 - 编辑目标和首帧不可丢弃。
-- 优先丢弃风格参考图。
-- 其次丢弃低优先级的场景上下文。
+- 人物身份参考优先级高于风格参考图。
+- 优先丢弃风格参考图并降级为纯文本风格。
+- 其次丢弃低优先级的场景上下文或补充草图。
 - 不允许因为风格图挤掉人物身份参考图。
 
 ### 8.3 不同生成场景
 
 | 生成场景 | 风格文本 | 风格参考图 |
 |---|---|---|
-| 角色首次生成 | 使用 | 支持时追加 |
-| 场景/道具首次生成 | 使用 | 支持时追加 |
-| 分镜图片生成 | 使用 | 放在角色和场景参考之后 |
-| 图片修改 | 使用 | 有剩余参考图槽位时追加 |
+| 角色首次生成 | 使用 | 支持时放第 1 位 |
+| 场景/道具首次生成 | 使用 | 支持时放第 1 位 |
+| 分镜图片生成 | 使用 | 支持时放第 1 位，角色和场景参考从第 2 位开始 |
+| 图片修改 | 使用 | 编辑目标图优先，风格图有槽位时放在编辑目标之后 |
 | 视频首帧生成 | 使用图片生成规则 | 在图片阶段完成 |
 | 视频生成 | 可继续保留简短风格描述 | 不额外传风格图 |
 
@@ -393,11 +476,11 @@ Worker 不再负责：
 
 | 文件/目录 | 修改内容 |
 |---|---|
-| `src/lib/constants.ts` | 扩展风格注册结构、修正美漫提示词、新增风格 |
-| `public/art-styles/` | 新增风格预览和参考图 |
+| `src/lib/constants.ts` | 扩展风格注册结构、新增风格、优化现有 12 类风格提示词 |
+| `public/art-styles/` | 新增或替换风格预览和参考图 |
 | `src/lib/media/outbound-image.ts` | 增加统一二进制资源读取和转换能力 |
 | `src/lib/storage/index.ts` | 复用现有 `getObjectBuffer()`，原则上不新增存储类型 |
-| `src/lib/workers/handlers/*image-task-handler.ts` | 收集并按优先级加入风格参考图 |
+| `src/lib/workers/handlers/*image-task-handler.ts` | 收集、排序并按提示词编号引用风格参考图 |
 | `src/lib/workers/video.worker.ts` | 移除统一提前 Base64 转换 |
 | `src/lib/generators/**` | 各 Adapter 按协议转换参考图 |
 | `src/lib/model-gateway/openai-compat/**` | 复用二进制资源并处理 multipart |
@@ -406,6 +489,21 @@ Worker 不再负责：
 不修改 Prisma schema。
 
 ## 10. 实施顺序
+
+### 当前实现状态
+
+截至 2026-07-16：
+
+- `ART_STYLES` 已扩展为 12 类。
+- 12 类风格均具备中英文提示词、预览图和参考图。
+- `public/art-styles/` 当前只保留 12 张 JPG。
+- 风格图已接入角色、场景、道具和分镜图片生成链路。
+- 风格选择 UI 已改为大图卡片并支持放大预览。
+- 参考图传输已不依赖公网 URL。
+- 第一轮 prompt-only 优化已完成：保留 12 个 `value` 和图片路径，仅强化显示名、短标和中英文提示词。
+- 参考图顺序仍保持当前实现，尚未切换为“风格图第 1 位 + 显式引用声明”。
+
+当前不继续新增风格，优先验证“现有风格质量优化”的生成效果。
 
 ### 阶段一：风格注册表治理
 
@@ -448,6 +546,24 @@ Worker 不再负责：
 3. 模型不支持参考图或资源不可用时降级为纯文本。
 4. 视频任务保持只传首尾帧。
 
+### 阶段五：现有 12 类风格质量优化
+
+优先级：
+
+1. Prompt-only 优化：只改 `ART_STYLES` 中的 `label`、`promptZh`、`promptEn`，不同时改图片和链路。（已完成）
+2. 生成 A/B 抽样：同一角色、同一场景、同一分镜分别对比优化前后结果。
+3. 参考图顺序优化：在非编辑图片生成中尝试将风格图放第 1 位，并同步修改 prompt 引用声明。
+4. 参考图替换或拆分：仅在 prompt 和排序优化后仍不稳定时替换资源。
+
+第一轮已覆盖的 prompt-only 调整项：
+
+1. `american-comic`：改为强美漫。
+2. `realistic`：改为明确真人电影感。
+3. `3d-animation`：对齐高质量风格化 3D 动画。
+4. `cinematic-cg`：对齐次世代电影 CG。
+5. `chinese-comic`：重新定位为“新国风动画”或拆分为真正“国漫漫画”。
+6. `watercolor-illustration`：在“改名为治愈手绘插画”和“保留水彩并换图”之间二选一。
+
 ## 11. 测试方案
 
 ### 11.1 单元测试
@@ -472,7 +588,8 @@ Worker 不再负责：
 ### 11.3 Worker 测试
 
 - 编辑目标始终位于第一位。
-- 风格图位于角色和场景参考之后。
+- 非图片编辑场景中，风格图可位于第一位，并由 prompt 明确声明图片用途。
+- 图片编辑场景中，风格图不能挤掉编辑目标图。
 - 超限时优先移除风格图。
 - 不支持参考图时仍注入风格文本。
 - 视频任务不额外加入风格图。
@@ -496,6 +613,7 @@ Worker 不再负责：
 - 试点批需对比“仅文本提示词”和“文本 + 风格参考图”两种结果。
 - 若某个风格明显污染题材或主体一致性，先调整提示词和参考图；仍不稳定则暂不进入正式注册表。
 - 试点批通过后，剩余候选按 3-5 个一批继续实现并复用同一套测试。
+- 现有 12 类风格优化时，先做 prompt-only A/B；通过后再测试“风格图第 1 位 + 显式引用声明”的效果。
 
 ## 12. 验收标准
 
@@ -512,13 +630,14 @@ Worker 不再负责：
 9. 测试覆盖资源解析、Adapter 请求体和参考图排序。
 10. VideoLens 衍生风格使用通用视觉语言命名，不出现品牌、艺术家、工作室或影视 IP 名称。
 11. 每批新增风格通过生成效果抽样后再进入下一批。
+12. 现有 12 类风格的显示名、提示词、参考图语义一致，不出现“名称是水彩、参考图是手绘治愈插画”这类错配。
 
 ## 13. 风险与处理
 
 | 风险 | 处理方式 |
 |---|---|
 | Base64 请求体过大 | 压缩静态风格图，限制单图与总大小 |
-| 风格图污染内容 | 使用低题材语义参考图，风格图排在最后 |
+| 风格图污染内容 | 使用低题材语义参考图，prompt 明确只参考画风；超限时优先丢弃风格图 |
 | 外部风格包含品牌或艺术家语义 | 改写为通用视觉语言，正式注册表不保留来源品牌名 |
 | 模型参考图上限不同 | Adapter 声明上限，Worker 按优先级裁剪 |
 | 外部 URL 引发 SSRF | 私有地址拦截、协议白名单、超时和大小限制 |
@@ -531,3 +650,5 @@ Worker 不再负责：
 `waoowaoo` 应继续以现有 storageKey 和本地/MinIO 存储抽象作为媒体持久化基础，但不把这些地址直接等同于模型厂商可访问的公网 URL。
 
 内置风格参考图应作为静态资源由服务端直接读取，统一解析成二进制后，再由 Provider Adapter 转换为厂商所需格式。该方案既保留当前 Base64 链路对本地部署友好的优势，又修复统一提前 Base64 导致 URL-only Provider 语义不正确的问题，同时不引入新的数据库和存储配置复杂度。
+
+在当前已落地 12 类风格的基础上，下一阶段不继续扩张风格数量，先治理现有风格质量：优先强化 P0 风格提示词，确认显示名、提示词和参考图语义一致，再评估是否调整风格参考图顺序和替换不匹配素材。
