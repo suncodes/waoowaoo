@@ -1,6 +1,6 @@
 import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
-import { appendArtStyleReferenceImage, getArtStylePrompt } from '@/lib/constants'
+import { appendArtStyleReferenceImage, getArtStylePrompt, getArtStyleReferenceInstruction, joinPromptSegments } from '@/lib/constants'
 import { logInfo as _ulogInfo } from '@/lib/logging/core'
 import { type TaskJobData } from '@/lib/task/types'
 import {
@@ -234,6 +234,17 @@ export async function handlePanelVariantTask(job: Job<TaskJobData>) {
 
   // 使用 agent_shot_variant_generate.txt 提示词模板
   const artStyle = getArtStylePrompt(modelConfig.artStyle, job.data.locale)
+  const styleText = joinPromptSegments([
+    artStyle,
+    getArtStyleReferenceInstruction(
+      modelConfig.artStyle,
+      modelConfig.artStyleReferenceEnabled,
+      job.data.locale,
+    ),
+  ], job.data.locale)
+  const fallbackStyleText = job.data.locale === 'en'
+    ? 'consistent with the provided reference images'
+    : '与参考图风格一致'
   const referenceImages = appendArtStyleReferenceImage(
     refs,
     modelConfig.artStyle,
@@ -265,7 +276,7 @@ export async function handlePanelVariantTask(job: Job<TaskJobData>) {
       projectData,
     }),
     aspectRatio,
-    style: artStyle || '与参考图风格一致',
+    style: styleText || fallbackStyleText,
   })
 
   _ulogInfo('[panel-variant] resolved variant prompt', prompt)

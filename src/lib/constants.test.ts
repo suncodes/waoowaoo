@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { ART_STYLES, appendArtStyleReferenceImage, getArtStylePrompt, isArtStyleValue } from './constants'
+import { ART_STYLES, appendArtStyleReferenceImage, getArtStylePrompt, getArtStyleReferenceInstruction, isArtStyleValue } from './constants'
 
 describe('ART_STYLES registry', () => {
   it('has unique values and non-empty prompts', () => {
@@ -27,14 +27,29 @@ describe('ART_STYLES registry', () => {
     }
   })
 
-  it('appends style reference image after semantic references', () => {
+  it('places style reference image before semantic references', () => {
     const references = appendArtStyleReferenceImage(['images/character.png'], 'paper-cut-3d')
-    expect(references).toEqual(['images/character.png', '/art-styles/paper-cut-3d.jpg'])
+    expect(references).toEqual(['/art-styles/paper-cut-3d.jpg', 'images/character.png'])
   })
 
   it('does not append style reference image when disabled', () => {
     const references = appendArtStyleReferenceImage(['images/character.png'], 'paper-cut-3d', false)
     expect(references).toEqual(['images/character.png'])
+  })
+
+  it('keeps a single style reference image when semantic references already contain it', () => {
+    const references = appendArtStyleReferenceImage([
+      'images/character.png',
+      '/art-styles/paper-cut-3d.jpg',
+    ], 'paper-cut-3d')
+    expect(references).toEqual(['/art-styles/paper-cut-3d.jpg', 'images/character.png'])
+  })
+
+  it('returns style reference instruction only when a valid style image is enabled', () => {
+    expect(getArtStyleReferenceInstruction('paper-cut-3d', true, 'zh')).toContain('参考图 1')
+    expect(getArtStyleReferenceInstruction('paper-cut-3d', true, 'en')).toContain('Reference image 1')
+    expect(getArtStyleReferenceInstruction('paper-cut-3d', false, 'zh')).toBe('')
+    expect(getArtStyleReferenceInstruction('unknown-style', true, 'zh')).toBe('')
   })
 
   it('returns localized prompt text', () => {

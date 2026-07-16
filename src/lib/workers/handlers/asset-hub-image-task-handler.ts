@@ -1,6 +1,6 @@
 import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
-import { CHARACTER_ASSET_IMAGE_RATIO, LOCATION_IMAGE_RATIO, PROP_IMAGE_RATIO, addCharacterPromptSuffix, addLocationPromptSuffix, addPropPromptSuffix, appendArtStyleReferenceImage, getArtStylePrompt } from '@/lib/constants'
+import { CHARACTER_ASSET_IMAGE_RATIO, LOCATION_IMAGE_RATIO, PROP_IMAGE_RATIO, addCharacterPromptSuffix, addLocationPromptSuffix, addPropPromptSuffix, appendArtStyleReferenceImage, appendPromptSegments, getArtStylePrompt, getArtStyleReferenceInstruction } from '@/lib/constants'
 import { type TaskJobData } from '@/lib/task/types'
 import { encodeImageUrls } from '@/lib/contracts/image-urls-contract'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
@@ -69,6 +69,11 @@ export async function handleAssetHubImageTask(job: Job<TaskJobData>) {
     job.data.locale,
   )
   const styleReferenceImages = appendArtStyleReferenceImage([], artStyleValue)
+  const styleReferenceInstruction = getArtStyleReferenceInstruction(
+    artStyleValue,
+    true,
+    job.data.locale,
+  )
 
   if (payload.type === 'character') {
     const characterId = typeof payload.id === 'string' ? payload.id : null
@@ -95,7 +100,11 @@ export async function handleAssetHubImageTask(job: Job<TaskJobData>) {
 
     for (let i = 0; i < count; i++) {
       const raw = base[i] || base[0]
-      const prompt = artStyle ? `${addCharacterPromptSuffix(raw)}，${artStyle}` : addCharacterPromptSuffix(raw)
+      const prompt = appendPromptSegments(
+        addCharacterPromptSuffix(raw),
+        [artStyle, styleReferenceInstruction],
+        job.data.locale,
+      )
       const imageKey = await generateCleanImageToStorage({
         job,
         userId,
@@ -157,7 +166,11 @@ export async function handleAssetHubImageTask(job: Job<TaskJobData>) {
       const promptWithSuffix = payload.type === 'prop'
         ? addPropPromptSuffix(promptCore)
         : addLocationPromptSuffix(promptCore)
-      const prompt = artStyle ? `${promptWithSuffix}，${artStyle}` : promptWithSuffix
+      const prompt = appendPromptSegments(
+        promptWithSuffix,
+        [artStyle, styleReferenceInstruction],
+        job.data.locale,
+      )
       const aspectRatio = payload.type === 'prop' ? PROP_IMAGE_RATIO : LOCATION_IMAGE_RATIO
 
       const imageKey = await generateCleanImageToStorage({

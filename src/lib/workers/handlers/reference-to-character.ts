@@ -11,7 +11,9 @@ import {
   CHARACTER_IMAGE_BANANA_RATIO,
   addCharacterPromptSuffix,
   appendArtStyleReferenceImage,
+  appendPromptSegments,
   getArtStylePrompt,
+  getArtStyleReferenceInstruction,
 } from '@/lib/constants'
 import { encodeImageUrls } from '@/lib/contracts/image-urls-contract'
 import { generateUniqueKey, getSignedUrl, uploadObject } from '@/lib/storage'
@@ -202,22 +204,31 @@ export async function handleReferenceToCharacterTask(job: Job<TaskJobData>) {
   }
 
   const artStylePrompt = getArtStylePrompt(artStyle, job.data.locale)
+  const useReferenceImages = !customDescription
+  const artStyleReferenceEnabled = isProject ? projectConfig?.artStyleReferenceEnabled === true : true
   const generationReferenceImages = appendArtStyleReferenceImage(
     allReferenceImages,
     artStyle,
-    isProject ? projectConfig?.artStyleReferenceEnabled === true : true,
+    artStyleReferenceEnabled,
   )
 
   const basePrompt = customDescription || buildPrompt({
     promptId: PROMPT_IDS.CHARACTER_REFERENCE_TO_SHEET,
     locale: job.data.locale,
   })
-  let prompt = addCharacterPromptSuffix(basePrompt)
-  if (artStylePrompt) {
-    prompt = `${prompt}，${artStylePrompt}`
-  }
+  const prompt = appendPromptSegments(
+    addCharacterPromptSuffix(basePrompt),
+    [
+      artStylePrompt,
+      getArtStyleReferenceInstruction(
+        artStyle,
+        useReferenceImages && artStyleReferenceEnabled,
+        job.data.locale,
+      ),
+    ],
+    job.data.locale,
+  )
 
-  const useReferenceImages = !customDescription
   const { apiKey: falApiKey } = await getProviderConfig(job.data.userId, 'fal')
   const keyPrefix = isAssetHub ? 'ref-char' : `proj-ref-char-${job.data.projectId}`
   const count = normalizeImageGenerationCount('reference-to-character', payload.count)

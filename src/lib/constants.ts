@@ -149,8 +149,8 @@ export const ART_STYLES = [
     value: 'american-comic',
     label: '美漫',
     preview: '美',
-    promptZh: '现代美式漫画与前卫动作动画风格，极强视觉张力，粗犷动感黑色轮廓线，夸张爆发力透视构图，高对比波普色彩，印刷半调网点，色散偏移，故障艺术残影，风格化动态模糊，浓重墨迹阴影。',
-    promptEn: 'Modern American comic and avant-garde action animation style, strong visual impact, bold dynamic black outlines, exaggerated explosive perspective, high-contrast pop colors, printed halftone dots, chromatic aberration, glitch-art afterimages, stylized motion blur, and heavy ink shadows.',
+    promptZh: '经典美式漫画与超级英雄漫画风格，厚重黑色墨线和粗犷外轮廓，强烈肌肉结构与动态短缩透视，戏剧性低角度构图，硬边高反差赛璐璐阴影，Ben-Day 半调网点和印刷纸感，高饱和红蓝黄波普配色，爆炸速度线和漫画分镜张力；避免圆润电视卡通、儿童动画和真实摄影。',
+    promptEn: 'Classic American comic-book superhero style with heavy black inks, bold rugged contours, strong anatomy, dynamic foreshortened perspective, dramatic low-angle panel composition, hard-edge high-contrast cel shadows, Ben-Day halftone print texture, saturated red-blue-yellow pop palette, explosive action lines, and comic panel energy; avoid rounded TV cartoon, children animation, and live-action realism.',
     previewImage: '/art-styles/american-comic.jpg',
     referenceImage: '/art-styles/american-comic.jpg',
   },
@@ -158,8 +158,8 @@ export const ART_STYLES = [
     value: 'chinese-comic',
     label: '新国风动画',
     preview: '国',
-    promptZh: '新国风高级动画风格，融合写意水墨、工笔线描与现代数字插画技法，流畅飘逸线条，东方传统色彩美学，武侠与东方奇幻氛围，气韵生动，2D 与 3D 融合的高级手绘质感。',
-    promptEn: 'Premium neo-Chinese animation style blending expressive ink wash, gongbi linework, and modern digital illustration, flowing elegant lines, traditional Eastern color aesthetics, wuxia and oriental fantasy atmosphere, vivid spirit, and a refined hybrid 2D/3D hand-painted feel.',
+    promptZh: '新国风东方幻想动画风格，融合水墨写意气韵、工笔线描和现代数字动画，飘逸衣纹、云气流线和古典装饰纹样，青绿、朱砂、黛蓝与金色点缀的东方配色，清透分层光影，武侠、神话和山海幻想氛围，精致二维动画截图质感；避免日系赛璐璐、欧美卡通和纯水墨单色画。',
+    promptEn: 'Neo-Chinese oriental fantasy animation style combining expressive ink spirit, gongbi linework, and modern digital animation, flowing drapery, cloud-like motion lines, classical decorative patterns, Eastern palette of mineral green, cinnabar, deep blue, and gold accents, transparent layered lighting, wuxia, mythology, and Shanhai fantasy atmosphere, refined 2D animation still quality; avoid Japanese cel anime, Western cartoon, and pure monochrome ink painting.',
     previewImage: '/art-styles/chinese-comic.jpg',
     referenceImage: '/art-styles/chinese-comic.jpg',
   },
@@ -167,8 +167,8 @@ export const ART_STYLES = [
     value: 'japanese-anime',
     label: '日系动漫风',
     preview: '日',
-    promptZh: '高品质 2D 日式动画风格，赛璐璐涂装，清晰细腻轮廓线稿，平涂上色，层次分明的硬边阴影，高饱和纯净动漫色彩，富有空气感的光影氛围，精致手绘背景，高质量动画截图质感。',
-    promptEn: 'High-quality 2D Japanese anime style, cel shading, clean detailed line art, flat colors, crisp hard-edge shadows, saturated pure anime palette, atmospheric lighting, refined hand-painted backgrounds, and polished animation still quality.',
+    promptZh: '高品质 2D 日式动画风格，干净细腻线稿，赛璐璐平涂上色，层次明确的硬边阴影，清澈高饱和动漫色彩，柔和空气感光影，精致手绘背景，角色五官与表情具有日漫审美，高质量动画截图质感；避免美式超级英雄漫画、半调网点和 3D CG 渲染。',
+    promptEn: 'High-quality 2D Japanese anime style with clean delicate line art, cel-shaded flat colors, clear hard-edge shadow layers, pure saturated anime palette, soft atmospheric lighting, refined hand-painted backgrounds, Japanese anime facial design and expressions, polished animation still quality; avoid American superhero comics, halftone dots, and 3D CG rendering.',
     previewImage: '/art-styles/japanese-anime.jpg',
     referenceImage: '/art-styles/japanese-anime.jpg',
   },
@@ -176,8 +176,8 @@ export const ART_STYLES = [
     value: 'realistic',
     label: '真人电影感',
     preview: '实',
-    promptZh: '好莱坞电影级写实摄影风格，真实真人画面，35mm 电影镜头，浅景深，专业电影级打光，边缘背光，变形镜头眩光，高级胶片颗粒，青橙电影调色，真实皮肤和材质细节，极具真实世界光影质感。',
-    promptEn: 'Hollywood cinematic realism, live-action photographic look, 35mm film lens, shallow depth of field, professional film lighting, rim light, anamorphic lens flare, premium film grain, teal-orange color grading, realistic skin and material details, and natural real-world lighting.',
+    promptZh: '真人电影级写实摄影风格，真实演员与真实场景质感，35mm 电影镜头，浅景深，专业电影布光，边缘背光和自然反射，克制的变形镜头眩光，高级胶片颗粒，电影级调色，真实皮肤、织物、金属和环境材质细节；避免动漫、插画、卡通和玩具化 3D 质感。',
+    promptEn: 'Live-action cinematic realism with real actors and real location texture, 35mm film lens, shallow depth of field, professional film lighting, rim light and natural reflections, restrained anamorphic flare, premium film grain, cinematic color grading, realistic skin, fabric, metal, and environmental material details; avoid anime, illustration, cartoon, and toy-like 3D style.',
     previewImage: '/art-styles/realistic.jpg',
     referenceImage: '/art-styles/realistic.jpg',
   },
@@ -185,8 +185,8 @@ export const ART_STYLES = [
     value: 'watercolor-illustration',
     label: '治愈手绘',
     preview: '绘',
-    promptZh: '温暖治愈的手绘插画风格，柔和低对比色彩，细腻纸张纹理，轻盈笔触和自然色彩过渡，干净温柔的光影氛围，适合童话、亲子、爱情和日常治愈内容。',
-    promptEn: 'Warm healing hand-painted illustration style with soft low-contrast colors, delicate paper texture, light brushwork, natural color transitions, clean gentle lighting, suitable for fairy-tale, family, romance, and cozy everyday content.',
+    promptZh: '温暖治愈的手绘绘本插画风格，柔和低对比配色，细腻纸张纹理，轻盈手绘笔触，自然晕染和色彩过渡，干净温柔的散射光，安静亲和的童话与日常氛围；避免高反差漫画墨线、强烈 CG 光影和照片写实。',
+    promptEn: 'Warm healing hand-painted storybook illustration style with soft low-contrast colors, delicate paper texture, light hand-drawn brushwork, natural washes and color transitions, clean gentle diffused light, quiet friendly fairy-tale and everyday mood; avoid high-contrast comic inks, strong CG lighting, and photographic realism.',
     previewImage: '/art-styles/watercolor-illustration.jpg',
     referenceImage: '/art-styles/watercolor-illustration.jpg',
   },
@@ -194,8 +194,8 @@ export const ART_STYLES = [
     value: 'chinese-ink-wash',
     label: '国风水墨',
     preview: '墨',
-    promptZh: '国风水墨画风格，宣纸肌理，墨色浓淡层次，干湿笔触与飞白质感，留白构图，淡雅设色点染，克制流畅线条，东方诗意氛围和气韵生动感。',
-    promptEn: 'Chinese ink wash painting style with xuan paper texture, layered ink tones, dry and wet brushwork, feibai dry-brush texture, elegant negative space, restrained color accents, fluid controlled lines, poetic Eastern atmosphere, and vivid qi rhythm.',
+    promptZh: '传统国风水墨画风格，宣纸肌理清晰，墨色浓淡、焦润、干湿层次分明，飞白与皴擦笔触，留白构图，少量淡彩点染，线条克制流动，东方诗意、山水烟岚和气韵生动；避免厚涂重彩、现代赛璐璐动画和写实摄影。',
+    promptEn: 'Traditional Chinese ink wash painting style with clear xuan paper texture, layered ink tones from dry to wet and dark to light, feibai dry-brush marks, cun texture strokes, elegant negative space, sparse pale color accents, restrained flowing lines, poetic Eastern atmosphere, misty landscape mood, and vivid qi rhythm; avoid heavy-color painting, modern cel animation, and photographic realism.',
     previewImage: '/art-styles/chinese-ink-wash.jpg',
     referenceImage: '/art-styles/chinese-ink-wash.jpg',
   },
@@ -203,8 +203,8 @@ export const ART_STYLES = [
     value: '3d-animation',
     label: '3D 动画',
     preview: '3D',
-    promptZh: '高品质风格化 3D 卡通动画画面，精细 3D 渲染，圆润且富有表现力的角色比例，柔和全局光照，体积光，通透皮肤材质，细腻毛发与织物纹理，鲜明温暖色彩，电影级构图和柔和景深。',
-    promptEn: 'High-quality stylized 3D cartoon animation look with refined 3D rendering, rounded expressive character proportions, soft global illumination, volumetric light, translucent skin material, detailed hair and fabric textures, bright warm colors, cinematic composition, and soft depth of field.',
+    promptZh: '高品质合家欢风格化 3D 动画画面，圆润友好的角色比例，夸张但亲和的表情，抛光玩具般的精细材质，柔和全局光照，温暖明亮色彩，轻微体积光，细腻毛发和织物纹理，电影级构图与柔和景深；避免真人写实、硬核 PBR 科幻和暗黑电影 CG。',
+    promptEn: 'High-quality family-friendly stylized 3D animation look with rounded approachable character proportions, expressive friendly faces, polished toy-like refined materials, soft global illumination, warm bright colors, subtle volumetric light, detailed hair and fabric textures, cinematic composition, and soft depth of field; avoid live-action realism, hard PBR sci-fi, and dark cinematic CG.',
     previewImage: '/art-styles/3d-animation.jpg',
     referenceImage: '/art-styles/3d-animation.jpg',
   },
@@ -212,8 +212,8 @@ export const ART_STYLES = [
     value: 'cinematic-cg',
     label: '电影 CG',
     preview: 'CG',
-    promptZh: '次世代电影级 CG 动画风格，超高精度 3D 模型，PBR 材质，光线追踪，环境光遮蔽，复杂粒子特效，细腻皮肤微观纹理与硬表面反射，强烈明暗对比，戏剧性打光，史诗感构图。',
-    promptEn: 'Next-generation cinematic CG animation style with ultra-detailed 3D models, PBR materials, ray tracing, ambient occlusion, complex particle effects, subtle skin micro-textures, hard-surface reflections, strong contrast, dramatic lighting, and epic composition.',
+    promptZh: '次世代电影级 CG 概念短片风格，超高精度 3D 模型，真实 PBR 材质，光线追踪、环境光遮蔽和全局照明，硬表面反射、皮肤微观纹理、烟尘粒子与体积光，强烈明暗对比，戏剧性布光，史诗感大场面构图；避免圆润儿童 3D 动画、平面卡通和手绘插画。',
+    promptEn: 'Next-generation cinematic CG concept-film style with ultra-detailed 3D models, physically based PBR materials, ray tracing, ambient occlusion, global illumination, hard-surface reflections, skin micro-texture, dust particles, volumetric light, strong contrast, dramatic lighting, and epic large-scale composition; avoid rounded children 3D animation, flat cartoon, and hand-painted illustration.',
     previewImage: '/art-styles/cinematic-cg.jpg',
     referenceImage: '/art-styles/cinematic-cg.jpg',
   },
@@ -221,8 +221,8 @@ export const ART_STYLES = [
     value: 'paper-cut-3d',
     label: '立体纸雕',
     preview: '纸',
-    promptZh: '立体纸雕风格，多层剪纸结构，清晰手工裁切纸边，纸张纤维纹理，层叠纵深，柔和投影和环境遮挡，像精致纸艺场景盒。',
-    promptEn: 'Layered 3D paper-cut style with crisp handmade cut paper edges, visible paper fiber texture, stacked depth, soft cast shadows, ambient occlusion, and a refined paper craft diorama look.',
+    promptZh: '立体纸雕与多层剪纸场景盒风格，清晰手工裁切纸边，纸张纤维和轻微压痕可见，前中后景分层堆叠，扁平色纸拼贴，柔和投影和环境遮挡，像微缩纸艺舞台；避免真实摄影、塑料玩具质感和普通平面插画。',
+    promptEn: 'Layered 3D paper-cut diorama style with crisp handmade cut paper edges, visible paper fibers and slight embossing, stacked foreground-midground-background layers, flat colored paper collage, soft cast shadows, ambient occlusion, and miniature paper craft stage feeling; avoid photographic realism, plastic toy material, and ordinary flat illustration.',
     previewImage: '/art-styles/paper-cut-3d.jpg',
     referenceImage: '/art-styles/paper-cut-3d.jpg',
   },
@@ -230,8 +230,8 @@ export const ART_STYLES = [
     value: 'claymation',
     label: '黏土定格',
     preview: '泥',
-    promptZh: '黏土定格动画风格，手塑黏土材质，微小指纹和不规则表面，轻微定格帧感，微缩棚拍布景，柔和工作室灯光，温暖可触摸的手作质感。',
-    promptEn: 'Claymation stop-motion style with hand-molded clay material, tiny fingerprints, irregular surfaces, subtle stop-motion frame feel, miniature studio sets, soft studio lighting, and a warm tactile handmade texture.',
+    promptZh: '黏土定格动画风格，手塑黏土角色和道具，表面有细小指纹、刮痕和不规则形变，微缩棚拍布景，轻微逐帧定格感，柔和工作室灯光，温暖可触摸的手作材质；避免光滑 3D CG、真实摄影和纸雕材质。',
+    promptEn: 'Claymation stop-motion style with hand-molded clay characters and props, tiny fingerprints, scratches, and irregular surface deformation, miniature studio sets, subtle frame-by-frame stop-motion feel, soft studio lighting, and warm tactile handmade material; avoid smooth 3D CG, photographic realism, and paper-cut material.',
     previewImage: '/art-styles/claymation.jpg',
     referenceImage: '/art-styles/claymation.jpg',
   },
@@ -239,8 +239,8 @@ export const ART_STYLES = [
     value: 'gongbi-heavy-color',
     label: '工笔重彩',
     preview: '工',
-    promptZh: '工笔重彩风格，精细工笔线描，浓郁矿物颜料色彩，绢本质感，金线与装饰性纹样，平面装饰构图，层次清晰，典雅华丽的中式绘画质感。',
-    promptEn: 'Gongbi heavy-color painting style with precise fine linework, rich mineral pigments, silk texture, gold-line accents, decorative patterns, flat ornamental composition, clear layering, and an elegant ornate Chinese painting quality.',
+    promptZh: '中国工笔重彩绘画风格，极精细工笔线描，矿物颜料的浓郁青绿、朱砂、赭石和石青色彩，绢本质感，金线勾勒与装饰性纹样，平面化构图，层次清晰，典雅华丽、庄重细密的古典中式绘画质感；避免水墨留白、现代动漫和写实照片。',
+    promptEn: 'Chinese gongbi heavy-color painting style with extremely precise fine linework, rich mineral pigments in malachite green, cinnabar, ochre, and azurite blue, silk texture, gold-line accents, decorative patterns, flat ornamental composition, clear layering, elegant ornate and meticulous classical Chinese painting quality; avoid ink-wash negative space, modern anime, and photographic realism.',
     previewImage: '/art-styles/gongbi-heavy-color.jpg',
     referenceImage: '/art-styles/gongbi-heavy-color.jpg',
   },
@@ -248,8 +248,8 @@ export const ART_STYLES = [
     value: 'modern-american-cartoon',
     label: '美式现代卡通',
     preview: '卡',
-    promptZh: '美式现代卡通风格，简洁夸张造型，清晰圆润轮廓线，明亮干净色块，轻松幽默的动画质感，表情友好，画面清爽，适合科普、儿童和轻喜剧内容。',
-    promptEn: 'Modern American cartoon style with simplified exaggerated shapes, clean rounded outlines, bright clean color blocks, playful animated feel, friendly expressions, crisp imagery, suitable for educational, children-oriented, and light comedy content.',
+    promptZh: '美式现代电视卡通与流媒体动画风格，简洁几何造型，圆润友好的轮廓线，明亮干净的扁平色块，低到中等对比，弹性夸张表情，轻松幽默、清爽亲和的画面，适合科普、儿童和轻喜剧内容；避免超级英雄美漫、厚重墨影、半调网点和写实电影光影。',
+    promptEn: 'Modern American TV cartoon and streaming animation style with simplified geometric shapes, rounded friendly outlines, bright clean flat color blocks, low-to-medium contrast, elastic exaggerated expressions, light humorous and approachable imagery, suitable for educational, children-oriented, and light comedy content; avoid superhero American comics, heavy ink shadows, halftone dots, and live-action cinematic lighting.',
     previewImage: '/art-styles/modern-american-cartoon.jpg',
     referenceImage: '/art-styles/modern-american-cartoon.jpg',
   },
@@ -285,6 +285,37 @@ export function getArtStyleReferenceImage(artStyle: string | null | undefined): 
   return getArtStyleDefinition(artStyle)?.referenceImage ?? null
 }
 
+export function getArtStyleReferenceInstruction(
+  artStyle: string | null | undefined,
+  enabled: boolean,
+  locale: 'zh' | 'en',
+): string {
+  if (!enabled || !getArtStyleReferenceImage(artStyle)) return ''
+  return locale === 'en'
+    ? 'Reference image 1 is used only for visual style, linework, color palette, material texture, lighting, and rendering mood. Do not copy its subject, objects, composition, text, logo, or watermark. Use later reference images only for character identity, scene, or object consistency.'
+    : '参考图 1 仅用于画面风格、线条、色彩、材质、光影和渲染气质参考；不要复制其中的主体、物品、构图、文字、Logo 或水印。后续参考图仅用于角色、场景或物品一致性。'
+}
+
+export function joinPromptSegments(
+  segments: readonly (string | null | undefined)[],
+  locale: 'zh' | 'en',
+): string {
+  const validSegments = segments
+    .map((item) => (typeof item === 'string' ? item.trim() : ''))
+    .filter(Boolean)
+  return validSegments.join(locale === 'en' ? ', ' : '，')
+}
+
+export function appendPromptSegments(
+  basePrompt: string,
+  segments: readonly (string | null | undefined)[],
+  locale: 'zh' | 'en',
+): string {
+  const suffix = joinPromptSegments(segments, locale)
+  if (!suffix) return basePrompt
+  return `${basePrompt}${locale === 'en' ? ', ' : '，'}${suffix}`
+}
+
 export function appendArtStyleReferenceImage(
   referenceImages: readonly string[],
   artStyle: string | null | undefined,
@@ -294,10 +325,7 @@ export function appendArtStyleReferenceImage(
     return Array.from(new Set(referenceImages.filter((item) => typeof item === 'string' && item.trim().length > 0)))
   }
   const styleReferenceImage = getArtStyleReferenceImage(artStyle)
-  const merged = [...referenceImages]
-  if (styleReferenceImage) {
-    merged.push(styleReferenceImage)
-  }
+  const merged = styleReferenceImage ? [styleReferenceImage, ...referenceImages] : [...referenceImages]
   return Array.from(new Set(merged.filter((item) => typeof item === 'string' && item.trim().length > 0)))
 }
 

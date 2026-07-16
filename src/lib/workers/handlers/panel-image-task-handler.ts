@@ -1,6 +1,6 @@
 import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
-import { appendArtStyleReferenceImage, getArtStylePrompt } from '@/lib/constants'
+import { appendArtStyleReferenceImage, getArtStylePrompt, getArtStyleReferenceInstruction, joinPromptSegments } from '@/lib/constants'
 import { createScopedLogger } from '@/lib/logging/core'
 import { type TaskJobData } from '@/lib/task/types'
 import { reportTaskProgress } from '../shared'
@@ -206,6 +206,17 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
   })
 
   const artStyle = getArtStylePrompt(modelConfig.artStyle, job.data.locale)
+  const styleText = joinPromptSegments([
+    artStyle,
+    getArtStyleReferenceInstruction(
+      modelConfig.artStyle,
+      modelConfig.artStyleReferenceEnabled,
+      job.data.locale,
+    ),
+  ], job.data.locale)
+  const fallbackStyleText = job.data.locale === 'en'
+    ? 'consistent with the provided reference images'
+    : '与参考图风格一致'
   if (!projectData.videoRatio) throw new Error('Project videoRatio not configured')
   const aspectRatio = projectData.videoRatio
   const promptContext = buildPanelPromptContext({
@@ -228,7 +239,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
   const prompt = buildPanelPrompt({
     locale: job.data.locale,
     aspectRatio,
-    styleText: artStyle || '与参考图风格一致',
+    styleText: styleText || fallbackStyleText,
     sourceText: panel.srtSegment || panel.description || '',
     contextJson,
   })
