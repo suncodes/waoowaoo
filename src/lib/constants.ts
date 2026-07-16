@@ -200,6 +200,15 @@ export const ART_STYLES = [
     referenceImage: '/art-styles/chinese-ink-wash.jpg',
   },
   {
+    value: 'classic-shanghai-animation',
+    label: '上海美术电影',
+    preview: '上',
+    promptZh: '经典上海美术电影制片厂风格的中国美术片二维手绘动画截图，平面化手绘设色，温润复古的低饱和色彩，克制流畅的墨线，装饰性轮廓，手绘背景，纸张纹理，轻微胶片颗粒和年代感，画面古朴、含蓄、诗意，具有东方童话和民族动画韵味；避免现代新国风商业插画、日系动漫、欧美卡通、3D CG、照片写实和厚涂数字插画。',
+    promptEn: 'Classic Shanghai Animation Film Studio inspired Chinese art-film look, hand-drawn 2D animation still, flat hand-painted coloring, warm vintage low-saturation palette, restrained flowing ink lines, decorative contours, painted backgrounds, subtle paper texture, light film grain, and aged cel-animation feeling, antique understated poetic Eastern fairy-tale mood with national animation charm; avoid modern commercial new-Chinese illustration, Japanese anime, Western cartoon, 3D CG, photorealism, and thick painterly digital illustration.',
+    previewImage: '/art-styles/classic-shanghai-animation.jpg',
+    referenceImage: '/art-styles/classic-shanghai-animation.jpg',
+  },
+  {
     value: '3d-animation',
     label: '3D 动画',
     preview: '3D',
@@ -252,6 +261,15 @@ export const ART_STYLES = [
     promptEn: 'Modern American TV cartoon and streaming animation style with simplified geometric shapes, rounded friendly outlines, bright clean flat color blocks, low-to-medium contrast, elastic exaggerated expressions, light humorous and approachable imagery, suitable for educational, children-oriented, and light comedy content; avoid superhero American comics, heavy ink shadows, halftone dots, and live-action cinematic lighting.',
     previewImage: '/art-styles/modern-american-cartoon.jpg',
     referenceImage: '/art-styles/modern-american-cartoon.jpg',
+  },
+  {
+    value: 'bikini-bottom-cartoon',
+    label: '比奇堡',
+    preview: '堡',
+    promptZh: '海底荒诞美式手绘电视卡通截图风格，明亮高饱和的青蓝、黄色、粉色和珊瑚色水下配色，海底小镇、沙地、珊瑚、海草、气泡和海洋符号作为背景元素，粗黑外轮廓，简单几何造型，扁平色块，极少渐变和复杂阴影，夸张喜剧表情，弹性变形，轻松怪诞的 90 年代到 2000 年代儿童电视动画质感；避免普通儿童绘本、精致厚涂插画、超级英雄美漫、写实电影、3D CG 和日系动漫。',
+    promptEn: 'Absurd undersea American hand-drawn TV cartoon screenshot style, bright high-saturation cyan-blue, yellow, pink, and coral underwater palette, underwater town, sandy ground, coral, seaweed, bubbles, and marine symbols as background elements, thick black outer outlines, simple geometric shapes, flat color blocks, very little gradient or complex shading, exaggerated comedic expressions, elastic squash-and-stretch deformation, playful weird 1990s-2000s children TV animation feel; avoid ordinary children picture-book illustration, polished painterly illustration, superhero comics, live-action realism, 3D CG, and Japanese anime.',
+    previewImage: '/art-styles/bikini-bottom-cartoon.jpg',
+    referenceImage: '/art-styles/bikini-bottom-cartoon.jpg',
   },
 ] as const satisfies readonly ArtStyleDefinition[]
 
