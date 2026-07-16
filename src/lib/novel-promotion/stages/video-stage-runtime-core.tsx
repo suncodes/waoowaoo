@@ -673,6 +673,7 @@ export function useVideoStageRuntime({
         error={mergedPlaybackError}
         projectName={mergedProjectName}
         videos={mergedVideos}
+        videoRatio={videoRatio}
         onClose={handleCloseMergedPlayback}
       />
     </div>

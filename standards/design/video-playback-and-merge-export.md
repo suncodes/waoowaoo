@@ -113,6 +113,9 @@
 - 按与 `download-videos` 一致的顺序播放
 - 每个镜头播放结束后自动切到下一个
 - 默认沿用当前的原始/口型同步选择策略
+- 播放器保留两个视频槽位，活动槽位负责展示，另一槽位使用 `preload="auto"` 提前加载下一镜头
+- 播放画布使用项目视频比例和固定最小高度，切换时只交换槽位，不卸载整个播放容器
+- 视频代理透传浏览器的 `Range` 请求，并返回 `206`、`Content-Range` 和 `Accept-Ranges`，降低下一镜头的首帧等待
 
 这一步不需要 ffmpeg，也不需要新存储字段。
 
@@ -205,7 +208,8 @@
 ### 合并播放
 
 - [`VideoToolbar.tsx`](../../src/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/video/VideoToolbar.tsx)
-- 新增一个轻量连续播放器组件
+- [`MergedVideoPlaylistModal.tsx`](../../src/lib/novel-promotion/stages/video-stage-runtime/MergedVideoPlaylistModal.tsx)
+- [`video-proxy/route.ts`](../../src/app/api/novel-promotion/[projectId]/video-proxy/route.ts)
 
 ### 合并导出
 
@@ -217,7 +221,7 @@
 
 1. 首尾帧生成完成后，用户能从首帧卡片直接播放。
 2. 尾帧卡片不再让用户误以为它应该承载播放入口。
-3. 合并播放能按镜头顺序连续播放。
+3. 合并播放能按镜头顺序连续播放，下一镜头加载期间播放画布不缩小或消失。
 4. 合并导出能生成单个 `mp4`。
 5. `zip` 下载行为不变。
 6. 合并导出和首尾帧播放都不影响现有单镜头播放。

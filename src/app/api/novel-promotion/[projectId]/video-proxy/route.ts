@@ -36,29 +36,32 @@ export const GET = apiHandler(async (
 
     _ulogInfo(`[视频代理] 下载: ${fetchUrl.substring(0, 100)}...`)
 
-    const response = await fetch(fetchUrl)
-    if (!response.ok) {
+    const range = request.headers.get('range')
+    const upstreamHeaders: HeadersInit = range ? { Range: range } : {}
+    const response = await fetch(fetchUrl, { headers: upstreamHeaders })
+    if (!response.ok && response.status !== 416) {
         throw new Error(`Failed to fetch video: ${response.statusText}`)
     }
 
-    // 获取内容类型和长度
-    const contentType = response.headers.get('content-type') || 'video/mp4'
-    const contentLength = response.headers.get('content-length')
+    const headers = new Headers()
+    headers.set('Content-Type', response.headers.get('content-type') || 'video/mp4')
+    headers.set('Accept-Ranges', response.headers.get('accept-ranges') || 'bytes')
+    headers.set('Vary', 'Range')
+    headers.set('Cache-Control', download ? 'private, no-store' : 'private, max-age=3600')
 
-    // 流式返回视频数据
-    const headers: HeadersInit = {
-        'Content-Type': contentType,
-        'Cache-Control': 'no-cache'
+    for (const headerName of ['content-length', 'content-range', 'etag', 'last-modified']) {
+        const headerValue = response.headers.get(headerName)
+        if (headerValue) headers.set(headerName, headerValue)
     }
-    if (contentLength) {
-        headers['Content-Length'] = contentLength
-    }
+
     if (download) {
         const safeFilename = filename?.trim().replace(/[\\/:*?"<>|]/g, '_')
-        headers['Content-Disposition'] = safeFilename
-          ? `attachment; filename*=UTF-8''${encodeURIComponent(safeFilename)}`
-          : 'attachment'
+        if (safeFilename) {
+            headers.set('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(safeFilename)}`)
+        } else {
+            headers.set('Content-Disposition', 'attachment')
+        }
     }
 
-    return new Response(response.body, { headers })
+    return new Response(response.body, { status: response.status, headers })
 })
