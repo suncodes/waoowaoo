@@ -30,6 +30,16 @@ interface ResultItem {
   finishedAt?: string
 }
 
+interface TestStyle {
+  value: string
+  label: string
+  preview: string
+  promptZh: string
+  previewImage?: string | null
+  referenceImage?: string | null
+  custom?: boolean
+}
+
 const VARIANTS: VariantOption[] = [
   {
     key: 'old-text-only',
@@ -113,6 +123,11 @@ export default function ArtStyleAbClient() {
   const [quality, setQuality] = useState('')
   const [promptLocale, setPromptLocale] = useState<PromptLocale>('zh')
   const [contentPrompt, setContentPrompt] = useState(PROMPT_PRESETS[1].value)
+  const [includeCustomStyle, setIncludeCustomStyle] = useState(false)
+  const [customStyleLabel, setCustomStyleLabel] = useState('自定义风格')
+  const [customStylePrompt, setCustomStylePrompt] = useState('')
+  const [customReferenceImageDataUrl, setCustomReferenceImageDataUrl] = useState('')
+  const [customReferenceImageName, setCustomReferenceImageName] = useState('')
   const [selectedStyles, setSelectedStyles] = useState<Set<string>>(() => new Set(DEFAULT_STYLES))
   const [selectedVariants, setSelectedVariants] = useState<Set<string>>(
     () => new Set(VARIANTS.map((variant) => variant.key)),
@@ -122,14 +137,40 @@ export default function ArtStyleAbClient() {
   const [currentTask, setCurrentTask] = useState('')
 
   const selectedStyleList = useMemo(
-    () => ART_STYLES.filter((style) => selectedStyles.has(style.value)),
-    [selectedStyles],
+    () => {
+      const styles: TestStyle[] = ART_STYLES
+        .filter((style) => selectedStyles.has(style.value))
+        .map((style) => ({
+          value: style.value,
+          label: style.label,
+          preview: style.preview,
+          promptZh: style.promptZh,
+          previewImage: style.previewImage || null,
+          referenceImage: style.referenceImage || null,
+        }))
+      if (includeCustomStyle) {
+        styles.push({
+          value: '__custom__',
+          label: customStyleLabel.trim() || '自定义风格',
+          preview: '自',
+          promptZh: customStylePrompt.trim(),
+          previewImage: customReferenceImageDataUrl || null,
+          referenceImage: customReferenceImageDataUrl ? 'custom-upload' : null,
+          custom: true,
+        })
+      }
+      return styles
+    },
+    [customReferenceImageDataUrl, customStyleLabel, customStylePrompt, includeCustomStyle, selectedStyles],
   )
   const selectedVariantList = useMemo(
     () => VARIANTS.filter((variant) => selectedVariants.has(variant.key)),
     [selectedVariants],
   )
-  const totalTasks = selectedStyleList.length * selectedVariantList.length
+  const totalTasks = selectedStyleList.reduce((total, style) => {
+    const variantCount = selectedVariantList.filter((variant) => !(style.custom && variant.promptVersion === 'old')).length
+    return total + variantCount
+  }, 0)
 
   const changeProvider = (value: ProviderMode) => {
     const defaults = PROVIDER_DEFAULTS[value]
@@ -158,6 +199,24 @@ export default function ArtStyleAbClient() {
     })
   }
 
+  const handleCustomReferenceImageChange = (file: File | null) => {
+    setCustomReferenceImageDataUrl('')
+    setCustomReferenceImageName('')
+    if (!file) return
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      alert('仅支持 png / jpeg / webp 参考图。')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === 'string' ? reader.result : ''
+      setCustomReferenceImageDataUrl(dataUrl)
+      setCustomReferenceImageName(file.name)
+    }
+    reader.readAsDataURL(file)
+  }
+
   const runTests = async () => {
     if (running) return
     if ((provider === 'openai-compatible' && !baseUrl.trim()) || !apiKey.trim() || !model.trim() || !contentPrompt.trim()) {
@@ -168,6 +227,18 @@ export default function ArtStyleAbClient() {
       alert('请至少选择一个风格和一个测试变体。')
       return
     }
+    if (includeCustomStyle && !customStylePrompt.trim()) {
+      alert('启用自定义风格时，请填写自定义风格 Prompt。')
+      return
+    }
+    if (
+      includeCustomStyle
+      && selectedVariantList.some((variant) => variant.referenceMode === 'with-reference')
+      && !customReferenceImageDataUrl
+    ) {
+      alert('自定义风格勾选“风格参考图”变体时，请先上传自定义参考图。')
+      return
+    }
 
     setRunning(true)
     setCurrentTask('')
@@ -176,6 +247,7 @@ export default function ArtStyleAbClient() {
     const nextResults: ResultItem[] = []
     for (const style of selectedStyleList) {
       for (const variant of selectedVariantList) {
+        if (style.custom && variant.promptVersion === 'old') continue
         const id = buildRunId(style.value, variant.key)
         const startedAt = new Date().toISOString()
         setCurrentTask(`${style.label} · ${variant.label}`)
@@ -190,7 +262,11 @@ export default function ArtStyleAbClient() {
               apiKey,
               model,
               contentPrompt,
+              styleMode: style.custom ? 'custom' : 'preset',
               styleValue: style.value,
+              customStyleLabel: style.custom ? style.label : '',
+              customStylePrompt: style.custom ? customStylePrompt : '',
+              customReferenceImageDataUrl: style.custom && variant.referenceMode === 'with-reference' ? customReferenceImageDataUrl : '',
               promptVersion: variant.promptVersion,
               referenceMode: variant.referenceMode,
               promptLocale,
@@ -252,8 +328,15 @@ export default function ArtStyleAbClient() {
         selectedStyles: selectedStyleList.map((style) => ({
           value: style.value,
           label: style.label,
+          custom: style.custom === true,
           referenceImage: style.referenceImage || null,
         })),
+        customStyle: includeCustomStyle ? {
+          label: customStyleLabel.trim() || '自定义风格',
+          prompt: customStylePrompt,
+          hasReferenceImage: Boolean(customReferenceImageDataUrl),
+          referenceImageName: customReferenceImageName || null,
+        } : null,
         selectedVariants: selectedVariantList,
       },
       results,
@@ -397,6 +480,58 @@ export default function ArtStyleAbClient() {
                 rows={7}
                 className="w-full resize-y rounded-xl border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)] px-3 py-2 text-sm outline-none focus:border-[var(--glass-stroke-focus)]"
               />
+            </section>
+
+            <section className="rounded-2xl border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)] p-4">
+              <h2 className="mb-3 text-sm font-semibold">自定义风格</h2>
+              <label className="mb-3 flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={includeCustomStyle}
+                  onChange={(event) => setIncludeCustomStyle(event.target.checked)}
+                />
+                <span>纳入本次测试</span>
+              </label>
+              <div className="space-y-3">
+                <label className="block text-xs font-medium text-[var(--glass-text-secondary)]">
+                  显示名
+                  <input
+                    value={customStyleLabel}
+                    onChange={(event) => setCustomStyleLabel(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)] px-3 py-2 text-sm outline-none focus:border-[var(--glass-stroke-focus)]"
+                  />
+                </label>
+                <label className="block text-xs font-medium text-[var(--glass-text-secondary)]">
+                  自定义风格 Prompt
+                  <textarea
+                    value={customStylePrompt}
+                    onChange={(event) => setCustomStylePrompt(event.target.value)}
+                    rows={5}
+                    placeholder="描述你想测试的画风、媒介、线条、色彩、材质、光影和需要避免的风格。"
+                    className="mt-1 w-full resize-y rounded-xl border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)] px-3 py-2 text-sm outline-none focus:border-[var(--glass-stroke-focus)]"
+                  />
+                </label>
+                <label className="block text-xs font-medium text-[var(--glass-text-secondary)]">
+                  自定义参考图
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={(event) => handleCustomReferenceImageChange(event.target.files?.[0] ?? null)}
+                    className="mt-1 w-full rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)] px-3 py-2 text-sm outline-none focus:border-[var(--glass-stroke-focus)]"
+                  />
+                </label>
+                {customReferenceImageDataUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={customReferenceImageDataUrl}
+                    alt="自定义参考图预览"
+                    className="max-h-44 w-full rounded-xl border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)] object-contain"
+                  />
+                )}
+                <p className="text-xs leading-relaxed text-[var(--glass-text-tertiary)]">
+                  自定义参考图只在“新提示词 / 风格参考图”变体中使用，以 data URL 传给测试 API，不写入数据库或对象存储。
+                </p>
+              </div>
             </section>
 
             <section className="rounded-2xl border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)] p-4">

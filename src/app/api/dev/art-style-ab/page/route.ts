@@ -135,6 +135,9 @@ export function GET() {
     .checks { display: grid; gap: 8px; }
     .checks label { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--text); font-size: 13px; }
     .checks input { width: auto; margin: 0; }
+    .inline-check { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; color: var(--text); font-size: 13px; font-weight: 650; }
+    .inline-check input { width: auto; margin: 0; }
+    .custom-preview { display: none; width: 100%; max-height: 180px; object-fit: contain; border: 1px solid var(--border); border-radius: 12px; background: #0b1020; margin-top: 8px; }
     @media (max-width: 1100px) {
       .layout { grid-template-columns: 1fr; }
       .style-grid, .results { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -194,6 +197,18 @@ export function GET() {
             <button data-preset="interior">室内对话</button>
           </div>
           <textarea id="contentPrompt">鹦鹉螺号潜艇穿越发光珊瑚海底峡谷，远处有巨大的鲸影和神秘遗迹，广角镜头，画面中不得出现文字。</textarea>
+        </section>
+
+        <section class="panel">
+          <h2>自定义风格</h2>
+          <label class="inline-check"><input type="checkbox" id="includeCustomStyle" /> 纳入本次测试</label>
+          <label>显示名 <input id="customStyleLabel" value="自定义风格" /></label>
+          <label>自定义风格 Prompt
+            <textarea id="customStylePrompt" placeholder="描述你想测试的画风、媒介、线条、色彩、材质、光影和需要避免的风格。"></textarea>
+          </label>
+          <label>自定义参考图 <input id="customReferenceImage" type="file" accept="image/png,image/jpeg,image/webp" /></label>
+          <img id="customReferencePreview" class="custom-preview" alt="自定义参考图预览" />
+          <p>自定义参考图只在“新提示词 / 风格参考图”变体中使用，以 data URL 传给测试 API，不写入数据库或对象存储。</p>
         </section>
 
         <section class="panel">
@@ -264,19 +279,40 @@ export function GET() {
     const selectedVariants = new Set(VARIANTS.map((item) => item.key));
     const results = [];
     let running = false;
+    let customReferenceImageDataUrl = '';
 
     const $ = (id) => document.getElementById(id);
     const read = (id) => $(id).value.trim();
 
     function selectedStyleList() {
-      return STYLES.filter((style) => selectedStyles.has(style.value));
+      const styles = STYLES.filter((style) => selectedStyles.has(style.value));
+      if ($('includeCustomStyle').checked) {
+        styles.push({
+          value: '__custom__',
+          label: read('customStyleLabel') || '自定义风格',
+          preview: '自',
+          promptZh: read('customStylePrompt'),
+          previewImage: customReferenceImageDataUrl || null,
+          referenceImage: customReferenceImageDataUrl ? 'custom-upload' : null,
+          custom: true
+        });
+      }
+      return styles;
     }
     function selectedVariantList() {
       return VARIANTS.filter((variant) => selectedVariants.has(variant.key));
     }
+    function plannedTaskCount() {
+      return selectedStyleList().reduce((total, style) => {
+        const variants = selectedVariantList().filter((variant) => !(style.custom && variant.promptVersion === 'old'));
+        return total + variants.length;
+      }, 0);
+    }
     function updateSummary() {
-      $('taskSummary').textContent = '已选 ' + selectedStyles.size + ' 个风格，预计生成 ' + (selectedStyles.size * selectedVariants.size) + ' 张图。';
-      $('run').textContent = running ? '生成中...' : '开始测试 ' + (selectedStyles.size * selectedVariants.size || '');
+      const styleCount = selectedStyleList().length;
+      const taskCount = plannedTaskCount();
+      $('taskSummary').textContent = '已选 ' + styleCount + ' 个风格，预计生成 ' + taskCount + ' 张图。';
+      $('run').textContent = running ? '生成中...' : '开始测试 ' + (taskCount || '');
     }
     function renderVariants() {
       $('variants').innerHTML = VARIANTS.map((variant) => '<label><input type="checkbox" data-variant="' + variant.key + '" ' + (selectedVariants.has(variant.key) ? 'checked' : '') + ' /> ' + variant.label + '</label>').join('');
@@ -334,8 +370,16 @@ export function GET() {
         alert('请填写 provider、apiKey、model 和测试 Prompt；OpenAI-compatible 还需要 baseUrl。');
         return;
       }
-      if (selectedStyles.size === 0 || selectedVariants.size === 0) {
+      if (plannedTaskCount() === 0 || selectedVariants.size === 0) {
         alert('请至少选择一个风格和一个测试变体。');
+        return;
+      }
+      if ($('includeCustomStyle').checked && !read('customStylePrompt')) {
+        alert('启用自定义风格时，请填写自定义风格 Prompt。');
+        return;
+      }
+      if ($('includeCustomStyle').checked && selectedVariantList().some((variant) => variant.referenceMode === 'with-reference') && !customReferenceImageDataUrl) {
+        alert('自定义风格勾选“风格参考图”变体时，请先上传自定义参考图。');
         return;
       }
       running = true;
@@ -344,6 +388,7 @@ export function GET() {
       updateSummary();
       for (const style of selectedStyleList()) {
         for (const variant of selectedVariantList()) {
+          if (style.custom && variant.promptVersion === 'old') continue;
           $('status').textContent = '正在生成：' + style.label + ' · ' + variant.label;
           const item = {
             id: style.value + ':' + variant.key + ':' + Date.now(),
@@ -363,7 +408,11 @@ export function GET() {
                 apiKey: read('apiKey'),
                 model: read('model'),
                 contentPrompt: read('contentPrompt'),
+                styleMode: style.custom ? 'custom' : 'preset',
                 styleValue: style.value,
+                customStyleLabel: style.custom ? style.label : '',
+                customStylePrompt: style.custom ? read('customStylePrompt') : '',
+                customReferenceImageDataUrl: style.custom && variant.referenceMode === 'with-reference' ? customReferenceImageDataUrl : '',
                 promptVersion: variant.promptVersion,
                 referenceMode: variant.referenceMode,
                 promptLocale: read('promptLocale'),
@@ -393,6 +442,31 @@ export function GET() {
     document.querySelectorAll('[data-preset]').forEach((button) => {
       button.addEventListener('click', () => { $('contentPrompt').value = PRESETS[button.dataset.preset]; });
     });
+    $('includeCustomStyle').addEventListener('change', updateSummary);
+    $('customStyleLabel').addEventListener('input', updateSummary);
+    $('customStylePrompt').addEventListener('input', updateSummary);
+    $('customReferenceImage').addEventListener('change', () => {
+      const file = $('customReferenceImage').files && $('customReferenceImage').files[0];
+      const preview = $('customReferencePreview');
+      customReferenceImageDataUrl = '';
+      preview.removeAttribute('src');
+      preview.style.display = 'none';
+      if (!file) return;
+      if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+        alert('仅支持 png / jpeg / webp 参考图。');
+        $('customReferenceImage').value = '';
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        customReferenceImageDataUrl = typeof reader.result === 'string' ? reader.result : '';
+        if (customReferenceImageDataUrl) {
+          preview.src = customReferenceImageDataUrl;
+          preview.style.display = 'block';
+        }
+      };
+      reader.readAsDataURL(file);
+    });
     $('provider').addEventListener('change', () => {
       const defaults = PROVIDER_DEFAULTS[read('provider')];
       if (!defaults) return;
@@ -417,7 +491,18 @@ export function GET() {
           quality: read('quality') || null,
           promptLocale: read('promptLocale'),
           contentPrompt: read('contentPrompt'),
-          selectedStyles: selectedStyleList(),
+          selectedStyles: selectedStyleList().map((style) => ({
+            value: style.value,
+            label: style.label,
+            custom: style.custom === true,
+            referenceImage: style.custom ? (customReferenceImageDataUrl ? 'custom-upload' : null) : style.referenceImage
+          })),
+          customStyle: $('includeCustomStyle').checked ? {
+            label: read('customStyleLabel') || '自定义风格',
+            prompt: read('customStylePrompt'),
+            hasReferenceImage: Boolean(customReferenceImageDataUrl),
+            referenceImageName: $('customReferenceImage').files && $('customReferenceImage').files[0] ? $('customReferenceImage').files[0].name : null
+          } : null,
           selectedVariants: selectedVariantList()
         },
         results

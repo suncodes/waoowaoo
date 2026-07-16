@@ -9,10 +9,14 @@ import { arkImageGeneration } from '@/lib/ark-api'
 export const runtime = 'nodejs'
 
 type ProviderMode = 'openai-compatible' | 'ark'
+type StyleMode = 'preset' | 'custom'
 type PromptVersion = 'old' | 'new'
 type ReferenceMode = 'text-only' | 'with-reference'
 type PromptLocale = 'zh' | 'en'
 type ResponseFormat = 'b64_json' | 'url' | 'omit'
+
+const CUSTOM_STYLE_VALUE = '__custom__'
+const MAX_CUSTOM_REFERENCE_BYTES = 8 * 1024 * 1024
 
 interface GenerateRequestBody {
   provider?: unknown
@@ -20,7 +24,11 @@ interface GenerateRequestBody {
   apiKey?: unknown
   model?: unknown
   contentPrompt?: unknown
+  styleMode?: unknown
   styleValue?: unknown
+  customStyleLabel?: unknown
+  customStylePrompt?: unknown
+  customReferenceImageDataUrl?: unknown
   promptVersion?: unknown
   referenceMode?: unknown
   promptLocale?: unknown
@@ -33,6 +41,12 @@ interface GenerateRequestBody {
 interface ImageApiResult {
   imageUrl: string
   rawPayload: unknown
+}
+
+interface CustomReferenceImage {
+  dataUrl: string
+  blob: Blob
+  filename: string
 }
 
 function isEnabled(): boolean {
@@ -81,10 +95,20 @@ function pickStyle(styleValue: string) {
 }
 
 function resolveStylePrompt(params: {
+  styleMode: StyleMode
   styleValue: string
+  customStylePrompt: string
   promptVersion: PromptVersion
   promptLocale: PromptLocale
 }): string {
+  if (params.styleMode === 'custom') {
+    if (!params.customStylePrompt) throw new Error('customStylePrompt is required when styleMode=custom')
+    if (params.promptVersion === 'old') {
+      throw new Error('Custom style does not support old baseline prompt')
+    }
+    return params.customStylePrompt
+  }
+
   if (params.promptVersion === 'old') {
     const baseline = BASELINE_ART_STYLE_PROMPTS[params.styleValue]
     if (!baseline) throw new Error(`Missing baseline prompt for style: ${params.styleValue}`)
@@ -132,6 +156,37 @@ function mimeFromFilename(filename: string): string {
   if (ext === '.webp') return 'image/webp'
   if (ext === '.png') return 'image/png'
   return 'application/octet-stream'
+}
+
+function extensionFromMime(mimeType: string): string {
+  if (mimeType === 'image/jpeg') return 'jpg'
+  if (mimeType === 'image/webp') return 'webp'
+  return 'png'
+}
+
+function normalizeImageDataUrl(input: string): CustomReferenceImage {
+  const match = input.match(/^data:(image\/(?:png|jpeg|jpg|webp));base64,([A-Za-z0-9+/=\r\n]+)$/)
+  if (!match) {
+    throw new Error('customReferenceImageDataUrl must be a png/jpeg/webp base64 data URL')
+  }
+
+  const mimeType = match[1] === 'image/jpg' ? 'image/jpeg' : match[1]
+  const bytes = Buffer.from(match[2].replace(/\s/g, ''), 'base64')
+  if (bytes.length === 0) {
+    throw new Error('customReferenceImageDataUrl is empty')
+  }
+  if (bytes.length > MAX_CUSTOM_REFERENCE_BYTES) {
+    throw new Error(`customReferenceImageDataUrl is too large; max ${MAX_CUSTOM_REFERENCE_BYTES} bytes`)
+  }
+
+  const dataUrl = `data:${mimeType};base64,${bytes.toString('base64')}`
+  const copy = new Uint8Array(bytes.byteLength)
+  copy.set(bytes)
+  return {
+    dataUrl,
+    blob: new Blob([copy.buffer], { type: mimeType }),
+    filename: `custom-style-reference.${extensionFromMime(mimeType)}`,
+  }
 }
 
 function resolveStyleAssetPath(referenceImage: string): string {
@@ -266,7 +321,9 @@ async function callOpenAICompatibleImage(params: {
   apiKey: string
   model: string
   prompt: string
+  styleMode: StyleMode
   styleValue: string
+  customReferenceImage: CustomReferenceImage | null
   referenceMode: ReferenceMode
   size: string
   responseFormat: ResponseFormat
@@ -281,7 +338,9 @@ async function callOpenAICompatibleImage(params: {
   }
 
   if (params.referenceMode === 'with-reference') {
-    const { blob, filename } = await loadStyleReferenceBlob(params.styleValue)
+    const { blob, filename } = params.styleMode === 'custom'
+      ? params.customReferenceImage ?? (() => { throw new Error('customReferenceImageDataUrl is required when referenceMode=with-reference') })()
+      : await loadStyleReferenceBlob(params.styleValue)
     const form = new FormData()
     form.append('model', params.model)
     form.append('prompt', params.prompt)
@@ -329,7 +388,9 @@ async function callArkImage(params: {
   apiKey: string
   model: string
   prompt: string
+  styleMode: StyleMode
   styleValue: string
+  customReferenceImage: CustomReferenceImage | null
   referenceMode: ReferenceMode
   size: string
   responseFormat: ResponseFormat
@@ -358,7 +419,11 @@ async function callArkImage(params: {
     payload.size = params.size
   }
   if (params.referenceMode === 'with-reference') {
-    payload.image = [await loadStyleReferenceDataUrl(params.styleValue)]
+    payload.image = [
+      params.styleMode === 'custom'
+        ? params.customReferenceImage?.dataUrl ?? (() => { throw new Error('customReferenceImageDataUrl is required when referenceMode=with-reference') })()
+        : await loadStyleReferenceDataUrl(params.styleValue),
+    ]
   }
 
   const responsePayload = await arkImageGeneration(payload, {
@@ -387,7 +452,11 @@ export async function POST(request: NextRequest) {
   const apiKey = readString(body.apiKey)
   const model = readString(body.model)
   const contentPrompt = readString(body.contentPrompt)
+  const styleMode = readEnum<StyleMode>(body.styleMode, ['preset', 'custom'], 'preset')
   const styleValue = readString(body.styleValue)
+  const customStyleLabel = readString(body.customStyleLabel) || '自定义风格'
+  const customStylePrompt = readString(body.customStylePrompt)
+  const customReferenceImageDataUrl = readString(body.customReferenceImageDataUrl)
   const promptVersion = readEnum<PromptVersion>(body.promptVersion, ['old', 'new'], 'new')
   const referenceMode = readEnum<ReferenceMode>(body.referenceMode, ['text-only', 'with-reference'], 'text-only')
   const promptLocale = readEnum<PromptLocale>(body.promptLocale, ['zh', 'en'], 'zh')
@@ -400,9 +469,19 @@ export async function POST(request: NextRequest) {
     if (!apiKey) throw new Error('apiKey is required')
     if (!model) throw new Error('model is required')
     if (!contentPrompt) throw new Error('contentPrompt is required')
-    if (!styleValue) throw new Error('styleValue is required')
-    const style = pickStyle(styleValue)
-    const stylePrompt = resolveStylePrompt({ styleValue, promptVersion, promptLocale })
+    if (styleMode === 'preset' && !styleValue) throw new Error('styleValue is required')
+    if (styleMode === 'custom' && !customStylePrompt) throw new Error('customStylePrompt is required')
+    const style = styleMode === 'custom' ? null : pickStyle(styleValue)
+    const customReferenceImage = customReferenceImageDataUrl
+      ? normalizeImageDataUrl(customReferenceImageDataUrl)
+      : null
+    const stylePrompt = resolveStylePrompt({
+      styleMode,
+      styleValue,
+      customStylePrompt,
+      promptVersion,
+      promptLocale,
+    })
     const finalPrompt = buildFinalPrompt({
       contentPrompt,
       stylePrompt,
@@ -415,7 +494,9 @@ export async function POST(request: NextRequest) {
         apiKey,
         model,
         prompt: finalPrompt,
+        styleMode,
         styleValue,
+        customReferenceImage,
         referenceMode,
         size,
         responseFormat,
@@ -426,7 +507,9 @@ export async function POST(request: NextRequest) {
         apiKey,
         model,
         prompt: finalPrompt,
+        styleMode,
         styleValue,
+        customReferenceImage,
         referenceMode,
         size,
         responseFormat,
@@ -438,12 +521,13 @@ export async function POST(request: NextRequest) {
       imageUrl: result.imageUrl,
       prompt: finalPrompt,
       style: {
-        value: style.value,
-        label: style.label,
-        referenceImage: style.referenceImage || null,
+        value: style?.value ?? CUSTOM_STYLE_VALUE,
+        label: style?.label ?? customStyleLabel,
+        referenceImage: style?.referenceImage || (customReferenceImage ? 'custom-upload' : null),
       },
       meta: {
         provider,
+        styleMode,
         promptVersion,
         referenceMode,
         promptLocale,
