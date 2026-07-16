@@ -132,6 +132,17 @@ function validateArtStyleField(value: unknown): string {
   return artStyle
 }
 
+function validateBooleanField(field: string, value: unknown): boolean {
+  if (typeof value !== 'boolean') {
+    throw new ApiError('INVALID_PARAMS', {
+      code: 'BOOLEAN_FIELD_INVALID',
+      field,
+      message: `${field} must be a boolean`,
+    })
+  }
+  return value
+}
+
 function getNextProjectModelMap(
   current: {
     analysisModel: string | null
@@ -294,7 +305,7 @@ export const PATCH = apiHandler(async (
   const allowedProjectFields = [
     'analysisModel', 'characterModel', 'locationModel', 'storyboardModel',
     'editModel', 'videoModel', 'audioModel', 'videoRatio', 'artStyle',
-    'ttsRate', 'lipSyncEnabled', 'lipSyncMode', 'capabilityOverrides',
+    'artStyleReferenceEnabled', 'ttsRate', 'lipSyncEnabled', 'lipSyncMode', 'capabilityOverrides',
   ] as const
 
   const updateData: Record<string, unknown> = {}
@@ -307,6 +318,11 @@ export const PATCH = apiHandler(async (
 
     if (field === 'artStyle') {
       updateData[field] = validateArtStyleField(body[field])
+      continue
+    }
+
+    if (field === 'artStyleReferenceEnabled') {
+      updateData[field] = validateBooleanField(field, body[field])
       continue
     }
 

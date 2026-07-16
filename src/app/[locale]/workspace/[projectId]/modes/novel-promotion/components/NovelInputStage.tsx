@@ -44,8 +44,10 @@ interface NovelInputStageProps {
   // 配置项 - 比例与风格
   videoRatio?: string
   artStyle?: string
+  artStyleReferenceEnabled?: boolean
   onVideoRatioChange?: (value: string) => void
   onArtStyleChange?: (value: string) => void
+  onArtStyleReferenceEnabledChange?: (value: boolean) => void
 }
 
 export default function NovelInputStage({
@@ -60,8 +62,10 @@ export default function NovelInputStage({
   onEnableNarrationChange,
   videoRatio = '9:16',
   artStyle = 'american-comic',
+  artStyleReferenceEnabled = false,
   onVideoRatioChange,
-  onArtStyleChange
+  onArtStyleChange,
+  onArtStyleReferenceEnabledChange,
 }: NovelInputStageProps) {
   const t = useTranslations('novelPromotion')
   const homeT = useTranslations('home')
@@ -191,6 +195,9 @@ export default function NovelInputStage({
           getRatioUsage={getRatioUsageTag}
           artStyle={artStyle}
           onArtStyleChange={(value) => onArtStyleChange?.(value)}
+          artStyleReferenceEnabled={artStyleReferenceEnabled}
+          onArtStyleReferenceEnabledChange={onArtStyleReferenceEnabledChange}
+          artStyleReferenceLabel={t('storyInput.artStyleReferenceImage')}
           styleOptions={ART_STYLES.map((option) => ({
             ...option,
             recommended: option.value === 'realistic'

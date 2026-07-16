@@ -5,6 +5,8 @@
     "autoSave": "Auto-save",
     "visualSettings": "Visual Settings",
     "visualStyle": "Art Style",
+    "artStyleReferenceImage": "Use style reference image",
+    "artStyleReferenceImageHint": "Off by default. When enabled, the built-in reference image for the selected style is also sent to the image model. Keep it off if it weakens style separation.",
     "modelParams": "Model Parameters",
     "aspectRatio": "Aspect Ratio",
     "ttsSettings": "TTS Settings",

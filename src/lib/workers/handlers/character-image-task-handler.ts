@@ -130,7 +130,11 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
       }
     }
   }
-  const referenceImages = appendArtStyleReferenceImage(primaryReferenceInputs, artStyleValue)
+  const referenceImages = appendArtStyleReferenceImage(
+    primaryReferenceInputs,
+    artStyleValue,
+    models.artStyleReferenceEnabled,
+  )
 
   const singleIndex = payload.imageIndex ?? payload.descriptionIndex
   const count = normalizeImageGenerationCount('character', payload.count)

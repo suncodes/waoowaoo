@@ -5,6 +5,8 @@
     "autoSave": "自动保存",
     "visualSettings": "画面设置",
     "visualStyle": "画面风格",
+    "artStyleReferenceImage": "使用风格参考图",
+    "artStyleReferenceImageHint": "默认关闭。开启后会把当前风格的内置参考图一并传给图片模型；如果发现风格被稀释，建议保持关闭。",
     "modelParams": "模型参数",
     "aspectRatio": "画面比例",
     "ttsSettings": "旁白配置",

@@ -43,6 +43,7 @@ interface SettingsModalProps {
     availableModels?: Partial<UserModels>
     modelsLoaded?: boolean
     artStyle?: string
+    artStyleReferenceEnabled?: boolean
     analysisModel?: string
     characterModel?: string
     locationModel?: string
@@ -55,6 +56,7 @@ interface SettingsModalProps {
     capabilityOverrides?: CapabilitySelections
     ttsRate?: string
     onArtStyleChange?: (value: string) => void
+    onArtStyleReferenceEnabledChange?: (value: boolean) => void
     onAnalysisModelChange?: (value: string) => void
     onCharacterModelChange?: (value: string) => void
     onLocationModelChange?: (value: string) => void
@@ -128,6 +130,7 @@ export function SettingsModal({
     availableModels,
     modelsLoaded = false,
     artStyle = 'american-comic',
+    artStyleReferenceEnabled = false,
     analysisModel,
     characterModel,
     locationModel,
@@ -139,6 +142,7 @@ export function SettingsModal({
     capabilityOverrides,
     ttsRate,
     onArtStyleChange,
+    onArtStyleReferenceEnabledChange,
     onAnalysisModelChange,
     onCharacterModelChange,
     onLocationModelChange,
@@ -385,6 +389,21 @@ export function SettingsModal({
                                 />
                             </div>
                         </div>
+                        <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)] p-4 transition-colors hover:border-[var(--glass-stroke-focus)]">
+                            <input
+                                type="checkbox"
+                                checked={artStyleReferenceEnabled}
+                                onChange={(event) => {
+                                    onArtStyleReferenceEnabledChange?.(event.target.checked)
+                                    showSaved()
+                                }}
+                                className="mt-1 h-4 w-4 accent-[var(--glass-tone-info-fg)]"
+                            />
+                            <span className="min-w-0">
+                                <span className="block text-sm font-medium text-[var(--glass-text-secondary)]">{t('artStyleReferenceImage')}</span>
+                                <span className="mt-1 block text-xs leading-relaxed text-[var(--glass-text-tertiary)]">{t('artStyleReferenceImageHint')}</span>
+                            </span>
+                        </label>
                     </div>
 
                     <div className="glass-surface-soft p-5 sm:p-6 space-y-4">

@@ -288,7 +288,11 @@ export function getArtStyleReferenceImage(artStyle: string | null | undefined): 
 export function appendArtStyleReferenceImage(
   referenceImages: readonly string[],
   artStyle: string | null | undefined,
+  enabled = true,
 ): string[] {
+  if (!enabled) {
+    return Array.from(new Set(referenceImages.filter((item) => typeof item === 'string' && item.trim().length > 0)))
+  }
   const styleReferenceImage = getArtStyleReferenceImage(artStyle)
   const merged = [...referenceImages]
   if (styleReferenceImage) {

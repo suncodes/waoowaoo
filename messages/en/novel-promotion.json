@@ -125,6 +125,7 @@
     },
     "visualStyle": "Art Style",
     "visualStyleHint": "Choose an art style that fits your project — e.g. Realistic for live-action, Anime for 2D content",
+    "artStyleReferenceImage": "Style reference image",
     "currentConfigSummary": "Current config: {ratio} · {style}. All subsequent generations will use this combo.",
     "assetLibraryRatioNote": "Asset library ratios are not affected",
     "moreConfig": "For more configuration options, click the 「 Settings」 button in the top right",

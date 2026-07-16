@@ -234,7 +234,11 @@ export async function handlePanelVariantTask(job: Job<TaskJobData>) {
 
   // 使用 agent_shot_variant_generate.txt 提示词模板
   const artStyle = getArtStylePrompt(modelConfig.artStyle, job.data.locale)
-  const referenceImages = appendArtStyleReferenceImage(refs, modelConfig.artStyle)
+  const referenceImages = appendArtStyleReferenceImage(
+    refs,
+    modelConfig.artStyle,
+    modelConfig.artStyleReferenceEnabled,
+  )
   const charactersInfo = buildCharactersInfo(newPanel, projectData)
   const characterAssetsDesc = includeCharacterAssets
     ? buildCharacterAssetsDescription(newPanel, projectData)

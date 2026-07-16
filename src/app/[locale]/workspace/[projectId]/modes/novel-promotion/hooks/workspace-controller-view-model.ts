@@ -31,6 +31,7 @@ interface ProjectSnapshotInput {
   capabilityOverrides: CapabilitySelections
   ttsRate: string | number | undefined
   artStyle: string | undefined
+  artStyleReferenceEnabled: boolean
 }
 
 interface BuildWorkspaceControllerViewModelParams {

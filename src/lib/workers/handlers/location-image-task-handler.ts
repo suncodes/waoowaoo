@@ -69,7 +69,7 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
   const payloadArtStyle = resolvePayloadArtStyle(payload)
   const artStyleValue = payloadArtStyle ?? models.artStyle
   const artStyle = getArtStylePrompt(artStyleValue, job.data.locale)
-  const styleReferenceImages = appendArtStyleReferenceImage([], artStyleValue)
+  const styleReferenceImages = appendArtStyleReferenceImage([], artStyleValue, models.artStyleReferenceEnabled)
   const assetType = payload.type === 'prop' ? 'prop' : 'location'
 
   // targetId may be locationId (group) or locationImageId (single)

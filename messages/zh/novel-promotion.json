@@ -125,6 +125,7 @@
     },
     "visualStyle": "画面风格",
     "visualStyleHint": "选择画面风格，不同风格适合不同类型的作品",
+    "artStyleReferenceImage": "风格参考图",
     "currentConfigSummary": "当前配置：{ratio} · {style}，后续生成都会使用此组合",
     "assetLibraryRatioNote": "资产库比例不受影响",
     "moreConfig": "更多配置请点击右上角「 配置」按钮",

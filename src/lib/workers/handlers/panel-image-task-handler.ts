@@ -174,7 +174,11 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
 
   const candidateCount = clampCount(payload.candidateCount ?? payload.count, 1, 4, 1)
   const refs = await collectPanelReferenceImages(projectData, panel)
-  const referenceImages = appendArtStyleReferenceImage(refs, modelConfig.artStyle)
+  const referenceImages = appendArtStyleReferenceImage(
+    refs,
+    modelConfig.artStyle,
+    modelConfig.artStyleReferenceEnabled,
+  )
 
   const logger = createScopedLogger({
     module: 'worker.panel-image',
@@ -192,6 +196,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
       candidateCount,
       referenceImagesRawCount: refs.length,
       referenceImagesFinalCount: referenceImages.length,
+      artStyleReferenceEnabled: modelConfig.artStyleReferenceEnabled,
       rawUrls: refs.map((u) => u.substring(0, 100)),
       referenceUrls: referenceImages.map((u) => u.substring(0, 100)),
       panelCharacters: panel.characters,

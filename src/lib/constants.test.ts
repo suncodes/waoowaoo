@@ -32,6 +32,11 @@ describe('ART_STYLES registry', () => {
     expect(references).toEqual(['images/character.png', '/art-styles/paper-cut-3d.jpg'])
   })
 
+  it('does not append style reference image when disabled', () => {
+    const references = appendArtStyleReferenceImage(['images/character.png'], 'paper-cut-3d', false)
+    expect(references).toEqual(['images/character.png'])
+  })
+
   it('returns localized prompt text', () => {
     expect(getArtStylePrompt('american-comic', 'zh')).toContain('美式漫画')
     expect(getArtStylePrompt('american-comic', 'en')).toContain('American comic')

@@ -6,7 +6,7 @@ import { queryFalStatus } from '@/lib/async-submit'
 import { fetchWithTimeoutAndRetry } from '@/lib/ark-api'
 import { getProviderConfig } from '@/lib/api-config'
 import { executeAiVisionStep } from '@/lib/ai-runtime'
-import { getUserModelConfig } from '@/lib/config-service'
+import { getProjectModelConfig, getUserModelConfig } from '@/lib/config-service'
 import {
   CHARACTER_IMAGE_BANANA_RATIO,
   addCharacterPromptSuffix,
@@ -159,7 +159,10 @@ export async function handleReferenceToCharacterTask(job: Job<TaskJobData>) {
     await initializeFonts()
   }
 
-  const userConfig = await getUserModelConfig(job.data.userId)
+  const [userConfig, projectConfig] = await Promise.all([
+    getUserModelConfig(job.data.userId),
+    isProject ? getProjectModelConfig(job.data.projectId, job.data.userId) : Promise.resolve(null),
+  ])
   const imageModel = readString(userConfig.characterModel)
   const analysisModel = readString(userConfig.analysisModel)
   if (!imageModel && !extractOnly) {
@@ -199,7 +202,11 @@ export async function handleReferenceToCharacterTask(job: Job<TaskJobData>) {
   }
 
   const artStylePrompt = getArtStylePrompt(artStyle, job.data.locale)
-  const generationReferenceImages = appendArtStyleReferenceImage(allReferenceImages, artStyle)
+  const generationReferenceImages = appendArtStyleReferenceImage(
+    allReferenceImages,
+    artStyle,
+    isProject ? projectConfig?.artStyleReferenceEnabled === true : true,
+  )
 
   const basePrompt = customDescription || buildPrompt({
     promptId: PROMPT_IDS.CHARACTER_REFERENCE_TO_SHEET,

@@ -41,6 +41,7 @@ interface WorkspaceHeaderShellProps {
   availableModels?: UserModelsPayload
   modelsLoaded: boolean
   artStyle: string | null | undefined
+  artStyleReferenceEnabled: boolean
   analysisModel: string | null | undefined
   characterModel: string | null | undefined
   locationModel: string | null | undefined
@@ -88,6 +89,7 @@ export default function WorkspaceHeaderShell({
   availableModels,
   modelsLoaded,
   artStyle,
+  artStyleReferenceEnabled,
   analysisModel,
   characterModel,
   locationModel,
@@ -127,6 +129,7 @@ export default function WorkspaceHeaderShell({
         availableModels={availableModels}
         modelsLoaded={modelsLoaded}
         artStyle={artStyle ?? undefined}
+        artStyleReferenceEnabled={artStyleReferenceEnabled}
         analysisModel={analysisModel ?? undefined}
         characterModel={characterModel ?? undefined}
         locationModel={locationModel ?? undefined}
@@ -138,6 +141,7 @@ export default function WorkspaceHeaderShell({
         capabilityOverrides={capabilityOverrides}
         ttsRate={ttsRate ?? undefined}
         onArtStyleChange={(value) => { onUpdateConfig('artStyle', value) }}
+        onArtStyleReferenceEnabledChange={(value) => { onUpdateConfig('artStyleReferenceEnabled', value) }}
         onAnalysisModelChange={(value) => { onUpdateConfig('analysisModel', value) }}
         onCharacterModelChange={(value) => { onUpdateConfig('characterModel', value) }}
         onLocationModelChange={(value) => { onUpdateConfig('locationModel', value) }}

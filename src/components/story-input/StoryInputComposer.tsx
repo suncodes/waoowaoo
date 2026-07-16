@@ -35,6 +35,9 @@ interface StoryInputComposerProps {
   getRatioUsage?: (ratio: string) => string
   artStyle: string
   onArtStyleChange: (value: string) => void
+  artStyleReferenceEnabled?: boolean
+  onArtStyleReferenceEnabledChange?: (value: boolean) => void
+  artStyleReferenceLabel?: string
   styleOptions: StoryInputComposerOption[]
   stylePresetValue: string
   onStylePresetChange: (value: string) => void
@@ -61,6 +64,9 @@ export default function StoryInputComposer({
   getRatioUsage,
   artStyle,
   onArtStyleChange,
+  artStyleReferenceEnabled,
+  onArtStyleReferenceEnabledChange,
+  artStyleReferenceLabel = 'Style reference',
   styleOptions,
   stylePresetValue,
   onStylePresetChange,
@@ -148,6 +154,17 @@ export default function StoryInputComposer({
               options={styleOptions}
             />
           </div>
+          {onArtStyleReferenceEnabledChange ? (
+            <label className="flex h-10 flex-shrink-0 cursor-pointer items-center gap-2 rounded-xl border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)] px-3 text-xs text-[var(--glass-text-secondary)] transition-colors hover:border-[var(--glass-stroke-focus)]">
+              <input
+                type="checkbox"
+                checked={artStyleReferenceEnabled === true}
+                onChange={(event) => onArtStyleReferenceEnabledChange(event.target.checked)}
+                className="h-3.5 w-3.5 accent-[var(--glass-tone-info-fg)]"
+              />
+              <span className="whitespace-nowrap">{artStyleReferenceLabel}</span>
+            </label>
+          ) : null}
           {stylePresetOptions.length > 0 ? (
             <div className="w-[152px] flex-shrink-0">
               <StylePresetSelector
