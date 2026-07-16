@@ -249,7 +249,9 @@ model NovelPromotionProject {
   globalAssetText String?
   artStyle        String                    @default("american-comic")
   artStylePrompt  String?
+  artStyleMode    String                    @default("preset")
   artStyleReferenceEnabled Boolean          @default(false)
+  customArtStyleReferenceImage String?
   characterModel  String? // 用户配置的角色图片模型
   locationModel   String? // 用户配置的场景图片模型
   storyboardModel String? // 用户配置的分镜图片模型

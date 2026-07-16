@@ -103,7 +103,10 @@ export function useWorkspaceStageRuntime({
     userVideoModels: resolvedUserVideoModels,
     onNovelTextChange: (value) => handleUpdateEpisode('novelText', value),
     onVideoRatioChange: (value) => handleUpdateConfig('videoRatio', value),
-    onArtStyleChange: (value) => handleUpdateConfig('artStyle', value),
+    onArtStyleChange: async (value) => {
+      await handleUpdateConfig('artStyleMode', 'preset')
+      await handleUpdateConfig('artStyle', value)
+    },
     onArtStyleReferenceEnabledChange: (value) => handleUpdateConfig('artStyleReferenceEnabled', value),
     onRunStoryToScript: () => runWithRebuildConfirm('storyToScript', runStoryToScriptFlow),
     onClipUpdate: (clipId, data) => {

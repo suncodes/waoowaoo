@@ -1,6 +1,7 @@
 import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
-import { CHARACTER_ASSET_IMAGE_RATIO, addCharacterPromptSuffix, appendArtStyleReferenceImage, appendPromptSegments, getArtStylePrompt, getArtStyleReferenceInstruction, isArtStyleValue, PRIMARY_APPEARANCE_INDEX, type ArtStyleValue } from '@/lib/constants'
+import { CHARACTER_ASSET_IMAGE_RATIO, addCharacterPromptSuffix, appendPromptSegments, isArtStyleValue, prependStyleReferenceImage, PRIMARY_APPEARANCE_INDEX, type ArtStyleValue } from '@/lib/constants'
+import { resolveArtStyleForGeneration } from '@/lib/art-style-generation'
 import { type TaskJobData } from '@/lib/task/types'
 import { encodeImageUrls } from '@/lib/contracts/image-urls-contract'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
@@ -107,12 +108,14 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
 
   const payloadArtStyle = resolvePayloadArtStyle(payload)
   const artStyleValue = payloadArtStyle ?? models.artStyle
-  const artStyle = getArtStylePrompt(artStyleValue, job.data.locale)
-  const styleReferenceInstruction = getArtStyleReferenceInstruction(
-    artStyleValue,
-    models.artStyleReferenceEnabled,
-    job.data.locale,
-  )
+  const resolvedArtStyle = resolveArtStyleForGeneration({
+    artStyleMode: payloadArtStyle ? 'preset' : models.artStyleMode,
+    artStyle: artStyleValue,
+    artStylePrompt: models.artStylePrompt,
+    customArtStyleReferenceImage: models.customArtStyleReferenceImage,
+    artStyleReferenceEnabled: models.artStyleReferenceEnabled,
+    locale: job.data.locale,
+  })
   const descriptions = parseJsonStringArray(appearance.descriptions)
   const baseDescriptions = descriptions.length > 0 ? descriptions : [appearance.description || '']
 
@@ -135,10 +138,10 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
       }
     }
   }
-  const referenceImages = appendArtStyleReferenceImage(
+  const referenceImages = prependStyleReferenceImage(
     primaryReferenceInputs,
-    artStyleValue,
-    models.artStyleReferenceEnabled,
+    resolvedArtStyle.referenceImage,
+    resolvedArtStyle.referenceEnabled,
   )
 
   const singleIndex = payload.imageIndex ?? payload.descriptionIndex
@@ -156,7 +159,7 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
     const raw = baseDescriptions[index] || baseDescriptions[0]
     const prompt = appendPromptSegments(
       addCharacterPromptSuffix(raw),
-      [artStyle, styleReferenceInstruction],
+      [resolvedArtStyle.prompt, resolvedArtStyle.referenceInstruction],
       job.data.locale,
     )
 

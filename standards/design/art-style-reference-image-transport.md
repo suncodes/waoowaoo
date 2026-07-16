@@ -313,6 +313,92 @@ VideoLens《短视频视觉风格大全：21 种爆款风格 + AI 提示词》�
 1. 模型更容易理解“图片1是风格参考图”。
 2. 默认纯文本策略不变，只有用户主动开启时才承担风格图带来的主体/构图干扰风险。
 
+### 5.7 用户自定义风格策略
+
+为解决内置 12 类风格仍然无法覆盖全部创作需求的问题，新增项目级“自定义风格”能力。该能力不把用户输入混入 `ART_STYLES` 常量，而是在项目配置中保存自定义风格覆盖项。
+
+#### 5.7.1 数据模型
+
+项目级配置新增：
+
+| 字段 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `artStyleMode` | `String` | `preset` | 风格模式：`preset` 使用内置风格，`custom` 使用用户自定义风格 |
+| `artStylePrompt` | `Text?` | 既有字段 | 自定义风格提示词；仅 `custom` 模式作为主风格提示词使用 |
+| `customArtStyleReferenceImage` | `Text?` | `null` | 用户上传的自定义风格参考图 storageKey 或可解析媒体值 |
+
+保留 `artStyle` 字段作为内置风格选择。即使进入 `custom` 模式，也不清空 `artStyle`，便于用户随时切回内置风格。
+
+#### 5.7.2 存储与传输
+
+自定义风格图不保存 Base64，也不保存短期签名 URL。上传后保存 storageKey，并复用现有出站图片资源解析层：
+
+1. UI 将图片转成 Data URL 后上传到服务端存储。
+2. 服务端返回 `key` 和预览 URL。
+3. 项目配置保存 `customArtStyleReferenceImage=key`。
+4. 展示时通过 `/m/{publicId}` 或签名代理 URL 预览。
+5. 生成时直接传 storageKey，由 Adapter 按模型协议转换成 Base64、multipart 或 URL。
+
+该策略继续避免公网 URL 依赖。
+
+#### 5.7.3 生成链路
+
+新增统一 resolver：
+
+```ts
+resolveArtStyleForGeneration({
+  artStyleMode,
+  artStyle,
+  artStylePrompt,
+  customArtStyleReferenceImage,
+  artStyleReferenceEnabled,
+  locale,
+})
+```
+
+返回：
+
+```ts
+{
+  source: 'preset' | 'custom',
+  prompt: string,
+  referenceImage: string | null,
+  referenceEnabled: boolean,
+  referenceInstruction: string,
+}
+```
+
+规则：
+
+- `preset`：`prompt` 取 `ART_STYLES` 中英文提示词；`referenceImage` 取内置风格图。
+- `custom`：`prompt` 取 `artStylePrompt`；`referenceImage` 取 `customArtStyleReferenceImage`。
+- `artStyleReferenceEnabled=false`：不传任何风格参考图，但仍使用文本风格提示词。
+- `artStyleReferenceEnabled=true` 且存在 `referenceImage`：风格图排第 1 位，并追加“参考图 1 仅用于画风参考”的声明。
+- `custom` 模式下如果 `artStylePrompt` 为空，则生成链路降级为空风格文本，不阻塞生成；UI 应提示用户补充提示词。
+
+#### 5.7.4 UI 入口
+
+第一阶段只在项目设置弹窗落地：
+
+- 在“画面风格”下方增加“内置风格 / 自定义风格”切换。
+- 自定义模式提供提示词 textarea。
+- 自定义模式提供参考图上传、预览和清除。
+- 继续沿用“使用风格参考图”开关；开关打开时，自定义图参与生成并排第 1 位。
+
+故事输入底部的快捷风格选择暂不承载自定义图上传和长文本编辑。用户在快捷栏选择内置风格时，应切回 `preset` 模式。
+
+#### 5.7.5 阶段边界
+
+第一阶段只覆盖小说推文项目主链路：
+
+- 项目角色图
+- 项目场景/道具图
+- 分镜图
+- 分镜变体
+- 项目参考图转角色
+
+资产中心独立生成暂不接入项目级自定义风格。资产中心后续如需要自定义风格，应单独增加资产级字段，避免复用项目级配置造成跨项目污染。
+
 ## 6. 图片资源解析层
 
 新增统一函数：

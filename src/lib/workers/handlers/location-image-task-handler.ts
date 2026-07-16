@@ -1,6 +1,7 @@
 import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
-import { LOCATION_IMAGE_RATIO, PROP_IMAGE_RATIO, addLocationPromptSuffix, addPropPromptSuffix, appendArtStyleReferenceImage, appendPromptSegments, getArtStylePrompt, getArtStyleReferenceInstruction, isArtStyleValue, type ArtStyleValue } from '@/lib/constants'
+import { LOCATION_IMAGE_RATIO, PROP_IMAGE_RATIO, addLocationPromptSuffix, addPropPromptSuffix, appendPromptSegments, isArtStyleValue, prependStyleReferenceImage, type ArtStyleValue } from '@/lib/constants'
+import { resolveArtStyleForGeneration } from '@/lib/art-style-generation'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
 import { type TaskJobData } from '@/lib/task/types'
 import { reportTaskProgress } from '../shared'
@@ -68,13 +69,15 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
 
   const payloadArtStyle = resolvePayloadArtStyle(payload)
   const artStyleValue = payloadArtStyle ?? models.artStyle
-  const artStyle = getArtStylePrompt(artStyleValue, job.data.locale)
-  const styleReferenceInstruction = getArtStyleReferenceInstruction(
-    artStyleValue,
-    models.artStyleReferenceEnabled,
-    job.data.locale,
-  )
-  const styleReferenceImages = appendArtStyleReferenceImage([], artStyleValue, models.artStyleReferenceEnabled)
+  const resolvedArtStyle = resolveArtStyleForGeneration({
+    artStyleMode: payloadArtStyle ? 'preset' : models.artStyleMode,
+    artStyle: artStyleValue,
+    artStylePrompt: models.artStylePrompt,
+    customArtStyleReferenceImage: models.customArtStyleReferenceImage,
+    artStyleReferenceEnabled: models.artStyleReferenceEnabled,
+    locale: job.data.locale,
+  })
+  const styleReferenceImages = prependStyleReferenceImage([], resolvedArtStyle.referenceImage, resolvedArtStyle.referenceEnabled)
   const assetType = payload.type === 'prop' ? 'prop' : 'location'
 
   // targetId may be locationId (group) or locationImageId (single)
@@ -165,7 +168,7 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
       : addLocationPromptSuffix(promptCore)
     const prompt = appendPromptSegments(
       promptWithSuffix,
-      [artStyle, styleReferenceInstruction],
+      [resolvedArtStyle.prompt, resolvedArtStyle.referenceInstruction],
       job.data.locale,
     )
     const aspectRatio = assetType === 'prop' ? PROP_IMAGE_RATIO : LOCATION_IMAGE_RATIO

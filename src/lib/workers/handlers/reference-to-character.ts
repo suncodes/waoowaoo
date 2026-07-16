@@ -10,11 +10,10 @@ import { getProjectModelConfig, getUserModelConfig } from '@/lib/config-service'
 import {
   CHARACTER_IMAGE_BANANA_RATIO,
   addCharacterPromptSuffix,
-  appendArtStyleReferenceImage,
   appendPromptSegments,
-  getArtStylePrompt,
-  getArtStyleReferenceInstruction,
+  prependStyleReferenceImage,
 } from '@/lib/constants'
+import { resolveArtStyleForGeneration } from '@/lib/art-style-generation'
 import { encodeImageUrls } from '@/lib/contracts/image-urls-contract'
 import { generateUniqueKey, getSignedUrl, uploadObject } from '@/lib/storage'
 import { initializeFonts, createLabelSVG } from '@/lib/fonts'
@@ -203,13 +202,20 @@ export async function handleReferenceToCharacterTask(job: Job<TaskJobData>) {
     }
   }
 
-  const artStylePrompt = getArtStylePrompt(artStyle, job.data.locale)
   const useReferenceImages = !customDescription
   const artStyleReferenceEnabled = isProject ? projectConfig?.artStyleReferenceEnabled === true : true
-  const generationReferenceImages = appendArtStyleReferenceImage(
+  const resolvedArtStyle = resolveArtStyleForGeneration({
+    artStyleMode: isProject && !artStyle ? projectConfig?.artStyleMode : 'preset',
+    artStyle: artStyle || projectConfig?.artStyle,
+    artStylePrompt: projectConfig?.artStylePrompt,
+    customArtStyleReferenceImage: projectConfig?.customArtStyleReferenceImage,
+    artStyleReferenceEnabled: useReferenceImages && artStyleReferenceEnabled,
+    locale: job.data.locale,
+  })
+  const generationReferenceImages = prependStyleReferenceImage(
     allReferenceImages,
-    artStyle,
-    artStyleReferenceEnabled,
+    resolvedArtStyle.referenceImage,
+    resolvedArtStyle.referenceEnabled,
   )
 
   const basePrompt = customDescription || buildPrompt({
@@ -219,12 +225,8 @@ export async function handleReferenceToCharacterTask(job: Job<TaskJobData>) {
   const prompt = appendPromptSegments(
     addCharacterPromptSuffix(basePrompt),
     [
-      artStylePrompt,
-      getArtStyleReferenceInstruction(
-        artStyle,
-        useReferenceImages && artStyleReferenceEnabled,
-        job.data.locale,
-      ),
+      resolvedArtStyle.prompt,
+      resolvedArtStyle.referenceInstruction,
     ],
     job.data.locale,
   )

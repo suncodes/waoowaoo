@@ -5,6 +5,7 @@ import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { isArtStyleValue } from '@/lib/constants'
 import { attachMediaFieldsToProject } from '@/lib/media/attach'
+import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
 import {
   parseModelKeyStrict,
   type CapabilitySelections,
@@ -141,6 +142,60 @@ function validateBooleanField(field: string, value: unknown): boolean {
     })
   }
   return value
+}
+
+function validateArtStyleModeField(value: unknown): 'preset' | 'custom' {
+  if (value !== 'preset' && value !== 'custom') {
+    throw new ApiError('INVALID_PARAMS', {
+      code: 'INVALID_ART_STYLE_MODE',
+      field: 'artStyleMode',
+      message: 'artStyleMode must be preset or custom',
+    })
+  }
+  return value
+}
+
+function validateNullableTextField(field: string, value: unknown, maxLength: number): string | null {
+  if (value === null) return null
+  if (typeof value !== 'string') {
+    throw new ApiError('INVALID_PARAMS', {
+      code: 'TEXT_FIELD_INVALID',
+      field,
+      message: `${field} must be a string or null`,
+    })
+  }
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  if (trimmed.length > maxLength) {
+    throw new ApiError('INVALID_PARAMS', {
+      code: 'TEXT_FIELD_TOO_LONG',
+      field,
+      message: `${field} is too long`,
+    })
+  }
+  return trimmed
+}
+
+async function validateCustomArtStyleReferenceImage(value: unknown): Promise<string | null> {
+  if (value === null) return null
+  if (typeof value !== 'string') {
+    throw new ApiError('INVALID_PARAMS', {
+      code: 'CUSTOM_ART_STYLE_REFERENCE_INVALID',
+      field: 'customArtStyleReferenceImage',
+      message: 'customArtStyleReferenceImage must be a storage key, media url, or null',
+    })
+  }
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const storageKey = await resolveStorageKeyFromMediaValue(trimmed)
+  if (!storageKey) {
+    throw new ApiError('INVALID_PARAMS', {
+      code: 'CUSTOM_ART_STYLE_REFERENCE_INVALID',
+      field: 'customArtStyleReferenceImage',
+      message: 'customArtStyleReferenceImage cannot be resolved to storage',
+    })
+  }
+  return storageKey
 }
 
 function getNextProjectModelMap(
@@ -305,7 +360,8 @@ export const PATCH = apiHandler(async (
   const allowedProjectFields = [
     'analysisModel', 'characterModel', 'locationModel', 'storyboardModel',
     'editModel', 'videoModel', 'audioModel', 'videoRatio', 'artStyle',
-    'artStyleReferenceEnabled', 'ttsRate', 'lipSyncEnabled', 'lipSyncMode', 'capabilityOverrides',
+    'artStyleMode', 'artStylePrompt', 'artStyleReferenceEnabled', 'customArtStyleReferenceImage',
+    'ttsRate', 'lipSyncEnabled', 'lipSyncMode', 'capabilityOverrides',
   ] as const
 
   const updateData: Record<string, unknown> = {}
@@ -321,8 +377,23 @@ export const PATCH = apiHandler(async (
       continue
     }
 
+    if (field === 'artStyleMode') {
+      updateData[field] = validateArtStyleModeField(body[field])
+      continue
+    }
+
+    if (field === 'artStylePrompt') {
+      updateData[field] = validateNullableTextField(field, body[field], 4000)
+      continue
+    }
+
     if (field === 'artStyleReferenceEnabled') {
       updateData[field] = validateBooleanField(field, body[field])
+      continue
+    }
+
+    if (field === 'customArtStyleReferenceImage') {
+      updateData[field] = await validateCustomArtStyleReferenceImage(body[field])
       continue
     }
 

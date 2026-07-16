@@ -46,7 +46,11 @@ export function useWorkspaceProjectSnapshot({
       capabilityOverrides,
       ttsRate: projectData?.ttsRate,
       artStyle: projectData?.artStyle,
+      artStyleMode: projectData?.artStyleMode === 'custom' ? 'custom' : 'preset',
+      artStylePrompt: projectData?.artStylePrompt || '',
       artStyleReferenceEnabled: projectData?.artStyleReferenceEnabled === true,
+      customArtStyleReferenceImage: projectData?.customArtStyleReferenceImage || '',
+      customArtStyleReferenceImageUrl: projectData?.customArtStyleReferenceImageUrl || projectData?.customArtStyleReferenceImage || '',
     }
   }, [episode?.novelText, episode?.storyboards, project.novelPromotionData, urlStage])
 }

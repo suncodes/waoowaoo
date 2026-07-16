@@ -221,7 +221,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
   // 注意：不再自动创建默认剧集，由用户在选择界面决定：
   // - 手动创作 → 创建第一个空白剧集
   // - 智能导入 → AI 分析后批量创建剧集
-  // 🔥 artStylePrompt 通过实时查询获取，不再存储到数据库
+  // artStylePrompt 仅用于项目级自定义风格提示词，新项目默认使用内置风格。
   await prisma.novelPromotionProject.create({
     data: {
       projectId: project.id,

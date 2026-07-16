@@ -285,15 +285,23 @@ export function getArtStyleReferenceImage(artStyle: string | null | undefined): 
   return getArtStyleDefinition(artStyle)?.referenceImage ?? null
 }
 
+export function getStyleReferenceInstruction(
+  styleReferenceImage: string | null | undefined,
+  enabled: boolean,
+  locale: 'zh' | 'en',
+): string {
+  if (!enabled || !styleReferenceImage || !styleReferenceImage.trim()) return ''
+  return locale === 'en'
+    ? 'Reference image 1 is used only for visual style, linework, color palette, material texture, lighting, and rendering mood. Do not copy its subject, objects, composition, text, logo, or watermark. Use later reference images only for character identity, scene, or object consistency.'
+    : '参考图 1 仅用于画面风格、线条、色彩、材质、光影和渲染气质参考；不要复制其中的主体、物品、构图、文字、Logo 或水印。后续参考图仅用于角色、场景或物品一致性。'
+}
+
 export function getArtStyleReferenceInstruction(
   artStyle: string | null | undefined,
   enabled: boolean,
   locale: 'zh' | 'en',
 ): string {
-  if (!enabled || !getArtStyleReferenceImage(artStyle)) return ''
-  return locale === 'en'
-    ? 'Reference image 1 is used only for visual style, linework, color palette, material texture, lighting, and rendering mood. Do not copy its subject, objects, composition, text, logo, or watermark. Use later reference images only for character identity, scene, or object consistency.'
-    : '参考图 1 仅用于画面风格、线条、色彩、材质、光影和渲染气质参考；不要复制其中的主体、物品、构图、文字、Logo 或水印。后续参考图仅用于角色、场景或物品一致性。'
+  return getStyleReferenceInstruction(getArtStyleReferenceImage(artStyle), enabled, locale)
 }
 
 export function joinPromptSegments(
@@ -321,10 +329,17 @@ export function appendArtStyleReferenceImage(
   artStyle: string | null | undefined,
   enabled = true,
 ): string[] {
+  return prependStyleReferenceImage(referenceImages, getArtStyleReferenceImage(artStyle), enabled)
+}
+
+export function prependStyleReferenceImage(
+  referenceImages: readonly string[],
+  styleReferenceImage: string | null | undefined,
+  enabled = true,
+): string[] {
   if (!enabled) {
     return Array.from(new Set(referenceImages.filter((item) => typeof item === 'string' && item.trim().length > 0)))
   }
-  const styleReferenceImage = getArtStyleReferenceImage(artStyle)
   const merged = styleReferenceImage ? [styleReferenceImage, ...referenceImages] : [...referenceImages]
   return Array.from(new Set(merged.filter((item) => typeof item === 'string' && item.trim().length > 0)))
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { type ChangeEvent, useEffect, useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import {
     ART_STYLES,
@@ -43,7 +43,11 @@ interface SettingsModalProps {
     availableModels?: Partial<UserModels>
     modelsLoaded?: boolean
     artStyle?: string
+    artStyleMode?: string
+    artStylePrompt?: string | null
     artStyleReferenceEnabled?: boolean
+    customArtStyleReferenceImage?: string | null
+    customArtStyleReferenceImageUrl?: string | null
     analysisModel?: string
     characterModel?: string
     locationModel?: string
@@ -56,7 +60,10 @@ interface SettingsModalProps {
     capabilityOverrides?: CapabilitySelections
     ttsRate?: string
     onArtStyleChange?: (value: string) => void
+    onArtStyleModeChange?: (value: 'preset' | 'custom') => void
+    onArtStylePromptChange?: (value: string | null) => void
     onArtStyleReferenceEnabledChange?: (value: boolean) => void
+    onCustomArtStyleReferenceImageChange?: (value: string | null) => void
     onAnalysisModelChange?: (value: string) => void
     onCharacterModelChange?: (value: string) => void
     onLocationModelChange?: (value: string) => void
@@ -130,7 +137,11 @@ export function SettingsModal({
     availableModels,
     modelsLoaded = false,
     artStyle = 'american-comic',
+    artStyleMode = 'preset',
+    artStylePrompt = '',
     artStyleReferenceEnabled = false,
+    customArtStyleReferenceImage = '',
+    customArtStyleReferenceImageUrl = '',
     analysisModel,
     characterModel,
     locationModel,
@@ -142,7 +153,10 @@ export function SettingsModal({
     capabilityOverrides,
     ttsRate,
     onArtStyleChange,
+    onArtStyleModeChange,
+    onArtStylePromptChange,
     onArtStyleReferenceEnabledChange,
+    onCustomArtStyleReferenceImageChange,
     onAnalysisModelChange,
     onCharacterModelChange,
     onLocationModelChange,
@@ -156,6 +170,9 @@ export function SettingsModal({
 }: SettingsModalProps) {
     const t = useTranslations('configModal')
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saved'>('idle')
+    const [customPromptDraft, setCustomPromptDraft] = useState(artStylePrompt || '')
+    const [customReferencePreviewUrl, setCustomReferencePreviewUrl] = useState<string | null>(customArtStyleReferenceImageUrl || null)
+    const [isUploadingCustomStyleImage, setIsUploadingCustomStyleImage] = useState(false)
     const userModels = useMemo<UserModels>(() => ({
         llm: Array.isArray(availableModels?.llm) ? availableModels.llm : [],
         image: Array.isArray(availableModels?.image) ? availableModels.image : [],
@@ -246,6 +263,7 @@ export function SettingsModal({
     const selectedEditOverrides = useMemo<Record<string, CapabilityValue>>(() => {
         return readCapabilitySelectionForModel(capabilityOverrides, editModel)
     }, [capabilityOverrides, editModel])
+    const resolvedArtStyleMode: 'preset' | 'custom' = artStyleMode === 'custom' ? 'custom' : 'preset'
 
     const applyCapabilityOverride = (modelKey: string | undefined, field: string, value: string, sample: CapabilityValue) => {
         if (!modelKey || !onCapabilityOverridesChange) return
@@ -330,6 +348,93 @@ export function SettingsModal({
         showSaved()
     }
 
+    const handleArtStyleChange = (value: string) => {
+        if (resolvedArtStyleMode !== 'preset') {
+            onArtStyleModeChange?.('preset')
+        }
+        onArtStyleChange?.(value)
+        showSaved()
+    }
+
+    const handleArtStyleModeChange = (value: 'preset' | 'custom') => {
+        onArtStyleModeChange?.(value)
+        showSaved()
+    }
+
+    const commitCustomPrompt = () => {
+        const trimmed = customPromptDraft.trim()
+        const current = (artStylePrompt || '').trim()
+        if (trimmed === current) return
+        onArtStylePromptChange?.(trimmed || null)
+        showSaved()
+    }
+
+    const readFileAsDataUrl = (file: File): Promise<string> => new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => {
+            if (typeof reader.result === 'string') {
+                resolve(reader.result)
+            } else {
+                reject(new Error('Invalid file result'))
+            }
+        }
+        reader.onerror = () => reject(reader.error || new Error('Failed to read file'))
+        reader.readAsDataURL(file)
+    })
+
+    const handleCustomStyleImageUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0]
+        event.target.value = ''
+        if (!file) return
+        if (!file.type.startsWith('image/')) {
+            window.alert(t('customArtStyleUploadInvalidType'))
+            return
+        }
+        if (file.size > 10 * 1024 * 1024) {
+            window.alert(t('customArtStyleUploadTooLarge'))
+            return
+        }
+
+        setIsUploadingCustomStyleImage(true)
+        try {
+            const imageBase64 = await readFileAsDataUrl(file)
+            const response = await fetch('/api/asset-hub/upload-temp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ imageBase64 }),
+            })
+            if (!response.ok) {
+                throw new Error(`Upload failed: ${response.status}`)
+            }
+            const data = await response.json() as { key?: string; url?: string }
+            if (!data.key) {
+                throw new Error('Upload response missing key')
+            }
+            setCustomReferencePreviewUrl(data.url || imageBase64)
+            onCustomArtStyleReferenceImageChange?.(data.key)
+            showSaved()
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Upload failed'
+            window.alert(message)
+        } finally {
+            setIsUploadingCustomStyleImage(false)
+        }
+    }
+
+    const handleClearCustomStyleImage = () => {
+        setCustomReferencePreviewUrl(null)
+        onCustomArtStyleReferenceImageChange?.(null)
+        showSaved()
+    }
+
+    useEffect(() => {
+        setCustomPromptDraft(artStylePrompt || '')
+    }, [artStylePrompt])
+
+    useEffect(() => {
+        setCustomReferencePreviewUrl(customArtStyleReferenceImageUrl || null)
+    }, [customArtStyleReferenceImageUrl, customArtStyleReferenceImage])
+
     if (!isOpen) return null
 
     return (
@@ -376,7 +481,7 @@ export function SettingsModal({
                                 <label className="text-sm font-medium text-[var(--glass-text-secondary)]">{t('visualStyle')}</label>
                                 <StyleSelector
                                     value={artStyle}
-                                    onChange={(value) => handleChange(onArtStyleChange)(value)}
+                                    onChange={handleArtStyleChange}
                                     options={ART_STYLES}
                                 />
                             </div>
@@ -388,6 +493,99 @@ export function SettingsModal({
                                     options={VIDEO_RATIOS}
                                 />
                             </div>
+                        </div>
+                        <div className="rounded-2xl border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)] p-4">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                    <div className="text-sm font-medium text-[var(--glass-text-secondary)]">{t('artStyleMode')}</div>
+                                    <div className="mt-1 text-xs leading-relaxed text-[var(--glass-text-tertiary)]">{t('artStyleModeHint')}</div>
+                                </div>
+                                <div className="inline-flex rounded-xl border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)] p-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleArtStyleModeChange('preset')}
+                                        className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                                            resolvedArtStyleMode === 'preset'
+                                                ? 'bg-[var(--glass-accent-from)] text-white'
+                                                : 'text-[var(--glass-text-secondary)] hover:bg-[var(--glass-bg-surface-strong)]'
+                                        }`}
+                                    >
+                                        {t('artStyleModePreset')}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleArtStyleModeChange('custom')}
+                                        className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                                            resolvedArtStyleMode === 'custom'
+                                                ? 'bg-[var(--glass-accent-from)] text-white'
+                                                : 'text-[var(--glass-text-secondary)] hover:bg-[var(--glass-bg-surface-strong)]'
+                                        }`}
+                                    >
+                                        {t('artStyleModeCustom')}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {resolvedArtStyleMode === 'custom' ? (
+                                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-[var(--glass-text-secondary)]">{t('customArtStylePrompt')}</label>
+                                        <textarea
+                                            value={customPromptDraft}
+                                            onChange={(event) => setCustomPromptDraft(event.target.value)}
+                                            onBlur={commitCustomPrompt}
+                                            rows={5}
+                                            maxLength={4000}
+                                            placeholder={t('customArtStylePromptPlaceholder')}
+                                            className="glass-input-base min-h-[130px] resize-y px-3 py-2 text-sm leading-relaxed"
+                                        />
+                                        <div className="text-[11px] text-[var(--glass-text-tertiary)]">
+                                            {t('customArtStylePromptHint')}
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <div className="text-sm font-medium text-[var(--glass-text-secondary)]">{t('customArtStyleReferenceImage')}</div>
+                                        <div className="overflow-hidden rounded-xl border border-[var(--glass-stroke-soft)] bg-[var(--glass-bg-muted)]">
+                                            {customReferencePreviewUrl ? (
+                                                // eslint-disable-next-line @next/next/no-img-element
+                                                <img
+                                                    src={customReferencePreviewUrl}
+                                                    alt={t('customArtStyleReferenceImage')}
+                                                    className="h-32 w-full object-cover"
+                                                />
+                                            ) : (
+                                                <div className="flex h-32 items-center justify-center px-4 text-center text-xs text-[var(--glass-text-tertiary)]">
+                                                    {t('customArtStyleReferenceImageEmpty')}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            <label className={`glass-btn-base glass-btn-soft cursor-pointer px-3 py-2 text-xs ${isUploadingCustomStyleImage ? 'pointer-events-none opacity-60' : ''}`}>
+                                                <input
+                                                    type="file"
+                                                    accept="image/*"
+                                                    className="hidden"
+                                                    disabled={isUploadingCustomStyleImage}
+                                                    onChange={handleCustomStyleImageUpload}
+                                                />
+                                                {isUploadingCustomStyleImage ? t('customArtStyleUploading') : t('customArtStyleUpload')}
+                                            </label>
+                                            {customReferencePreviewUrl || customArtStyleReferenceImage ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={handleClearCustomStyleImage}
+                                                    className="glass-btn-base glass-btn-soft px-3 py-2 text-xs text-[var(--glass-tone-danger-fg)]"
+                                                >
+                                                    {t('customArtStyleClear')}
+                                                </button>
+                                            ) : null}
+                                        </div>
+                                        <div className="text-[11px] leading-relaxed text-[var(--glass-text-tertiary)]">
+                                            {t('customArtStyleReferenceImageHint')}
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : null}
                         </div>
                         <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)] p-4 transition-colors hover:border-[var(--glass-stroke-focus)]">
                             <input

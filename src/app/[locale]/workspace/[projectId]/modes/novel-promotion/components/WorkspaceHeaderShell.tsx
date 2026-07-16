@@ -41,7 +41,11 @@ interface WorkspaceHeaderShellProps {
   availableModels?: UserModelsPayload
   modelsLoaded: boolean
   artStyle: string | null | undefined
+  artStyleMode: string | null | undefined
+  artStylePrompt: string | null | undefined
   artStyleReferenceEnabled: boolean
+  customArtStyleReferenceImage: string | null | undefined
+  customArtStyleReferenceImageUrl: string | null | undefined
   analysisModel: string | null | undefined
   characterModel: string | null | undefined
   locationModel: string | null | undefined
@@ -89,7 +93,11 @@ export default function WorkspaceHeaderShell({
   availableModels,
   modelsLoaded,
   artStyle,
+  artStyleMode,
+  artStylePrompt,
   artStyleReferenceEnabled,
+  customArtStyleReferenceImage,
+  customArtStyleReferenceImageUrl,
   analysisModel,
   characterModel,
   locationModel,
@@ -129,7 +137,11 @@ export default function WorkspaceHeaderShell({
         availableModels={availableModels}
         modelsLoaded={modelsLoaded}
         artStyle={artStyle ?? undefined}
+        artStyleMode={artStyleMode ?? undefined}
+        artStylePrompt={artStylePrompt ?? undefined}
         artStyleReferenceEnabled={artStyleReferenceEnabled}
+        customArtStyleReferenceImage={customArtStyleReferenceImage ?? undefined}
+        customArtStyleReferenceImageUrl={customArtStyleReferenceImageUrl ?? undefined}
         analysisModel={analysisModel ?? undefined}
         characterModel={characterModel ?? undefined}
         locationModel={locationModel ?? undefined}
@@ -141,7 +153,10 @@ export default function WorkspaceHeaderShell({
         capabilityOverrides={capabilityOverrides}
         ttsRate={ttsRate ?? undefined}
         onArtStyleChange={(value) => { onUpdateConfig('artStyle', value) }}
+        onArtStyleModeChange={(value) => { onUpdateConfig('artStyleMode', value) }}
+        onArtStylePromptChange={(value) => { onUpdateConfig('artStylePrompt', value) }}
         onArtStyleReferenceEnabledChange={(value) => { onUpdateConfig('artStyleReferenceEnabled', value) }}
+        onCustomArtStyleReferenceImageChange={(value) => { onUpdateConfig('customArtStyleReferenceImage', value) }}
         onAnalysisModelChange={(value) => { onUpdateConfig('analysisModel', value) }}
         onCharacterModelChange={(value) => { onUpdateConfig('characterModel', value) }}
         onLocationModelChange={(value) => { onUpdateConfig('locationModel', value) }}

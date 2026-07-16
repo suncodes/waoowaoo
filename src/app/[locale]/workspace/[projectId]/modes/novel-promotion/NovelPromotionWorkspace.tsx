@@ -84,7 +84,11 @@ function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
         availableModels={vm.ui.userModelsForSettings || undefined}
         modelsLoaded={vm.ui.userModelsLoaded}
         artStyle={vm.project.artStyle}
+        artStyleMode={vm.project.artStyleMode}
+        artStylePrompt={vm.project.artStylePrompt}
         artStyleReferenceEnabled={vm.project.artStyleReferenceEnabled}
+        customArtStyleReferenceImage={vm.project.customArtStyleReferenceImage}
+        customArtStyleReferenceImageUrl={vm.project.customArtStyleReferenceImageUrl}
         analysisModel={vm.project.analysisModel}
         characterModel={vm.project.characterModel}
         locationModel={vm.project.locationModel}

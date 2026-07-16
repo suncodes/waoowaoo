@@ -257,7 +257,10 @@ export interface NovelPromotionProject {
   workflowMode: WorkflowMode  // 新增：工作流模式
   artStyle: string
   artStylePrompt: string | null
+  artStyleMode?: string | null
   artStyleReferenceEnabled?: boolean
+  customArtStyleReferenceImage?: string | null
+  customArtStyleReferenceImageUrl?: string | null
   audioUrl: string | null
   media?: MediaRef | null
   srtContent: string | null

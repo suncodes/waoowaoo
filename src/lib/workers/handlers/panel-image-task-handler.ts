@@ -1,6 +1,7 @@
 import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
-import { appendArtStyleReferenceImage, getArtStylePrompt, getArtStyleReferenceInstruction, joinPromptSegments } from '@/lib/constants'
+import { joinPromptSegments, prependStyleReferenceImage } from '@/lib/constants'
+import { resolveArtStyleForGeneration } from '@/lib/art-style-generation'
 import { createScopedLogger } from '@/lib/logging/core'
 import { type TaskJobData } from '@/lib/task/types'
 import { reportTaskProgress } from '../shared'
@@ -173,11 +174,19 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
   if (!modelKey) throw new Error('Storyboard model not configured')
 
   const candidateCount = clampCount(payload.candidateCount ?? payload.count, 1, 4, 1)
+  const resolvedArtStyle = resolveArtStyleForGeneration({
+    artStyleMode: modelConfig.artStyleMode,
+    artStyle: modelConfig.artStyle,
+    artStylePrompt: modelConfig.artStylePrompt,
+    customArtStyleReferenceImage: modelConfig.customArtStyleReferenceImage,
+    artStyleReferenceEnabled: modelConfig.artStyleReferenceEnabled,
+    locale: job.data.locale,
+  })
   const refs = await collectPanelReferenceImages(projectData, panel)
-  const referenceImages = appendArtStyleReferenceImage(
+  const referenceImages = prependStyleReferenceImage(
     refs,
-    modelConfig.artStyle,
-    modelConfig.artStyleReferenceEnabled,
+    resolvedArtStyle.referenceImage,
+    resolvedArtStyle.referenceEnabled,
   )
 
   const logger = createScopedLogger({
@@ -202,17 +211,13 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
       panelCharacters: panel.characters,
       panelLocation: panel.location,
       artStyle: modelConfig.artStyle,
+      artStyleMode: modelConfig.artStyleMode,
     },
   })
 
-  const artStyle = getArtStylePrompt(modelConfig.artStyle, job.data.locale)
   const styleText = joinPromptSegments([
-    artStyle,
-    getArtStyleReferenceInstruction(
-      modelConfig.artStyle,
-      modelConfig.artStyleReferenceEnabled,
-      job.data.locale,
-    ),
+    resolvedArtStyle.prompt,
+    resolvedArtStyle.referenceInstruction,
   ], job.data.locale)
   const fallbackStyleText = job.data.locale === 'en'
     ? 'consistent with the provided reference images'

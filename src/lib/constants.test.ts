@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { ART_STYLES, appendArtStyleReferenceImage, getArtStylePrompt, getArtStyleReferenceInstruction, isArtStyleValue } from './constants'
+import { ART_STYLES, appendArtStyleReferenceImage, getArtStylePrompt, getArtStyleReferenceInstruction, isArtStyleValue, prependStyleReferenceImage } from './constants'
 
 describe('ART_STYLES registry', () => {
   it('has unique values and non-empty prompts', () => {
@@ -43,6 +43,11 @@ describe('ART_STYLES registry', () => {
       '/art-styles/paper-cut-3d.jpg',
     ], 'paper-cut-3d')
     expect(references).toEqual(['/art-styles/paper-cut-3d.jpg', 'images/character.png'])
+  })
+
+  it('places custom style reference image before semantic references', () => {
+    const references = prependStyleReferenceImage(['images/character.png'], 'images/custom-style.png')
+    expect(references).toEqual(['images/custom-style.png', 'images/character.png'])
   })
 
   it('returns style reference instruction only when a valid style image is enabled', () => {
