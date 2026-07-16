@@ -15,6 +15,8 @@ export const GET = apiHandler(async (
     const { projectId } = await context.params
     const { searchParams } = new URL(request.url)
     const videoKey = searchParams.get('key')
+    const download = searchParams.get('download') === '1'
+    const filename = searchParams.get('filename')
 
     if (!videoKey) {
         throw new ApiError('INVALID_PARAMS')
@@ -50,6 +52,12 @@ export const GET = apiHandler(async (
     }
     if (contentLength) {
         headers['Content-Length'] = contentLength
+    }
+    if (download) {
+        const safeFilename = filename?.trim().replace(/[\\/:*?"<>|]/g, '_')
+        headers['Content-Disposition'] = safeFilename
+          ? `attachment; filename*=UTF-8''${encodeURIComponent(safeFilename)}`
+          : 'attachment'
     }
 
     return new Response(response.body, { headers })

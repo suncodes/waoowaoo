@@ -17,6 +17,7 @@ import {
 import { resolveBuiltinCapabilitiesByModelKey } from '@/lib/model-capabilities/lookup'
 import { parseModelKeyStrict } from '@/lib/model-config-contract'
 import { getProviderConfig } from '@/lib/api-config'
+import { mergeProjectVideosToStorage } from '@/lib/novel-promotion/video-merge-export'
 
 type AnyObj = Record<string, unknown>
 type VideoOptionValue = string | number | boolean
@@ -287,12 +288,50 @@ async function handleLipSyncTask(job: Job<TaskJobData>) {
   }
 }
 
+function readPanelPreferences(value: unknown): Record<string, boolean> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  const result: Record<string, boolean> = {}
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof raw === 'boolean') {
+      result[key] = raw
+    }
+  }
+  return result
+}
+
+async function handleVideoMergeExportTask(job: Job<TaskJobData>) {
+  const payload = (job.data.payload || {}) as AnyObj
+  const episodeId = typeof payload.episodeId === 'string' && payload.episodeId.trim()
+    ? payload.episodeId.trim()
+    : job.data.episodeId || null
+
+  const result = await mergeProjectVideosToStorage({
+    projectId: job.data.projectId,
+    episodeId,
+    panelPreferences: readPanelPreferences(payload.panelPreferences),
+  }, async (progress, progressPayload) => {
+    await reportTaskProgress(job, progress, progressPayload)
+  })
+
+  await reportTaskProgress(job, 95, {
+    stage: 'merge_upload',
+    outputUrl: result.outputUrl,
+  })
+
+  return {
+    success: true,
+    ...result,
+  }
+}
+
 async function processVideoTask(job: Job<TaskJobData>) {
   await reportTaskProgress(job, 5, { stage: 'received' })
 
   switch (job.data.type) {
     case TASK_TYPE.VIDEO_PANEL:
       return await handleVideoPanelTask(job)
+    case TASK_TYPE.VIDEO_MERGE_EXPORT:
+      return await handleVideoMergeExportTask(job)
     case TASK_TYPE.LIP_SYNC:
       return await handleLipSyncTask(job)
     default:

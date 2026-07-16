@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '../keys'
-import { invalidateQueryTemplates, requestJsonWithError } from './mutation-shared'
+import { resolveTaskResponse } from '@/lib/task/client'
+import { invalidateQueryTemplates, requestJsonWithError, requestTaskResponseWithError } from './mutation-shared'
 
 /**
  * 获取剧集可下载视频列表（项目）
@@ -20,6 +21,35 @@ export function useListProjectEpisodeVideoUrls(projectId: string) {
         },
         '获取视频列表失败',
       ),
+  })
+}
+
+/**
+ * 合并导出剧集视频（项目）
+ */
+export function useMergeProjectEpisodeVideo(projectId: string) {
+  return useMutation({
+    mutationFn: async (payload: {
+      episodeId: string
+      panelPreferences: Record<string, boolean>
+    }) => {
+      const response = await requestTaskResponseWithError(
+        `/api/novel-promotion/${projectId}/merge-videos`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        },
+        '合并视频失败',
+      )
+      return await resolveTaskResponse<{
+        outputUrl: string
+        downloadUrl: string
+        fileName: string
+        videoCount: number
+        sizeBytes?: number
+      }>(response)
+    },
   })
 }
 

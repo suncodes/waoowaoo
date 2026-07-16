@@ -20,6 +20,7 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
     actions,
     taskStatus,
     videoModel,
+    player,
     promptEditor,
     voiceManager,
     lipSync,
@@ -46,6 +47,12 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
   }
 
   const isFirstLastFrameGenerated = panel.videoGenerationMode === 'firstlastframe' && !!panel.videoUrl
+  const canGenerateFirstLastFrame =
+    !!panel.imageUrl
+    && !!layout.nextPanel?.imageUrl
+    && !!layout.flModel
+    && layout.flMissingCapabilityFields.length === 0
+  const canPlayFirstLastFrame = isFirstLastFrameGenerated && !!panel.videoUrl
   const showsIncomingLinkBadge = layout.isLastFrame && !!layout.prevPanel
   const showsOutgoingLinkBadge = layout.isLinked && !!layout.nextPanel
   const showsPromptEditor = !layout.isLastFrame || layout.isLinked
@@ -80,6 +87,12 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
                 {t('firstLastFrame.asFirstFrameFor', { number: panelIndex + 2 })}
               </span>
             )}
+          </div>
+        )}
+
+        {layout.isLastFrame && (
+          <div className="mb-2 text-xs text-[var(--glass-text-tertiary)]">
+            {t('firstLastFrame.resultInPreviousPanel')}
           </div>
         )}
 
@@ -120,25 +133,36 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
               return (
                 <div className="mt-2 flex items-center gap-2">
                   <button
-                    onClick={() => actions.onGenerateFirstLastFrame(
-                      panel.storyboardId,
-                      panel.panelIndex,
-                      linkedNextPanel.storyboardId,
-                      linkedNextPanel.panelIndex,
-                      panelKey,
-                      layout.flGenerationOptions,
-                      panel.panelId,
-                    )}
+                    onClick={() => {
+                      if (isFirstLastFrameGenerated) {
+                        void player.handlePlayClick()
+                        return
+                      }
+                      actions.onGenerateFirstLastFrame(
+                        panel.storyboardId,
+                        panel.panelIndex,
+                        linkedNextPanel.storyboardId,
+                        linkedNextPanel.panelIndex,
+                        panelKey,
+                        layout.flGenerationOptions,
+                        panel.panelId,
+                      )
+                    }}
                     disabled={
                       taskStatus.isVideoTaskRunning
-                      || !panel.imageUrl
-                      || !linkedNextPanel.imageUrl
-                      || !layout.flModel
-                      || layout.flMissingCapabilityFields.length > 0
+                      || (isFirstLastFrameGenerated ? !canPlayFirstLastFrame : !canGenerateFirstLastFrame)
                     }
-                    className="flex-shrink-0 min-w-[120px] py-2 px-3 text-sm font-medium rounded-lg shadow-sm transition-all disabled:opacity-50 bg-[var(--glass-accent-from)] text-white"
+                    className={`flex-shrink-0 min-w-[120px] py-2 px-3 text-sm font-medium rounded-lg shadow-sm transition-all disabled:opacity-50 text-white ${isFirstLastFrameGenerated
+                      ? 'bg-[var(--glass-tone-success-fg)]'
+                      : 'bg-[var(--glass-accent-from)]'
+                      }`}
                   >
-                    {isFirstLastFrameGenerated ? t('firstLastFrame.generated') : taskStatus.isVideoTaskRunning ? taskStatus.taskRunningVideoLabel : t('firstLastFrame.generate')}
+                    {isFirstLastFrameGenerated ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <AppIcon name="play" className="w-4 h-4" />
+                        <span>{t('panelCard.play')}</span>
+                      </span>
+                    ) : taskStatus.isVideoTaskRunning ? taskStatus.taskRunningVideoLabel : t('firstLastFrame.generate')}
                   </button>
                   <div className="flex-1 min-w-0">
                     <ModelCapabilityDropdown

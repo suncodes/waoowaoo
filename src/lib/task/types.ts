@@ -42,6 +42,7 @@ export const TASK_TYPE = {
   IMAGE_CHARACTER: 'image_character',
   IMAGE_LOCATION: 'image_location',
   VIDEO_PANEL: 'video_panel',
+  VIDEO_MERGE_EXPORT: 'video_merge_export',
   LIP_SYNC: 'lip_sync',
   VOICE_LINE: 'voice_line',
   VOICE_DESIGN: 'voice_design',

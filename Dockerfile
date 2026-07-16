@@ -22,8 +22,8 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Install tini for proper signal handling
-RUN apk add --no-cache tini
+# Install tini for signal handling and ffmpeg/ffprobe for merged video export
+RUN apk add --no-cache tini ffmpeg
 
 # node_modules（含 devDeps，因为 npm run start 需要 concurrently + tsx）
 COPY --from=builder /app/node_modules ./node_modules

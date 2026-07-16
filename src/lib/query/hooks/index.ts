@@ -147,6 +147,7 @@ export {
     useUpdateProjectPhotographyPlan,
     useUpdateProjectPanelActingNotes,
     useListProjectEpisodeVideoUrls,
+    useMergeProjectEpisodeVideo,
     useUpdateProjectPanelLink,
     useListProjectEpisodes,
     useSplitProjectEpisodes,

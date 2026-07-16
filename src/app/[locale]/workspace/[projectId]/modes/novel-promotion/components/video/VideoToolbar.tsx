@@ -8,28 +8,40 @@ interface VideoToolbarProps {
   totalPanels: number
   runningCount: number
   videosWithUrl: number
+  mergedVideosCount: number
   failedCount: number
   isAnyTaskRunning: boolean
   isDownloading: boolean
+  isPreparingMergedPlayback: boolean
+  isDownloadingMergedVideo: boolean
   onGenerateAll: () => void
   onDownloadAll: () => void
+  onPlayMerged: () => void
+  onDownloadMerged: () => void
   onBack: () => void
   onEnterEditor?: () => void  // 进入剪辑器
   videosReady?: boolean  // 是否有视频可以剪辑
+  mergedVideosReady?: boolean
 }
 
 export default function VideoToolbar({
   totalPanels,
   runningCount,
   videosWithUrl,
+  mergedVideosCount,
   failedCount,
   isAnyTaskRunning,
   isDownloading,
+  isPreparingMergedPlayback,
+  isDownloadingMergedVideo,
   onGenerateAll,
   onDownloadAll,
+  onPlayMerged,
+  onDownloadMerged,
   onBack,
   onEnterEditor,
-  videosReady = false
+  videosReady = false,
+  mergedVideosReady = false,
 }: VideoToolbarProps) {
   const t = useTranslations('video')
   const videoTaskRunningState = isAnyTaskRunning
@@ -63,6 +75,9 @@ export default function VideoToolbar({
             {videosWithUrl > 0 && (
               <span className="text-[var(--glass-tone-success-fg)] ml-2">({t('toolbar.completedShots', { count: videosWithUrl })})</span>
             )}
+            {mergedVideosCount > 0 && (
+              <span className="text-[var(--glass-tone-info-fg)] ml-2">({t('toolbar.mergeCount', { count: mergedVideosCount })})</span>
+            )}
             {failedCount > 0 && (
               <span className="text-[var(--glass-tone-danger-fg)] ml-2">({t('toolbar.failedShots', { count: failedCount })})</span>
             )}
@@ -94,7 +109,43 @@ export default function VideoToolbar({
             ) : (
               <>
                 <AppIcon name="image" className="w-4 h-4" />
-                <span>{t('toolbar.downloadAll')}</span>
+              <span>{t('toolbar.downloadAll')}</span>
+              </>
+            )}
+          </button>
+          <button
+            onClick={onPlayMerged}
+            disabled={!mergedVideosReady || isPreparingMergedPlayback || isDownloadingMergedVideo}
+            className="glass-btn-base glass-btn-secondary flex items-center gap-2 px-4 py-2 text-sm font-medium border border-[var(--glass-stroke-base)] disabled:opacity-50 disabled:cursor-not-allowed"
+            title={mergedVideosReady ? t('toolbar.mergeCount', { count: mergedVideosCount }) : t('stage.noVideos')}
+          >
+            {isPreparingMergedPlayback ? (
+              <>
+                <AppIcon name="loader" className="w-4 h-4 animate-spin" />
+                <span>{t('toolbar.merging')}</span>
+              </>
+            ) : (
+              <>
+                <AppIcon name="film" className="w-4 h-4" />
+                <span>{t('toolbar.mergePlay')}</span>
+              </>
+            )}
+          </button>
+          <button
+            onClick={onDownloadMerged}
+            disabled={!mergedVideosReady || isDownloadingMergedVideo || isPreparingMergedPlayback}
+            className="glass-btn-base glass-btn-tone-success flex items-center gap-2 px-4 py-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            title={mergedVideosReady ? t('toolbar.mergeCount', { count: mergedVideosCount }) : t('stage.noVideos')}
+          >
+            {isDownloadingMergedVideo ? (
+              <>
+                <AppIcon name="loader" className="w-4 h-4 animate-spin" />
+                <span>{t('toolbar.merging')}</span>
+              </>
+            ) : (
+              <>
+                <AppIcon name="download" className="w-4 h-4" />
+                <span>{t('toolbar.mergeDownload')}</span>
               </>
             )}
           </button>

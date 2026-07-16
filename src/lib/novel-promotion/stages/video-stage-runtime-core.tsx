@@ -35,6 +35,7 @@ import { useVideoPromptState } from './video-stage-runtime/useVideoPromptState'
 import { useVideoPanelLinking } from './video-stage-runtime/useVideoPanelLinking'
 import { useVideoVoiceLines } from './video-stage-runtime/useVideoVoiceLines'
 import { useVideoDownloadAll } from './video-stage-runtime/useVideoDownloadAll'
+import { useVideoMergeActions } from './video-stage-runtime/useVideoMergeActions'
 import { useVideoStageUiState } from './video-stage-runtime/useVideoStageUiState'
 import { useVideoPanelViewport } from './video-stage-runtime/useVideoPanelViewport'
 import { useVideoFirstLastFrameFlow } from './video-stage-runtime/useVideoFirstLastFrameFlow'
@@ -45,6 +46,8 @@ import {
   shouldResolveVideoSubmissionLock,
   type VideoSubmissionBaseline,
 } from './video-stage-runtime/immediate-video-submission'
+import { useMergeProjectEpisodeVideo } from '@/lib/query/hooks'
+import MergedVideoPlaylistModal from './video-stage-runtime/MergedVideoPlaylistModal'
 
 export type { VideoStageShellProps } from './video-stage-runtime/types'
 
@@ -100,6 +103,7 @@ export function useVideoStageRuntime({
 
   const lipSyncMutation = useLipSync(projectId, episodeId)
   const listEpisodeVideoUrlsMutation = useListProjectEpisodeVideoUrls(projectId)
+  const mergeEpisodeVideoMutation = useMergeProjectEpisodeVideo(projectId)
   const updatePanelLinkMutation = useUpdateProjectPanelLink(projectId)
   const downloadRemoteBlobMutation = useDownloadRemoteBlob()
   const matchedVoiceLinesQuery = useMatchedVoiceLines(projectId, episodeId)
@@ -151,6 +155,26 @@ export function useVideoStageRuntime({
     panelVideoPreference,
     listEpisodeVideoUrlsMutation,
     downloadRemoteBlobMutation,
+  })
+
+  const {
+    mergedVideosCount,
+    mergedProjectName,
+    mergedVideos,
+    mergedPlaybackError,
+    isMergedPlayerOpen,
+    isPreparingMergedPlayback,
+    isDownloadingMergedVideo,
+    handleOpenMergedPlayback,
+    handleCloseMergedPlayback,
+    handleDownloadMergedVideo,
+  } = useVideoMergeActions({
+    episodeId,
+    allPanels,
+    panelVideoPreference,
+    t: (key) => t(key as never),
+    listEpisodeVideoUrlsMutation,
+    mergeEpisodeVideoMutation,
   })
 
   const allVideoModelOptions = useMemo(
@@ -513,14 +537,20 @@ export function useVideoStageRuntime({
         totalPanels={projectedPanels.length}
         runningCount={runningCount}
         videosWithUrl={videosWithUrl}
+        mergedVideosCount={mergedVideosCount}
         failedCount={failedCount}
         isAnyTaskRunning={isAnyTaskRunning}
         isDownloading={isDownloading}
+        isPreparingMergedPlayback={isPreparingMergedPlayback}
+        isDownloadingMergedVideo={isDownloadingMergedVideo}
         onGenerateAll={handleOpenBatchGenerateModal}
         onDownloadAll={handleDownloadAllVideos}
+        onPlayMerged={handleOpenMergedPlayback}
+        onDownloadMerged={() => { void handleDownloadMergedVideo() }}
         onBack={onBack}
         onEnterEditor={onEnterEditor}
         videosReady={videosWithUrl > 0}
+        mergedVideosReady={mergedVideosCount > 0}
       />
 
       <VideoTimelinePanel
@@ -636,6 +666,15 @@ export function useVideoStageRuntime({
       )}
 
       {previewImage && <ImagePreviewModal imageUrl={previewImage} onClose={closePreviewImage} />}
+
+      <MergedVideoPlaylistModal
+        open={isMergedPlayerOpen}
+        loading={isPreparingMergedPlayback}
+        error={mergedPlaybackError}
+        projectName={mergedProjectName}
+        videos={mergedVideos}
+        onClose={handleCloseMergedPlayback}
+      />
     </div>
   )
 }
