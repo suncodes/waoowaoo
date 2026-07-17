@@ -30,7 +30,7 @@ import {
 /** 触发智能分集建议的字数阈值 */
 const LONG_TEXT_THRESHOLD = 1000
 
-
+type MaybePromise = void | Promise<void>
 
 interface NovelInputStageProps {
   // 核心数据
@@ -38,7 +38,7 @@ interface NovelInputStageProps {
   // 当前剧集名称
   episodeName?: string
   // 回调函数
-  onNovelTextChange: (value: string) => void
+  onNovelTextChange: (value: string) => MaybePromise
   onNext: () => void
   /** 触发智能分集流程（携带当前文本） */
   onSmartSplit?: (text: string) => void
@@ -53,11 +53,11 @@ interface NovelInputStageProps {
   videoProfile?: VideoProfile
   artStyle?: string
   artStyleReferenceEnabled?: boolean
-  onVideoRatioChange?: (value: string) => void
-  onVideoProfileChange?: (value: VideoProfilePreset) => void
-  onVisualQualityModeChange?: (value: VisualQualityMode) => void
-  onArtStyleChange?: (value: string) => void
-  onArtStyleReferenceEnabledChange?: (value: boolean) => void
+  onVideoRatioChange?: (value: string) => MaybePromise
+  onVideoProfileChange?: (value: VideoProfilePreset) => MaybePromise
+  onVisualQualityModeChange?: (value: VisualQualityMode) => MaybePromise
+  onArtStyleChange?: (value: string) => MaybePromise
+  onArtStyleReferenceEnabledChange?: (value: boolean) => MaybePromise
 }
 
 export default function NovelInputStage({
@@ -173,6 +173,45 @@ export default function NovelInputStage({
       hasOutput: false,
     })
     : null
+  const configDisabled = isSubmittingTask || isSwitchingStage
+  const videoProfileOptions: Array<{
+    value: VideoProfilePreset
+    label: string
+    description: string
+    icon: 'film' | 'bookOpen'
+  }> = [
+    {
+      value: VIDEO_PROFILE_PRESET.AI_COMIC,
+      label: t('storyInput.videoProfile.aiComic'),
+      description: t('storyInput.videoProfile.aiComicDescription'),
+      icon: 'film',
+    },
+    {
+      value: VIDEO_PROFILE_PRESET.BOOK_GUIDE,
+      label: t('storyInput.videoProfile.bookGuide'),
+      description: t('storyInput.videoProfile.bookGuideDescription'),
+      icon: 'bookOpen',
+    },
+  ]
+  const qualityModeOptions: Array<{
+    value: VisualQualityMode
+    label: string
+    description: string
+    icon: 'eye' | 'sparklesAlt'
+  }> = [
+    {
+      value: 'shadow',
+      label: t('storyInput.videoProfile.qualityCheckOnly'),
+      description: t('storyInput.videoProfile.qualityCheckOnlyDescription'),
+      icon: 'eye',
+    },
+    {
+      value: 'auto',
+      label: t('storyInput.videoProfile.qualityAutoOptimize'),
+      description: t('storyInput.videoProfile.qualityAutoOptimizeDescription'),
+      icon: 'sparklesAlt',
+    },
+  ]
 
   return (
     <div className="max-w-5xl mx-auto space-y-5">
@@ -187,49 +226,95 @@ export default function NovelInputStage({
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-4 border-b border-[var(--glass-stroke-soft)] pb-4">
-        <span className="text-sm font-medium text-[var(--glass-text-secondary)]">
-          {t('storyInput.videoProfile.label')}
-        </span>
-        <div
-          className="inline-flex h-9 rounded-md border border-[var(--glass-stroke-strong)] p-0.5"
-          role="group"
-          aria-label={t('storyInput.videoProfile.label')}
-        >
-          {[
-            { value: VIDEO_PROFILE_PRESET.AI_COMIC, label: t('storyInput.videoProfile.aiComic') },
-            { value: VIDEO_PROFILE_PRESET.BOOK_GUIDE, label: t('storyInput.videoProfile.bookGuide') },
-          ].map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              aria-pressed={videoProfile.preset === option.value}
-              disabled={isSubmittingTask || isSwitchingStage}
-              onClick={() => onVideoProfileChange?.(option.value)}
-              className={`h-8 px-3 text-sm rounded-[5px] transition-colors disabled:opacity-50 ${
-                videoProfile.preset === option.value
-                  ? 'bg-[var(--glass-bg-active)] text-[var(--glass-text-primary)]'
-                  : 'text-[var(--glass-text-tertiary)] hover:text-[var(--glass-text-secondary)]'
-              }`}
-            >
-              {option.label}
-            </button>
-          ))}
+      <div className="glass-surface p-4 space-y-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-[var(--glass-text-primary)]">
+              {t('storyInput.videoProfile.label')}
+            </div>
+            <p className="mt-1 text-xs leading-relaxed text-[var(--glass-text-tertiary)]">
+              {t('storyInput.videoProfile.description')}
+            </p>
+          </div>
+          <div
+            className="grid w-full grid-cols-2 gap-1 rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)] p-1 md:w-[360px]"
+            role="group"
+            aria-label={t('storyInput.videoProfile.label')}
+          >
+            {videoProfileOptions.map((option) => {
+              const selected = videoProfile.preset === option.value
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  aria-pressed={selected}
+                  title={option.description}
+                  disabled={configDisabled}
+                  onClick={() => onVideoProfileChange?.(option.value)}
+                  className={`flex min-h-12 items-center justify-center gap-2 rounded-md px-3 text-sm font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+                    selected
+                      ? 'border border-[var(--glass-stroke-focus)] bg-[var(--glass-bg-surface)] text-[var(--glass-text-primary)] shadow-[var(--glass-shadow-sm)]'
+                      : 'border border-transparent text-[var(--glass-text-secondary)] hover:bg-[var(--glass-bg-surface-strong)] hover:text-[var(--glass-text-primary)]'
+                  }`}
+                >
+                  <AppIcon name={option.icon} className="h-4 w-4 shrink-0" />
+                  <span>{option.label}</span>
+                </button>
+              )
+            })}
+          </div>
         </div>
-        <label className="ml-auto flex min-h-9 items-center gap-2 text-sm text-[var(--glass-text-secondary)]">
-          <input
-            type="checkbox"
-            checked={videoProfile.qualityPolicy.mode === 'auto'}
-            disabled={isSubmittingTask || isSwitchingStage}
-            onChange={(event) => onVisualQualityModeChange?.(event.target.checked ? 'auto' : 'shadow')}
-            className="h-4 w-4 accent-[var(--glass-tone-info-fg)]"
-          />
-          <span>
-            {videoProfile.qualityPolicy.mode === 'auto'
-              ? t('storyInput.videoProfile.autoRepair')
-              : t('storyInput.videoProfile.shadowReview')}
-          </span>
-        </label>
+
+        <div className="grid gap-3 border-t border-[var(--glass-stroke-soft)] pt-4 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.6fr)] md:items-start">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-[var(--glass-text-primary)]">
+              {t('storyInput.videoProfile.qualityAssistLabel')}
+            </div>
+            <p className="mt-1 text-xs leading-relaxed text-[var(--glass-text-tertiary)]">
+              {t('storyInput.videoProfile.qualityAssistDescription')}
+            </p>
+          </div>
+          <div
+            className="grid gap-3 sm:grid-cols-2"
+            role="radiogroup"
+            aria-label={t('storyInput.videoProfile.qualityAssistLabel')}
+          >
+            {qualityModeOptions.map((option) => {
+              const selected = videoProfile.qualityPolicy.mode === option.value
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  disabled={configDisabled}
+                  onClick={() => onVisualQualityModeChange?.(option.value)}
+                  className={`min-h-24 rounded-lg border p-3 text-left transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+                    selected
+                      ? 'border-[var(--glass-stroke-focus)] bg-[var(--glass-tone-info-bg)] shadow-[var(--glass-shadow-sm)]'
+                      : 'border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)] hover:border-[var(--glass-stroke-focus)] hover:bg-[var(--glass-bg-surface-strong)]'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span className={`inline-flex h-7 w-7 items-center justify-center rounded-full ${
+                      selected
+                        ? 'bg-[var(--glass-tone-info-fg)] text-white'
+                        : 'bg-[var(--glass-bg-muted)] text-[var(--glass-text-secondary)]'
+                    }`}>
+                      <AppIcon name={selected ? 'check' : option.icon} className="h-4 w-4" />
+                    </span>
+                    <span className="font-semibold text-[var(--glass-text-primary)]">
+                      {option.label}
+                    </span>
+                  </span>
+                  <span className="mt-2 block text-xs leading-relaxed text-[var(--glass-text-tertiary)]">
+                    {option.description}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
       </div>
 
       {/* 主输入区域（含底部工具栏） */}

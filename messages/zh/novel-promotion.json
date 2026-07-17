@@ -131,8 +131,17 @@
     "moreConfig": "更多配置请点击右上角「 配置」按钮",
     "videoProfile": {
       "label": "视频类型",
+      "description": "会影响后续剧本结构、分镜规划和旁白方式",
       "aiComic": "AI 漫剧",
+      "aiComicDescription": "按剧情冲突、角色表演和连续镜头组织内容",
       "bookGuide": "书籍导读",
+      "bookGuideDescription": "按观点提炼、章节脉络和解说节奏组织内容",
+      "qualityAssistLabel": "图片质量辅助",
+      "qualityAssistDescription": "生成图片后自动检查画面问题，减少逐张排查和重复改提示词",
+      "qualityCheckOnly": "仅检查并提示",
+      "qualityCheckOnlyDescription": "系统会记录图片问题，但不阻止继续生成视频，适合先观察效果。",
+      "qualityAutoOptimize": "自动优化不合格图片",
+      "qualityAutoOptimizeDescription": "发现明显问题后自动调整提示词并重试，仍不合格时再提示人工处理。",
       "shadowReview": "影子评审",
       "autoRepair": "自动修复"
     },

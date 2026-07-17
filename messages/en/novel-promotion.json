@@ -131,8 +131,17 @@
     "moreConfig": "For more configuration options, click the 「 Settings」 button in the top right",
     "videoProfile": {
       "label": "Video type",
+      "description": "Affects script structure, storyboard planning, and narration style",
       "aiComic": "AI comic",
+      "aiComicDescription": "Structures the project around plot conflict, character performance, and continuous shots",
       "bookGuide": "Book guide",
+      "bookGuideDescription": "Structures the project around key ideas, chapter flow, and explanatory pacing",
+      "qualityAssistLabel": "Image quality assist",
+      "qualityAssistDescription": "Checks generated images automatically to reduce manual review and repeated prompt edits",
+      "qualityCheckOnly": "Check and notify only",
+      "qualityCheckOnlyDescription": "The system records image issues without blocking video generation. Useful when you want to observe results first.",
+      "qualityAutoOptimize": "Auto-optimize failed images",
+      "qualityAutoOptimizeDescription": "When obvious issues are found, the system adjusts prompts and retries. Persistent issues are sent to manual handling.",
       "shadowReview": "Shadow review",
       "autoRepair": "Auto repair"
     },

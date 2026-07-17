@@ -5,7 +5,7 @@ import type { WorkspaceStageRuntimeValue } from '../WorkspaceStageRuntimeContext
 import type { CapabilitySelections, ModelCapabilities } from '@/lib/model-config-contract'
 import type { VideoPricingTier } from '@/lib/model-pricing/video-tier'
 import type { BatchVideoGenerationParams, VideoGenerationOptions } from '../components/video'
-import type { VideoProfile } from '@/lib/video-profile'
+import { resolveVideoProfile, type VideoProfile } from '@/lib/video-profile'
 
 interface UseWorkspaceStageRuntimeParams {
   assetsLoading: boolean
@@ -107,7 +107,12 @@ export function useWorkspaceStageRuntime({
     userVideoModels: resolvedUserVideoModels,
     onNovelTextChange: (value) => handleUpdateEpisode('novelText', value),
     onVideoRatioChange: (value) => handleUpdateConfig('videoRatio', value),
-    onVideoProfileChange: (preset) => handleUpdateConfig('videoProfile', { preset }),
+    onVideoProfileChange: (preset) => handleUpdateConfig('videoProfile', resolveVideoProfile({
+      preset,
+      qualityPolicy: {
+        mode: videoProfile.qualityPolicy.mode,
+      },
+    })),
     onVisualQualityModeChange: (mode) => handleUpdateConfig('videoProfile', {
       ...videoProfile,
       qualityPolicy: {
