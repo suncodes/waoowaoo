@@ -7,6 +7,7 @@ import PanelActionButtons from './PanelActionButtons'
 import { StoryboardPanel } from './hooks/useStoryboardState'
 import { GlassSurface } from '@/components/ui/primitives'
 import { AppIcon } from '@/components/ui/icons'
+import VisualQualityBadge from '@/components/visual-quality/VisualQualityBadge'
 
 interface PanelCandidateData {
   candidates: string[]
@@ -128,6 +129,10 @@ export default function PanelCard({
           onClearError={onClearError}
           onUndo={onUndo}
           onPreviewImage={onPreviewImage}
+        />
+        <VisualQualityBadge
+          state={panel.visualQualityState}
+          className="absolute bottom-2 left-2 z-20"
         />
         {/* 插入分镜/镜头变体按钮 - 在图片区域右侧垂直居中 */}
         {(onInsertAfter || onVariant) && (

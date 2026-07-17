@@ -1,14 +1,20 @@
 import { logInfo as _ulogInfo } from '@/lib/logging/core'
+import type { Prisma } from '@prisma/client'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSignedUrl, generateUniqueKey, downloadAndUploadImage, toFetchableUrl } from '@/lib/storage'
 import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
+import { approveSelectedVisualCandidate } from '@/lib/quality-workflow'
 
 interface PanelHistoryEntry {
   url: string
   timestamp: string
+}
+
+function asInputJson(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
 }
 
 function parseUnknownArray(jsonValue: string | null): unknown[] {
@@ -115,6 +121,7 @@ export const POST = apiHandler(async (
   }
 
   const signedUrl = getSignedUrl(finalImageKey, 7 * 24 * 3600)
+  const visualQualityState = approveSelectedVisualCandidate(panel.visualQualityState, finalImageKey)
 
   // 更新 Panel：设置新图片，清空候选列表
   await prisma.novelPromotionPanel.update({
@@ -122,7 +129,8 @@ export const POST = apiHandler(async (
     data: {
       imageUrl: finalImageKey,
       imageHistory: JSON.stringify(currentHistory),
-      candidateImages: null
+      candidateImages: null,
+      ...(visualQualityState ? { visualQualityState: asInputJson(visualQualityState) } : {}),
     }
   })
 

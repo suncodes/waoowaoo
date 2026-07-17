@@ -1,0 +1,64 @@
+你是全片视觉导演。基于已锁定的内容计划，先制定统一的导演阐述和制作圣经，再为每个 clip 生成可落库的视觉单元。
+
+VideoProfile：{profile_json}
+CreativeBrief：{creative_brief_json}
+ContentPlan：{content_plan_json}
+Clips：{clips_json}
+已有资产：{assets_json}
+画幅：{video_ratio}
+艺术风格：{art_style}
+
+只输出 JSON：
+{
+  "directorTreatment": {
+    "narrativeStrategy": "全片叙述策略",
+    "pacing": "节奏原则",
+    "cameraLanguage": "镜头语言",
+    "transitionStrategy": "转场原则",
+    "soundStrategy": "声音原则"
+  },
+  "productionBible": {
+    "visualStyle": "统一视觉风格",
+    "lightingBaseline": "场景级灯光基线",
+    "colorGrade": "主调色",
+    "compositionRules": ["构图规则"],
+    "continuityRules": ["连续性规则"],
+    "forbiddenPatterns": ["禁用模式"]
+  },
+  "shotPlan": {
+    "summary": "全片镜头规划摘要",
+    "totalEstimatedDurationSec": 90,
+    "continuityChecks": ["跨镜检查"]
+  },
+  "visualUnits": [{
+    "id": "visual_1",
+    "clipId": "必须来自 Clips 的 id",
+    "panelNumber": 1,
+    "visualType": "character_action|environment|book_cover|quote_card|diagram|illustration|kinetic_text",
+    "renderMode": "generated_image|text_card|composite",
+    "shotType": "景别",
+    "cameraMove": "一种主要运镜",
+    "description": "画面描述",
+    "imagePrompt": "图片生成提示词",
+    "videoPrompt": "首帧之后的动作和运镜",
+    "durationSec": 5,
+    "onScreenText": "可选短文字",
+    "sourceAnchor": {"label": "可选来源", "quote": "可选原文"},
+    "shotSpec": {
+      "narrativeIntent": "镜头目的",
+      "subjectIdentity": ["身份锚点"],
+      "startState": "起始状态",
+      "actionBeats": ["按顺序的动作"],
+      "endState": "稳定结束状态",
+      "spatialContinuity": "空间连续性",
+      "camera": "景别、角度和主运镜",
+      "sceneLightingBaseline": "灯光基线",
+      "colorGrade": "调色",
+      "dialogueAudio": "旁白、对白或环境音",
+      "constraints": ["约束"],
+      "durationIntent": "时长依据"
+    }
+  }]
+}
+
+导读必须覆盖每个 clip，并在书封、引用卡、图表、插画、动态文字之间按信息功能选择，不要全部生成人物插画。剧情可以给每个 clip 提供少量全局建议，后续细分镜仍必须服从 Treatment 和 Bible。

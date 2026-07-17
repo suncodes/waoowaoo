@@ -7,12 +7,16 @@ import {
   useScriptToStoryboardRunStream,
   useStoryToScriptRunStream,
 } from '@/lib/query/hooks'
+import { isBookGuideProfile, resolveVideoProfile } from '@/lib/video-profile'
+import { useWorkspacePlanningFlows } from './useWorkspacePlanningFlows'
 
 interface UseWorkspaceExecutionParams {
   projectId: string
   episodeId?: string
   currentStage: string
   analysisModel?: string | null
+  videoProfile?: unknown
+  contentPlan?: unknown
   novelText: string
   t: (key: string) => string
   onRefresh: (options?: { scope?: string; mode?: string }) => Promise<void>
@@ -20,21 +24,17 @@ interface UseWorkspaceExecutionParams {
   onStageChange: (stage: string) => void
   onOpenAssetLibrary: (focusCharacterId?: string | null, refreshAssets?: boolean) => void
 }
-
 function isAbortError(err: unknown): boolean {
   if (!(err instanceof Error)) return false
   return err.name === 'AbortError' || err.message === 'Failed to fetch'
 }
-
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message
   return String(err)
 }
-
 function isRunStreamTimeoutMessage(message: string): boolean {
   return /(?:run|task)\s+stream\s+timeout/i.test(message.trim())
 }
-
 function readSessionBoolean(key: string): boolean {
   if (typeof window === 'undefined') return false
   try {
@@ -43,7 +43,6 @@ function readSessionBoolean(key: string): boolean {
     return false
   }
 }
-
 function writeSessionBoolean(key: string, value: boolean) {
   if (typeof window === 'undefined') return
   try {
@@ -62,6 +61,8 @@ export function useWorkspaceExecution({
   episodeId,
   currentStage,
   analysisModel,
+  videoProfile,
+  contentPlan,
   novelText,
   t,
   onRefresh,
@@ -70,6 +71,7 @@ export function useWorkspaceExecution({
   onOpenAssetLibrary,
 }: UseWorkspaceExecutionParams) {
   const analyzeProjectAssetsMutation = useAnalyzeProjectAssets(projectId)
+  const resolvedVideoProfile = useMemo(() => resolveVideoProfile(videoProfile), [videoProfile])
   const storageScope = `${projectId}:${episodeId || 'global'}`
   const storyToScriptMinimizedStorageKey = `novel-promotion:story-to-script:minimized:${storageScope}`
   const scriptToStoryboardMinimizedStorageKey = `novel-promotion:script-to-storyboard:minimized:${storageScope}`
@@ -88,6 +90,13 @@ export function useWorkspaceExecution({
 
   const storyToScriptStream = useStoryToScriptRunStream({ projectId, episodeId })
   const scriptToStoryboardStream = useScriptToStoryboardRunStream({ projectId, episodeId })
+  const planning = useWorkspacePlanningFlows({
+    projectId,
+    episodeId,
+    analysisModel,
+    t,
+    setTransitionProgress,
+  })
   const handledStoryToScriptRunIdsRef = useRef<Set<string>>(new Set())
   const handledScriptToStoryboardRunIdsRef = useRef<Set<string>>(new Set())
   const storyToScriptWasActiveRef = useRef(false)
@@ -190,9 +199,18 @@ export function useWorkspaceExecution({
 
     try {
       setIsTransitioning(true)
-      setStoryToScriptConsoleMinimized(false)
 
       await onUpdateConfig('workflowMode', 'agent')
+      await planning.runContentPlan(storyContent)
+
+      if (isBookGuideProfile(resolvedVideoProfile)) {
+        await planning.runVisualPlan()
+        await onRefresh()
+        onStageChange('storyboard')
+        return
+      }
+
+      setStoryToScriptConsoleMinimized(false)
       setTransitionProgress({ message: t('execution.storyToScriptRunning'), step: 'streaming' })
       const runResult = await storyToScriptStream.run({
         episodeId,
@@ -219,7 +237,19 @@ export function useWorkspaceExecution({
       setIsTransitioning(false)
       setTransitionProgress({ message: '', step: '' })
     }
-  }, [analysisModel, episodeId, finalizeStoryToScriptSuccess, novelText, onUpdateConfig, storyToScriptStream, t])
+  }, [
+    analysisModel,
+    episodeId,
+    finalizeStoryToScriptSuccess,
+    novelText,
+    onRefresh,
+    onStageChange,
+    onUpdateConfig,
+    planning,
+    resolvedVideoProfile,
+    storyToScriptStream,
+    t,
+  ])
 
   const runScriptToStoryboardFlow = useCallback(async () => {
     if (!episodeId) {
@@ -230,6 +260,7 @@ export function useWorkspaceExecution({
     try {
       setScriptToStoryboardConsoleMinimized(false)
       setIsConfirmingAssets(true)
+      if (contentPlan) await planning.runVisualPlan()
       setTransitionProgress({ message: t('execution.scriptToStoryboardRunning'), step: 'streaming' })
       const runResult = await scriptToStoryboardStream.run({
         episodeId,
@@ -252,7 +283,15 @@ export function useWorkspaceExecution({
       setIsConfirmingAssets(false)
       setTransitionProgress({ message: '', step: '' })
     }
-  }, [analysisModel, episodeId, finalizeScriptToStoryboardSuccess, scriptToStoryboardStream, t])
+  }, [
+    analysisModel,
+    contentPlan,
+    episodeId,
+    finalizeScriptToStoryboardSuccess,
+    planning,
+    scriptToStoryboardStream,
+    t,
+  ])
 
   useEffect(() => {
     const active = (
@@ -325,11 +364,13 @@ export function useWorkspaceExecution({
     storyToScriptStream.isRecoveredRunning ||
     scriptToStoryboardStream.isRunning ||
     scriptToStoryboardStream.isRecoveredRunning ||
+    planning.isPlanning ||
     isTransitioning ||
     isConfirmingAssets
   ), [
     isConfirmingAssets,
     isTransitioning,
+    planning.isPlanning,
     scriptToStoryboardStream.isRecoveredRunning,
     scriptToStoryboardStream.isRunning,
     storyToScriptStream.isRecoveredRunning,
@@ -348,6 +389,8 @@ export function useWorkspaceExecution({
     setScriptToStoryboardConsoleMinimized,
     storyToScriptStream,
     scriptToStoryboardStream,
+    contentPlanStream: planning.contentPlanStream,
+    visualPlanStream: planning.visualPlanStream,
     handleGenerateTTS,
     handleAnalyzeAssets,
     runStoryToScriptFlow,

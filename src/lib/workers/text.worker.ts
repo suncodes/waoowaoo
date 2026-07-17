@@ -36,6 +36,9 @@ import { handleAssetHubAIModifyTask } from './handlers/asset-hub-ai-modify'
 import { handleReferenceToCharacterTask } from './handlers/reference-to-character'
 import { handleShotAITask } from './handlers/shot-ai-tasks'
 import { handleCharacterProfileTask } from './handlers/character-profile'
+import { handleContentPlanTask } from './handlers/content-plan'
+import { handleVisualPlanTask } from './handlers/visual-plan'
+import { handleVisualQualityReviewTask } from './handlers/visual-quality-review'
 
 function readAssetKind(value: Record<string, unknown>): string {
   return typeof value.assetKind === 'string' ? value.assetKind : 'location'
@@ -658,6 +661,12 @@ async function processTextTask(job: Job<TaskJobData>) {
       return await handleStoryToScriptTask(job)
     case TASK_TYPE.SCRIPT_TO_STORYBOARD_RUN:
       return await handleScriptToStoryboardTask(job)
+    case TASK_TYPE.CONTENT_PLAN_RUN:
+      return await handleContentPlanTask(job)
+    case TASK_TYPE.VISUAL_PLAN_RUN:
+      return await handleVisualPlanTask(job)
+    case TASK_TYPE.VISUAL_QUALITY_REVIEW:
+      return await handleVisualQualityReviewTask(job)
     case TASK_TYPE.VOICE_ANALYZE:
       return await handleVoiceAnalyzeTask(job)
     case TASK_TYPE.ANALYZE_NOVEL:

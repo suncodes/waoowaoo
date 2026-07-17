@@ -4,6 +4,7 @@ import { createContext, useContext, type ReactNode } from 'react'
 import type { CapabilitySelections, ModelCapabilities } from '@/lib/model-config-contract'
 import type { VideoPricingTier } from '@/lib/model-pricing/video-tier'
 import type { BatchVideoGenerationParams, VideoGenerationOptions } from './components/video'
+import type { VideoProfile, VideoProfilePreset, VisualQualityMode } from '@/lib/video-profile'
 
 export interface WorkspaceStageVideoModelOption {
   value: string
@@ -22,6 +23,7 @@ export interface WorkspaceStageRuntimeValue {
   isStartingStoryToScript: boolean
   isStartingScriptToStoryboard: boolean
   videoRatio: string | null | undefined
+  videoProfile: VideoProfile
   artStyle: string | null | undefined
   artStyleReferenceEnabled: boolean
   videoModel: string | null | undefined
@@ -29,6 +31,8 @@ export interface WorkspaceStageRuntimeValue {
   userVideoModels: WorkspaceStageVideoModelOption[]
   onNovelTextChange: (value: string) => Promise<void>
   onVideoRatioChange: (value: string) => Promise<void>
+  onVideoProfileChange: (value: VideoProfilePreset) => Promise<void>
+  onVisualQualityModeChange: (value: VisualQualityMode) => Promise<void>
   onArtStyleChange: (value: string) => Promise<void>
   onArtStyleReferenceEnabledChange: (value: boolean) => Promise<void>
   onRunStoryToScript: () => Promise<void>

@@ -5,6 +5,7 @@ import type { WorkspaceStageRuntimeValue } from '../WorkspaceStageRuntimeContext
 import type { CapabilitySelections, ModelCapabilities } from '@/lib/model-config-contract'
 import type { VideoPricingTier } from '@/lib/model-pricing/video-tier'
 import type { BatchVideoGenerationParams, VideoGenerationOptions } from '../components/video'
+import type { VideoProfile } from '@/lib/video-profile'
 
 interface UseWorkspaceStageRuntimeParams {
   assetsLoading: boolean
@@ -14,6 +15,7 @@ interface UseWorkspaceStageRuntimeParams {
   isStartingStoryToScript: boolean
   isStartingScriptToStoryboard: boolean
   videoRatio: string | undefined
+  videoProfile: VideoProfile
   artStyle: string | undefined
   artStyleReferenceEnabled: boolean
   videoModel: string | undefined
@@ -65,6 +67,7 @@ export function useWorkspaceStageRuntime({
   isStartingStoryToScript,
   isStartingScriptToStoryboard,
   videoRatio,
+  videoProfile,
   artStyle,
   artStyleReferenceEnabled,
   videoModel,
@@ -96,6 +99,7 @@ export function useWorkspaceStageRuntime({
     isStartingStoryToScript,
     isStartingScriptToStoryboard,
     videoRatio,
+    videoProfile,
     artStyle,
     artStyleReferenceEnabled,
     videoModel,
@@ -103,6 +107,14 @@ export function useWorkspaceStageRuntime({
     userVideoModels: resolvedUserVideoModels,
     onNovelTextChange: (value) => handleUpdateEpisode('novelText', value),
     onVideoRatioChange: (value) => handleUpdateConfig('videoRatio', value),
+    onVideoProfileChange: (preset) => handleUpdateConfig('videoProfile', { preset }),
+    onVisualQualityModeChange: (mode) => handleUpdateConfig('videoProfile', {
+      ...videoProfile,
+      qualityPolicy: {
+        ...videoProfile.qualityPolicy,
+        mode,
+      },
+    }),
     onArtStyleChange: async (value) => {
       await handleUpdateConfig('artStyleMode', 'preset')
       await handleUpdateConfig('artStyle', value)
@@ -147,6 +159,7 @@ export function useWorkspaceStageRuntime({
     resolvedUserVideoModels,
     capabilityOverrides,
     videoModel,
+    videoProfile,
     videoRatio,
   ])
 }

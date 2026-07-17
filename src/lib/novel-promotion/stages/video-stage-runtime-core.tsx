@@ -48,6 +48,7 @@ import {
 } from './video-stage-runtime/immediate-video-submission'
 import { useMergeProjectEpisodeVideo } from '@/lib/query/hooks'
 import MergedVideoPlaylistModal from './video-stage-runtime/MergedVideoPlaylistModal'
+import { evaluateVisualReadiness } from '@/lib/visual-readiness'
 
 export type { VideoStageShellProps } from './video-stage-runtime/types'
 
@@ -368,6 +369,17 @@ export function useVideoStageRuntime({
     const panelKey = buildVideoSubmissionKey({ panelId, storyboardId, panelIndex })
     const currentPanel = panelBySubmissionKey.get(panelKey)
     if (currentPanel?.videoTaskRunning || submittingVideoPanelKeys.has(panelKey)) return
+    const qualityTargets = [currentPanel]
+    if (firstLastFrame) {
+      qualityTargets.push(allPanels.find((panel) => (
+        panel.storyboardId === firstLastFrame.lastFrameStoryboardId
+        && panel.panelIndex === firstLastFrame.lastFramePanelIndex
+      )))
+    }
+    if (qualityTargets.some((panel) => panel && !evaluateVisualReadiness(panel.visualQualityState).ready)) {
+      window.alert(t('quality.videoBlocked'))
+      return
+    }
 
     setSubmittingVideoPanelKeys((previous) => {
       if (previous.has(panelKey)) return previous
@@ -401,10 +413,12 @@ export function useVideoStageRuntime({
       throw error
     }
   }, [
+    allPanels,
     isSubmittingVideoBatch,
     onGenerateVideo,
     panelBySubmissionKey,
     submittingVideoPanelKeys,
+    t,
   ])
 
   const {
@@ -503,8 +517,17 @@ export function useVideoStageRuntime({
 
   const handleOpenBatchGenerateModal = useCallback(() => {
     if (isAnyTaskRunning) return
+    const blockedCount = allPanels.filter((panel) => (
+      panel.imageUrl
+      && !panel.videoUrl
+      && !evaluateVisualReadiness(panel.visualQualityState).ready
+    )).length
+    if (blockedCount > 0) {
+      window.alert(t('quality.batchVideoBlocked', { count: blockedCount }))
+      return
+    }
     setIsBatchConfigOpen(true)
-  }, [isAnyTaskRunning])
+  }, [allPanels, isAnyTaskRunning, t])
 
   const handleCloseBatchGenerateModal = useCallback(() => {
     setIsBatchConfigOpen(false)

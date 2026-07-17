@@ -53,6 +53,16 @@
     "batchModeEnabled": "已开启批量模式",
     "batchModeDisabled": "批量模式已关闭"
   },
+  "quality": {
+    "shadowReview": "影子评审中",
+    "shadowCompleted": "影子评审完成",
+    "shadowFailed": "影子评审失败",
+    "checking": "质量检查中",
+    "approved": "质量通过",
+    "humanRequired": "需人工处理",
+    "videoBlocked": "当前画面尚未通过自动质量检查，暂不能生成视频。",
+    "batchVideoBlocked": "有 {count} 个画面尚未通过自动质量检查，暂不能批量生成视频。"
+  },
   "promptModal": {
     "title": "编辑镜头 #{number} 视频提示词",
     "shotType": "景别：",

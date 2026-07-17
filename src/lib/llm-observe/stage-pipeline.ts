@@ -29,9 +29,19 @@ const FLOW_DEFINITIONS: ReadonlyArray<LLMTaskFlowDefinition> = [
     id: 'novel_promotion_generation',
     stages: [
       {
+        id: TASK_TYPE.CONTENT_PLAN_RUN,
+        taskType: TASK_TYPE.CONTENT_PLAN_RUN,
+        title: getTaskTypeLabel(TASK_TYPE.CONTENT_PLAN_RUN),
+      },
+      {
         id: TASK_TYPE.STORY_TO_SCRIPT_RUN,
         taskType: TASK_TYPE.STORY_TO_SCRIPT_RUN,
         title: getTaskTypeLabel(TASK_TYPE.STORY_TO_SCRIPT_RUN),
+      },
+      {
+        id: TASK_TYPE.VISUAL_PLAN_RUN,
+        taskType: TASK_TYPE.VISUAL_PLAN_RUN,
+        title: getTaskTypeLabel(TASK_TYPE.VISUAL_PLAN_RUN),
       },
       {
         id: TASK_TYPE.SCRIPT_TO_STORYBOARD_RUN,

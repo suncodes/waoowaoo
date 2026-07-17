@@ -31,6 +31,7 @@ export interface StoryboardPanel {
   photographyRules?: string | null  // 单镜头摄影规则JSON
   actingNotes?: string | null       // 演技指导数据JSON
   imageTaskRunning?: boolean  // 任务态运行状态（由 tasks 派生）
+  visualQualityState?: unknown
 }
 
 interface UseStoryboardStateProps {
@@ -146,7 +147,8 @@ export function useStoryboardState({
         imageUrl: p.imageUrl,
         photographyRules: p.photographyRules,
         actingNotes: p.actingNotes,
-        imageTaskRunning: p.imageTaskRunning || false
+        imageTaskRunning: p.imageTaskRunning || false,
+        visualQualityState: p.visualQualityState,
       }
     })
   }

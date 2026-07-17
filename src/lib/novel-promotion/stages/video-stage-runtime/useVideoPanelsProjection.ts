@@ -89,6 +89,7 @@ export function useVideoPanelsProjection({
               : panel.videoErrorMessage || undefined,
           videoModel: panel.videoModel || undefined,
           linkedToNextPanel: panel.linkedToNextPanel || false,
+          visualQualityState: panel.visualQualityState,
           lipSyncVideoUrl: panel.lipSyncVideoUrl || undefined,
           lipSyncTaskRunning: panelLipState?.phase === 'queued' || panelLipState?.phase === 'processing',
           lipSyncErrorCode:

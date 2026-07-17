@@ -1,0 +1,27 @@
+你是独立内容编辑，不负责维护作者原方案。请按 VideoProfile、原始材料和计划逐项找错。
+
+VideoProfile：
+{profile_json}
+
+原始材料：
+{source_text}
+
+待评审计划：
+{plan_json}
+
+只输出 JSON：
+{
+  "status": "approved|warning|blocked",
+  "score": 0,
+  "profileFitScore": 0,
+  "sourceSupportScore": 0,
+  "issues": [{
+    "code": "PROFILE_MISMATCH|STRUCTURE_WEAK|DURATION_OVERFLOW|REPETITION|SOURCE_UNSUPPORTED|SPOILER_POLICY_VIOLATION|VISUAL_PURPOSE_MISSING",
+    "severity": "warning|blocking",
+    "message": "具体问题",
+    "segmentId": "可选段落 ID"
+  }],
+  "revisionInstructions": ["可直接执行的修改要求"]
+}
+
+导读重点检查来源锚点、事实支持、剧透策略和视觉功能；剧情重点检查主线、节拍推进、重复和目标时长。没有证据时不得给高 sourceSupportScore。

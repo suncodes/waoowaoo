@@ -45,6 +45,9 @@ const outboundMock = vi.hoisted(() => ({
 const promptMock = vi.hoisted(() => ({
   buildPrompt: vi.fn(() => 'panel-image-prompt'),
 }))
+const qualityMock = vi.hoisted(() => ({
+  persistPanelCandidatesAndScheduleReview: vi.fn(),
+}))
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('@/lib/workers/utils', () => utilsMock)
@@ -75,6 +78,7 @@ vi.mock('@/lib/prompt-i18n', () => ({
   PROMPT_IDS: { NP_SINGLE_PANEL_IMAGE: 'np_single_panel_image' },
   buildPrompt: promptMock.buildPrompt,
 }))
+vi.mock('@/lib/workers/handlers/panel-visual-quality-trigger', () => qualityMock)
 
 import { handlePanelImageTask } from '@/lib/workers/handlers/panel-image-task-handler'
 
@@ -123,6 +127,13 @@ describe('worker panel-image-task-handler behavior', () => {
     utilsMock.uploadImageSourceToCos
       .mockResolvedValueOnce('cos/panel-candidate-1.png')
       .mockResolvedValueOnce('cos/panel-candidate-2.png')
+    qualityMock.persistPanelCandidatesAndScheduleReview.mockResolvedValue({
+      imageUrl: 'cos/panel-candidate-1.png',
+      mode: 'shadow',
+      versionHash: 'version-panel-1',
+      reviewScheduled: true,
+      reviewTaskId: 'task-quality-1',
+    })
   })
 
   it('missing panelId -> explicit error', async () => {
@@ -138,6 +149,10 @@ describe('worker panel-image-task-handler behavior', () => {
       panelId: 'panel-1',
       candidateCount: 2,
       imageUrl: 'cos/panel-candidate-1.png',
+      visualQualityMode: 'shadow',
+      visualQualityVersionHash: 'version-panel-1',
+      visualQualityReviewScheduled: true,
+      visualQualityReviewTaskId: 'task-quality-1',
     })
 
     expect(utilsMock.resolveImageSourceFromGeneration).toHaveBeenCalledWith(
@@ -147,7 +162,7 @@ describe('worker panel-image-task-handler behavior', () => {
         prompt: 'panel-image-prompt',
         allowTaskExternalIdResume: false,
         options: expect.objectContaining({
-          referenceImages: ['normalized-ref-1'],
+          referenceImages: ['https://signed.example/ref-1.png'],
           aspectRatio: '16:9',
         }),
       }),
@@ -163,13 +178,11 @@ describe('worker panel-image-task-handler behavior', () => {
       }),
     }))
 
-    expect(prismaMock.novelPromotionPanel.update).toHaveBeenCalledWith({
-      where: { id: 'panel-1' },
-      data: {
-        imageUrl: 'cos/panel-candidate-1.png',
-        candidateImages: JSON.stringify(['cos/panel-candidate-1.png', 'cos/panel-candidate-2.png']),
-      },
-    })
+    expect(qualityMock.persistPanelCandidatesAndScheduleReview).toHaveBeenCalledWith(expect.objectContaining({
+      panel: expect.objectContaining({ id: 'panel-1' }),
+      candidates: ['cos/panel-candidate-1.png', 'cos/panel-candidate-2.png'],
+      isFirstGeneration: true,
+    }))
   })
 
   it('regeneration branch -> keeps old image in previousImageUrl and stores candidates only', async () => {
@@ -196,6 +209,13 @@ describe('worker panel-image-task-handler behavior', () => {
 
     utilsMock.resolveImageSourceFromGeneration.mockResolvedValueOnce('generated-source-regen')
     utilsMock.uploadImageSourceToCos.mockResolvedValueOnce('cos/panel-regenerated.png')
+    qualityMock.persistPanelCandidatesAndScheduleReview.mockResolvedValueOnce({
+      imageUrl: null,
+      mode: 'auto',
+      versionHash: 'version-panel-2',
+      reviewScheduled: true,
+      reviewTaskId: 'task-quality-2',
+    })
 
     const job = buildJob({ candidateCount: 1 })
     const result = await handlePanelImageTask(job)
@@ -204,14 +224,15 @@ describe('worker panel-image-task-handler behavior', () => {
       panelId: 'panel-1',
       candidateCount: 1,
       imageUrl: null,
+      visualQualityMode: 'auto',
+      visualQualityVersionHash: 'version-panel-2',
+      visualQualityReviewScheduled: true,
+      visualQualityReviewTaskId: 'task-quality-2',
     })
 
-    expect(prismaMock.novelPromotionPanel.update).toHaveBeenCalledWith({
-      where: { id: 'panel-1' },
-      data: {
-        previousImageUrl: 'cos/panel-old.png',
-        candidateImages: JSON.stringify(['cos/panel-regenerated.png']),
-      },
-    })
+    expect(qualityMock.persistPanelCandidatesAndScheduleReview).toHaveBeenCalledWith(expect.objectContaining({
+      candidates: ['cos/panel-regenerated.png'],
+      isFirstGeneration: false,
+    }))
   })
 })

@@ -17,6 +17,11 @@ export interface Episode {
   storyboards?: NovelPromotionStoryboard[]
   shots?: NovelPromotionShot[]
   voiceLines?: unknown[]
+  creativeBrief?: unknown
+  contentPlan?: unknown
+  contentReview?: unknown
+  directorTreatment?: unknown
+  productionBible?: unknown
   createdAt: string
 }
 

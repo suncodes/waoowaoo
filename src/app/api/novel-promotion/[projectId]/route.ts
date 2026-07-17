@@ -15,6 +15,8 @@ import {
   getCapabilityOptionFields,
   validateCapabilitySelectionsPayload,
   type CapabilityModelContext} from '@/lib/model-capabilities/lookup'
+import { resolveVideoProfile } from '@/lib/video-profile'
+import { assertVisionInputSupported } from '@/lib/visual-quality'
 
 const MODEL_FIELDS = [
   'analysisModel',
@@ -361,7 +363,7 @@ export const PATCH = apiHandler(async (
     'analysisModel', 'characterModel', 'locationModel', 'storyboardModel',
     'editModel', 'videoModel', 'audioModel', 'videoRatio', 'artStyle',
     'artStyleMode', 'artStylePrompt', 'artStyleReferenceEnabled', 'customArtStyleReferenceImage',
-    'ttsRate', 'lipSyncEnabled', 'lipSyncMode', 'capabilityOverrides',
+    'ttsRate', 'lipSyncEnabled', 'lipSyncMode', 'capabilityOverrides', 'videoProfile',
   ] as const
 
   const updateData: Record<string, unknown> = {}
@@ -403,6 +405,28 @@ export const PATCH = apiHandler(async (
       const cleanedOverrides = sanitizeCapabilityOverrides(overrides, modelContextMap)
       validateCapabilityOverrides(cleanedOverrides, modelContextMap)
       updateData.capabilityOverrides = serializeCapabilitySelections(cleanedOverrides)
+      continue
+    }
+
+    if (field === 'videoProfile') {
+      const profile = resolveVideoProfile(body.videoProfile)
+      if (profile.qualityPolicy.mode === 'auto') {
+        const analysisModel = typeof body.analysisModel === 'string'
+          ? body.analysisModel
+          : currentProjectConfig.analysisModel
+        if (!analysisModel) {
+          throw new ApiError('INVALID_PARAMS', { code: 'ANALYSIS_MODEL_NOT_CONFIGURED' })
+        }
+        try {
+          assertVisionInputSupported(analysisModel)
+        } catch (error) {
+          throw new ApiError('INVALID_PARAMS', {
+            code: 'VISION_INPUT_NOT_SUPPORTED',
+            message: error instanceof Error ? error.message : String(error),
+          })
+        }
+      }
+      updateData.videoProfile = profile
       continue
     }
 

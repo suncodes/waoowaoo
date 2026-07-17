@@ -53,6 +53,16 @@
     "batchModeEnabled": "Batch mode enabled",
     "batchModeDisabled": "Batch mode disabled"
   },
+  "quality": {
+    "shadowReview": "Shadow review running",
+    "shadowCompleted": "Shadow review complete",
+    "shadowFailed": "Shadow review failed",
+    "checking": "Quality check running",
+    "approved": "Quality approved",
+    "humanRequired": "Human review required",
+    "videoBlocked": "This image has not passed automatic quality review, so video generation is blocked.",
+    "batchVideoBlocked": "{count} images have not passed automatic quality review, so batch video generation is blocked."
+  },
   "promptModal": {
     "title": "Edit Shot #{number} Video Prompt",
     "shotType": "Shot Type:",

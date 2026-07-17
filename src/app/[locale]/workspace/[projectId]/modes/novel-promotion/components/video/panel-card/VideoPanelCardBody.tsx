@@ -4,6 +4,7 @@ import { resolveTaskPresentationState } from '@/lib/task/presentation'
 import { ModelCapabilityDropdown } from '@/components/ui/config-modals/ModelCapabilityDropdown'
 import { AppIcon } from '@/components/ui/icons'
 import type { VideoPanelRuntime } from './hooks/useVideoPanelActions'
+import VisualQualityBadge from '@/components/visual-quality/VisualQualityBadge'
 
 interface VideoPanelCardBodyProps {
   runtime: VideoPanelRuntime
@@ -61,7 +62,10 @@ export default function VideoPanelCardBody({ runtime }: VideoPanelCardBodyProps)
   return (
     <div className="p-4 space-y-2">
       <div className="flex items-center justify-between text-xs">
-        <span className="px-2 py-0.5 bg-[var(--glass-tone-info-bg)] text-[var(--glass-tone-info-fg)] rounded font-medium">{panel.textPanel?.shot_type || t('panelCard.unknownShotType')}</span>
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <span className="px-2 py-0.5 bg-[var(--glass-tone-info-bg)] text-[var(--glass-tone-info-fg)] rounded font-medium">{panel.textPanel?.shot_type || t('panelCard.unknownShotType')}</span>
+          <VisualQualityBadge state={panel.visualQualityState} />
+        </div>
         {panel.textPanel?.duration && <span className="text-[var(--glass-text-tertiary)]">{panel.textPanel.duration}{t('promptModal.duration')}</span>}
       </div>
 

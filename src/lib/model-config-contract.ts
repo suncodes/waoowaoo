@@ -26,6 +26,7 @@ export type CapabilityFieldI18nMap = Record<string, CapabilityFieldI18n>
 
 export interface LLMCapabilities {
   reasoningEffortOptions?: string[]
+  visionInput?: boolean
   fieldI18n?: CapabilityFieldI18nMap
 }
 
@@ -80,6 +81,7 @@ const CAPABILITY_NAMESPACES = new Set<keyof ModelCapabilities>([
 
 const LLM_ALLOWED_FIELDS = new Set<keyof LLMCapabilities>([
   'reasoningEffortOptions',
+  'visionInput',
   'fieldI18n',
 ])
 
@@ -268,6 +270,14 @@ function validateLLMCapabilities(issues: CapabilityValidationIssue[], raw: unkno
       code: 'CAPABILITY_FIELD_INVALID',
       field: 'capabilities.llm.reasoningEffortOptions',
       message: 'reasoningEffortOptions must be a non-empty string array',
+    })
+  }
+
+  if (raw.visionInput !== undefined && typeof raw.visionInput !== 'boolean') {
+    issues.push({
+      code: 'CAPABILITY_FIELD_INVALID',
+      field: 'capabilities.llm.visionInput',
+      message: 'visionInput must be boolean',
     })
   }
 

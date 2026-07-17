@@ -19,6 +19,13 @@ import { DEFAULT_STYLE_PRESET_VALUE, STYLE_PRESETS } from '@/lib/style-presets'
 import { PROJECT_STORY_INPUT_MIN_ROWS } from '@/lib/ui/textarea-height'
 import { apiFetch } from '@/lib/api-fetch'
 import { expandHomeStory } from '@/lib/home/ai-story-expand'
+import {
+  VIDEO_PROFILE_PRESET,
+  resolveVideoProfile,
+  type VideoProfile,
+  type VideoProfilePreset,
+  type VisualQualityMode,
+} from '@/lib/video-profile'
 
 /** 触发智能分集建议的字数阈值 */
 const LONG_TEXT_THRESHOLD = 1000
@@ -43,9 +50,12 @@ interface NovelInputStageProps {
   onEnableNarrationChange?: (enabled: boolean) => void
   // 配置项 - 比例与风格
   videoRatio?: string
+  videoProfile?: VideoProfile
   artStyle?: string
   artStyleReferenceEnabled?: boolean
   onVideoRatioChange?: (value: string) => void
+  onVideoProfileChange?: (value: VideoProfilePreset) => void
+  onVisualQualityModeChange?: (value: VisualQualityMode) => void
   onArtStyleChange?: (value: string) => void
   onArtStyleReferenceEnabledChange?: (value: boolean) => void
 }
@@ -61,9 +71,12 @@ export default function NovelInputStage({
   enableNarration = false,
   onEnableNarrationChange,
   videoRatio = '9:16',
+  videoProfile = resolveVideoProfile(undefined),
   artStyle = 'american-comic',
   artStyleReferenceEnabled = false,
   onVideoRatioChange,
+  onVideoProfileChange,
+  onVisualQualityModeChange,
   onArtStyleChange,
   onArtStyleReferenceEnabledChange,
 }: NovelInputStageProps) {
@@ -104,12 +117,16 @@ export default function NovelInputStage({
   /** 点击"开始创作"时，先检测文本长度 */
   const handleStartClick = useCallback(() => {
     const textLength = localText.trim().length
-    if (textLength > LONG_TEXT_THRESHOLD && onSmartSplit) {
+    if (
+      videoProfile.preset !== VIDEO_PROFILE_PRESET.BOOK_GUIDE
+      && textLength > LONG_TEXT_THRESHOLD
+      && onSmartSplit
+    ) {
       setShowLongTextPrompt(true)
     } else {
       onNext()
     }
-  }, [localText, onNext, onSmartSplit])
+  }, [localText, onNext, onSmartSplit, videoProfile.preset])
 
   const handleAiWriteStart = useCallback(async (prompt: string) => {
     if (aiWriteLoading) return
@@ -169,6 +186,51 @@ export default function NovelInputStage({
           <div className="text-sm text-[var(--glass-text-tertiary)] mt-1">{t("storyInput.editingTip")}</div>
         </div>
       )}
+
+      <div className="flex flex-wrap items-center gap-4 border-b border-[var(--glass-stroke-soft)] pb-4">
+        <span className="text-sm font-medium text-[var(--glass-text-secondary)]">
+          {t('storyInput.videoProfile.label')}
+        </span>
+        <div
+          className="inline-flex h-9 rounded-md border border-[var(--glass-stroke-strong)] p-0.5"
+          role="group"
+          aria-label={t('storyInput.videoProfile.label')}
+        >
+          {[
+            { value: VIDEO_PROFILE_PRESET.AI_COMIC, label: t('storyInput.videoProfile.aiComic') },
+            { value: VIDEO_PROFILE_PRESET.BOOK_GUIDE, label: t('storyInput.videoProfile.bookGuide') },
+          ].map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={videoProfile.preset === option.value}
+              disabled={isSubmittingTask || isSwitchingStage}
+              onClick={() => onVideoProfileChange?.(option.value)}
+              className={`h-8 px-3 text-sm rounded-[5px] transition-colors disabled:opacity-50 ${
+                videoProfile.preset === option.value
+                  ? 'bg-[var(--glass-bg-active)] text-[var(--glass-text-primary)]'
+                  : 'text-[var(--glass-text-tertiary)] hover:text-[var(--glass-text-secondary)]'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <label className="ml-auto flex min-h-9 items-center gap-2 text-sm text-[var(--glass-text-secondary)]">
+          <input
+            type="checkbox"
+            checked={videoProfile.qualityPolicy.mode === 'auto'}
+            disabled={isSubmittingTask || isSwitchingStage}
+            onChange={(event) => onVisualQualityModeChange?.(event.target.checked ? 'auto' : 'shadow')}
+            className="h-4 w-4 accent-[var(--glass-tone-info-fg)]"
+          />
+          <span>
+            {videoProfile.qualityPolicy.mode === 'auto'
+              ? t('storyInput.videoProfile.autoRepair')
+              : t('storyInput.videoProfile.shadowReview')}
+          </span>
+        </label>
+      </div>
 
       {/* 主输入区域（含底部工具栏） */}
       <div className="relative z-10">

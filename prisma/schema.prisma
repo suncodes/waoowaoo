@@ -132,6 +132,11 @@ model NovelPromotionEpisode {
   createdAt               DateTime                   @default(now())
   updatedAt               DateTime                   @default(now()) @updatedAt
   speakerVoices           String?                    @db.Text
+  creativeBrief           Json?
+  contentPlan             Json?
+  contentReview           Json?
+  directorTreatment       Json?
+  productionBible         Json?
   clips                   NovelPromotionClip[]
   novelPromotionProject   NovelPromotionProject      @relation(fields: [novelPromotionProjectId], references: [id], onDelete: Cascade)
   shots                   NovelPromotionShot[]
@@ -228,6 +233,11 @@ model NovelPromotionPanel {
   previousImageUrl  String?                   @db.Text
   previousImageMediaId String?
   previousImageMedia MediaObject?             @relation("NovelPromotionPanelPreviousImageMedia", fields: [previousImageMediaId], references: [id], onDelete: SetNull)
+  visualType        String?
+  renderMode        String?
+  onScreenText      String?                   @db.Text
+  sourceAnchor      Json?
+  visualQualityState Json?
   storyboard        NovelPromotionStoryboard  @relation(fields: [storyboardId], references: [id], onDelete: Cascade)
   matchedVoiceLines NovelPromotionVoiceLine[]
 
@@ -268,6 +278,7 @@ model NovelPromotionProject {
   lastEpisodeId   String?
   imageResolution String                    @default("2K")
   importStatus    String?
+  videoProfile    Json?
   characters      NovelPromotionCharacter[]
   episodes        NovelPromotionEpisode[]
   locations       NovelPromotionLocation[]

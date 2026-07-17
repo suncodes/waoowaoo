@@ -88,6 +88,7 @@ const ROUTE_FILES = [
   'src/app/api/novel-promotion/[projectId]/cleanup-unselected-images/route.ts',
   'src/app/api/novel-promotion/[projectId]/clips/[clipId]/route.ts',
   'src/app/api/novel-promotion/[projectId]/clips/route.ts',
+  'src/app/api/novel-promotion/[projectId]/content-plan/route.ts',
   'src/app/api/novel-promotion/[projectId]/copy-from-global/route.ts',
   'src/app/api/novel-promotion/[projectId]/download-images/route.ts',
   'src/app/api/novel-promotion/[projectId]/download-videos/route.ts',
@@ -138,6 +139,8 @@ const ROUTE_FILES = [
   'src/app/api/novel-promotion/[projectId]/voice-design/route.ts',
   'src/app/api/novel-promotion/[projectId]/voice-generate/route.ts',
   'src/app/api/novel-promotion/[projectId]/voice-lines/route.ts',
+  'src/app/api/novel-promotion/[projectId]/visual-plan/route.ts',
+  'src/app/api/novel-promotion/[projectId]/visual-quality/route.ts',
   'src/app/api/projects/[projectId]/assets/route.ts',
   'src/app/api/projects/[projectId]/costs/route.ts',
   'src/app/api/projects/[projectId]/data/route.ts',
@@ -194,6 +197,9 @@ function resolveContractGroup(routeFile: string): RouteContractGroup {
     || routeFile.includes('/analyze')
     || routeFile.includes('/story-to-script-stream/')
     || routeFile.includes('/script-to-storyboard-stream/')
+    || routeFile.includes('/content-plan/')
+    || routeFile.includes('/visual-plan/')
+    || routeFile.includes('/visual-quality/')
     || routeFile.includes('/screenplay-conversion/')
     || routeFile.includes('/reference-to-character/')
     || routeFile.includes('/character-profile/')

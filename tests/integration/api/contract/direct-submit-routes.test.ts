@@ -86,7 +86,9 @@ const prismaMock = vi.hoisted(() => ({
     update: vi.fn(async () => ({})),
   },
   novelPromotionPanel: {
-    findFirst: vi.fn(async () => ({ id: 'panel-1' })),
+    findFirst: vi.fn<(...args: unknown[]) => Promise<{ id: string; visualQualityState?: unknown }>>(
+      async () => ({ id: 'panel-1' }),
+    ),
     findMany: vi.fn(async () => []),
     findUnique: vi.fn(async ({ where }: { where?: { id?: string } }) => {
       const id = where?.id || 'panel-1'
@@ -562,6 +564,32 @@ describe('api contract - direct submit routes (behavior)', () => {
 
   it('keeps expected coverage size', () => {
     expect(DIRECT_CASES.length).toBe(20)
+  })
+
+  it('generate-video rejects an automatic-quality panel that is still under review', async () => {
+    prismaMock.novelPromotionPanel.findFirst.mockResolvedValueOnce({
+      id: 'panel-1',
+      visualQualityState: {
+        schemaVersion: 1,
+        mode: 'auto',
+        status: 'reviewing',
+        versionHash: 'version-1',
+        candidateUrls: ['candidate-1.png'],
+        activeCandidateUrl: null,
+        attempt: 0,
+        maxAttempts: 2,
+        lastAction: null,
+        review: null,
+        updatedAt: new Date(0).toISOString(),
+      },
+    })
+    const routeCase = DIRECT_CASES.find((item) => item.routeFile.endsWith('/generate-video/route.ts'))
+    expect(routeCase).toBeTruthy()
+
+    const res = await invokePostRoute(routeCase!)
+
+    expect(res.status).toBe(409)
+    expect(submitTaskMock).not.toHaveBeenCalled()
   })
 
   for (const routeCase of DIRECT_CASES) {

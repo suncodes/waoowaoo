@@ -304,6 +304,30 @@ const ROUTE_CASES: ReadonlyArray<LLMRouteCase> = [
     expectedProjectId: 'project-1',
   },
   {
+    routeFile: 'src/app/api/novel-promotion/[projectId]/content-plan/route.ts',
+    body: { episodeId: 'episode-1', content: 'source text' },
+    params: { projectId: 'project-1' },
+    expectedTaskType: TASK_TYPE.CONTENT_PLAN_RUN,
+    expectedTargetType: 'NovelPromotionEpisode',
+    expectedProjectId: 'project-1',
+  },
+  {
+    routeFile: 'src/app/api/novel-promotion/[projectId]/visual-plan/route.ts',
+    body: { episodeId: 'episode-1' },
+    params: { projectId: 'project-1' },
+    expectedTaskType: TASK_TYPE.VISUAL_PLAN_RUN,
+    expectedTargetType: 'NovelPromotionEpisode',
+    expectedProjectId: 'project-1',
+  },
+  {
+    routeFile: 'src/app/api/novel-promotion/[projectId]/visual-quality/route.ts',
+    body: { panelId: 'panel-1' },
+    params: { projectId: 'project-1' },
+    expectedTaskType: TASK_TYPE.VISUAL_QUALITY_REVIEW,
+    expectedTargetType: 'NovelPromotionPanel',
+    expectedProjectId: 'project-1',
+  },
+  {
     routeFile: 'src/app/api/novel-promotion/[projectId]/episodes/split/route.ts',
     body: { content: 'x'.repeat(120) },
     params: { projectId: 'project-1' },
@@ -382,7 +406,7 @@ describe('api contract - llm observe routes (behavior)', () => {
   })
 
   it('keeps expected coverage size', () => {
-    expect(ROUTE_CASES.length).toBe(25)
+    expect(ROUTE_CASES.length).toBe(28)
   })
 
   for (const routeCase of ROUTE_CASES) {

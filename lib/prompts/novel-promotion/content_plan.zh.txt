@@ -1,0 +1,62 @@
+你是视频内容策划。根据 VideoProfile 和原始材料，先锁定创作目标，再输出可执行的内容计划。
+
+VideoProfile：
+{profile_json}
+
+原始材料：
+{source_text}
+
+只输出一个 JSON 对象，不要输出 Markdown。
+
+公共结构：
+{
+  "creativeBrief": {
+    "objective": "本片要完成的具体目标",
+    "audience": "目标受众",
+    "audiencePromise": "观众看完获得什么",
+    "targetDurationSec": 90,
+    "tone": ["语气"],
+    "mustInclude": ["必须包含"],
+    "mustAvoid": ["必须避免"]
+  },
+  "contentPlan": {}
+}
+
+当 contentDomain=fiction 且 communicationGoal=narrative 时，contentPlan 必须是：
+{
+  "planType": "narrative",
+  "title": "标题",
+  "logline": "一句话主线",
+  "themes": ["主题"],
+  "beats": [{
+    "id": "beat_1",
+    "title": "节拍标题",
+    "purpose": "叙事作用",
+    "summary": "内容摘要",
+    "estimatedDurationSec": 15,
+    "sourceAnchor": {"label": "可选来源位置", "quote": "可选原文"}
+  }]
+}
+
+当 contentDomain=book 且 communicationGoal=explain 时，contentPlan 必须是：
+{
+  "planType": "guide",
+  "title": "导读标题",
+  "thesis": "全片核心判断",
+  "recommendationAngle": "推荐或解读角度",
+  "outline": [{"id": "outline_1", "title": "章节", "question": "回答的问题", "takeaway": "核心收获"}],
+  "segments": [{
+    "id": "segment_1",
+    "outlineId": "outline_1",
+    "title": "段落标题",
+    "narration": "可直接配音的旁白",
+    "visualPurpose": "画面承担的信息功能",
+    "visualHints": ["可视化建议"],
+    "onScreenText": "可选且简短的屏幕文字",
+    "estimatedDurationSec": 20,
+    "spoilerLevel": "none|light|full",
+    "sourceAnchor": {"label": "章节或位置", "quote": "原文依据", "chapter": "章节"}
+  }]
+}
+
+要求：总时长接近 targetDurationSec；导读不得虚构来源，每个 segment 必须有 sourceAnchor；屏幕文字保持简短；不要把导读写成剧情复述。

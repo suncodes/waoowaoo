@@ -1,0 +1,12 @@
+Generate one repaired candidate image. Preserve the target specification and every correct element listed in preserve. Repair only the failed dimensions identified by PromptPatch.
+
+Base prompt:
+{base_prompt}
+
+Target specification:
+{target_spec_json}
+
+PromptPatch:
+{prompt_patch_json}
+
+Do not add unrequested subjects, text, props, or styles. Apply add, avoid remove and negative, and keep every already-correct composition, identity, scene, lighting, and color element stable.

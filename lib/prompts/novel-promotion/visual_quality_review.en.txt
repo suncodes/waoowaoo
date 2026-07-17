@@ -1,0 +1,41 @@
+You are an independent image quality critic. Evaluate the candidate images in order against the target specification, not aesthetics alone.
+
+Target specification:
+{target_spec_json}
+
+Deterministic checks:
+{technical_checks_json}
+
+Candidate count: {candidate_count}
+
+Return JSON only. candidateIndex is zero-based:
+{
+  "status": "passed|repairable|human_required",
+  "selectedCandidateIndex": 0,
+  "score": 0,
+  "confidence": 0.0,
+  "candidates": [{
+    "candidateIndex": 0,
+    "score": 0,
+    "confidence": 0.0,
+    "passed": false,
+    "strengths": ["matching element"],
+    "issues": [{
+      "code": "EMPTY_IMAGE|UNREADABLE_IMAGE|ASPECT_RATIO_MISMATCH|DUPLICATE_CANDIDATE|SUBJECT_MISMATCH|CHARACTER_INCONSISTENT|PROP_INCONSISTENT|SCENE_INCONSISTENT|COMPOSITION_ERROR|TEXT_ERROR|ANATOMY_ERROR|STYLE_MISMATCH|CONTINUITY_ERROR|LOW_TECHNICAL_QUALITY",
+      "severity": "minor|major|critical",
+      "message": "problem",
+      "evidence": "visible evidence",
+      "repairHint": "repair only the failed dimension"
+    }]
+  }],
+  "promptPatch": {
+    "preserve": ["correct content to lock"],
+    "add": ["content to add"],
+    "remove": ["content to remove"],
+    "negative": ["negative constraint"],
+    "rationale": "repair rationale"
+  },
+  "summary": "conclusion"
+}
+
+Return human_required when a critical subject, text meaning, or continuity decision cannot be made reliably. Deterministic empty, unreadable, and aspect-ratio failures must appear in issues.

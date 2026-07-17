@@ -15,6 +15,7 @@ import {
 } from '@/lib/model-capabilities/lookup'
 import { resolveBuiltinPricing } from '@/lib/model-pricing/lookup'
 import { resolveProjectModelCapabilityGenerationOptions } from '@/lib/config-service'
+import { evaluateVisualReadiness } from '@/lib/visual-readiness'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
@@ -181,6 +182,17 @@ function buildVideoPanelBillingInfoOrThrow(payload: unknown) {
   }
 }
 
+function assertVisualReady(panel: { id: string; visualQualityState?: unknown }) {
+  const readiness = evaluateVisualReadiness(panel.visualQualityState)
+  if (readiness.ready) return
+  throw new ApiError('CONFLICT', {
+    code: 'VISUAL_QUALITY_NOT_READY',
+    panelId: panel.id,
+    status: readiness.status,
+    reasons: readiness.reasons,
+  })
+}
+
 export const POST = apiHandler(async (
   request: NextRequest,
   context: { params: Promise<{ projectId: string }> },
@@ -218,12 +230,13 @@ export const POST = apiHandler(async (
           { videoUrl: '' },
         ],
       },
-      select: { id: true },
+      select: { id: true, visualQualityState: true },
     })
 
     if (panels.length === 0) {
       return NextResponse.json({ tasks: [], total: 0 })
     }
+    panels.forEach(assertVisualReady)
 
     const results = await Promise.all(
       panels.map(async (panel) =>
@@ -256,11 +269,29 @@ export const POST = apiHandler(async (
 
   const panel = await prisma.novelPromotionPanel.findFirst({
     where: { storyboardId, panelIndex: Number(panelIndex) },
-    select: { id: true },
+    select: { id: true, visualQualityState: true },
   })
 
   if (!panel) {
     throw new ApiError('NOT_FOUND')
+  }
+  assertVisualReady(panel)
+
+  const firstLastFrame = isRecord(body?.firstLastFrame) ? body.firstLastFrame : null
+  if (
+    firstLastFrame
+    && typeof firstLastFrame.lastFrameStoryboardId === 'string'
+    && firstLastFrame.lastFramePanelIndex !== undefined
+  ) {
+    const lastFramePanel = await prisma.novelPromotionPanel.findFirst({
+      where: {
+        storyboardId: firstLastFrame.lastFrameStoryboardId,
+        panelIndex: Number(firstLastFrame.lastFramePanelIndex),
+      },
+      select: { id: true, visualQualityState: true },
+    })
+    if (!lastFramePanel) throw new ApiError('NOT_FOUND')
+    assertVisualReady(lastFramePanel)
   }
 
   const result = await submitTask({

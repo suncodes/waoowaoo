@@ -13,7 +13,7 @@ const MAX_SAMPLES = 200
 const CAPABILITY_NAMESPACES = new Set(['llm', 'image', 'video', 'audio', 'lipsync'])
 const MODEL_TYPES = new Set(['llm', 'image', 'video', 'audio', 'lipsync'])
 const CAPABILITY_NAMESPACE_ALLOWED_FIELDS = {
-  llm: new Set(['reasoningEffortOptions', 'fieldI18n']),
+  llm: new Set(['reasoningEffortOptions', 'visionInput', 'fieldI18n']),
   image: new Set(['resolutionOptions', 'fieldI18n']),
   video: new Set([
     'durationOptions',
@@ -212,6 +212,9 @@ function validateCapabilities(modelType, capabilities) {
       validateAllowedFields(issues, 'llm', llm)
       if (llm.reasoningEffortOptions !== undefined && !isStringArray(llm.reasoningEffortOptions)) {
         pushIssue(issues, 'capabilities.llm.reasoningEffortOptions', 'must be string array')
+      }
+      if (llm.visionInput !== undefined && typeof llm.visionInput !== 'boolean') {
+        pushIssue(issues, 'capabilities.llm.visionInput', 'must be boolean')
       }
       validateFieldI18nMap(issues, 'llm', llm)
     }

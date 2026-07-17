@@ -14,6 +14,7 @@ import {
   handlePanelImageTask,
   handlePanelVariantTask,
 } from './handlers/image-task-handlers'
+import { handleVisualAutoRepairTask } from './handlers/visual-auto-repair'
 
 type AnyObj = Record<string, unknown>
 
@@ -42,6 +43,8 @@ async function processImageTask(job: Job<TaskJobData>) {
       return await handlePanelImageTask(job)
     case TASK_TYPE.PANEL_VARIANT:
       return await handlePanelVariantTask(job)
+    case TASK_TYPE.VISUAL_AUTO_REPAIR:
+      return await handleVisualAutoRepairTask(job)
     default:
       throw new Error(`Unsupported image task type: ${job.data.type}`)
   }

@@ -6,6 +6,7 @@ import type { TaskPresentationState } from '@/lib/task/presentation'
 import type { BatchVideoGenerationParams, VideoGenerationOptions } from '../components/video'
 import type { CapabilitySelections } from '@/lib/model-config-contract'
 import type { VideoPricingTier } from '@/lib/model-pricing/video-tier'
+import type { VideoProfile } from '@/lib/video-profile'
 import type {
   useScriptToStoryboardRunStream,
   useStoryToScriptRunStream,
@@ -28,6 +29,7 @@ interface ProjectSnapshotInput {
   videoModel: string | undefined
   audioModel: string | undefined
   videoRatio: string | undefined
+  videoProfile: VideoProfile
   capabilityOverrides: CapabilitySelections
   ttsRate: string | number | undefined
   artStyle: string | undefined

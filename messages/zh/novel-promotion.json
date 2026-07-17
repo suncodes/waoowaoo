@@ -129,6 +129,13 @@
     "currentConfigSummary": "当前配置：{ratio} · {style}，后续生成都会使用此组合",
     "assetLibraryRatioNote": "资产库比例不受影响",
     "moreConfig": "更多配置请点击右上角「 配置」按钮",
+    "videoProfile": {
+      "label": "视频类型",
+      "aiComic": "AI 漫剧",
+      "bookGuide": "书籍导读",
+      "shadowReview": "影子评审",
+      "autoRepair": "自动修复"
+    },
     "narration": {
       "title": "启用旁白配音",
       "description": "生成 TTS 语音旁白，为视频添加解说"
@@ -158,8 +165,12 @@
     "saveFailed": "保存失败",
     "storyToScriptRunning": "Story→Script V2 运行中",
     "scriptToStoryboardRunning": "Script→Storyboard V2 运行中",
+    "contentPlanRunning": "正在规划内容结构",
+    "visualPlanRunning": "正在制定视觉方案",
     "storyToScriptFailed": "内容转剧本失败",
     "scriptToStoryboardFailed": "剧本转分镜失败",
+    "contentPlanFailed": "内容规划失败",
+    "visualPlanFailed": "视觉规划失败",
     "taskStreamTimeout": "任务执行超时，请检查任务是否仍在运行，或重新触发"
   },
   "rebuildConfirm": {

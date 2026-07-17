@@ -58,9 +58,12 @@ export default function ConfigStage() {
       isSubmittingTask={runtime.isSubmittingTTS || runtime.isStartingStoryToScript}
       isSwitchingStage={runtime.isTransitioning}
       videoRatio={runtime.videoRatio ?? undefined}
+      videoProfile={runtime.videoProfile}
       artStyle={runtime.artStyle ?? undefined}
       artStyleReferenceEnabled={runtime.artStyleReferenceEnabled}
       onVideoRatioChange={runtime.onVideoRatioChange}
+      onVideoProfileChange={runtime.onVideoProfileChange}
+      onVisualQualityModeChange={runtime.onVisualQualityModeChange}
       onArtStyleChange={runtime.onArtStyleChange}
       onArtStyleReferenceEnabledChange={runtime.onArtStyleReferenceEnabledChange}
       onNext={runtime.onRunStoryToScript}

@@ -1,0 +1,64 @@
+You are the visual director for the complete video. Based on the locked content plan, define a unified treatment and production bible, then create persistable visual units for the clips.
+
+VideoProfile: {profile_json}
+CreativeBrief: {creative_brief_json}
+ContentPlan: {content_plan_json}
+Clips: {clips_json}
+Available assets: {assets_json}
+Aspect ratio: {video_ratio}
+Art style: {art_style}
+
+Return JSON only:
+{
+  "directorTreatment": {
+    "narrativeStrategy": "overall narrative strategy",
+    "pacing": "pacing principle",
+    "cameraLanguage": "camera language",
+    "transitionStrategy": "transition principle",
+    "soundStrategy": "sound principle"
+  },
+  "productionBible": {
+    "visualStyle": "unified visual style",
+    "lightingBaseline": "scene-level lighting baseline",
+    "colorGrade": "master grade",
+    "compositionRules": ["composition rule"],
+    "continuityRules": ["continuity rule"],
+    "forbiddenPatterns": ["forbidden pattern"]
+  },
+  "shotPlan": {
+    "summary": "global shot-plan summary",
+    "totalEstimatedDurationSec": 90,
+    "continuityChecks": ["cross-shot check"]
+  },
+  "visualUnits": [{
+    "id": "visual_1",
+    "clipId": "an id from Clips",
+    "panelNumber": 1,
+    "visualType": "character_action|environment|book_cover|quote_card|diagram|illustration|kinetic_text",
+    "renderMode": "generated_image|text_card|composite",
+    "shotType": "shot size",
+    "cameraMove": "one primary camera move",
+    "description": "visual description",
+    "imagePrompt": "image generation prompt",
+    "videoPrompt": "motion and camera behavior after the first frame",
+    "durationSec": 5,
+    "onScreenText": "optional short text",
+    "sourceAnchor": {"label": "optional source", "quote": "optional quote"},
+    "shotSpec": {
+      "narrativeIntent": "shot purpose",
+      "subjectIdentity": ["identity anchor"],
+      "startState": "opening state",
+      "actionBeats": ["ordered action"],
+      "endState": "stable closing state",
+      "spatialContinuity": "spatial continuity",
+      "camera": "shot size, angle, and primary move",
+      "sceneLightingBaseline": "lighting baseline",
+      "colorGrade": "grade",
+      "dialogueAudio": "narration, dialogue, or ambience",
+      "constraints": ["constraint"],
+      "durationIntent": "duration rationale"
+    }
+  }]
+}
+
+A guide must cover every clip and choose among book cover, quote card, diagram, illustration, and kinetic text according to information purpose. Do not make every unit a character illustration. Fiction may provide compact global recommendations per clip; detailed storyboard generation must still obey the Treatment and Bible.

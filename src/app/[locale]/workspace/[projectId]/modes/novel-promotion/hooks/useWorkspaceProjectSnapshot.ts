@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import type { NovelPromotionWorkspaceProps } from '../types'
 import type { CapabilitySelections } from '@/lib/model-config-contract'
+import { resolveVideoProfile } from '@/lib/video-profile'
 
 function parseCapabilitySelections(raw: unknown): CapabilitySelections {
   if (!raw) return {}
@@ -35,6 +36,7 @@ export function useWorkspaceProjectSnapshot({
       currentStage: urlStage === 'editor' ? 'videos' : (urlStage || 'config'),
       globalAssetText: projectData?.globalAssetText || '',
       novelText: episode?.novelText || '',
+      contentPlan: episode?.contentPlan,
       analysisModel: projectData?.analysisModel,
       characterModel: projectData?.characterModel,
       locationModel: projectData?.locationModel,
@@ -51,6 +53,7 @@ export function useWorkspaceProjectSnapshot({
       artStyleReferenceEnabled: projectData?.artStyleReferenceEnabled === true,
       customArtStyleReferenceImage: projectData?.customArtStyleReferenceImage || '',
       customArtStyleReferenceImageUrl: projectData?.customArtStyleReferenceImageUrl || projectData?.customArtStyleReferenceImage || '',
+      videoProfile: resolveVideoProfile(projectData?.videoProfile),
     }
-  }, [episode?.novelText, episode?.storyboards, project.novelPromotionData, urlStage])
+  }, [episode?.contentPlan, episode?.novelText, episode?.storyboards, project.novelPromotionData, urlStage])
 }

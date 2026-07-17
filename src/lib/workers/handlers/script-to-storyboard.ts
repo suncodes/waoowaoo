@@ -144,10 +144,28 @@ export async function handleScriptToStoryboardTask(job: Job<TaskJobData>) {
   const reasoningEffort = requestedReasoningEffort
     || (isReasoningEffort(capabilityReasoningEffort) ? capabilityReasoningEffort : 'high')
 
-  const phase1PlanTemplate = getPromptTemplate(PROMPT_IDS.NP_AGENT_STORYBOARD_PLAN, job.data.locale)
-  const phase2CinematographyTemplate = getPromptTemplate(PROMPT_IDS.NP_AGENT_CINEMATOGRAPHER, job.data.locale)
-  const phase2ActingTemplate = getPromptTemplate(PROMPT_IDS.NP_AGENT_ACTING_DIRECTION, job.data.locale)
-  const phase3DetailTemplate = getPromptTemplate(PROMPT_IDS.NP_AGENT_STORYBOARD_DETAIL, job.data.locale)
+  const visualDirectionContext = JSON.stringify({
+    directorTreatment: episode.directorTreatment || null,
+    productionBible: episode.productionBible || null,
+  }, null, 2)
+  const withVisualDirection = (template: string) => [
+    'DIRECTOR_TREATMENT_AND_PRODUCTION_BIBLE:',
+    visualDirectionContext,
+    'All storyboard decisions must follow this context unless it is null.',
+    template,
+  ].join('\n\n')
+  const phase1PlanTemplate = withVisualDirection(
+    getPromptTemplate(PROMPT_IDS.NP_AGENT_STORYBOARD_PLAN, job.data.locale),
+  )
+  const phase2CinematographyTemplate = withVisualDirection(
+    getPromptTemplate(PROMPT_IDS.NP_AGENT_CINEMATOGRAPHER, job.data.locale),
+  )
+  const phase2ActingTemplate = withVisualDirection(
+    getPromptTemplate(PROMPT_IDS.NP_AGENT_ACTING_DIRECTION, job.data.locale),
+  )
+  const phase3DetailTemplate = withVisualDirection(
+    getPromptTemplate(PROMPT_IDS.NP_AGENT_STORYBOARD_DETAIL, job.data.locale),
+  )
   const payloadMeta = typeof payload.meta === 'object' && payload.meta !== null
     ? (payload.meta as AnyObj)
     : {}

@@ -21,10 +21,8 @@ import {
   resolveNovelData,
 } from './image-task-handler-shared'
 import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
-import {
-  parseLocationAvailableSlots,
-} from '@/lib/location-available-slots'
-
+import { parseLocationAvailableSlots } from '@/lib/location-available-slots'
+import { persistPanelCandidatesAndScheduleReview } from './panel-visual-quality-trigger'
 function parseJsonUnknown(raw: string | null | undefined): unknown | null {
   if (!raw) return null
   try {
@@ -33,7 +31,6 @@ function parseJsonUnknown(raw: string | null | undefined): unknown | null {
     return null
   }
 }
-
 function parseDescriptionList(raw: string | null | undefined): string[] {
   if (!raw) return []
   try {
@@ -283,27 +280,20 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
   const isFirstGeneration = !panel.imageUrl
 
   await assertTaskActive(job, 'persist_panel_image')
-  if (isFirstGeneration) {
-    await prisma.novelPromotionPanel.update({
-      where: { id: panel.id },
-      data: {
-        imageUrl: candidates[0] || null,
-        candidateImages: candidateCount > 1 ? JSON.stringify(candidates) : null,
-      },
-    })
-  } else {
-    await prisma.novelPromotionPanel.update({
-      where: { id: panel.id },
-      data: {
-        previousImageUrl: panel.imageUrl,
-        candidateImages: JSON.stringify(candidates),
-      },
-    })
-  }
+  const quality = await persistPanelCandidatesAndScheduleReview({
+    job,
+    panel,
+    candidates,
+    isFirstGeneration,
+  })
 
   return {
     panelId: panel.id,
     candidateCount: candidates.length,
-    imageUrl: isFirstGeneration ? candidates[0] || null : null,
+    imageUrl: quality.imageUrl,
+    visualQualityMode: quality.mode,
+    visualQualityVersionHash: quality.versionHash,
+    visualQualityReviewScheduled: quality.reviewScheduled,
+    visualQualityReviewTaskId: quality.reviewTaskId,
   }
 }

@@ -4,7 +4,7 @@ import path from 'node:path'
  const CATALOG_DIR = path.resolve(process.cwd(), 'standards/capabilities')
 const CAPABILITY_NAMESPACES = new Set(['llm', 'image', 'video', 'audio', 'lipsync'])
 const CAPABILITY_NAMESPACE_ALLOWED_FIELDS = {
-  llm: new Set(['reasoningEffortOptions', 'fieldI18n']),
+  llm: new Set(['reasoningEffortOptions', 'visionInput', 'fieldI18n']),
   image: new Set(['resolutionOptions', 'fieldI18n']),
   video: new Set([
     'generationModeOptions',
@@ -181,6 +181,9 @@ function validateCapabilitiesForModelType(issues, file, index, modelType, capabi
       validateAllowedFields(issues, file, index, 'llm', llm)
       if (llm.reasoningEffortOptions !== undefined && !isStringArray(llm.reasoningEffortOptions)) {
         pushIssue(issues, file, index, 'capabilities.llm.reasoningEffortOptions', 'must be string array')
+      }
+      if (llm.visionInput !== undefined && typeof llm.visionInput !== 'boolean') {
+        pushIssue(issues, file, index, 'capabilities.llm.visionInput', 'must be boolean')
       }
       validateFieldI18nMap(issues, file, index, 'llm', llm)
     }

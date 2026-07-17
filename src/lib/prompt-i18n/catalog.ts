@@ -101,6 +101,14 @@ export const PROMPT_CATALOG: Record<PromptId, PromptCatalogEntry> = {
     pathStem: 'novel-promotion/character_regenerate',
     variableKeys: ['character_name', 'current_descriptions', 'change_reason', 'novel_text'],
   },
+  [PROMPT_IDS.NP_CONTENT_PLAN]: {
+    pathStem: 'novel-promotion/content_plan',
+    variableKeys: ['profile_json', 'source_text'],
+  },
+  [PROMPT_IDS.NP_CONTENT_REVIEW]: {
+    pathStem: 'novel-promotion/content_review',
+    variableKeys: ['profile_json', 'source_text', 'plan_json'],
+  },
   [PROMPT_IDS.NP_EPISODE_SPLIT]: {
     pathStem: 'novel-promotion/episode_split',
     variableKeys: ['CONTENT'],
@@ -148,6 +156,26 @@ export const PROMPT_CATALOG: Record<PromptId, PromptCatalogEntry> = {
   [PROMPT_IDS.NP_STORYBOARD_EDIT]: {
     pathStem: 'novel-promotion/storyboard_edit',
     variableKeys: ['user_input'],
+  },
+  [PROMPT_IDS.NP_VISUAL_AUTO_REPAIR]: {
+    pathStem: 'novel-promotion/visual_auto_repair',
+    variableKeys: ['base_prompt', 'target_spec_json', 'prompt_patch_json'],
+  },
+  [PROMPT_IDS.NP_VISUAL_PLAN]: {
+    pathStem: 'novel-promotion/visual_plan',
+    variableKeys: [
+      'profile_json',
+      'creative_brief_json',
+      'content_plan_json',
+      'clips_json',
+      'assets_json',
+      'video_ratio',
+      'art_style',
+    ],
+  },
+  [PROMPT_IDS.NP_VISUAL_QUALITY_REVIEW]: {
+    pathStem: 'novel-promotion/visual_quality_review',
+    variableKeys: ['target_spec_json', 'technical_checks_json', 'candidate_count'],
   },
   [PROMPT_IDS.NP_VOICE_ANALYSIS]: {
     pathStem: 'novel-promotion/voice_analysis',

@@ -16,6 +16,8 @@ export const PROMPT_IDS = {
   NP_CHARACTER_DESCRIPTION_UPDATE: 'np_character_description_update',
   NP_CHARACTER_MODIFY: 'np_character_modify',
   NP_CHARACTER_REGENERATE: 'np_character_regenerate',
+  NP_CONTENT_PLAN: 'np_content_plan',
+  NP_CONTENT_REVIEW: 'np_content_review',
   NP_EPISODE_SPLIT: 'np_episode_split',
   NP_IMAGE_PROMPT_MODIFY: 'np_image_prompt_modify',
   NP_LOCATION_CREATE: 'np_location_create',
@@ -28,6 +30,9 @@ export const PROMPT_IDS = {
   NP_SELECT_LOCATION: 'np_select_location',
   NP_SINGLE_PANEL_IMAGE: 'np_single_panel_image',
   NP_STORYBOARD_EDIT: 'np_storyboard_edit',
+  NP_VISUAL_AUTO_REPAIR: 'np_visual_auto_repair',
+  NP_VISUAL_PLAN: 'np_visual_plan',
+  NP_VISUAL_QUALITY_REVIEW: 'np_visual_quality_review',
   NP_VOICE_ANALYSIS: 'np_voice_analysis',
 } as const
 

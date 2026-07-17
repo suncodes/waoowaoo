@@ -53,6 +53,7 @@ export interface Panel {
   videoErrorMessage?: string | null  // 视频生成错误消息
   videoErrorCode?: string | null
   imageTaskRunning?: boolean | null
+  visualQualityState?: unknown
   // 口型同步相关
   lipSyncVideoUrl?: string | null
   lipSyncTaskRunning?: boolean | null
@@ -92,6 +93,7 @@ export interface VideoPanel {
   videoErrorCode?: string
   videoModel?: string
   linkedToNextPanel?: boolean
+  visualQualityState?: unknown
   // 口型同步相关
   lipSyncVideoUrl?: string
   lipSyncTaskRunning?: boolean

@@ -192,6 +192,11 @@ export interface NovelPromotionPanel {
   previousImageMedia?: MediaRef | null
   photographyRules: string | null  // 单镜头摄影规则JSON
   actingNotes: string | null        // 演技指导数据JSON
+  visualType?: string | null
+  renderMode?: string | null
+  onScreenText?: string | null
+  sourceAnchor?: unknown
+  visualQualityState?: unknown
   // 任务态字段（由 tasks + hook 派生，不再依赖数据库持久化）
   imageTaskRunning?: boolean
   videoTaskRunning?: boolean
@@ -261,6 +266,7 @@ export interface NovelPromotionProject {
   artStyleReferenceEnabled?: boolean
   customArtStyleReferenceImage?: string | null
   customArtStyleReferenceImageUrl?: string | null
+  videoProfile?: unknown
   audioUrl: string | null
   media?: MediaRef | null
   srtContent: string | null
@@ -275,6 +281,11 @@ export interface NovelPromotionProject {
     novelText: string | null
     audioUrl: string | null
     srtContent: string | null
+    creativeBrief?: unknown
+    contentPlan?: unknown
+    contentReview?: unknown
+    directorTreatment?: unknown
+    productionBible?: unknown
     createdAt: Date
     updatedAt: Date
   }>
