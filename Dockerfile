@@ -1,10 +1,15 @@
+# syntax=docker/dockerfile:1.7
+
 # ==================== Stage 1: Dependencies ====================
 FROM node:20-alpine AS deps
 WORKDIR /app
 
+ENV HUSKY=0
+
 COPY package.json package-lock.json ./
-COPY prisma ./prisma
-RUN npm ci
+COPY prisma/schema.prisma ./prisma/schema.prisma
+RUN --mount=type=cache,id=npm-cache,target=/root/.npm \
+    npm ci --prefer-offline --no-audit --no-fund
 
 # ==================== Stage 2: Build ====================
 FROM node:20-alpine AS builder
@@ -14,7 +19,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Prisma generate + Next.js build
-RUN npm run build
+RUN --mount=type=cache,id=next-cache,target=/app/.next/cache \
+    npm run build
 
 # ==================== Stage 3: Production ====================
 FROM node:20-alpine AS runner
