@@ -119,21 +119,7 @@ export function useNovelPromotionWorkspaceController({
     execution.storyToScriptStream.isRunning ||
     execution.storyToScriptStream.isRecoveredRunning ||
     execution.storyToScriptStream.status === 'running'
-  const isScriptToStoryboardRunning =
-    execution.scriptToStoryboardStream.isRunning ||
-    execution.scriptToStoryboardStream.isRecoveredRunning ||
-    execution.scriptToStoryboardStream.status === 'running'
   const stageArtifacts = resolveEpisodeStageArtifacts(episode)
-
-  const isAnyOperationRunning =
-    isStartingStoryToScript ||
-    isStartingScriptToStoryboard ||
-    execution.isSubmittingTTS ||
-    execution.isAssetAnalysisRunning ||
-    execution.isConfirmingAssets ||
-    execution.isTransitioning ||
-    isStoryToScriptRunning ||
-    isScriptToStoryboardRunning
 
   useWorkspaceAutoRun({
     searchParams,
@@ -146,9 +132,13 @@ export function useNovelPromotionWorkspaceController({
     runStoryToScriptFlow: execution.runStoryToScriptFlow,
   })
 
-  const capsuleNavItems = useWorkspaceStageNavigation({
-    isAnyOperationRunning,
+  const workflowItems = useWorkspaceStageNavigation({
     stageArtifacts,
+    videoProfile: projectSnapshot.videoProfile,
+    contentPlanStream: execution.contentPlanStream,
+    storyToScriptStream: execution.storyToScriptStream,
+    visualPlanStream: execution.visualPlanStream,
+    scriptToStoryboardStream: execution.scriptToStoryboardStream,
     t,
   })
 
@@ -202,7 +192,7 @@ export function useNovelPromotionWorkspaceController({
 
   const stageNavState = {
     currentStage,
-    capsuleNavItems,
+    workflowItems,
     handleStageChange: configActions.handleStageChange,
   }
 
@@ -214,12 +204,10 @@ export function useNovelPromotionWorkspaceController({
     isStartingStoryToScript,
     isStartingScriptToStoryboard,
     transitionProgress: execution.transitionProgress,
-    storyToScriptConsoleMinimized: execution.storyToScriptConsoleMinimized,
-    setStoryToScriptConsoleMinimized: execution.setStoryToScriptConsoleMinimized,
-    scriptToStoryboardConsoleMinimized: execution.scriptToStoryboardConsoleMinimized,
-    setScriptToStoryboardConsoleMinimized: execution.setScriptToStoryboardConsoleMinimized,
     storyToScriptStream: execution.storyToScriptStream,
     scriptToStoryboardStream: execution.scriptToStoryboardStream,
+    contentPlanStream: execution.contentPlanStream,
+    visualPlanStream: execution.visualPlanStream,
     handleGenerateTTS: execution.handleGenerateTTS,
     handleAnalyzeAssets: execution.handleAnalyzeAssets,
     runStoryToScriptFlow: execution.runStoryToScriptFlow,

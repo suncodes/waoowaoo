@@ -1,14 +1,13 @@
 'use client'
 
-import ProgressToast from '@/components/ProgressToast'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { AnimatedBackground } from '@/components/ui/SharedComponents'
-import { useTranslations } from 'next-intl'
 import { WorkspaceProvider } from './WorkspaceProvider'
-import WorkspaceRunStreamConsoles from './components/WorkspaceRunStreamConsoles'
 import WorkspaceStageContent from './components/WorkspaceStageContent'
 import WorkspaceAssetLibraryModal from './components/WorkspaceAssetLibraryModal'
 import WorkspaceHeaderShell from './components/WorkspaceHeaderShell'
+import WorkspaceTaskPanel from './components/WorkspaceTaskPanel'
+import WorkspaceWorkflowRail from './components/WorkspaceWorkflowRail'
 import { WorkspaceStageRuntimeProvider } from './WorkspaceStageRuntimeContext'
 import { useNovelPromotionWorkspaceController } from './hooks/useNovelPromotionWorkspaceController'
 import type { NovelPromotionWorkspaceProps } from './types'
@@ -16,7 +15,6 @@ import '@/styles/animations.css'
 
 function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
   const vm = useNovelPromotionWorkspaceController(props)
-  const tProgress = useTranslations('progress')
 
   const {
     project,
@@ -28,45 +26,6 @@ function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
     onEpisodeRename,
     onEpisodeDelete,
   } = props
-
-  const storyToScriptStream = vm.execution.storyToScriptStream
-  const scriptToStoryboardStream = vm.execution.scriptToStoryboardStream
-  const storyToScriptActive =
-    storyToScriptStream.isRunning ||
-    storyToScriptStream.isRecoveredRunning ||
-    storyToScriptStream.status === 'running'
-  const scriptToStoryboardActive =
-    scriptToStoryboardStream.isRunning ||
-    scriptToStoryboardStream.isRecoveredRunning ||
-    scriptToStoryboardStream.status === 'running'
-
-  const showStoryToScriptMinBadge =
-    storyToScriptStream.isVisible &&
-    storyToScriptActive &&
-    vm.execution.storyToScriptConsoleMinimized
-
-  const showScriptToStoryboardMinBadge =
-    scriptToStoryboardStream.isVisible &&
-    scriptToStoryboardActive &&
-    vm.execution.scriptToStoryboardConsoleMinimized
-
-  const runBadges: { id: string; label: string; onClick: () => void }[] = []
-
-  if (showStoryToScriptMinBadge) {
-    runBadges.push({
-      id: 'story-to-script',
-      label: tProgress('runConsole.storyToScriptRunning'),
-      onClick: () => vm.execution.setStoryToScriptConsoleMinimized(false),
-    })
-  }
-
-  if (showScriptToStoryboardMinBadge) {
-    runBadges.push({
-      id: 'script-to-storyboard',
-      label: tProgress('runConsole.scriptToStoryboardRunning'),
-      onClick: () => vm.execution.setScriptToStoryboardConsoleMinimized(false),
-    })
-  }
 
   if (!vm.project.projectData) {
     return <div className="text-center text-(--glass-text-secondary)">{vm.i18n.tc('loading')}</div>
@@ -108,11 +67,6 @@ function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
         onEpisodeCreate={onEpisodeCreate}
         onEpisodeRename={onEpisodeRename}
         onEpisodeDelete={onEpisodeDelete}
-        capsuleNavItems={vm.stageNav.capsuleNavItems}
-        currentStage={vm.stageNav.currentStage}
-        onStageChange={vm.stageNav.handleStageChange}
-        projectId={projectId}
-        episodeId={episodeId}
         onOpenAssetLibrary={() => vm.ui.openAssetLibrary()}
         onOpenSettingsModal={() => vm.ui.setIsSettingsModalOpen(true)}
         onRefresh={() => vm.ui.onRefresh({ mode: 'full' })}
@@ -121,9 +75,37 @@ function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
         refreshTitle={vm.i18n.t('buttons.refreshData')}
       />
 
-      <div className="pt-24">
+      <a
+        href="#workspace-stage-content"
+        className="sr-only fixed left-4 top-4 z-[200] rounded-md bg-[var(--glass-bg-surface)] px-3 py-2 text-sm text-[var(--glass-text-primary)] focus:not-sr-only"
+      >
+        {vm.i18n.t('workspaceFlow.skipToContent')}
+      </a>
+
+      <div className="relative left-1/2 w-[min(1800px,calc(100vw-2rem))] -translate-x-1/2 pt-28">
         <WorkspaceStageRuntimeProvider value={vm.runtime.stageRuntime}>
-          <WorkspaceStageContent currentStage={vm.stageNav.currentStage} />
+          <div className="grid min-w-0 gap-4 lg:grid-cols-[220px_minmax(0,1fr)] 2xl:grid-cols-[220px_minmax(0,1fr)_340px]">
+            <WorkspaceWorkflowRail
+              items={vm.stageNav.workflowItems}
+              currentStage={vm.stageNav.currentStage}
+              projectId={projectId}
+              episodeId={episodeId}
+              onStageChange={vm.stageNav.handleStageChange}
+            />
+
+            <main id="workspace-stage-content" className="min-w-0 scroll-mt-32">
+              <WorkspaceStageContent currentStage={vm.stageNav.currentStage} />
+            </main>
+
+            <WorkspaceTaskPanel
+              currentStage={vm.stageNav.currentStage}
+              videoProfile={vm.project.videoProfile}
+              contentPlanStream={vm.execution.contentPlanStream}
+              storyToScriptStream={vm.execution.storyToScriptStream}
+              visualPlanStream={vm.execution.visualPlanStream}
+              scriptToStoryboardStream={vm.execution.scriptToStoryboardStream}
+            />
+          </div>
         </WorkspaceStageRuntimeProvider>
 
         <WorkspaceAssetLibraryModal
@@ -141,15 +123,6 @@ function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
           onGlobalAnalyzeComplete={() => vm.ui.setTriggerGlobalAnalyzeOnOpen(false)}
         />
 
-        {vm.execution.showCreatingToast && (
-          <ProgressToast
-            show
-            message={vm.i18n.t('storyInput.creating')}
-            step={vm.execution.transitionProgress.step || ''}
-            runBadges={runBadges}
-          />
-        )}
-
         <ConfirmDialog
           show={vm.rebuild.showRebuildConfirm}
           type="warning"
@@ -161,15 +134,6 @@ function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
           onCancel={vm.rebuild.handleCancelRebuildConfirm}
         />
 
-        <WorkspaceRunStreamConsoles
-          storyToScriptStream={vm.execution.storyToScriptStream}
-          scriptToStoryboardStream={vm.execution.scriptToStoryboardStream}
-          storyToScriptConsoleMinimized={vm.execution.storyToScriptConsoleMinimized}
-          scriptToStoryboardConsoleMinimized={vm.execution.scriptToStoryboardConsoleMinimized}
-          onStoryToScriptMinimizedChange={vm.execution.setStoryToScriptConsoleMinimized}
-          onScriptToStoryboardMinimizedChange={vm.execution.setScriptToStoryboardConsoleMinimized}
-          hideMinimizedBadges={vm.execution.showCreatingToast}
-        />
       </div>
     </div>
   )

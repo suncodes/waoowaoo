@@ -8,12 +8,17 @@ import type { CapabilitySelections } from '@/lib/model-config-contract'
 import type { VideoPricingTier } from '@/lib/model-pricing/video-tier'
 import type { VideoProfile } from '@/lib/video-profile'
 import type {
+  useContentPlanRunStream,
   useScriptToStoryboardRunStream,
   useStoryToScriptRunStream,
+  useVisualPlanRunStream,
 } from '@/lib/query/hooks'
+import type { WorkspaceStageNavItem } from './useWorkspaceStageNavigation'
 
 type StoryToScriptStreamState = ReturnType<typeof useStoryToScriptRunStream>
 type ScriptToStoryboardStreamState = ReturnType<typeof useScriptToStoryboardRunStream>
+type ContentPlanStreamState = ReturnType<typeof useContentPlanRunStream>
+type VisualPlanStreamState = ReturnType<typeof useVisualPlanRunStream>
 
 interface ProjectSnapshotInput {
   projectData: unknown
@@ -71,14 +76,7 @@ interface BuildWorkspaceControllerViewModelParams {
   }
   stageNavState: {
     currentStage: string
-    capsuleNavItems: Array<{
-      id: string
-      label: string
-      icon: string
-      status: 'empty' | 'active' | 'processing' | 'ready'
-      disabled?: boolean
-      disabledLabel?: string
-    }>
+    workflowItems: WorkspaceStageNavItem[]
     handleStageChange: (stage: string) => void
   }
   rebuildState: {
@@ -98,12 +96,10 @@ interface BuildWorkspaceControllerViewModelParams {
     isStartingStoryToScript: boolean
     isStartingScriptToStoryboard: boolean
     transitionProgress: { step?: string; total?: number; current?: number }
-    storyToScriptConsoleMinimized: boolean
-    setStoryToScriptConsoleMinimized: (minimized: boolean) => void
-    scriptToStoryboardConsoleMinimized: boolean
-    setScriptToStoryboardConsoleMinimized: (minimized: boolean) => void
     storyToScriptStream: StoryToScriptStreamState
     scriptToStoryboardStream: ScriptToStoryboardStreamState
+    contentPlanStream: ContentPlanStreamState
+    visualPlanStream: VisualPlanStreamState
     handleGenerateTTS: () => Promise<void>
     handleAnalyzeAssets: () => Promise<void>
     runStoryToScriptFlow: () => Promise<void>

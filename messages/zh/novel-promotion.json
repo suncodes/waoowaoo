@@ -1,9 +1,18 @@
 {
   "stages": {
     "story": "故事",
+    "bookSource": "书籍材料",
+    "contentPlan": "剧情结构",
+    "guidePlan": "导读结构",
     "script": "剧本",
+    "guideScript": "解说稿",
+    "visualPlan": "视觉方案",
     "storyboard": "分镜",
+    "guideStoryboard": "图文分镜",
     "video": "成片",
+    "videoAudio": "视频与声音",
+    "videoNarration": "视频与旁白",
+    "finalExport": "成片与导出",
     "editor": "AI剪辑",
     "editorComingSoon": "开发中，关注我们获取最新消息"
   },
@@ -12,6 +21,128 @@
     "settings": "项目配置",
     "refreshData": "刷新项目数据",
     "enterVideoGeneration": "进入视频生成 →"
+  },
+  "workspaceFlow": {
+    "title": "制作流程",
+    "stageCount": "共 {count} 个阶段",
+    "skipToContent": "跳到当前阶段内容",
+    "status": {
+      "notStarted": "未开始",
+      "ready": "可开始",
+      "running": "生成中",
+      "attention": "待处理",
+      "completed": "已完成",
+      "failed": "失败",
+      "stale": "已过期"
+    },
+    "contentPlan": {
+      "titleNarrative": "剧情结构",
+      "titleGuide": "导读结构",
+      "tabs": {
+        "brief": "创作简报",
+        "structure": "内容结构",
+        "review": "检查结果"
+      },
+      "status": {
+        "approved": "检查通过",
+        "warning": "存在提醒",
+        "blocked": "需要调整"
+      },
+      "empty": {
+        "title": "内容策划尚未生成",
+        "description": "当前剧集还没有内容结构产物。请先准备来源材料并开始创作。",
+        "action": "返回输入与目标"
+      },
+      "briefOverview": "创作目标",
+      "outlineTitle": "导读大纲",
+      "segmentsTitle": "解说段落",
+      "issuesTitle": "检查问题",
+      "revisionTitle": "调整建议",
+      "noIssues": "未发现需要处理的问题",
+      "noRevision": "当前没有调整建议",
+      "emptyValue": "暂无",
+      "untitled": "未命名段落",
+      "source": "来源",
+      "durationSeconds": "约 {seconds} 秒",
+      "scores": {
+        "total": "综合得分",
+        "profileFit": "类型匹配",
+        "sourceSupport": "来源支持"
+      },
+      "fields": {
+        "title": "标题",
+        "logline": "核心梗概",
+        "thesis": "核心论点",
+        "recommendationAngle": "推荐角度",
+        "objective": "创作目标",
+        "audience": "目标受众",
+        "audiencePromise": "受众收获",
+        "targetDuration": "目标时长",
+        "tone": "内容语气",
+        "mustInclude": "必须包含",
+        "mustAvoid": "需要避免",
+        "visualPurpose": "画面目的",
+        "visualHints": "画面提示"
+      }
+    },
+    "visualPlan": {
+      "titleNarrative": "导演与视觉方案",
+      "titleGuide": "导读视觉方案",
+      "tabs": {
+        "treatment": "导演方案",
+        "bible": "视觉规范"
+      },
+      "status": {
+        "ready": "方案已生成"
+      },
+      "empty": {
+        "title": "视觉方案尚未生成",
+        "description": "当前剧集还没有全片视觉策略。完成剧本或解说稿后即可生成。",
+        "action": "返回文稿"
+      },
+      "treatmentOverview": "全片导演策略",
+      "visualBaseline": "全片视觉基线",
+      "emptyValue": "暂无",
+      "fields": {
+        "narrativeStrategy": "叙事策略",
+        "pacing": "节奏",
+        "cameraLanguage": "镜头语言",
+        "transitionStrategy": "转场策略",
+        "soundStrategy": "声音策略",
+        "visualStyle": "视觉风格",
+        "lightingBaseline": "灯光基线",
+        "colorGrade": "调色基线",
+        "compositionRules": "构图规则",
+        "continuityRules": "连续性规则",
+        "forbiddenPatterns": "禁止模式"
+      }
+    },
+    "taskPanel": {
+      "title": "运行详情",
+      "open": "查看运行详情",
+      "close": "关闭运行详情",
+      "runningCount": "{count} 个任务运行中",
+      "waiting": "等待任务开始",
+      "waitingSteps": "任务已开始，正在获取步骤",
+      "noRun": "本集暂无运行记录",
+      "stepCount": "{current}/{total} 步",
+      "outputTitle": "阶段输出",
+      "stop": "停止",
+      "retry": "重试",
+      "status": {
+        "notStarted": "未开始",
+        "running": "运行中",
+        "completed": "已完成",
+        "failed": "失败"
+      },
+      "tasks": {
+        "contentPlan": "内容策划",
+        "storyScript": "生成剧本",
+        "guideScript": "生成解说稿",
+        "visualPlan": "视觉方案",
+        "storyboard": "生成分镜"
+      }
+    }
   },
   "smartImport": {
     "title": "开启你的创作之旅",

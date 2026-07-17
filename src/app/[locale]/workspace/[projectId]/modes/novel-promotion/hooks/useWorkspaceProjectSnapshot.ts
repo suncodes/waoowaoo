@@ -28,12 +28,18 @@ export function useWorkspaceProjectSnapshot({
   return useMemo(() => {
     const projectData = project.novelPromotionData
     const capabilityOverrides = parseCapabilitySelections(projectData?.capabilityOverrides)
+    const currentStage = (() => {
+      if (urlStage === 'editor' || urlStage === 'voice') return 'videos'
+      if (urlStage === 'assets') return 'script'
+      if (urlStage === 'text-storyboard') return 'storyboard'
+      return urlStage || 'config'
+    })()
     return {
       projectData,
       projectCharacters: projectData?.characters || [],
       projectLocations: projectData?.locations || [],
       episodeStoryboards: episode?.storyboards || [],
-      currentStage: urlStage === 'editor' ? 'videos' : (urlStage || 'config'),
+      currentStage,
       globalAssetText: projectData?.globalAssetText || '',
       novelText: episode?.novelText || '',
       contentPlan: episode?.contentPlan,

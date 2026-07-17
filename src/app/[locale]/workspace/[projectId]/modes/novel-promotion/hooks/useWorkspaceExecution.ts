@@ -35,27 +35,6 @@ function getErrorMessage(err: unknown): string {
 function isRunStreamTimeoutMessage(message: string): boolean {
   return /(?:run|task)\s+stream\s+timeout/i.test(message.trim())
 }
-function readSessionBoolean(key: string): boolean {
-  if (typeof window === 'undefined') return false
-  try {
-    return window.sessionStorage.getItem(key) === '1'
-  } catch {
-    return false
-  }
-}
-function writeSessionBoolean(key: string, value: boolean) {
-  if (typeof window === 'undefined') return
-  try {
-    if (value) {
-      window.sessionStorage.setItem(key, '1')
-      return
-    }
-    window.sessionStorage.removeItem(key)
-  } catch {
-    // ignore session storage failures
-  }
-}
-
 export function useWorkspaceExecution({
   projectId,
   episodeId,
@@ -72,21 +51,12 @@ export function useWorkspaceExecution({
 }: UseWorkspaceExecutionParams) {
   const analyzeProjectAssetsMutation = useAnalyzeProjectAssets(projectId)
   const resolvedVideoProfile = useMemo(() => resolveVideoProfile(videoProfile), [videoProfile])
-  const storageScope = `${projectId}:${episodeId || 'global'}`
-  const storyToScriptMinimizedStorageKey = `novel-promotion:story-to-script:minimized:${storageScope}`
-  const scriptToStoryboardMinimizedStorageKey = `novel-promotion:script-to-storyboard:minimized:${storageScope}`
 
   const [isSubmittingTTS] = useState(false)
   const [isAssetAnalysisRunning, setIsAssetAnalysisRunning] = useState(false)
   const [isConfirmingAssets, setIsConfirmingAssets] = useState(false)
   const [isTransitioning, setIsTransitioning] = useState(false)
   const [transitionProgress, setTransitionProgress] = useState({ message: '', step: '' })
-  const [storyToScriptConsoleMinimized, setStoryToScriptConsoleMinimized] = useState(
-    () => readSessionBoolean(storyToScriptMinimizedStorageKey),
-  )
-  const [scriptToStoryboardConsoleMinimized, setScriptToStoryboardConsoleMinimized] = useState(
-    () => readSessionBoolean(scriptToStoryboardMinimizedStorageKey),
-  )
 
   const storyToScriptStream = useStoryToScriptRunStream({ projectId, episodeId })
   const scriptToStoryboardStream = useScriptToStoryboardRunStream({ projectId, episodeId })
@@ -117,11 +87,9 @@ export function useWorkspaceExecution({
       })
     }
 
-    setStoryToScriptConsoleMinimized(true)
     onStageChange('script')
     onOpenAssetLibrary()
-    storyToScriptStream.reset()
-  }, [onOpenAssetLibrary, onRefresh, onStageChange, storyToScriptStream])
+  }, [onOpenAssetLibrary, onRefresh, onStageChange])
 
   const finalizeScriptToStoryboardSuccess = useCallback(async (runId: string) => {
     const normalizedRunId = runId.trim()
@@ -138,26 +106,8 @@ export function useWorkspaceExecution({
       })
     }
 
-    setScriptToStoryboardConsoleMinimized(true)
     onStageChange('storyboard')
-    scriptToStoryboardStream.reset()
-  }, [onRefresh, onStageChange, scriptToStoryboardStream])
-
-  useEffect(() => {
-    setStoryToScriptConsoleMinimized(readSessionBoolean(storyToScriptMinimizedStorageKey))
-  }, [storyToScriptMinimizedStorageKey])
-
-  useEffect(() => {
-    setScriptToStoryboardConsoleMinimized(readSessionBoolean(scriptToStoryboardMinimizedStorageKey))
-  }, [scriptToStoryboardMinimizedStorageKey])
-
-  useEffect(() => {
-    writeSessionBoolean(storyToScriptMinimizedStorageKey, storyToScriptConsoleMinimized)
-  }, [storyToScriptConsoleMinimized, storyToScriptMinimizedStorageKey])
-
-  useEffect(() => {
-    writeSessionBoolean(scriptToStoryboardMinimizedStorageKey, scriptToStoryboardConsoleMinimized)
-  }, [scriptToStoryboardConsoleMinimized, scriptToStoryboardMinimizedStorageKey])
+  }, [onRefresh, onStageChange])
 
   const handleGenerateTTS = useCallback(async () => {
     _ulogInfo('[NovelPromotionWorkspace] TTS is disabled, skip generate request')
@@ -210,7 +160,6 @@ export function useWorkspaceExecution({
         return
       }
 
-      setStoryToScriptConsoleMinimized(false)
       setTransitionProgress({ message: t('execution.storyToScriptRunning'), step: 'streaming' })
       const runResult = await storyToScriptStream.run({
         episodeId,
@@ -258,7 +207,6 @@ export function useWorkspaceExecution({
     }
 
     try {
-      setScriptToStoryboardConsoleMinimized(false)
       setIsConfirmingAssets(true)
       if (contentPlan) await planning.runVisualPlan()
       setTransitionProgress({ message: t('execution.scriptToStoryboardRunning'), step: 'streaming' })
@@ -383,10 +331,6 @@ export function useWorkspaceExecution({
     isConfirmingAssets,
     isTransitioning,
     transitionProgress,
-    storyToScriptConsoleMinimized,
-    setStoryToScriptConsoleMinimized,
-    scriptToStoryboardConsoleMinimized,
-    setScriptToStoryboardConsoleMinimized,
     storyToScriptStream,
     scriptToStoryboardStream,
     contentPlanStream: planning.contentPlanStream,

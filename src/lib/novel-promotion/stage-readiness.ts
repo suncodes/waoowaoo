@@ -1,6 +1,8 @@
 export type StageArtifactReadiness = {
   hasStory: boolean
+  hasContentPlan: boolean
   hasScript: boolean
+  hasVisualPlan: boolean
   hasStoryboard: boolean
   hasVideo: boolean
   hasVoice: boolean
@@ -23,6 +25,11 @@ type StoryboardLike = {
 
 type EpisodeLike = {
   novelText?: string | null
+  creativeBrief?: unknown
+  contentPlan?: unknown
+  contentReview?: unknown
+  directorTreatment?: unknown
+  productionBible?: unknown
   clips?: unknown[] | null
   storyboards?: unknown[] | null
   voiceLines?: unknown[] | null
@@ -42,6 +49,10 @@ function isStoryboardPanelLike(value: unknown): value is StoryboardPanelLike {
 
 function isStoryboardLike(value: unknown): value is StoryboardLike {
   return typeof value === 'object' && value !== null
+}
+
+function hasPersistedObject(value: unknown) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 export function hasScriptArtifacts(clips: unknown[] | null | undefined) {
@@ -66,7 +77,12 @@ export function hasVideoArtifacts(storyboards: unknown[] | null | undefined) {
 export function resolveEpisodeStageArtifacts(episode: EpisodeLike | null | undefined): StageArtifactReadiness {
   return {
     hasStory: hasNonEmptyText(episode?.novelText),
+    hasContentPlan: hasPersistedObject(episode?.creativeBrief)
+      && hasPersistedObject(episode?.contentPlan)
+      && hasPersistedObject(episode?.contentReview),
     hasScript: hasScriptArtifacts(episode?.clips),
+    hasVisualPlan: hasPersistedObject(episode?.directorTreatment)
+      && hasPersistedObject(episode?.productionBible),
     hasStoryboard: hasStoryboardArtifacts(episode?.storyboards),
     hasVideo: hasVideoArtifacts(episode?.storyboards),
     hasVoice: Array.isArray(episode?.voiceLines) && episode.voiceLines.length > 0,

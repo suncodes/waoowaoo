@@ -1,9 +1,18 @@
 {
   "stages": {
     "story": "Story",
+    "bookSource": "Book Material",
+    "contentPlan": "Story Structure",
+    "guidePlan": "Guide Structure",
     "script": "Script",
+    "guideScript": "Narration",
+    "visualPlan": "Visual Plan",
     "storyboard": "Storyboard",
+    "guideStoryboard": "Visual Storyboard",
     "video": "Video",
+    "videoAudio": "Video & Audio",
+    "videoNarration": "Video & Narration",
+    "finalExport": "Final & Export",
     "editor": "AI Editor",
     "editorComingSoon": "Coming soon, follow us for updates"
   },
@@ -12,6 +21,128 @@
     "settings": "Project Config",
     "refreshData": "Refresh Data",
     "enterVideoGeneration": "Enter Video Generation →"
+  },
+  "workspaceFlow": {
+    "title": "Production Flow",
+    "stageCount": "{count} stages",
+    "skipToContent": "Skip to current stage",
+    "status": {
+      "notStarted": "Not started",
+      "ready": "Ready",
+      "running": "Running",
+      "attention": "Needs attention",
+      "completed": "Completed",
+      "failed": "Failed",
+      "stale": "Outdated"
+    },
+    "contentPlan": {
+      "titleNarrative": "Story Structure",
+      "titleGuide": "Guide Structure",
+      "tabs": {
+        "brief": "Creative Brief",
+        "structure": "Content Structure",
+        "review": "Review"
+      },
+      "status": {
+        "approved": "Approved",
+        "warning": "Has warnings",
+        "blocked": "Needs revision"
+      },
+      "empty": {
+        "title": "No content plan yet",
+        "description": "Prepare the source material and start creation to generate the content structure.",
+        "action": "Back to input"
+      },
+      "briefOverview": "Creative objective",
+      "outlineTitle": "Guide outline",
+      "segmentsTitle": "Narration segments",
+      "issuesTitle": "Review issues",
+      "revisionTitle": "Revision guidance",
+      "noIssues": "No issues require attention",
+      "noRevision": "No revision guidance",
+      "emptyValue": "None",
+      "untitled": "Untitled segment",
+      "source": "Source",
+      "durationSeconds": "About {seconds}s",
+      "scores": {
+        "total": "Overall",
+        "profileFit": "Format fit",
+        "sourceSupport": "Source support"
+      },
+      "fields": {
+        "title": "Title",
+        "logline": "Logline",
+        "thesis": "Thesis",
+        "recommendationAngle": "Recommendation angle",
+        "objective": "Objective",
+        "audience": "Audience",
+        "audiencePromise": "Audience promise",
+        "targetDuration": "Target duration",
+        "tone": "Tone",
+        "mustInclude": "Must include",
+        "mustAvoid": "Must avoid",
+        "visualPurpose": "Visual purpose",
+        "visualHints": "Visual hints"
+      }
+    },
+    "visualPlan": {
+      "titleNarrative": "Direction & Visual Plan",
+      "titleGuide": "Guide Visual Plan",
+      "tabs": {
+        "treatment": "Direction",
+        "bible": "Visual Bible"
+      },
+      "status": {
+        "ready": "Plan ready"
+      },
+      "empty": {
+        "title": "No visual plan yet",
+        "description": "Complete the script or narration before generating the production-wide visual strategy.",
+        "action": "Back to writing"
+      },
+      "treatmentOverview": "Production direction",
+      "visualBaseline": "Production visual baseline",
+      "emptyValue": "None",
+      "fields": {
+        "narrativeStrategy": "Narrative strategy",
+        "pacing": "Pacing",
+        "cameraLanguage": "Camera language",
+        "transitionStrategy": "Transition strategy",
+        "soundStrategy": "Sound strategy",
+        "visualStyle": "Visual style",
+        "lightingBaseline": "Lighting baseline",
+        "colorGrade": "Color grade",
+        "compositionRules": "Composition rules",
+        "continuityRules": "Continuity rules",
+        "forbiddenPatterns": "Forbidden patterns"
+      }
+    },
+    "taskPanel": {
+      "title": "Run Details",
+      "open": "View run details",
+      "close": "Close run details",
+      "runningCount": "{count} running",
+      "waiting": "Waiting for a task",
+      "waitingSteps": "Task started, loading steps",
+      "noRun": "No run history for this episode",
+      "stepCount": "{current}/{total} steps",
+      "outputTitle": "Stage output",
+      "stop": "Stop",
+      "retry": "Retry",
+      "status": {
+        "notStarted": "Not started",
+        "running": "Running",
+        "completed": "Completed",
+        "failed": "Failed"
+      },
+      "tasks": {
+        "contentPlan": "Content planning",
+        "storyScript": "Generate script",
+        "guideScript": "Generate narration",
+        "visualPlan": "Visual planning",
+        "storyboard": "Generate storyboard"
+      }
+    }
   },
   "smartImport": {
     "title": "Start Your Creative Journey",

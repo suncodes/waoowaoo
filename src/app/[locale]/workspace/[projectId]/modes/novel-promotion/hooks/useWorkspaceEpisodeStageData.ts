@@ -9,6 +9,11 @@ interface EpisodeStagePayload {
   novelText?: string | null
   clips?: NovelPromotionClip[]
   storyboards?: NovelPromotionStoryboard[]
+  creativeBrief?: unknown
+  contentPlan?: unknown
+  contentReview?: unknown
+  directorTreatment?: unknown
+  productionBible?: unknown
 }
 
 export function useWorkspaceEpisodeStageData() {
@@ -21,5 +26,10 @@ export function useWorkspaceEpisodeStageData() {
     novelText: payload?.novelText || '',
     clips: payload?.clips || [],
     storyboards: payload?.storyboards || [],
+    creativeBrief: payload?.creativeBrief,
+    contentPlan: payload?.contentPlan,
+    contentReview: payload?.contentReview,
+    directorTreatment: payload?.directorTreatment,
+    productionBible: payload?.productionBible,
   }
 }

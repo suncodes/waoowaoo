@@ -1,6 +1,6 @@
 'use client'
 
-import { CapsuleNav, EpisodeSelector } from '@/components/ui/CapsuleNav'
+import { EpisodeSelector } from '@/components/ui/CapsuleNav'
 import { SettingsModal, WorldContextModal } from '@/components/ui/ConfigModals'
 import WorkspaceTopActions from './WorkspaceTopActions'
 import type { NovelPromotionPanel } from '@/types/project'
@@ -65,18 +65,6 @@ interface WorkspaceHeaderShellProps {
   onEpisodeCreate?: () => void
   onEpisodeRename?: (episodeId: string, newName: string) => void
   onEpisodeDelete?: (episodeId: string) => void
-  capsuleNavItems: Array<{
-    id: string
-    icon: string
-    label: string
-    status: 'empty' | 'active' | 'processing' | 'ready'
-    disabled?: boolean
-    disabledLabel?: string
-  }>
-  currentStage: string
-  onStageChange: (stage: string) => void
-  projectId: string
-  episodeId?: string
   onOpenAssetLibrary: () => void
   onOpenSettingsModal: () => void
   onRefresh: () => void
@@ -117,11 +105,6 @@ export default function WorkspaceHeaderShell({
   onEpisodeCreate,
   onEpisodeRename,
   onEpisodeDelete,
-  capsuleNavItems,
-  currentStage,
-  onStageChange,
-  projectId,
-  episodeId,
   onOpenAssetLibrary,
   onOpenSettingsModal,
   onRefresh,
@@ -209,17 +192,6 @@ export default function WorkspaceHeaderShell({
           />
         )
       })()}
-
-
-
-      <CapsuleNav
-        items={capsuleNavItems}
-        activeId={currentStage}
-        onItemClick={onStageChange}
-        projectId={projectId}
-        episodeId={episodeId}
-      />
-
       <WorkspaceTopActions
         onOpenAssetLibrary={onOpenAssetLibrary}
         onOpenSettings={onOpenSettingsModal}

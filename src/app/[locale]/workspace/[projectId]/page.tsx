@@ -21,7 +21,18 @@ import { useRouter } from '@/i18n/navigation'
 import { readApiErrorMessage } from '@/lib/api/read-error-message'
 
 // 有效的stage值
-const VALID_STAGES = ['config', 'script', 'assets', 'text-storyboard', 'storyboard', 'videos', 'voice', 'editor'] as const
+const VALID_STAGES = [
+  'config',
+  'content-plan',
+  'script',
+  'assets',
+  'visual-plan',
+  'text-storyboard',
+  'storyboard',
+  'videos',
+  'voice',
+  'editor',
+] as const
 type Stage = typeof VALID_STAGES[number]
 
 interface Episode {

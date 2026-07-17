@@ -31,6 +31,11 @@ describe('stage readiness', () => {
   it('derives full episode stage artifacts from persisted outputs', () => {
     const readiness = resolveEpisodeStageArtifacts({
       novelText: 'story',
+      creativeBrief: { objective: 'objective' },
+      contentPlan: { planType: 'narrative' },
+      contentReview: { status: 'approved' },
+      directorTreatment: { pacing: 'steady' },
+      productionBible: { visualStyle: 'cinematic' },
       clips: [
         { id: 'clip-1', summary: '', location: null, characters: null, props: null, content: 'a', screenplay: '{"scenes":[]}' },
       ],
@@ -72,10 +77,24 @@ describe('stage readiness', () => {
 
     expect(readiness).toEqual({
       hasStory: true,
+      hasContentPlan: true,
       hasScript: true,
+      hasVisualPlan: true,
       hasStoryboard: true,
       hasVideo: true,
       hasVoice: true,
     })
+  })
+
+  it('requires the complete persisted planning contract for planning readiness', () => {
+    expect(resolveEpisodeStageArtifacts({
+      novelText: 'story',
+      creativeBrief: { objective: 'objective' },
+      contentPlan: { planType: 'narrative' },
+    }).hasContentPlan).toBe(false)
+
+    expect(resolveEpisodeStageArtifacts({
+      directorTreatment: { pacing: 'steady' },
+    }).hasVisualPlan).toBe(false)
   })
 })

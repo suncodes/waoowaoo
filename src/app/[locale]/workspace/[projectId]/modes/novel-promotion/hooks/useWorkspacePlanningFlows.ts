@@ -35,7 +35,6 @@ export function useWorkspacePlanningFlows({
     if (result.status !== 'completed') {
       throw new Error(result.errorMessage || t('execution.contentPlanFailed'))
     }
-    contentPlanStream.reset()
   }, [analysisModel, contentPlanStream, episodeId, setTransitionProgress, t])
 
   const runVisualPlan = useCallback(async () => {
@@ -48,7 +47,6 @@ export function useWorkspacePlanningFlows({
     if (result.status !== 'completed') {
       throw new Error(result.errorMessage || t('execution.visualPlanFailed'))
     }
-    visualPlanStream.reset()
   }, [analysisModel, episodeId, setTransitionProgress, t, visualPlanStream])
 
   const isPlanning = useMemo(() => (
