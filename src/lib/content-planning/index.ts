@@ -40,12 +40,25 @@ function boundedNumber(value: unknown, fallback: number, min: number, max: numbe
   return Math.min(max, Math.max(min, value))
 }
 
+function readSourceType(value: unknown): SourceAnchor['sourceType'] | undefined {
+  if (
+    value === 'model_knowledge' ||
+    value === 'verified_source' ||
+    value === 'user_source' ||
+    value === 'reference_summary'
+  ) {
+    return value
+  }
+  return undefined
+}
+
 function parseSourceAnchor(value: unknown, field: string, required: boolean): SourceAnchor | undefined {
   if (!isRecord(value)) {
     if (required) throw new Error(`CONTENT_PLAN_INVALID: ${field} is required`)
     return undefined
   }
   const label = requiredString(value.label, `${field}.label`)
+  const sourceType = readSourceType(value.sourceType)
   return {
     label,
     ...(optionalString(value.quote) ? { quote: optionalString(value.quote) } : {}),
@@ -54,6 +67,10 @@ function parseSourceAnchor(value: unknown, field: string, required: boolean): So
     ...(optionalString(value.chapter) ? { chapter: optionalString(value.chapter) } : {}),
     ...(stringArray(value.visualAssetIds).length > 0
       ? { visualAssetIds: stringArray(value.visualAssetIds) }
+      : {}),
+    ...(sourceType ? { sourceType } : {}),
+    ...(typeof value.confidence === 'number' && Number.isFinite(value.confidence)
+      ? { confidence: boundedNumber(value.confidence, 0.7, 0, 1) }
       : {}),
   }
 }

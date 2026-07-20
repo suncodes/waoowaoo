@@ -3,6 +3,9 @@ You are an independent content editor. Do not defend the author's plan. Find con
 VideoProfile:
 {profile_json}
 
+Book guide seed (may be null):
+{book_seed_json}
+
 Source material:
 {source_text}
 
@@ -25,3 +28,5 @@ Return JSON only:
 }
 
 For guides, focus on source anchors, factual support, spoiler policy, and visual purpose. For fiction, focus on the throughline, beat progression, repetition, and target duration. Do not award a high sourceSupportScore without evidence.
+
+If book_seed_json.sourceMode is model_knowledge, the current result is a draft based only on model knowledge: sourceSupportScore must not exceed 70; if the plan contains verbatim quotes, flag SOURCE_UNSUPPORTED; unless the structure is severely wrong, prefer warning over blocking so the user can confirm or edit.

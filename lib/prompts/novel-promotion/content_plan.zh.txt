@@ -3,6 +3,9 @@
 VideoProfile：
 {profile_json}
 
+书籍导读种子（可能为 null）：
+{book_seed_json}
+
 原始材料：
 {source_text}
 
@@ -55,8 +58,14 @@ VideoProfile：
     "onScreenText": "可选且简短的屏幕文字",
     "estimatedDurationSec": 20,
     "spoilerLevel": "none|light|full",
-    "sourceAnchor": {"label": "章节或位置", "quote": "原文依据", "chapter": "章节"}
+    "sourceAnchor": {"label": "章节或位置", "quote": "已验证原文依据，可选", "chapter": "章节", "sourceType": "verified_source|user_source|model_knowledge|reference_summary", "confidence": 0.7}
   }]
 }
 
 要求：总时长接近 targetDurationSec；导读不得虚构来源，每个 segment 必须有 sourceAnchor；屏幕文字保持简短；不要把导读写成剧情复述。
+
+书籍导读来源规则：
+- 如果 book_seed_json 不为 null 且原始材料只是书名，应基于模型常识生成“可编辑导读框架草稿”。
+- 模型常识模式下 sourceAnchor.sourceType 必须是 "model_knowledge"，confidence 不得高于 0.7，不得填写 quote。
+- 只有原始材料提供了可验证摘录或明确资料时，才允许填写 quote，并使用 "verified_source" 或 "user_source"。
+- 如果不能确认作者、章节或细节，用更保守的 label 和 narration，不要编造具体原文。

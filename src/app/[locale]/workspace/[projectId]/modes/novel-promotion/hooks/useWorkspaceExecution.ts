@@ -7,6 +7,7 @@ import {
   useScriptToStoryboardRunStream,
   useStoryToScriptRunStream,
 } from '@/lib/query/hooks'
+import { resolveBookGuideSeed } from '@/lib/book-guide/seed'
 import { isBookGuideProfile, resolveVideoProfile } from '@/lib/video-profile'
 import { useWorkspacePlanningFlows } from './useWorkspacePlanningFlows'
 import { readVisualArtifactMeta } from '@/lib/creation-workspace/artifact-state'
@@ -157,7 +158,10 @@ export function useWorkspaceExecution({
       setIsTransitioning(true)
 
       await onUpdateConfig('workflowMode', 'agent')
-      await planning.runContentPlan(storyContent)
+      const bookGuideSeed = isBookGuideProfile(resolvedVideoProfile)
+        ? resolveBookGuideSeed(storyContent)
+        : null
+      await planning.runContentPlan(storyContent, { bookGuideSeed })
 
       if (isBookGuideProfile(resolvedVideoProfile)) {
         await onRefresh()

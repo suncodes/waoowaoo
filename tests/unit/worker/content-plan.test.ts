@@ -68,6 +68,42 @@ function planPayload() {
   }
 }
 
+function guidePlanPayload() {
+  return {
+    creativeBrief: {
+      objective: '生成经典书籍导读',
+      audiencePromise: '理解作品核心价值',
+      targetDurationSec: 180,
+    },
+    contentPlan: {
+      planType: 'guide',
+      title: '海底两万里导读',
+      thesis: '这是一部关于科学想象与探索精神的经典作品',
+      recommendationAngle: '从冒险想象和时代精神切入',
+      outline: [{
+        id: 'outline_1',
+        title: '为什么值得读',
+        question: '作品为何经典',
+        takeaway: '科学幻想与冒险叙事结合',
+      }],
+      segments: [{
+        id: 'segment_1',
+        outlineId: 'outline_1',
+        title: '经典价值',
+        narration: '《海底两万里》把海洋探险、科学想象和人物命运结合起来。',
+        visualPurpose: '建立书籍与主题认知',
+        visualHints: ['书封', '海底潜航示意'],
+        estimatedDurationSec: 30,
+        spoilerLevel: 'light',
+        sourceAnchor: {
+          label: '模型常识：作品整体',
+          quote: '伪原文引用',
+        },
+      }],
+    },
+  }
+}
+
 function reviewPayload(status: 'approved' | 'blocked' = 'approved') {
   return {
     status,
@@ -134,5 +170,48 @@ describe('worker content-plan behavior', () => {
       commitGuideClips: false,
       result: expect.objectContaining({ contentReview: expect.objectContaining({ status: 'blocked' }) }),
     }))
+  })
+
+  it('marks book-title-only guide plans as model-knowledge drafts', async () => {
+    prismaMock.novelPromotionProject.findUnique.mockResolvedValue({
+      id: 'novel-project-1',
+      analysisModel: 'google::gemini-3-flash-preview',
+      videoProfile: { preset: 'book_guide' },
+    })
+    planningMock.executePlanningJsonStep
+      .mockResolvedValueOnce(guidePlanPayload())
+      .mockResolvedValueOnce(reviewPayload())
+
+    const job = buildJob()
+    job.data.payload = { runId: 'run-content-1', content: '《海底两万里》' }
+
+    const result = await handleContentPlanTask(job)
+
+    expect(result).toEqual(expect.objectContaining({
+      profilePreset: 'book_guide',
+      planType: 'guide',
+      reviewStatus: 'warning',
+    }))
+    const persisted = (persistenceMock.persistContentPlan.mock.calls as unknown as Array<[{
+      result: {
+        contentPlan: {
+          segments: Array<{ sourceAnchor: { quote?: string; sourceType?: string; confidence?: number } }>
+        }
+        contentReview: {
+          sourceSupportScore: number
+          issues: Array<{ code?: string }>
+        }
+      }
+    }]>)[0]?.[0]
+    expect(persisted).toBeDefined()
+    const contentPlan = persisted?.result.contentPlan
+    const contentReview = persisted?.result.contentReview
+    expect(contentPlan?.segments[0]?.sourceAnchor).toEqual(expect.objectContaining({
+      sourceType: 'model_knowledge',
+      confidence: expect.any(Number),
+    }))
+    expect(contentPlan?.segments[0]?.sourceAnchor.quote).toBeUndefined()
+    expect(contentReview?.sourceSupportScore).toBeLessThanOrEqual(70)
+    expect(contentReview?.issues.some((issue) => issue.code === 'SOURCE_UNSUPPORTED')).toBe(true)
   })
 })

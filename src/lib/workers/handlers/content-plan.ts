@@ -2,6 +2,12 @@ import type { Job } from 'bullmq'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import {
+  resolveBookGuideSeed,
+  type BookGuideSeed,
+  type BookGuideSourceMode,
+} from '@/lib/book-guide/seed'
+import {
+  type ContentPlanResult,
   parseContentPlan,
   parseContentPlanResult,
   parseContentReview,
@@ -9,7 +15,7 @@ import {
 } from '@/lib/content-planning'
 import { createArtifact } from '@/lib/run-runtime/service'
 import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
-import { resolveVideoProfile } from '@/lib/video-profile'
+import { isBookGuideProfile, resolveVideoProfile } from '@/lib/video-profile'
 import type { TaskJobData } from '@/lib/task/types'
 import { reportTaskProgress } from '@/lib/workers/shared'
 import { assertTaskActive } from '@/lib/workers/utils'
@@ -25,6 +31,97 @@ import {
 
 function readText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+function readNumber(value: unknown, fallback: number, min: number, max: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
+  return Math.min(max, Math.max(min, value))
+}
+
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item) => typeof item === 'string' && item.trim() ? [item.trim()] : [])
+}
+
+function readSourceMode(value: unknown): BookGuideSourceMode {
+  if (value === 'verified_source' || value === 'user_source') return value
+  return 'model_knowledge'
+}
+
+function readBookGuideSeed(value: unknown): BookGuideSeed | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const record = value as Record<string, unknown>
+  const title = readText(record.title)
+  if (!title) return null
+  const author = readText(record.author)
+  const language = readText(record.language)
+  return {
+    title,
+    ...(author ? { author } : {}),
+    aliases: readStringArray(record.aliases),
+    ...(language ? { language } : {}),
+    isClassicCandidate: record.isClassicCandidate !== false,
+    confidence: readNumber(record.confidence, 0.66, 0, 1),
+    sourceMode: readSourceMode(record.sourceMode),
+    summaryBasis: readText(record.summaryBasis) || '用户提供书名，基于模型常识生成导读框架草稿。',
+    risks: readStringArray(record.risks),
+  }
+}
+
+function buildBookSeedContext(seed: BookGuideSeed | null): string {
+  return JSON.stringify(seed, null, 2)
+}
+
+function applyBookGuideEvidencePolicy(
+  result: ContentPlanResult,
+  seed: BookGuideSeed | null,
+): ContentPlanResult {
+  if (!seed || seed.sourceMode !== 'model_knowledge' || result.contentPlan.planType !== 'guide') {
+    return result
+  }
+
+  const sourceConfidence = Math.min(seed.confidence, 0.7)
+  const contentPlan: GuideContentPlan = {
+    ...result.contentPlan,
+    segments: result.contentPlan.segments.map((segment) => {
+      const sourceAnchor = { ...segment.sourceAnchor }
+      delete sourceAnchor.quote
+      return {
+        ...segment,
+        sourceAnchor: {
+          ...sourceAnchor,
+          sourceType: 'model_knowledge',
+          confidence: typeof sourceAnchor.confidence === 'number'
+            ? Math.min(sourceAnchor.confidence, sourceConfidence)
+            : sourceConfidence,
+        },
+      }
+    }),
+  }
+  const hasUnsupportedIssue = result.contentReview.issues.some((issue) => issue.code === 'SOURCE_UNSUPPORTED')
+  const issues = hasUnsupportedIssue
+    ? result.contentReview.issues
+    : [
+        ...result.contentReview.issues,
+        {
+          code: 'SOURCE_UNSUPPORTED' as const,
+          severity: 'warning' as const,
+          message: '当前导读框架基于模型常识生成，未接入外部原文或资料校验。',
+        },
+      ]
+
+  return {
+    ...result,
+    contentPlan,
+    contentReview: {
+      ...result.contentReview,
+      status: result.contentReview.status === 'blocked' ? 'blocked' : 'warning',
+      sourceSupportScore: Math.min(result.contentReview.sourceSupportScore, 70),
+      score: Math.min(result.contentReview.score, 85),
+      issues,
+      revisionInstructions: result.contentReview.revisionInstructions,
+    },
+  }
 }
 
 function readRewriteInstruction(value: unknown, locale: TaskJobData['locale']) {
@@ -102,6 +199,10 @@ export async function handleContentPlanTask(job: Job<TaskJobData>) {
   const sourceText = readText(payload.content) || readText(episode.novelText)
   if (!sourceText) throw new Error('content is required')
   const profile = resolveVideoProfile(payload.videoProfile ?? novelData.videoProfile)
+  const bookGuideSeed = isBookGuideProfile(profile)
+    ? readBookGuideSeed(payload.bookGuideSeed) || resolveBookGuideSeed(sourceText)
+    : null
+  const bookSeedContext = buildBookSeedContext(bookGuideSeed)
   const model = await resolveAnalysisModel({
     userId: job.data.userId,
     inputModel: payload.model,
@@ -172,6 +273,7 @@ export async function handleContentPlanTask(job: Job<TaskJobData>) {
           locale: job.data.locale,
           variables: {
             profile_json: profileJson,
+            book_seed_json: bookSeedContext,
             source_text: sourceText.slice(0, 60000),
             plan_json: JSON.stringify(guideCandidate.candidatePlan, null, 2),
           },
@@ -223,7 +325,11 @@ export async function handleContentPlanTask(job: Job<TaskJobData>) {
     prompt: buildPrompt({
       promptId: PROMPT_IDS.NP_CONTENT_PLAN,
       locale: job.data.locale,
-      variables: { profile_json: profileJson, source_text: sourceText.slice(0, 60000) },
+      variables: {
+        profile_json: profileJson,
+        book_seed_json: bookSeedContext,
+        source_text: sourceText.slice(0, 60000),
+      },
     }),
     action: 'content_plan_generate',
     stepId: 'content_plan_generate',
@@ -242,6 +348,7 @@ export async function handleContentPlanTask(job: Job<TaskJobData>) {
       locale: job.data.locale,
       variables: {
         profile_json: profileJson,
+        book_seed_json: bookSeedContext,
         source_text: sourceText.slice(0, 60000),
         plan_json: JSON.stringify(planPayload, null, 2),
       },
@@ -254,7 +361,10 @@ export async function handleContentPlanTask(job: Job<TaskJobData>) {
     temperature: 0.2,
   })
 
-  const result = parseContentPlanResult(planPayload, reviewPayload, profile)
+  const result = applyBookGuideEvidencePolicy(
+    parseContentPlanResult(planPayload, reviewPayload, profile),
+    bookGuideSeed,
+  )
   await reportTaskProgress(job, 84, { stage: 'content_plan_persist', displayMode: 'detail' })
   await assertTaskActive(job, 'content_plan_persist')
   await persistContentPlan({
@@ -267,7 +377,7 @@ export async function handleContentPlanTask(job: Job<TaskJobData>) {
     stepKey: 'content_plan',
     artifactType: 'content.plan',
     refId: episodeId,
-    payload: toJsonRecord({ profile, ...result }),
+    payload: toJsonRecord({ profile, bookGuideSeed, ...result }),
   })
 
   if (result.contentReview.status === 'blocked') {

@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useMemo } from 'react'
+import type { BookGuideSeed } from '@/lib/book-guide/seed'
 import {
   useContentPlanRunStream,
   useVisualPlanRunStream,
@@ -24,12 +25,13 @@ export function useWorkspacePlanningFlows({
   const contentPlanStream = useContentPlanRunStream({ projectId, episodeId })
   const visualPlanStream = useVisualPlanRunStream({ projectId, episodeId })
 
-  const runContentPlan = useCallback(async (content: string) => {
+  const runContentPlan = useCallback(async (content: string, options?: { bookGuideSeed?: BookGuideSeed | null }) => {
     if (!episodeId) throw new Error(t('execution.selectEpisode'))
     setTransitionProgress({ message: t('execution.contentPlanRunning'), step: 'planning' })
     const result = await contentPlanStream.run({
       episodeId,
       content,
+      bookGuideSeed: options?.bookGuideSeed || undefined,
       model: analysisModel || undefined,
     })
     if (result.status !== 'completed') {

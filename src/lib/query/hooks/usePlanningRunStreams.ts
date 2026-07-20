@@ -1,6 +1,7 @@
 'use client'
 
 import { apiFetch } from '@/lib/api-fetch'
+import type { BookGuideSeed } from '@/lib/book-guide/seed'
 import { selectRecoverableRun } from '@/lib/run-runtime/recovery'
 import { TASK_TYPE, type TaskType } from '@/lib/task/types'
 import { useRunStreamState, type RunResult } from './useRunStreamState'
@@ -17,6 +18,7 @@ type BasePlanningParams = {
 
 export type ContentPlanRunParams = BasePlanningParams & {
   content: string
+  bookGuideSeed?: BookGuideSeed | null
   mode?: 'full' | 'rewrite_unit'
   targetUnitId?: string
   instruction?: string
@@ -81,6 +83,7 @@ export function useContentPlanRunStream({ projectId, episodeId }: PlanningRunOpt
     buildRequestBody: (params) => ({
       episodeId: params.episodeId,
       content: params.content,
+      bookGuideSeed: params.bookGuideSeed || undefined,
       model: params.model || undefined,
       mode: params.mode || 'full',
       targetUnitId: params.targetUnitId || undefined,

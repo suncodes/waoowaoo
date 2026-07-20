@@ -115,6 +115,10 @@ export default function NovelInputStage({
 
   const hasContent = localText.trim().length > 0
   const [showLongTextPrompt, setShowLongTextPrompt] = useState(false)
+  const isBookGuide = videoProfile.preset === VIDEO_PROFILE_PRESET.BOOK_GUIDE
+  const inputPlaceholder = isBookGuide
+    ? t('storyInput.bookGuideSeed.placeholder')
+    : `请输入您的剧本或小说内容...\n\nAI 将根据您的文本智能分析：\n• 自动识别场景切换\n• 提取角色对话和动作\n• 生成分镜脚本\n\n例如：\n清晨，阳光透过窗帘洒进房间。小明揉着惺忪的睡眼从床上坐起，看了一眼床头的闹钟——已经八点了！他猛地跳下床，手忙脚乱地开始穿衣服...`
 
   /** 点击"开始创作"时，先检测文本长度 */
   const handleStartClick = useCallback(() => {
@@ -311,6 +315,22 @@ export default function NovelInputStage({
         </div>
       </div>
 
+      {isBookGuide ? (
+        <div className="rounded-xl border border-[var(--glass-stroke-base)] bg-[var(--glass-tone-info-bg)] px-4 py-3 text-[var(--glass-tone-info-fg)]">
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--glass-bg-surface)]">
+              <AppIcon name="bookOpen" className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold">{t('storyInput.bookGuideSeed.title')}</h2>
+              <p className="mt-1 text-xs leading-5 text-[var(--glass-text-secondary)]">
+                {t('storyInput.bookGuideSeed.description')}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* 主输入区域（含底部工具栏） */}
       <div className="relative z-10">
         <StoryInputComposer
@@ -323,7 +343,7 @@ export default function NovelInputStage({
           }}
           onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}
-          placeholder={`请输入您的剧本或小说内容...\n\nAI 将根据您的文本智能分析：\n• 自动识别场景切换\n• 提取角色对话和动作\n• 生成分镜脚本\n\n例如：\n清晨，阳光透过窗帘洒进房间。小明揉着惺忪的睡眼从床上坐起，看了一眼床头的闹钟——已经八点了！他猛地跳下床，手忙脚乱地开始穿衣服...`}
+          placeholder={inputPlaceholder}
           minRows={PROJECT_STORY_INPUT_MIN_ROWS}
           maxHeightViewportRatio={0.5}
           disabled={isSubmittingTask || isSwitchingStage}
@@ -357,7 +377,7 @@ export default function NovelInputStage({
                 <TaskStatusInline state={stageSwitchingState} className="text-white [&>span]:text-white [&_svg]:text-white" />
               ) : (
                 <>
-                  <span>{t("smartImport.manualCreate.button")}</span>
+                  <span>{isBookGuide ? t('storyInput.bookGuideSeed.primaryAction') : t("smartImport.manualCreate.button")}</span>
                   <AppIcon name="arrowRight" className="w-4 h-4" />
                 </>
               )}

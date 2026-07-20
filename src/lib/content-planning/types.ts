@@ -1,3 +1,4 @@
+import type { BookGuideSourceMode } from '@/lib/book-guide/seed'
 import type { SpoilerLevel, VideoProfile } from '@/lib/video-profile'
 
 export interface SourceAnchor {
@@ -7,6 +8,8 @@ export interface SourceAnchor {
   endText?: string
   chapter?: string
   visualAssetIds?: string[]
+  sourceType?: BookGuideSourceMode | 'reference_summary'
+  confidence?: number
 }
 
 export interface CreativeBrief {

@@ -3,6 +3,9 @@
 VideoProfile：
 {profile_json}
 
+书籍导读种子（可能为 null）：
+{book_seed_json}
+
 原始材料：
 {source_text}
 
@@ -25,3 +28,5 @@ VideoProfile：
 }
 
 导读重点检查来源锚点、事实支持、剧透策略和视觉功能；剧情重点检查主线、节拍推进、重复和目标时长。没有证据时不得给高 sourceSupportScore。
+
+如果 book_seed_json 的 sourceMode 为 model_knowledge，代表当前只基于模型常识生成草稿：sourceSupportScore 不得高于 70；如果计划包含逐字 quote，应标记 SOURCE_UNSUPPORTED；除非结构严重错误，不要阻塞，可用 warning 提醒用户确认。

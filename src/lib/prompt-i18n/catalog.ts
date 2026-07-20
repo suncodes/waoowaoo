@@ -103,11 +103,11 @@ export const PROMPT_CATALOG: Record<PromptId, PromptCatalogEntry> = {
   },
   [PROMPT_IDS.NP_CONTENT_PLAN]: {
     pathStem: 'novel-promotion/content_plan',
-    variableKeys: ['profile_json', 'source_text'],
+    variableKeys: ['profile_json', 'book_seed_json', 'source_text'],
   },
   [PROMPT_IDS.NP_CONTENT_REVIEW]: {
     pathStem: 'novel-promotion/content_review',
-    variableKeys: ['profile_json', 'source_text', 'plan_json'],
+    variableKeys: ['profile_json', 'book_seed_json', 'source_text', 'plan_json'],
   },
   [PROMPT_IDS.NP_CONTENT_UNIT_REWRITE]: {
     pathStem: 'novel-promotion/content_unit_rewrite',

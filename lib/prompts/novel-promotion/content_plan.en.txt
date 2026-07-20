@@ -3,6 +3,9 @@ You are a video content planner. Use the VideoProfile and source material to loc
 VideoProfile:
 {profile_json}
 
+Book guide seed (may be null):
+{book_seed_json}
+
 Source material:
 {source_text}
 
@@ -55,8 +58,14 @@ For contentDomain=book and communicationGoal=explain, contentPlan must be:
     "onScreenText": "optional short on-screen text",
     "estimatedDurationSec": 20,
     "spoilerLevel": "none|light|full",
-    "sourceAnchor": {"label": "chapter or location", "quote": "source evidence", "chapter": "chapter"}
+    "sourceAnchor": {"label": "chapter or location", "quote": "verified source quote, optional", "chapter": "chapter", "sourceType": "verified_source|user_source|model_knowledge|reference_summary", "confidence": 0.7}
   }]
 }
 
 Keep total duration close to targetDurationSec. Never invent book evidence. Every guide segment requires a sourceAnchor. Keep on-screen text concise. Do not reduce a guide to plot retelling.
+
+Book guide source rules:
+- If book_seed_json is not null and the source material is only a book title, generate an editable guide-outline draft from model knowledge.
+- In model-knowledge mode, sourceAnchor.sourceType must be "model_knowledge", confidence must not exceed 0.7, and quote must be omitted.
+- Only include quote when the source material contains a verifiable excerpt or explicit user-provided reference, using "verified_source" or "user_source".
+- If the author, chapter, or detail is uncertain, use conservative labels and narration instead of inventing exact source evidence.
