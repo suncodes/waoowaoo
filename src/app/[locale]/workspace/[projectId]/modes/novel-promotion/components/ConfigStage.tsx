@@ -15,7 +15,7 @@ import type { SplitEpisode } from './smart-import/types'
  * 弹出引导卡片建议使用智能分集。
  * 选择"智能分集"后，直接进入 SmartImportWizard 的分析流程。
  */
-export default function ConfigStage() {
+export default function ConfigStage({ workspaceLayout = false }: { workspaceLayout?: boolean }) {
   const runtime = useWorkspaceStageRuntime()
   const { episodeName, novelText } = useWorkspaceEpisodeStageData()
   const params = useParams<{ projectId: string }>()
@@ -68,6 +68,7 @@ export default function ConfigStage() {
       onArtStyleReferenceEnabledChange={runtime.onArtStyleReferenceEnabledChange}
       onNext={runtime.onRunStoryToScript}
       onSmartSplit={handleSmartSplit}
+      workspaceLayout={workspaceLayout}
     />
   )
 }

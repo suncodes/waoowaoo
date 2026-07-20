@@ -15,6 +15,7 @@ describe('creation workspace stages', () => {
   it.each([
     ['config', 'setup', undefined],
     ['content-plan', 'content', 'plan'],
+    ['content-assets', 'content', 'assets'],
     ['script', 'content', 'script'],
     ['assets', 'visual-design', 'assets'],
     ['visual-plan', 'visual-design', 'direction'],

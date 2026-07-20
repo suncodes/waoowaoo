@@ -40,13 +40,13 @@
           "label": "创作设定",
           "description": "确定来源材料、视频类型、画面比例和整体风格。"
         },
-        "content": {
-          "label": "内容文稿",
-          "description": "整理内容结构，并形成可用于后续制作的剧本或旁白文稿。"
-        },
-        "visualDesign": {
-          "label": "画面设计",
-          "description": "确定全片画面方向，并管理需要保持一致的核心画面元素。"
+      "content": {
+        "label": "内容创作",
+        "description": "确认内容结构，编辑剧本或解说文稿，并整理需要制作的角色、道具和场景。"
+      },
+      "visualDesign": {
+        "label": "画面准备",
+        "description": "确定全片画面风格，生成并确认需要保持一致的核心形象和场景。"
         },
         "storyboardPreview": {
           "label": "分镜预演",
@@ -62,27 +62,90 @@
         }
       },
       "views": {
-        "content": {
-          "plan": "内容结构",
-          "script": "剧本文稿",
-          "guideScript": "旁白文稿"
-        },
-        "visualDesign": {
-          "direction": "画面方向",
-          "assets": "核心画面元素"
-        },
+      "content": {
+        "plan": "内容结构",
+        "script": "剧本文稿",
+        "guideScript": "解说文稿",
+        "assets": "角色与场景",
+        "guideAssets": "画面需求"
+      },
+      "visualDesign": {
+        "direction": "整体风格",
+        "assets": "核心形象与场景",
+        "assetsTitle": "制作并确认核心画面",
+        "assetsDescription": "在这里生成候选图、选择最终形象并处理一致性问题。内容创作阶段只负责说明需要什么画面。",
+        "storyboardHint": "确认核心形象和场景后生成分镜，生成期间页面会自动进入分镜预演。",
+        "storyboardAction": "确认画面并生成分镜",
+        "storyboardRunning": "正在生成分镜",
+        "guideStoryboardHint": "确认画面风格和核心形象后，系统将生成导读分镜并自动进入预演。",
+        "guideStoryboardAction": "生成画面方案与分镜",
+        "guideStoryboardRunning": "正在生成画面与分镜",
+        "summary": {
+          "total": "共 {count} 项画面",
+          "confirmed": "{count} 项已确认",
+          "running": "{count} 项生成中",
+          "pending": "{count} 项待处理"
+        }
+      },
         "production": {
           "shots": "镜头素材",
           "voice": "旁白配音"
         }
       },
-      "actionBar": {
+    "actionBar": {
         "previous": "上一步",
         "autoSaved": "更改自动保存",
         "continue": "进入{stage}",
         "completeFirst": "请先完成当前阶段",
-        "finalStage": "当前已是最后阶段"
+      "finalStage": "当前已是最后阶段"
+    },
+    "contentEditor": {
+      "title": "解说文稿",
+      "description": "共 {count} 个段落，可直接修改标题和解说内容",
+      "saving": "正在保存",
+      "autoSaved": "更改自动保存",
+      "segmentTitle": "第 {index} 段标题",
+      "narrationLabel": "第 {index} 段解说内容",
+      "duration": "约 {seconds} 秒",
+      "emptyTitle": "还没有可编辑的解说文稿",
+      "emptyDescription": "完成内容结构生成后，系统会在这里按段落整理可直接修改的解说内容。"
+    },
+    "assetRequirements": {
+      "title": "本片需要准备的画面",
+      "description": "这里用于确认角色、道具和场景需求。最终图片将在下一步确定整体风格后生成。",
+      "summary": "共识别 {count} 项",
+      "confirmedCount": "{count} 项已有定稿",
+      "attentionCount": "{count} 项待处理",
+      "reanalyze": "重新识别",
+      "analyzing": "正在识别",
+      "loading": "正在读取画面需求",
+      "emptyTitle": "暂未识别到画面需求",
+      "emptyDescription": "可以根据当前内容识别角色、重要道具和重复场景，再由你确认是否需要保持一致。",
+      "analyzeAction": "识别画面需求",
+      "saveFailed": "保存失败，请稍后重试。",
+      "nameLabel": "名称",
+      "descriptionLabel": "画面描述",
+      "cancel": "取消",
+      "save": "保存",
+      "edit": "编辑画面需求",
+      "noDescription": "暂未补充画面描述",
+      "consistencyRequired": "重复出现时保持同一形象",
+      "reusableVisual": "可在多个镜头中复用",
+      "boundaryHint": "此处只确认画面需求，不会直接生成最终图片。",
+      "continueAction": "进入画面准备",
+      "kind": {
+        "character": "角色",
+        "location": "场景",
+        "prop": "道具"
       },
+      "status": {
+        "running": "生成中",
+        "failed": "需要处理",
+        "confirmed": "已有定稿",
+        "candidate": "待选择",
+        "missing": "待生成"
+      }
+    },
       "assistant": {
         "title": "本阶段协作",
         "open": "查看本阶段协作",
@@ -364,11 +427,11 @@
       "aiComicDescription": "按剧情冲突、角色表演和连续镜头组织内容",
       "bookGuide": "书籍导读",
       "bookGuideDescription": "按观点提炼、章节脉络和解说节奏组织内容",
-      "qualityAssistLabel": "图片质量辅助",
-      "qualityAssistDescription": "生成图片后自动检查画面问题，减少逐张排查和重复改提示词",
-      "qualityCheckOnly": "仅检查并提示",
+      "qualityAssistLabel": "画面检查",
+      "qualityAssistDescription": "生成后自动检查异常画面，减少逐张排查和重复修改",
+      "qualityCheckOnly": "仅提醒",
       "qualityCheckOnlyDescription": "系统会记录图片问题，但不阻止继续生成视频，适合先观察效果。",
-      "qualityAutoOptimize": "自动优化不合格图片",
+      "qualityAutoOptimize": "自动修复",
       "qualityAutoOptimizeDescription": "发现明显问题后自动调整提示词并重试，仍不合格时再提示人工处理。",
       "shadowReview": "影子评审",
       "autoRepair": "自动修复"

@@ -31,12 +31,15 @@ export interface WorkspaceStageRuntimeValue {
   capabilityOverrides: CapabilitySelections
   userVideoModels: WorkspaceStageVideoModelOption[]
   onNovelTextChange: (value: string) => Promise<void>
+  onContentPlanChange: (value: unknown) => Promise<void>
   onVideoRatioChange: (value: string) => Promise<void>
   onVideoProfileChange: (value: VideoProfilePreset) => Promise<void>
   onVisualQualityModeChange: (value: VisualQualityMode) => Promise<void>
   onArtStyleChange: (value: string) => Promise<void>
   onArtStyleReferenceEnabledChange: (value: boolean) => Promise<void>
   onRunStoryToScript: () => Promise<void>
+  onRunVisualPlan: () => Promise<void>
+  onAnalyzeAssets: () => Promise<void>
   onClipUpdate: (clipId: string, data: unknown) => Promise<void>
   onOpenAssetLibrary: () => void
   onRunScriptToStoryboard: () => Promise<void>

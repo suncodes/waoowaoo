@@ -88,4 +88,22 @@ describe('NovelInputStage', () => {
     expect(html).not.toContain('storyInput.wordCount 0')
     expect(html).not.toContain('storyInput.currentConfigSummary')
   })
+
+  it('uses the compact workspace layout without the legacy asset-library tip', () => {
+    Reflect.set(globalThis, 'React', React)
+
+    const html = renderToStaticMarkup(
+      createElement(NovelInputStage, {
+        novelText: 'sample',
+        onNovelTextChange: () => undefined,
+        onNext: () => undefined,
+        workspaceLayout: true,
+      }),
+    )
+
+    expect(html).toContain('storyInput.videoProfile.qualityAssistLabel')
+    expect(html).toContain('h-10 items-center justify-center')
+    expect(html).not.toContain('min-h-24')
+    expect(html).not.toContain('storyInput.assetLibraryTip.title')
+  })
 })

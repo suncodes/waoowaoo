@@ -3,9 +3,15 @@
 import { useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { AppIcon } from '@/components/ui/icons'
-import { resolveVideoProfile, VIDEO_PROFILE_PRESET } from '@/lib/video-profile'
+import {
+  resolveVideoProfile,
+  VIDEO_PROFILE_PRESET,
+  type VideoProfilePreset,
+  type VisualQualityMode,
+} from '@/lib/video-profile'
 import { CREATION_STAGE_REGISTRY, type CreationStageId } from '@/lib/creation-workspace/stages'
 import CreationWorkspaceShell from '../../workspace/[projectId]/modes/novel-promotion/components/workspace-v2/CreationWorkspaceShell'
+import NovelInputStage from '../../workspace/[projectId]/modes/novel-promotion/components/NovelInputStage'
 import type { WorkspaceRunStreamState } from '../../workspace/[projectId]/modes/novel-promotion/components/workspace-run-types'
 import type { CreationStageNavItem } from '../../workspace/[projectId]/modes/novel-promotion/hooks/useCreationStageNavigation'
 
@@ -89,6 +95,8 @@ function PreviewStageBody({ stageId }: { stageId: CreationStageId }) {
 export default function CreationWorkspaceV2PreviewPage() {
   const t = useTranslations('novelPromotion.workspaceFlow.v2')
   const [currentStage, setCurrentStage] = useState<CreationStageId>('content')
+  const [sourceText, setSourceText] = useState('《海底两万里》通过尼摩船长和鹦鹉螺号，展示了科学想象、自由意志与海洋探索。')
+  const [videoProfile, setVideoProfile] = useState(() => resolveVideoProfile({ preset: VIDEO_PROFILE_PRESET.BOOK_GUIDE }))
   const items = useMemo<CreationStageNavItem[]>(() => CREATION_STAGE_REGISTRY.map((stage, index) => ({
     id: stage.id,
     icon: stage.icon,
@@ -127,7 +135,7 @@ export default function CreationWorkspaceV2PreviewPage() {
           currentStage={currentStage}
           projectId="preview"
           episodeId="preview-episode"
-          videoProfile={resolveVideoProfile({ preset: VIDEO_PROFILE_PRESET.BOOK_GUIDE })}
+          videoProfile={videoProfile}
           onStageChange={(stage) => {
             if (CREATION_STAGE_REGISTRY.some((item) => item.id === stage)) {
               setCurrentStage(stage as CreationStageId)
@@ -138,7 +146,26 @@ export default function CreationWorkspaceV2PreviewPage() {
           visualPlanStream={completedStream}
           scriptToStoryboardStream={idleStream}
         >
-          <PreviewStageBody stageId={currentStage} />
+          {currentStage === 'setup' ? (
+            <NovelInputStage
+              novelText={sourceText}
+              episodeName="《海底两万里》导读"
+              onNovelTextChange={(value) => setSourceText(value)}
+              onNext={() => setCurrentStage('content')}
+              videoRatio="16:9"
+              videoProfile={videoProfile}
+              artStyle="realistic"
+              onVideoProfileChange={(preset: VideoProfilePreset) => setVideoProfile(resolveVideoProfile({
+                preset,
+                qualityPolicy: videoProfile.qualityPolicy,
+              }))}
+              onVisualQualityModeChange={(mode: VisualQualityMode) => setVideoProfile({
+                ...videoProfile,
+                qualityPolicy: { ...videoProfile.qualityPolicy, mode },
+              })}
+              workspaceLayout
+            />
+          ) : <PreviewStageBody stageId={currentStage} />}
         </CreationWorkspaceShell>
       </div>
     </div>

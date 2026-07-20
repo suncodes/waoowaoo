@@ -58,6 +58,7 @@ interface ScriptViewScriptPanelProps {
   onClipUpdate?: (clipId: string, data: Partial<Clip>) => void
   t: (key: string, values?: Record<string, unknown>) => string
   tScript: (key: string, values?: Record<string, unknown>) => string
+  fullWidth?: boolean
 }
 
 function EditableText({
@@ -122,6 +123,7 @@ export default function ScriptViewScriptPanel({
   onClipUpdate,
   t,
   tScript,
+  fullWidth = false,
 }: ScriptViewScriptPanelProps) {
   const handleScriptSave = async (clipId: string, newContent: string, isJson: boolean) => {
     if (!onClipUpdate) return
@@ -130,7 +132,7 @@ export default function ScriptViewScriptPanel({
   }
 
   return (
-    <div className="col-span-12 lg:col-span-8 flex flex-col min-h-[400px] lg:h-full gap-4">
+    <div className={`${fullWidth ? 'w-full' : 'col-span-12 lg:col-span-8'} flex min-h-[400px] flex-col gap-4 lg:h-full`}>
       <div className="flex justify-between items-end px-2">
         <h2 className="text-xl font-bold text-[var(--glass-text-primary)] flex items-center gap-2">
           <span className="w-1.5 h-6 bg-[var(--glass-accent-from)] rounded-full" /> {tScript('scriptBreakdown')}

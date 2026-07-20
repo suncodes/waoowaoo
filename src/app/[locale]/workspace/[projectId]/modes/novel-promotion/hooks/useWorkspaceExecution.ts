@@ -15,6 +15,7 @@ interface UseWorkspaceExecutionParams {
   episodeId?: string
   currentStage: string
   currentStageView?: string
+  workspaceV2Enabled: boolean
   analysisModel?: string | null
   videoProfile?: unknown
   contentPlan?: unknown
@@ -41,6 +42,7 @@ export function useWorkspaceExecution({
   episodeId,
   currentStage,
   currentStageView,
+  workspaceV2Enabled,
   analysisModel,
   videoProfile,
   contentPlan,
@@ -90,8 +92,8 @@ export function useWorkspaceExecution({
     }
 
     onStageChange('script')
-    onOpenAssetLibrary()
-  }, [onOpenAssetLibrary, onRefresh, onStageChange])
+    if (!workspaceV2Enabled) onOpenAssetLibrary()
+  }, [onOpenAssetLibrary, onRefresh, onStageChange, workspaceV2Enabled])
 
   const finalizeScriptToStoryboardSuccess = useCallback(async (runId: string) => {
     const normalizedRunId = runId.trim()
@@ -156,9 +158,8 @@ export function useWorkspaceExecution({
       await planning.runContentPlan(storyContent)
 
       if (isBookGuideProfile(resolvedVideoProfile)) {
-        await planning.runVisualPlan()
         await onRefresh()
-        onStageChange('storyboard')
+        onStageChange('content-assets')
         return
       }
 
@@ -201,6 +202,29 @@ export function useWorkspaceExecution({
     storyToScriptStream,
     t,
   ])
+
+  const runVisualPlanFlow = useCallback(async () => {
+    if (!episodeId) {
+      alert(t('execution.selectEpisode'))
+      return
+    }
+
+    try {
+      setIsTransitioning(true)
+      await planning.runVisualPlan()
+      await onRefresh()
+      onStageChange('storyboard')
+    } catch (err: unknown) {
+      if (isAbortError(err)) {
+        _ulogInfo(t('execution.requestAborted'))
+        return
+      }
+      alert(`${t('execution.generationFailed')}: ${getErrorMessage(err)}`)
+    } finally {
+      setIsTransitioning(false)
+      setTransitionProgress({ message: '', step: '' })
+    }
+  }, [episodeId, onRefresh, onStageChange, planning, t])
 
   const runScriptToStoryboardFlow = useCallback(async () => {
     if (!episodeId) {
@@ -349,6 +373,7 @@ export function useWorkspaceExecution({
     handleGenerateTTS,
     handleAnalyzeAssets,
     runStoryToScriptFlow,
+    runVisualPlanFlow,
     runScriptToStoryboardFlow,
     showCreatingToast,
   }

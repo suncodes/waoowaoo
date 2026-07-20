@@ -40,13 +40,13 @@
           "label": "Creative setup",
           "description": "Set the source material, video type, frame ratio, and overall style."
         },
-        "content": {
-          "label": "Content draft",
-          "description": "Shape the content structure and prepare the script or narration used downstream."
-        },
-        "visualDesign": {
-          "label": "Visual design",
-          "description": "Set the production-wide visual direction and manage recurring visual elements."
+      "content": {
+        "label": "Content creation",
+        "description": "Confirm the structure, edit the script or narration, and organize the characters, props, and scenes to produce."
+      },
+      "visualDesign": {
+        "label": "Visual preparation",
+        "description": "Set the visual style, then generate and confirm the recurring characters, objects, and scenes."
         },
         "storyboardPreview": {
           "label": "Storyboard preview",
@@ -62,27 +62,90 @@
         }
       },
       "views": {
-        "content": {
-          "plan": "Content structure",
-          "script": "Script",
-          "guideScript": "Narration draft"
-        },
-        "visualDesign": {
-          "direction": "Visual direction",
-          "assets": "Core visual elements"
-        },
+      "content": {
+        "plan": "Content structure",
+        "script": "Script",
+        "guideScript": "Narration",
+        "assets": "Characters and scenes",
+        "guideAssets": "Visual requirements"
+      },
+      "visualDesign": {
+        "direction": "Overall style",
+        "assets": "Core characters and scenes",
+        "assetsTitle": "Produce and confirm core visuals",
+        "assetsDescription": "Generate candidates, choose final visuals, and resolve consistency issues here. Content creation only defines what is needed.",
+        "storyboardHint": "After confirming core characters and scenes, generate the storyboard. The workspace follows the task automatically.",
+        "storyboardAction": "Confirm visuals and generate storyboard",
+        "storyboardRunning": "Generating storyboard",
+        "guideStoryboardHint": "After confirming the visual style and core imagery, generate the guide storyboard and follow it into preview.",
+        "guideStoryboardAction": "Generate visual plan and storyboard",
+        "guideStoryboardRunning": "Generating visuals and storyboard",
+        "summary": {
+          "total": "{count} visual items",
+          "confirmed": "{count} confirmed",
+          "running": "{count} generating",
+          "pending": "{count} pending"
+        }
+      },
         "production": {
           "shots": "Shot assets",
           "voice": "Narration voice"
         }
       },
-      "actionBar": {
+    "actionBar": {
         "previous": "Previous",
         "autoSaved": "Changes saved automatically",
         "continue": "Continue to {stage}",
         "completeFirst": "Complete the current stage first",
-        "finalStage": "This is the final stage"
+      "finalStage": "This is the final stage"
+    },
+    "contentEditor": {
+      "title": "Narration",
+      "description": "{count} sections. Edit titles and narration directly.",
+      "saving": "Saving",
+      "autoSaved": "Changes save automatically",
+      "segmentTitle": "Section {index} title",
+      "narrationLabel": "Section {index} narration",
+      "duration": "About {seconds}s",
+      "emptyTitle": "No editable narration yet",
+      "emptyDescription": "After the content structure is generated, editable narration sections will appear here."
+    },
+    "assetRequirements": {
+      "title": "Visuals needed for this video",
+      "description": "Confirm character, prop, and scene requirements here. Final images are generated after the overall style is set in the next stage.",
+      "summary": "{count} items identified",
+      "confirmedCount": "{count} finalized",
+      "attentionCount": "{count} pending",
+      "reanalyze": "Identify again",
+      "analyzing": "Identifying",
+      "loading": "Loading visual requirements",
+      "emptyTitle": "No visual requirements identified",
+      "emptyDescription": "Identify characters, important props, and recurring scenes from the current content, then decide which must stay consistent.",
+      "analyzeAction": "Identify visual requirements",
+      "saveFailed": "Could not save. Try again.",
+      "nameLabel": "Name",
+      "descriptionLabel": "Visual description",
+      "cancel": "Cancel",
+      "save": "Save",
+      "edit": "Edit visual requirement",
+      "noDescription": "No visual description yet",
+      "consistencyRequired": "Keep the same appearance when repeated",
+      "reusableVisual": "Reusable across multiple shots",
+      "boundaryHint": "This stage confirms requirements and does not generate final images.",
+      "continueAction": "Continue to visual preparation",
+      "kind": {
+        "character": "Character",
+        "location": "Scene",
+        "prop": "Prop"
       },
+      "status": {
+        "running": "Generating",
+        "failed": "Needs attention",
+        "confirmed": "Finalized",
+        "candidate": "Choose one",
+        "missing": "Not generated"
+      }
+    },
       "assistant": {
         "title": "Stage assistant",
         "open": "Open stage assistant",
@@ -364,11 +427,11 @@
       "aiComicDescription": "Structures the project around plot conflict, character performance, and continuous shots",
       "bookGuide": "Book guide",
       "bookGuideDescription": "Structures the project around key ideas, chapter flow, and explanatory pacing",
-      "qualityAssistLabel": "Image quality assist",
-      "qualityAssistDescription": "Checks generated images automatically to reduce manual review and repeated prompt edits",
-      "qualityCheckOnly": "Check and notify only",
+      "qualityAssistLabel": "Visual checks",
+      "qualityAssistDescription": "Checks generated visuals automatically to reduce manual review and repeated edits",
+      "qualityCheckOnly": "Notify only",
       "qualityCheckOnlyDescription": "The system records image issues without blocking video generation. Useful when you want to observe results first.",
-      "qualityAutoOptimize": "Auto-optimize failed images",
+      "qualityAutoOptimize": "Auto repair",
       "qualityAutoOptimizeDescription": "When obvious issues are found, the system adjusts prompts and retries. Persistent issues are sent to manual handling.",
       "shadowReview": "Shadow review",
       "autoRepair": "Auto repair"

@@ -74,4 +74,19 @@ describe('creation stage navigation', () => {
     expect(items.find((item) => item.id === 'content')?.status).toBe('ready')
     expect(items.find((item) => item.id === 'storyboard-preview')?.status).toBe('not_started')
   })
+
+  it('treats a persisted content plan as the editable narration artifact for book guides', () => {
+    const items = buildCreationStageNavigation({
+      stageArtifacts: { ...emptyArtifacts, hasContentPlan: true },
+      videoProfile: resolveVideoProfile({ preset: VIDEO_PROFILE_PRESET.BOOK_GUIDE }),
+      contentPlanStream: idleStream,
+      storyToScriptStream: idleStream,
+      visualPlanStream: idleStream,
+      scriptToStoryboardStream: idleStream,
+      t: (key) => key,
+    })
+
+    expect(items.find((item) => item.id === 'content')?.status).toBe('completed')
+    expect(items.find((item) => item.id === 'visual-design')?.status).toBe('ready')
+  })
 })

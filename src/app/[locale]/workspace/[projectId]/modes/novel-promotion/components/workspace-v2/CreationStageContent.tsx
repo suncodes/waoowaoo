@@ -19,7 +19,7 @@ export default function CreationStageContent({
 }: CreationStageContentProps) {
   return (
     <div key={`${currentStage}:${stageView || ''}`} className="animate-page-enter">
-      {currentStage === 'setup' ? <ConfigStage /> : null}
+      {currentStage === 'setup' ? <ConfigStage workspaceLayout /> : null}
       {currentStage === 'content' ? <ContentStage stageView={stageView} /> : null}
       {currentStage === 'visual-design' ? <VisualDesignStage stageView={stageView} /> : null}
       {currentStage === 'storyboard-preview' ? <StoryboardStage /> : null}

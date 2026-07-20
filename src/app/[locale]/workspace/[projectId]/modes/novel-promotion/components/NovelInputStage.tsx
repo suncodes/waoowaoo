@@ -58,6 +58,7 @@ interface NovelInputStageProps {
   onVisualQualityModeChange?: (value: VisualQualityMode) => MaybePromise
   onArtStyleChange?: (value: string) => MaybePromise
   onArtStyleReferenceEnabledChange?: (value: boolean) => MaybePromise
+  workspaceLayout?: boolean
 }
 
 export default function NovelInputStage({
@@ -79,6 +80,7 @@ export default function NovelInputStage({
   onVisualQualityModeChange,
   onArtStyleChange,
   onArtStyleReferenceEnabledChange,
+  workspaceLayout = false,
 }: NovelInputStageProps) {
   const t = useTranslations('novelPromotion')
   const homeT = useTranslations('home')
@@ -214,7 +216,7 @@ export default function NovelInputStage({
   ]
 
   return (
-    <div className="max-w-5xl mx-auto space-y-5">
+    <div className={`${workspaceLayout ? 'w-full space-y-4' : 'mx-auto max-w-5xl space-y-5'}`}>
 
       {/* 当前编辑剧集提示 - 顶部居中醒目显示 */}
       {episodeName && (
@@ -265,7 +267,7 @@ export default function NovelInputStage({
           </div>
         </div>
 
-        <div className="grid gap-3 border-t border-[var(--glass-stroke-soft)] pt-4 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.6fr)] md:items-start">
+        <div className="grid gap-3 border-t border-[var(--glass-stroke-soft)] pt-4 md:grid-cols-[minmax(0,1fr)_360px] md:items-center">
           <div className="min-w-0">
             <div className="text-sm font-semibold text-[var(--glass-text-primary)]">
               {t('storyInput.videoProfile.qualityAssistLabel')}
@@ -274,45 +276,37 @@ export default function NovelInputStage({
               {t('storyInput.videoProfile.qualityAssistDescription')}
             </p>
           </div>
-          <div
-            className="grid gap-3 sm:grid-cols-2"
-            role="radiogroup"
-            aria-label={t('storyInput.videoProfile.qualityAssistLabel')}
-          >
-            {qualityModeOptions.map((option) => {
-              const selected = videoProfile.qualityPolicy.mode === option.value
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  disabled={configDisabled}
-                  onClick={() => onVisualQualityModeChange?.(option.value)}
-                  className={`min-h-24 rounded-lg border p-3 text-left transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
-                    selected
-                      ? 'border-[var(--glass-stroke-focus)] bg-[var(--glass-tone-info-bg)] shadow-[var(--glass-shadow-sm)]'
-                      : 'border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)] hover:border-[var(--glass-stroke-focus)] hover:bg-[var(--glass-bg-surface-strong)]'
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <span className={`inline-flex h-7 w-7 items-center justify-center rounded-full ${
+          <div className="min-w-0">
+            <div
+              className="grid grid-cols-2 gap-1 rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)] p-1"
+              role="radiogroup"
+              aria-label={t('storyInput.videoProfile.qualityAssistLabel')}
+            >
+              {qualityModeOptions.map((option) => {
+                const selected = videoProfile.qualityPolicy.mode === option.value
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    disabled={configDisabled}
+                    onClick={() => onVisualQualityModeChange?.(option.value)}
+                    className={`flex h-10 items-center justify-center gap-2 rounded-md border px-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                       selected
-                        ? 'bg-[var(--glass-tone-info-fg)] text-white'
-                        : 'bg-[var(--glass-bg-muted)] text-[var(--glass-text-secondary)]'
-                    }`}>
-                      <AppIcon name={selected ? 'check' : option.icon} className="h-4 w-4" />
-                    </span>
-                    <span className="font-semibold text-[var(--glass-text-primary)]">
-                      {option.label}
-                    </span>
-                  </span>
-                  <span className="mt-2 block text-xs leading-relaxed text-[var(--glass-text-tertiary)]">
-                    {option.description}
-                  </span>
-                </button>
-              )
-            })}
+                        ? 'border-[var(--glass-stroke-focus)] bg-[var(--glass-bg-surface)] text-[var(--glass-text-primary)] shadow-[var(--glass-shadow-sm)]'
+                        : 'border-transparent text-[var(--glass-text-secondary)] hover:bg-[var(--glass-bg-surface-strong)] hover:text-[var(--glass-text-primary)]'
+                    }`}
+                  >
+                    <AppIcon name={selected ? 'check' : option.icon} className="h-4 w-4 shrink-0" />
+                    <span>{option.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+            <p className="mt-2 text-xs leading-5 text-[var(--glass-text-tertiary)]">
+              {qualityModeOptions.find((option) => option.value === videoProfile.qualityPolicy.mode)?.description}
+            </p>
           </div>
         </div>
       </div>
@@ -399,19 +393,21 @@ export default function NovelInputStage({
       />
 
       {/* 资产库引导提示 */}
-      <div className="glass-surface p-4">
-        <div className="flex items-start gap-3">
-          <div className="w-10 h-10 glass-surface-soft rounded-xl flex items-center justify-center flex-shrink-0">
-            <AppIcon name="folderCards" className="w-5 h-5 text-[var(--glass-text-secondary)]" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="font-semibold text-[var(--glass-text-secondary)] mb-1">{t("storyInput.assetLibraryTip.title")}</div>
-            <p className="text-sm text-[var(--glass-text-tertiary)] leading-relaxed">
-              {t("storyInput.assetLibraryTip.description")}
-            </p>
+      {!workspaceLayout ? (
+        <div className="glass-surface p-4">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 glass-surface-soft rounded-xl flex items-center justify-center flex-shrink-0">
+              <AppIcon name="folderCards" className="w-5 h-5 text-[var(--glass-text-secondary)]" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-[var(--glass-text-secondary)] mb-1">{t("storyInput.assetLibraryTip.title")}</div>
+              <p className="text-sm text-[var(--glass-text-tertiary)] leading-relaxed">
+                {t("storyInput.assetLibraryTip.description")}
+              </p>
+            </div>
           </div>
         </div>
-      </div>
+      ) : null}
 
       {/* 旁白开关 */}
       {onEnableNarrationChange && (

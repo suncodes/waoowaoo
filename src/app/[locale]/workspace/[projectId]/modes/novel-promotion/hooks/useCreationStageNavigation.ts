@@ -64,7 +64,7 @@ export function buildCreationStageNavigation({
   t,
 }: UseCreationStageNavigationParams): CreationStageNavItem[] {
   const isBookGuide = isBookGuideProfile(videoProfile)
-  const contentCompleted = stageArtifacts.hasContentPlan && stageArtifacts.hasScript
+  const contentCompleted = stageArtifacts.hasContentPlan && (isBookGuide || stageArtifacts.hasScript)
   const visualReady = contentCompleted || stageArtifacts.hasScript
   const storyboardReady = stageArtifacts.hasVisualPlan || visualReady
 

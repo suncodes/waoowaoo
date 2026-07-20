@@ -6,6 +6,7 @@ import { AppIcon } from '@/components/ui/icons'
 import { isBookGuideProfile, type VideoProfile } from '@/lib/video-profile'
 import type { CreationStageId } from '@/lib/creation-workspace/stages'
 import type { CreationStageNavItem } from '../../hooks/useCreationStageNavigation'
+import { useCreationWorkspaceAutoFollow } from '../../hooks/useCreationWorkspaceAutoFollow'
 import type { WorkspaceRunStreamState } from '../workspace-run-types'
 import CreationAssistantPanel from './CreationAssistantPanel'
 import CreationStageActionBar from './CreationStageActionBar'
@@ -45,6 +46,16 @@ export default function CreationWorkspaceShell({
   const t = useTranslations('novelPromotion.workspaceFlow.v2')
   const current = items.find((item) => item.id === currentStage) || items[0]
   const profileLabel = isBookGuideProfile(videoProfile) ? t('profile.bookGuide') : t('profile.aiComic')
+
+  useCreationWorkspaceAutoFollow({
+    currentStage,
+    stageView,
+    contentPlanStream,
+    storyToScriptStream,
+    visualPlanStream,
+    scriptToStoryboardStream,
+    onStageChange,
+  })
 
   if (!current) return null
 

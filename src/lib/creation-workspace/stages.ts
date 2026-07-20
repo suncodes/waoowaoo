@@ -116,6 +116,7 @@ const STAGE_ID_SET = new Set<string>(CREATION_STAGE_IDS)
 const LEGACY_STAGE_ROUTES: Record<string, Omit<CreationStageRoute, 'isAlias'>> = {
   config: { stageId: 'setup' },
   'content-plan': { stageId: 'content', view: 'plan' },
+  'content-assets': { stageId: 'content', view: 'assets' },
   script: { stageId: 'content', view: 'script' },
   assets: { stageId: 'visual-design', view: 'assets' },
   'visual-plan': { stageId: 'visual-design', view: 'direction' },

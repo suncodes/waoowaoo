@@ -33,7 +33,9 @@ interface UseWorkspaceStageRuntimeParams {
   handleUpdateConfig: (key: string, value: unknown) => Promise<void>
   runWithRebuildConfirm: (action: 'storyToScript' | 'scriptToStoryboard', operation: () => Promise<void>) => Promise<void>
   runStoryToScriptFlow: () => Promise<void>
+  runVisualPlanFlow: () => Promise<void>
   runScriptToStoryboardFlow: () => Promise<void>
+  handleAnalyzeAssets: () => Promise<void>
   handleUpdateClip: (clipId: string, updates: Record<string, unknown>) => Promise<void>
   openAssetLibrary: (characterId?: string | null, refreshAssets?: boolean) => void
   handleStageChange: (stage: string) => void
@@ -79,7 +81,9 @@ export function useWorkspaceStageRuntime({
   handleUpdateConfig,
   runWithRebuildConfirm,
   runStoryToScriptFlow,
+  runVisualPlanFlow,
   runScriptToStoryboardFlow,
+  handleAnalyzeAssets,
   handleUpdateClip,
   openAssetLibrary,
   handleStageChange,
@@ -109,6 +113,7 @@ export function useWorkspaceStageRuntime({
     capabilityOverrides,
     userVideoModels: resolvedUserVideoModels,
     onNovelTextChange: (value) => handleUpdateEpisode('novelText', value),
+    onContentPlanChange: (value) => handleUpdateEpisode('contentPlan', value),
     onVideoRatioChange: (value) => handleUpdateConfig('videoRatio', value),
     onVideoProfileChange: (preset) => handleUpdateConfig('videoProfile', resolveVideoProfile({
       preset,
@@ -129,6 +134,8 @@ export function useWorkspaceStageRuntime({
     },
     onArtStyleReferenceEnabledChange: (value) => handleUpdateConfig('artStyleReferenceEnabled', value),
     onRunStoryToScript: () => runWithRebuildConfirm('storyToScript', runStoryToScriptFlow),
+    onRunVisualPlan: () => runWithRebuildConfirm('scriptToStoryboard', runVisualPlanFlow),
+    onAnalyzeAssets: handleAnalyzeAssets,
     onClipUpdate: (clipId, data) => {
       if (!data || typeof data !== 'object' || Array.isArray(data)) {
         throw new Error('onClipUpdate requires a plain object payload')
@@ -151,6 +158,7 @@ export function useWorkspaceStageRuntime({
     handleGenerateAllVideos,
     handleGenerateVideo,
     handleStageChange,
+    handleAnalyzeAssets,
     handleUpdateClip,
     handleUpdateConfig,
     handleUpdateEpisode,
@@ -164,6 +172,7 @@ export function useWorkspaceStageRuntime({
     openAssetLibrary,
     runScriptToStoryboardFlow,
     runStoryToScriptFlow,
+    runVisualPlanFlow,
     runWithRebuildConfirm,
     resolvedUserVideoModels,
     capabilityOverrides,

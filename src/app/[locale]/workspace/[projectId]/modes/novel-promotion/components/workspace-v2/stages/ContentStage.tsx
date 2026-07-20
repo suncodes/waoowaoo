@@ -6,7 +6,9 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import { isBookGuideProfile } from '@/lib/video-profile'
 import { useWorkspaceStageRuntime } from '../../../WorkspaceStageRuntimeContext'
 import ContentPlanStage from '../../ContentPlanStage'
-import ScriptStage from '../../ScriptStage'
+import ContentAssetRequirements from '../artifacts/ContentAssetRequirements'
+import ContentScriptEditor from '../artifacts/ContentScriptEditor'
+import GuideNarrationEditor from '../artifacts/GuideNarrationEditor'
 
 interface ContentStageProps {
   stageView?: string
@@ -15,11 +17,12 @@ interface ContentStageProps {
 export default function ContentStage({ stageView }: ContentStageProps) {
   const t = useTranslations('novelPromotion.workspaceFlow.v2.views.content')
   const runtime = useWorkspaceStageRuntime()
-  const currentView = stageView === 'script' ? 'script' : 'plan'
+  const currentView = stageView === 'script' || stageView === 'assets' ? stageView : 'plan'
   const isBookGuide = isBookGuideProfile(runtime.videoProfile)
   const options = useMemo(() => [
     { value: 'plan' as const, label: t('plan') },
     { value: 'script' as const, label: isBookGuide ? t('guideScript') : t('script') },
+    { value: 'assets' as const, label: isBookGuide ? t('guideAssets') : t('assets') },
   ], [isBookGuide, t])
 
   return (
@@ -28,11 +31,17 @@ export default function ContentStage({ stageView }: ContentStageProps) {
         <SegmentedControl
           options={options}
           value={currentView}
-          onChange={(value) => runtime.onStageChange(value === 'plan' ? 'content-plan' : 'script')}
+          onChange={(value) => runtime.onStageChange(value === 'plan'
+            ? 'content-plan'
+            : value === 'script'
+              ? 'script'
+              : 'content-assets')}
           layout="compact"
         />
       </div>
-      {currentView === 'plan' ? <ContentPlanStage /> : <ScriptStage />}
+      {currentView === 'plan' ? <ContentPlanStage /> : null}
+      {currentView === 'script' ? (isBookGuide ? <GuideNarrationEditor /> : <ContentScriptEditor />) : null}
+      {currentView === 'assets' ? <ContentAssetRequirements /> : null}
     </section>
   )
 }
