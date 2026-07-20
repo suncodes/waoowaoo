@@ -1,96 +1,25 @@
 'use client'
 
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import {
   CREATION_STAGE_REGISTRY,
   type CreationStageId,
 } from '@/lib/creation-workspace/stages'
-
-interface AutoFollowStream {
-  runId?: string | null
-  status?: string | null
-  isRunning?: boolean
-  isRecoveredRunning?: boolean
-  activeStepId?: string | null
-  orderedSteps?: Array<{ id: string }>
-}
+import type {
+  CreationWorkflowActiveTarget,
+  CreationWorkflowState,
+} from '@/lib/creation-workspace/workflow-state'
 
 interface CreationWorkspaceAutoFollowInput {
   currentStage: CreationStageId
   stageView?: string
-  contentPlanStream: AutoFollowStream
-  storyToScriptStream: AutoFollowStream
-  visualPlanStream: AutoFollowStream
-  scriptToStoryboardStream: AutoFollowStream
+  workflowState: CreationWorkflowState
 }
 
-interface CreationWorkspaceAutoFollowTarget {
-  key: string
-  stageId: CreationStageId
-  view?: string
-  route: string
-}
-
-function isActive(stream: AutoFollowStream) {
-  return stream.isRunning || stream.isRecoveredRunning || stream.status === 'running'
-}
-
-function targetKey(taskId: string, stream: AutoFollowStream) {
-  return `${taskId}:${stream.runId?.trim() || 'active'}`
-}
-
-function isContentUnitRewrite(stream: AutoFollowStream) {
-  return stream.activeStepId === 'content_unit_rewrite'
-    || stream.activeStepId === 'content_unit_review'
-    || stream.orderedSteps?.some((step) => step.id === 'content_unit_rewrite') === true
-}
-
-export function resolveCreationWorkspaceAutoFollowTarget({
-  contentPlanStream,
-  storyToScriptStream,
-  visualPlanStream,
-  scriptToStoryboardStream,
-}: Omit<CreationWorkspaceAutoFollowInput, 'currentStage' | 'stageView'>): CreationWorkspaceAutoFollowTarget | null {
-  if (isActive(scriptToStoryboardStream)) {
-    return {
-      key: targetKey('script-to-storyboard', scriptToStoryboardStream),
-      stageId: 'storyboard-preview',
-      route: 'storyboard',
-    }
-  }
-  if (isActive(visualPlanStream)) {
-    return {
-      key: targetKey('visual-plan', visualPlanStream),
-      stageId: 'visual-design',
-      view: 'direction',
-      route: 'visual-plan',
-    }
-  }
-  if (isActive(storyToScriptStream)) {
-    return {
-      key: targetKey('story-to-script', storyToScriptStream),
-      stageId: 'content',
-      view: 'script',
-      route: 'script',
-    }
-  }
-  if (isActive(contentPlanStream)) {
-    if (isContentUnitRewrite(contentPlanStream)) {
-      return {
-        key: targetKey('content-unit-rewrite', contentPlanStream),
-        stageId: 'content',
-        view: 'script',
-        route: 'script',
-      }
-    }
-    return {
-      key: targetKey('content-plan', contentPlanStream),
-      stageId: 'content',
-      view: 'plan',
-      route: 'content-plan',
-    }
-  }
-  return null
+export function resolveCreationWorkspaceAutoFollowTarget(
+  workflowState: Pick<CreationWorkflowState, 'activeTarget'>,
+): CreationWorkflowActiveTarget | null {
+  return workflowState.activeTarget
 }
 
 function stageOrder(stageId: CreationStageId) {
@@ -100,19 +29,11 @@ function stageOrder(stageId: CreationStageId) {
 export function useCreationWorkspaceAutoFollow({
   currentStage,
   stageView,
-  contentPlanStream,
-  storyToScriptStream,
-  visualPlanStream,
-  scriptToStoryboardStream,
+  workflowState,
   onStageChange,
 }: CreationWorkspaceAutoFollowInput & { onStageChange: (stage: string) => void }) {
   const handledTargetRef = useRef('')
-  const target = useMemo(() => resolveCreationWorkspaceAutoFollowTarget({
-    contentPlanStream,
-    storyToScriptStream,
-    visualPlanStream,
-    scriptToStoryboardStream,
-  }), [contentPlanStream, scriptToStoryboardStream, storyToScriptStream, visualPlanStream])
+  const target = resolveCreationWorkspaceAutoFollowTarget(workflowState)
 
   useEffect(() => {
     if (!target) {

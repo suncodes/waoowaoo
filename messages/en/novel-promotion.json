@@ -108,7 +108,12 @@
       "assetsDescription": "Extract recurring visual elements that must stay consistent",
       "planRequired": "Generate the content structure first",
       "scriptApprovalRequired": "Confirm the script or narration first",
-      "lockedTitle": "This step is not ready"
+      "lockedTitle": "This step is not ready",
+      "planRunning": "Shaping the content structure",
+      "scriptRunning": "Generating the script",
+      "guideScriptRunning": "Preparing the narration",
+      "assetsRunning": "Identifying visual elements",
+      "runningDescription": "The result will appear here automatically when generation finishes."
     },
     "actionBar": {
         "previous": "Previous",
@@ -121,6 +126,13 @@
         "reviewNarration": "Review and edit narration",
         "reviewScript": "Review and edit scene script",
         "returnToSetup": "Return to creative setup",
+        "planningContent": "Shaping the content structure",
+        "updatingContent": "Updating the script",
+        "generatingScript": "Generating the script",
+        "generatingVisualPlan": "Generating the visual plan",
+        "generatingStoryboard": "Generating the storyboard",
+        "working": "Processing the current task",
+        "workingHint": "This stage will update automatically when the task finishes",
         "returnToPlan": "Return to content structure",
         "returnToPlanHint": "There is no narration ready to confirm yet",
         "generateScript": "Generate scene script",

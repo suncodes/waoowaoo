@@ -95,6 +95,7 @@ function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
               projectId={projectId}
               episodeId={episodeId}
               videoProfile={vm.project.videoProfile}
+              workflowState={vm.stageNav.workflowState}
               onStageChange={vm.stageNav.handleStageChange}
               contentPlanStream={vm.execution.contentPlanStream}
               storyToScriptStream={vm.execution.storyToScriptStream}

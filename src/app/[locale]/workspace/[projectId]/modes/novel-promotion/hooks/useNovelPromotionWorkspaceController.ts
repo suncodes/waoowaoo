@@ -1,7 +1,7 @@
 'use client'
 
 import { logInfo as _ulogInfo } from '@/lib/logging/core'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { resolveTaskPresentationState } from '@/lib/task/presentation'
@@ -23,6 +23,7 @@ import type { NovelPromotionWorkspaceProps } from '../types'
 import { useRouter } from '@/i18n/navigation'
 import { resolveEpisodeStageArtifacts } from '@/lib/novel-promotion/stage-readiness'
 import { useWorkspaceArtifactCommands } from './useWorkspaceArtifactCommands'
+import { buildCreationWorkflowState } from '@/lib/creation-workspace/workflow-state'
 
 export function useNovelPromotionWorkspaceController({
   project,
@@ -135,7 +136,7 @@ export function useNovelPromotionWorkspaceController({
     execution.storyToScriptStream.isRunning ||
     execution.storyToScriptStream.isRecoveredRunning ||
     execution.storyToScriptStream.status === 'running'
-  const stageArtifacts = resolveEpisodeStageArtifacts(episode)
+  const stageArtifacts = useMemo(() => resolveEpisodeStageArtifacts(episode), [episode])
 
   useWorkspaceAutoRun({
     searchParams,
@@ -147,6 +148,28 @@ export function useNovelPromotionWorkspaceController({
     runWithRebuildConfirm: rebuildState.runWithRebuildConfirm,
     runStoryToScriptFlow: execution.runStoryToScriptFlow,
   })
+
+  const creationWorkflowState = useMemo(() => buildCreationWorkflowState({
+    stageArtifacts,
+    videoProfile: projectSnapshot.videoProfile,
+    contentPlanStream: execution.contentPlanStream,
+    storyToScriptStream: execution.storyToScriptStream,
+    visualPlanStream: execution.visualPlanStream,
+    scriptToStoryboardStream: execution.scriptToStoryboardStream,
+    contentPlan: projectSnapshot.contentPlan,
+    productionBible: projectSnapshot.productionBible,
+    isAssetAnalysisRunning: execution.isAssetAnalysisRunning,
+  }), [
+    execution.contentPlanStream,
+    execution.isAssetAnalysisRunning,
+    execution.scriptToStoryboardStream,
+    execution.storyToScriptStream,
+    execution.visualPlanStream,
+    projectSnapshot.contentPlan,
+    projectSnapshot.productionBible,
+    projectSnapshot.videoProfile,
+    stageArtifacts,
+  ])
 
   const legacyWorkflowItems = useWorkspaceStageNavigation({
     stageArtifacts,
@@ -166,6 +189,8 @@ export function useNovelPromotionWorkspaceController({
     scriptToStoryboardStream: execution.scriptToStoryboardStream,
     contentPlan: projectSnapshot.contentPlan,
     productionBible: projectSnapshot.productionBible,
+    isAssetAnalysisRunning: execution.isAssetAnalysisRunning,
+    workflowState: creationWorkflowState,
     t: (key) => t(`workspaceFlow.v2.${key}`),
   })
   const workflowItems = workspaceV2Enabled ? creationWorkflowItems : legacyWorkflowItems
@@ -243,6 +268,7 @@ export function useNovelPromotionWorkspaceController({
     stageView,
     workspaceV2Enabled,
     workflowItems,
+    workflowState: creationWorkflowState,
     handleStageChange: configActions.handleStageChange,
   }
 

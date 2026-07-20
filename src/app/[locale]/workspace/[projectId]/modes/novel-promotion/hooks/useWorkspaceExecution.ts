@@ -161,7 +161,7 @@ export function useWorkspaceExecution({
 
       if (isBookGuideProfile(resolvedVideoProfile)) {
         await onRefresh()
-        onStageChange('content-assets')
+        onStageChange('script')
         return
       }
 

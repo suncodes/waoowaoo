@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl'
 import { AppIcon } from '@/components/ui/icons'
 import { isBookGuideProfile, type VideoProfile } from '@/lib/video-profile'
 import type { CreationStageId } from '@/lib/creation-workspace/stages'
+import type { CreationWorkflowState } from '@/lib/creation-workspace/workflow-state'
 import type { CreationStageNavItem } from '../../hooks/useCreationStageNavigation'
 import { useCreationWorkspaceAutoFollow } from '../../hooks/useCreationWorkspaceAutoFollow'
 import type { WorkspaceRunStreamState } from '../workspace-run-types'
@@ -21,6 +22,7 @@ interface CreationWorkspaceShellProps {
   projectId: string
   episodeId?: string
   videoProfile: VideoProfile
+  workflowState: CreationWorkflowState
   onStageChange: (stage: string) => void
   contentPlanStream: WorkspaceRunStreamState
   storyToScriptStream: WorkspaceRunStreamState
@@ -36,6 +38,7 @@ export default function CreationWorkspaceShell({
   projectId,
   episodeId,
   videoProfile,
+  workflowState,
   onStageChange,
   contentPlanStream,
   storyToScriptStream,
@@ -51,10 +54,7 @@ export default function CreationWorkspaceShell({
   useCreationWorkspaceAutoFollow({
     currentStage,
     stageView,
-    contentPlanStream,
-    storyToScriptStream,
-    visualPlanStream,
-    scriptToStoryboardStream,
+    workflowState,
     onStageChange,
   })
 
@@ -108,8 +108,20 @@ export default function CreationWorkspaceShell({
             </section>
           ) : (
             <>
-              {children ?? <CreationStageContent currentStage={currentStage} stageView={stageView} />}
-              <CreationStageActionBar items={items} currentStage={currentStage} stageView={stageView} onStageChange={onStageChange} />
+              {children ?? (
+                <CreationStageContent
+                  currentStage={currentStage}
+                  stageView={stageView}
+                  workflowState={workflowState}
+                />
+              )}
+              <CreationStageActionBar
+                items={items}
+                currentStage={currentStage}
+                stageView={stageView}
+                workflowState={workflowState}
+                onStageChange={onStageChange}
+              />
             </>
           )}
         </main>

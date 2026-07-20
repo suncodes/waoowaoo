@@ -14,6 +14,7 @@ import type {
   useVisualPlanRunStream,
 } from '@/lib/query/hooks'
 import type { WorkspaceStageNavItem } from './useWorkspaceStageNavigation'
+import type { CreationWorkflowState } from '@/lib/creation-workspace/workflow-state'
 
 type StoryToScriptStreamState = ReturnType<typeof useStoryToScriptRunStream>
 type ScriptToStoryboardStreamState = ReturnType<typeof useScriptToStoryboardRunStream>
@@ -79,6 +80,7 @@ interface BuildWorkspaceControllerViewModelParams {
     stageView?: string
     workspaceV2Enabled: boolean
     workflowItems: WorkspaceStageNavItem[]
+    workflowState: CreationWorkflowState
     handleStageChange: (stage: string) => void
   }
   rebuildState: {

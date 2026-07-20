@@ -2,10 +2,13 @@
 
 import { useTranslations } from 'next-intl'
 import { AppIcon, type AppIconName } from '@/components/ui/icons'
-import { readContentArtifactMeta } from '@/lib/creation-workspace/artifact-state'
-import { isBookGuideProfile } from '@/lib/video-profile'
+import type {
+  ContentWorkflowStepId,
+  CreationWorkflowActiveTarget,
+  CreationWorkflowState,
+} from '@/lib/creation-workspace/workflow-state'
+import type { CreationStageStatus } from '@/lib/creation-workspace/stages'
 import { useWorkspaceStageRuntime } from '../../../WorkspaceStageRuntimeContext'
-import { useWorkspaceEpisodeStageData } from '../../../hooks/useWorkspaceEpisodeStageData'
 import ContentPlanStage from '../../ContentPlanStage'
 import ContentAssetRequirements from '../artifacts/ContentAssetRequirements'
 import ContentScriptEditor from '../artifacts/ContentScriptEditor'
@@ -13,74 +16,107 @@ import GuideNarrationEditor from '../artifacts/GuideNarrationEditor'
 
 interface ContentStageProps {
   stageView?: string
+  workflowState: CreationWorkflowState
 }
 
-type ContentStepStatus = 'ready' | 'running' | 'attention' | 'completed' | 'stale' | 'locked'
-
-function stepIcon(status: ContentStepStatus): AppIconName {
+function stepIcon(status: CreationStageStatus): AppIconName {
   if (status === 'completed') return 'check'
   if (status === 'running') return 'loader'
-  if (status === 'attention' || status === 'stale') return 'alert'
-  if (status === 'locked') return 'lock'
+  if (status === 'attention' || status === 'stale' || status === 'failed') return 'alert'
   return 'arrowRight'
 }
 
-function stepTone(status: ContentStepStatus) {
+function stepTone(status: CreationStageStatus) {
   if (status === 'completed') return 'bg-[var(--glass-tone-success-bg)] text-[var(--glass-tone-success-fg)]'
   if (status === 'running') return 'bg-[var(--glass-tone-info-bg)] text-[var(--glass-tone-info-fg)]'
   if (status === 'attention' || status === 'stale') return 'bg-[var(--glass-tone-warning-bg)] text-[var(--glass-tone-warning-fg)]'
+  if (status === 'failed') return 'bg-[var(--glass-tone-danger-bg)] text-[var(--glass-tone-danger-fg)]'
   return 'bg-[var(--glass-bg-muted)] text-[var(--glass-text-tertiary)]'
 }
 
-export default function ContentStage({ stageView }: ContentStageProps) {
+function ContentRunningState({
+  title,
+  description,
+  target,
+  compact = false,
+}: {
+  title: string
+  description: string
+  target: CreationWorkflowActiveTarget | null
+  compact?: boolean
+}) {
+  const progress = target?.progress || 0
+  return (
+    <div
+      aria-live="polite"
+      aria-busy="true"
+      className={compact
+        ? 'mb-4 rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-tone-info-bg)] px-4 py-3'
+        : 'flex min-h-72 flex-col items-center justify-center border-y border-[var(--glass-stroke-base)] px-5 py-10 text-center'}
+    >
+      <div className={compact ? 'flex items-start gap-3' : 'flex flex-col items-center'}>
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--glass-bg-surface)] text-[var(--glass-tone-info-fg)]">
+          <AppIcon name="loader" className="h-5 w-5 animate-spin" />
+        </span>
+        <div className={compact ? 'min-w-0 flex-1' : ''}>
+          <h2 className={`${compact ? '' : 'mt-4 '}text-sm font-semibold text-[var(--glass-text-primary)]`}>{title}</h2>
+          <p className={`${compact ? 'mt-1' : 'mt-2 max-w-xl'} text-sm leading-6 text-[var(--glass-text-secondary)]`}>
+            {target?.message || description}
+          </p>
+          {progress > 0 ? (
+            <div className={`${compact ? 'mt-3' : 'mt-5 w-full max-w-md'} overflow-hidden rounded-full bg-[var(--glass-bg-muted)]`}>
+              <div
+                className="h-1.5 rounded-full bg-[var(--glass-tone-info-fg)] transition-[width] duration-300"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default function ContentStage({ stageView, workflowState }: ContentStageProps) {
   const t = useTranslations('novelPromotion.workspaceFlow.v2.views.content')
   const tSteps = useTranslations('novelPromotion.workspaceFlow.v2.contentSteps')
   const runtime = useWorkspaceStageRuntime()
-  const { contentPlan, clips } = useWorkspaceEpisodeStageData()
-  const currentView = stageView === 'script' || stageView === 'assets' ? stageView : 'plan'
-  const isBookGuide = isBookGuideProfile(runtime.videoProfile)
-  const meta = readContentArtifactMeta(contentPlan)
-  const hasPlan = !!contentPlan
-  const hasScript = hasPlan && (isBookGuide || (clips.length > 0 && clips.every((clip) => !!clip.screenplay?.trim())))
-  const contentApproved = meta?.status === 'approved' || (!meta && hasScript)
-  const requirementStatus = meta?.assetRequirements.status || 'approved'
+  const currentView: ContentWorkflowStepId = stageView === 'script' || stageView === 'assets' ? stageView : 'plan'
+  const isBookGuide = workflowState.facts.isBookGuide
   const steps = [
     {
+      ...workflowState.contentSteps.plan,
       view: 'plan' as const,
       route: 'content-plan',
       label: t('plan'),
       description: tSteps('planDescription'),
-      status: (hasPlan ? 'completed' : 'ready') as ContentStepStatus,
-      locked: false,
     },
     {
+      ...workflowState.contentSteps.script,
       view: 'script' as const,
       route: 'script',
       label: isBookGuide ? t('guideScript') : t('script'),
       description: isBookGuide ? tSteps('guideScriptDescription') : tSteps('scriptDescription'),
-      status: (!hasPlan ? 'locked' : contentApproved ? 'completed' : 'ready') as ContentStepStatus,
-      locked: !hasPlan,
     },
     {
+      ...workflowState.contentSteps.assets,
       view: 'assets' as const,
       route: 'content-assets',
       label: isBookGuide ? t('guideAssets') : t('assets'),
       description: tSteps('assetsDescription'),
-      status: (!contentApproved
-        ? 'locked'
-        : runtime.isAssetAnalysisRunning
-          ? 'running'
-          : requirementStatus === 'approved'
-            ? 'completed'
-            : requirementStatus === 'needs_review'
-              ? 'attention'
-              : requirementStatus === 'stale'
-                ? 'stale'
-                : 'ready') as ContentStepStatus,
-      locked: !contentApproved,
     },
   ]
   const currentStep = steps.find((step) => step.view === currentView) || steps[0]
+  const activeTarget = workflowState.activeTarget?.stageId === 'content'
+    && workflowState.activeTarget.view === currentView
+    ? workflowState.activeTarget
+    : null
+  const runningTitle = currentView === 'plan'
+    ? tSteps('planRunning')
+    : currentView === 'script'
+      ? tSteps(isBookGuide ? 'guideScriptRunning' : 'scriptRunning')
+      : tSteps('assetsRunning')
+  const showRunningState = currentStep.status === 'running' && !!activeTarget
 
   return (
     <section className="min-w-0">
@@ -105,7 +141,9 @@ export default function ContentStage({ stageView }: ContentStageProps) {
                   ? 'bg-[var(--glass-tone-info-fg)] text-white'
                   : stepTone(step.status)
                 }`}>
-                  {step.status === 'ready' ? index + 1 : (
+                  {step.locked ? (
+                    <AppIcon name="lock" className="h-3.5 w-3.5" />
+                  ) : step.status === 'ready' || step.status === 'not_started' ? index + 1 : (
                     <AppIcon name={stepIcon(step.status)} className={`h-3.5 w-3.5 ${step.status === 'running' ? 'animate-spin' : ''}`} />
                   )}
                 </span>
@@ -131,8 +169,22 @@ export default function ContentStage({ stageView }: ContentStageProps) {
             {tSteps(currentView === 'script' ? 'planRequired' : 'scriptApprovalRequired')}
           </p>
         </div>
+      ) : showRunningState && !currentStep.hasArtifact ? (
+        <ContentRunningState
+          title={runningTitle}
+          description={tSteps('runningDescription')}
+          target={activeTarget}
+        />
       ) : (
         <>
+          {showRunningState ? (
+            <ContentRunningState
+              compact
+              title={runningTitle}
+              description={tSteps('runningDescription')}
+              target={activeTarget}
+            />
+          ) : null}
           {currentView === 'plan' ? <ContentPlanStage /> : null}
           {currentView === 'script' ? (isBookGuide ? <GuideNarrationEditor /> : <ContentScriptEditor />) : null}
           {currentView === 'assets' ? <ContentAssetRequirements /> : null}

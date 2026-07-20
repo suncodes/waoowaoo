@@ -9,8 +9,8 @@ import {
   readVisualArtifactMeta,
 } from '@/lib/creation-workspace/artifact-state'
 import { resolveVisualAnchorReadiness } from '@/lib/creation-workspace/visual-readiness'
+import type { CreationWorkflowState } from '@/lib/creation-workspace/workflow-state'
 import { useAssets } from '@/lib/query/hooks'
-import { isBookGuideProfile } from '@/lib/video-profile'
 import type { CreationStageNavItem } from '../../hooks/useCreationStageNavigation'
 import { useWorkspaceProvider } from '../../WorkspaceProvider'
 import { useWorkspaceStageRuntime } from '../../WorkspaceStageRuntimeContext'
@@ -20,6 +20,7 @@ interface CreationStageActionBarProps {
   items: CreationStageNavItem[]
   currentStage: string
   stageView?: string
+  workflowState: CreationWorkflowState
   onStageChange: (stage: string) => void
 }
 
@@ -36,12 +37,13 @@ export default function CreationStageActionBar({
   items,
   currentStage,
   stageView,
+  workflowState,
   onStageChange,
 }: CreationStageActionBarProps) {
   const t = useTranslations('novelPromotion.workspaceFlow.v2.actionBar')
   const { projectId } = useWorkspaceProvider()
   const runtime = useWorkspaceStageRuntime()
-  const { contentPlan, productionBible, clips } = useWorkspaceEpisodeStageData()
+  const { contentPlan, productionBible } = useWorkspaceEpisodeStageData()
   const assetsQuery = useAssets({ scope: 'project', projectId })
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
@@ -56,20 +58,13 @@ export default function CreationStageActionBar({
     () => resolveVisualAnchorReadiness(visualMeta?.anchors || [], visualAssets),
     [visualAssets, visualMeta?.anchors],
   )
-  const isBookGuide = isBookGuideProfile(runtime.videoProfile)
-  const contentStage = items.find((item) => item.id === 'content')
+  const isBookGuide = workflowState.facts.isBookGuide
   const storyboardStage = items.find((item) => item.id === 'storyboard-preview')
-  const contentDocumentApproved = contentMeta?.status === 'approved'
-    || (!contentMeta && contentStage?.status === 'completed')
-  const assetRequirementStatus = contentMeta?.assetRequirements.status || 'approved'
-  const assetRequirementCount = contentMeta?.assetRequirements.assetIds.length || 0
-  const assetRequirementsApproved = assetRequirementStatus === 'approved'
-    || (!contentMeta && !!visualMeta?.plan)
-  const contentReadyForVisuals = contentDocumentApproved && assetRequirementsApproved
-  const hasScriptOutput = !!contentPlan && (
-    isBookGuide
-    || (clips.length > 0 && clips.every((clip) => !!clip.screenplay?.trim()))
-  )
+  const contentDocumentApproved = workflowState.facts.contentDocumentApproved
+  const assetRequirementStatus = workflowState.facts.assetRequirementStatus
+  const assetRequirementCount = workflowState.facts.assetRequirementCount
+  const contentReadyForVisuals = workflowState.facts.contentCompleted
+  const hasScriptOutput = workflowState.facts.hasScriptOutput
   const contentView = stageView === 'script' || stageView === 'assets' ? stageView : 'plan'
   const candidateCount = Object.values(contentMeta?.units || {}).filter((unit) => !!unit.candidate).length
   const workspaceBusy = pending
@@ -77,6 +72,7 @@ export default function CreationStageActionBar({
     || runtime.isAssetAnalysisRunning
     || runtime.isConfirmingAssets
     || runtime.isStartingScriptToStoryboard
+    || !!workflowState.activeTarget
 
   const continueAction = next ? {
     label: t('continue', { stage: next.label }),
@@ -87,10 +83,32 @@ export default function CreationStageActionBar({
     run: () => onStageChange(next.id),
   } : null
 
-  let primary: PrimaryAction | null = continueAction
-  if (currentStage === 'content') {
+  const currentTask = workflowState.activeTarget?.stageId === currentStage
+    ? workflowState.activeTarget
+    : null
+  const runningTaskLabel = currentTask?.kind === 'content_plan'
+    ? t('planningContent')
+    : currentTask?.kind === 'content_rewrite'
+      ? t('updatingContent')
+      : currentTask?.kind === 'story_script'
+        ? t('generatingScript')
+        : currentTask?.kind === 'asset_requirements'
+          ? t('analyzingAssetRequirements')
+          : currentTask?.kind === 'visual_plan'
+            ? t('generatingVisualPlan')
+            : currentTask?.kind === 'storyboard'
+              ? t('generatingStoryboard')
+              : t('working')
+  let primary: PrimaryAction | null = currentTask ? {
+    label: runningTaskLabel,
+    icon: 'loader',
+    disabled: true,
+    hint: t('workingHint'),
+    run: () => undefined,
+  } : continueAction
+  if (currentStage === 'content' && !currentTask) {
     if (contentView === 'plan') {
-      primary = contentPlan
+      primary = workflowState.contentSteps.plan.hasArtifact
         ? {
             label: isBookGuide ? t('reviewNarration') : t('reviewScript'),
             icon: 'arrowRight',
@@ -215,7 +233,7 @@ export default function CreationStageActionBar({
     }
   }
 
-  if (currentStage === 'visual-design') {
+  if (currentStage === 'visual-design' && !currentTask) {
     if (!contentReadyForVisuals) {
       primary = {
         label: contentDocumentApproved ? t('returnToAssetRequirements') : t('returnToContent'),

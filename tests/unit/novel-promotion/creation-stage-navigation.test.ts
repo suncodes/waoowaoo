@@ -75,7 +75,7 @@ describe('creation stage navigation', () => {
     expect(items.find((item) => item.id === 'storyboard-preview')?.status).toBe('not_started')
   })
 
-  it('treats a persisted content plan as the editable narration artifact for book guides', () => {
+  it('requires book-guide narration confirmation after the content plan is generated', () => {
     const items = buildCreationStageNavigation({
       stageArtifacts: { ...emptyArtifacts, hasContentPlan: true },
       videoProfile: resolveVideoProfile({ preset: VIDEO_PROFILE_PRESET.BOOK_GUIDE }),
@@ -86,8 +86,12 @@ describe('creation stage navigation', () => {
       t: (key) => key,
     })
 
-    expect(items.find((item) => item.id === 'content')?.status).toBe('completed')
-    expect(items.find((item) => item.id === 'visual-design')?.status).toBe('ready')
+    expect(items.find((item) => item.id === 'content')?.status).toBe('attention')
+    expect(items.find((item) => item.id === 'visual-design')).toMatchObject({
+      status: 'not_started',
+      locked: true,
+      blockedByStageId: 'content',
+    })
   })
 
   it('uses workspace approval state before legacy data readiness', () => {

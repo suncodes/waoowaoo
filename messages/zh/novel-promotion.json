@@ -108,7 +108,12 @@
       "assetsDescription": "提取需要重复使用或保持一致的画面元素",
       "planRequired": "请先生成内容结构",
       "scriptApprovalRequired": "请先确认剧本文稿或解说文稿",
-      "lockedTitle": "这一步还不能开始"
+      "lockedTitle": "这一步还不能开始",
+      "planRunning": "正在整理内容结构",
+      "scriptRunning": "正在生成剧本文稿",
+      "guideScriptRunning": "正在整理解说文稿",
+      "assetsRunning": "正在识别画面元素",
+      "runningDescription": "生成完成后，结果会自动显示在当前页面。"
     },
     "actionBar": {
         "previous": "上一步",
@@ -121,6 +126,13 @@
         "reviewNarration": "查看并编辑解说文稿",
         "reviewScript": "查看并编辑分场剧本",
         "returnToSetup": "返回创作设定",
+        "planningContent": "正在整理内容结构",
+        "updatingContent": "正在更新文稿",
+        "generatingScript": "正在生成剧本文稿",
+        "generatingVisualPlan": "正在生成画面方案",
+        "generatingStoryboard": "正在生成分镜",
+        "working": "正在处理当前任务",
+        "workingHint": "任务完成后会自动更新当前阶段",
         "returnToPlan": "返回内容结构",
         "returnToPlanHint": "当前还没有可确认的解说文稿",
         "generateScript": "生成分场剧本",

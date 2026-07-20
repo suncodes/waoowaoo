@@ -10,10 +10,11 @@ import {
   type VisualQualityMode,
 } from '@/lib/video-profile'
 import { CREATION_STAGE_REGISTRY, type CreationStageId } from '@/lib/creation-workspace/stages'
+import { buildCreationWorkflowState } from '@/lib/creation-workspace/workflow-state'
 import CreationWorkspaceShell from '../../workspace/[projectId]/modes/novel-promotion/components/workspace-v2/CreationWorkspaceShell'
 import NovelInputStage from '../../workspace/[projectId]/modes/novel-promotion/components/NovelInputStage'
 import type { WorkspaceRunStreamState } from '../../workspace/[projectId]/modes/novel-promotion/components/workspace-run-types'
-import type { CreationStageNavItem } from '../../workspace/[projectId]/modes/novel-promotion/hooks/useCreationStageNavigation'
+import { buildCreationStageNavigation } from '../../workspace/[projectId]/modes/novel-promotion/hooks/useCreationStageNavigation'
 
 function createPreviewStream(): WorkspaceRunStreamState {
   return {
@@ -97,21 +98,6 @@ export default function CreationWorkspaceV2PreviewPage() {
   const [currentStage, setCurrentStage] = useState<CreationStageId>('content')
   const [sourceText, setSourceText] = useState('《海底两万里》通过尼摩船长和鹦鹉螺号，展示了科学想象、自由意志与海洋探索。')
   const [videoProfile, setVideoProfile] = useState(() => resolveVideoProfile({ preset: VIDEO_PROFILE_PRESET.BOOK_GUIDE }))
-  const items = useMemo<CreationStageNavItem[]>(() => CREATION_STAGE_REGISTRY.map((stage, index) => ({
-    id: stage.id,
-    icon: stage.icon,
-    label: t(stage.labelKey),
-    description: t(stage.descriptionKey),
-    status: index <= 2 ? 'completed' : index === 3 ? 'ready' : 'not_started',
-    issueCount: 0,
-    locked: index > 3,
-    ...(index > 3
-      ? {
-          blockedByStageId: CREATION_STAGE_REGISTRY[index - 1].id,
-          blockedByLabel: t(CREATION_STAGE_REGISTRY[index - 1].labelKey),
-        }
-      : {}),
-  })), [t])
   const completedStream = useMemo(createPreviewStream, [])
   const idleStream = useMemo<WorkspaceRunStreamState>(() => ({
     ...createPreviewStream(),
@@ -123,6 +109,71 @@ export default function CreationWorkspaceV2PreviewPage() {
     overallProgress: 0,
     activeMessage: '',
   }), [])
+  const stageArtifacts = useMemo(() => ({
+    hasStory: true,
+    hasContentPlan: true,
+    hasScript: true,
+    hasVisualPlan: true,
+    hasStoryboard: false,
+    hasVideo: false,
+    hasVoice: false,
+  }), [])
+  const contentPlan = useMemo(() => ({
+    _workspace: {
+      schemaVersion: 1,
+      status: 'approved',
+      revision: 1,
+      approvedRevision: 1,
+      updatedAt: '2026-07-20T00:00:00.000Z',
+      updatedBy: 'user',
+      units: {},
+      assetRequirements: {
+        status: 'approved',
+        analyzedRevision: 1,
+        analyzedAt: '2026-07-20T00:00:00.000Z',
+        approvedAt: '2026-07-20T00:00:00.000Z',
+        assetIds: [],
+      },
+      latestImpact: null,
+      downstream: { visualDesign: false, storyboard: false, production: false },
+    },
+  }), [])
+  const productionBible = useMemo(() => ({
+    _workspace: {
+      schemaVersion: 1,
+      status: 'approved',
+      revision: 1,
+      approvedRevision: 1,
+      updatedAt: '2026-07-20T00:00:00.000Z',
+      updatedBy: 'user',
+      anchors: [],
+      plan: { shotPlan: {}, visualUnits: [] },
+      latestImpact: null,
+      downstream: { storyboard: false, production: false },
+    },
+  }), [])
+  const workflowState = useMemo(() => buildCreationWorkflowState({
+    stageArtifacts,
+    videoProfile,
+    contentPlanStream: completedStream,
+    storyToScriptStream: idleStream,
+    visualPlanStream: completedStream,
+    scriptToStoryboardStream: idleStream,
+    contentPlan,
+    productionBible,
+  }), [completedStream, contentPlan, idleStream, productionBible, stageArtifacts, videoProfile])
+  const items = useMemo(() => buildCreationStageNavigation({
+    stageArtifacts,
+    videoProfile,
+    contentPlanStream: completedStream,
+    storyToScriptStream: idleStream,
+    visualPlanStream: completedStream,
+    scriptToStoryboardStream: idleStream,
+    contentPlan,
+    productionBible,
+    workflowState,
+    t,
+  }), [completedStream, contentPlan, idleStream, productionBible, stageArtifacts, t, videoProfile, workflowState])
 
   return (
     <div className="glass-page min-h-screen px-4 py-6">
@@ -143,6 +194,7 @@ export default function CreationWorkspaceV2PreviewPage() {
           projectId="preview"
           episodeId="preview-episode"
           videoProfile={videoProfile}
+          workflowState={workflowState}
           onStageChange={(stage) => {
             if (CREATION_STAGE_REGISTRY.some((item) => item.id === stage)) {
               setCurrentStage(stage as CreationStageId)
