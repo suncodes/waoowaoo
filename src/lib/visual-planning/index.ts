@@ -156,6 +156,11 @@ export function parseVisualPlanResult(
   if (profile.contentDomain === 'book' && visualUnits.length === 0) {
     throw new Error('VISUAL_PLAN_INVALID: book guide requires visualUnits')
   }
+  const coveredClipIds = new Set(visualUnits.map((unit) => unit.clipId))
+  const missingClipIds = clipIds.filter((clipId) => !coveredClipIds.has(clipId))
+  if (missingClipIds.length > 0) {
+    throw new Error(`VISUAL_PLAN_INVALID: visualUnits missing clipIds: ${missingClipIds.join(',')}`)
+  }
   return {
     directorTreatment: parseDirectorTreatment(value.directorTreatment),
     productionBible: parseProductionBible(value.productionBible),

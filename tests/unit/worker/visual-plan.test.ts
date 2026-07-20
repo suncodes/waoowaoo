@@ -13,6 +13,7 @@ const artifactMock = vi.hoisted(() => ({ createArtifact: vi.fn(async () => undef
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('@/lib/workers/handlers/planning-task-shared', () => ({
   executePlanningJsonStep: planningMock.executePlanningJsonStep,
+  PLANNING_JSON_PARSE_ERROR_CODE: 'PLANNING_JSON_PARSE_FAILED',
   readTaskRunId: vi.fn(() => 'run-visual-1'),
   toJsonRecord: (value: unknown) => value,
 }))
@@ -24,7 +25,10 @@ vi.mock('@/lib/workers/handlers/resolve-analysis-model', () => ({
 vi.mock('@/lib/workers/shared', () => ({ reportTaskProgress: vi.fn(async () => undefined) }))
 vi.mock('@/lib/workers/utils', () => ({ assertTaskActive: vi.fn(async () => undefined) }))
 vi.mock('@/lib/prompt-i18n', () => ({
-  PROMPT_IDS: { NP_VISUAL_PLAN: 'visual-plan' },
+  PROMPT_IDS: {
+    NP_VISUAL_PLAN: 'visual-plan',
+    NP_VISUAL_PLAN_REPAIR: 'visual-plan-repair',
+  },
   buildPrompt: vi.fn(() => 'visual-plan-prompt'),
 }))
 
@@ -108,6 +112,7 @@ function contentPlanWithApprovedAssets(assetIds: string[]) {
 describe('worker visual-plan behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    planningMock.executePlanningJsonStep.mockReset()
     prismaMock.novelPromotionProject.findUnique.mockResolvedValue({
       id: 'novel-project-1',
       analysisModel: 'google::gemini-3-flash-preview',
@@ -147,6 +152,60 @@ describe('worker visual-plan behavior', () => {
       artifactType: 'visual.plan',
       runId: 'run-visual-1',
     }))
+  })
+
+  it('repairs a visual plan when a generated unit is missing imagePrompt', async () => {
+    const invalidPayload = visualPlanPayload()
+    delete (invalidPayload.visualUnits[0] as { imagePrompt?: string }).imagePrompt
+    planningMock.executePlanningJsonStep
+      .mockResolvedValueOnce(invalidPayload)
+      .mockResolvedValueOnce(visualPlanPayload())
+
+    const result = await handleVisualPlanTask(buildJob())
+
+    expect(result.visualUnitCount).toBe(1)
+    expect(planningMock.executePlanningJsonStep).toHaveBeenCalledTimes(2)
+    expect(planningMock.executePlanningJsonStep).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      action: 'visual_plan_repair',
+      stepAttempt: 2,
+      temperature: 0.2,
+    }))
+    expect(persistenceMock.persistVisualPlan).toHaveBeenCalledWith(expect.objectContaining({
+      result: expect.objectContaining({
+        visualUnits: [expect.objectContaining({ imagePrompt: '清晰的概念图' })],
+      }),
+    }))
+  })
+
+  it('repairs malformed JSON output using the captured raw model response', async () => {
+    const parseError = Object.assign(new Error('Unexpected end of JSON input'), {
+      code: 'PLANNING_JSON_PARSE_FAILED',
+      rawText: '{"directorTreatment":{"narrativeStrategy":"旁白驱动"',
+    })
+    planningMock.executePlanningJsonStep
+      .mockRejectedValueOnce(parseError)
+      .mockResolvedValueOnce(visualPlanPayload())
+
+    await handleVisualPlanTask(buildJob())
+
+    expect(planningMock.executePlanningJsonStep).toHaveBeenCalledTimes(2)
+    expect(planningMock.executePlanningJsonStep).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      action: 'visual_plan_repair',
+      stepAttempt: 2,
+    }))
+    expect(persistenceMock.persistVisualPlan).toHaveBeenCalledOnce()
+  })
+
+  it('stops after bounded repair attempts when the model keeps returning invalid units', async () => {
+    const invalidPayload = visualPlanPayload()
+    delete (invalidPayload.visualUnits[0] as { imagePrompt?: string }).imagePrompt
+    planningMock.executePlanningJsonStep.mockResolvedValue(invalidPayload)
+
+    await expect(handleVisualPlanTask(buildJob())).rejects.toThrow(
+      'VISUAL_PLAN_INVALID: visualUnits.0.imagePrompt is required',
+    )
+    expect(planningMock.executePlanningJsonStep).toHaveBeenCalledTimes(3)
+    expect(persistenceMock.persistVisualPlan).not.toHaveBeenCalled()
   })
 
   it('requires a completed content plan before visual planning', async () => {

@@ -8,6 +8,13 @@ Available assets: {assets_json}
 Aspect ratio: {video_ratio}
 Art style: {art_style}
 
+Before returning the result, verify every hard requirement below:
+1. visualUnits must cover every id in Clips, with at least one visual unit per clip.
+2. Every visualUnit must contain non-empty clipId, description, imagePrompt, and videoPrompt values. Never omit them or return null or blank strings.
+3. Even when renderMode is text_card, imagePrompt must describe the background, layout, subject, negative space, and text-safe area. Put the exact copy only in onScreenText and do not ask the image model to render long text.
+4. imagePrompt must be a complete prompt ready for image generation. videoPrompt must describe subject motion and camera behavior after the first frame, not merely repeat a field label.
+5. Use only clipId values that exist in Clips. Return complete, closed, parseable JSON without explanations or Markdown.
+
 Return JSON only:
 {
   "directorTreatment": {
@@ -61,4 +68,4 @@ Return JSON only:
   }]
 }
 
-A guide must cover every clip and choose among book cover, quote card, diagram, illustration, and kinetic text according to information purpose. Do not make every unit a character illustration. Fiction may provide compact global recommendations per clip; detailed storyboard generation must still obey the Treatment and Bible.
+A guide must cover every clip and choose among book cover, quote card, diagram, illustration, and kinetic text according to information purpose. Do not make every unit a character illustration. Fiction must also cover every clip and may provide compact global recommendations per clip; detailed storyboard generation must still obey the Treatment and Bible.

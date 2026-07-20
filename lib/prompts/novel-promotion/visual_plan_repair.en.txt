@@ -1,0 +1,25 @@
+You are a visual-plan JSON proofreader. The candidate output failed system validation. Repair it while preserving all valid content and the established creative direction.
+
+Validation error:
+{validation_error}
+
+VideoProfile:
+{profile_json}
+
+Clips that must be covered:
+{clips_json}
+
+Available assets:
+{assets_json}
+
+Candidate output to repair (it may be incomplete JSON):
+{candidate_output}
+
+Hard requirements:
+1. Return exactly one complete, closed, parseable JSON object without explanations or Markdown.
+2. The top level must contain directorTreatment, productionBible, shotPlan, and visualUnits.
+3. visualUnits must cover every Clips.id with at least one unit per clip and must not use unknown clipId values.
+4. clipId, description, imagePrompt, and videoPrompt must be non-empty strings in every visualUnit.
+5. Even when renderMode is text_card, imagePrompt must describe a generatable background, layout, subject, negative space, and text-safe area. Put exact copy in onScreenText.
+6. Preserve every valid director decision, visual style, and visual unit from the candidate. Only complete, correct, or continue invalid portions.
+7. Keep the existing output structure and camelCase field names.

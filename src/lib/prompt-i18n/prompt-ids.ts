@@ -33,6 +33,7 @@ export const PROMPT_IDS = {
   NP_STORYBOARD_EDIT: 'np_storyboard_edit',
   NP_VISUAL_AUTO_REPAIR: 'np_visual_auto_repair',
   NP_VISUAL_PLAN: 'np_visual_plan',
+  NP_VISUAL_PLAN_REPAIR: 'np_visual_plan_repair',
   NP_VISUAL_QUALITY_REVIEW: 'np_visual_quality_review',
   NP_VOICE_ANALYSIS: 'np_voice_analysis',
 } as const

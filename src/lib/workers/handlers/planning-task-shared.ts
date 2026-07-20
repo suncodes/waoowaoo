@@ -7,6 +7,14 @@ import { createWorkerLLMStreamCallbacks, createWorkerLLMStreamContext } from './
 
 export type JsonRecord = Record<string, unknown>
 
+export const PLANNING_JSON_PARSE_ERROR_CODE = 'PLANNING_JSON_PARSE_FAILED'
+
+type PlanningJsonParseError = Error & {
+  code: typeof PLANNING_JSON_PARSE_ERROR_CODE
+  rawText: string
+  cause?: unknown
+}
+
 export function readTaskRunId(job: Job<TaskJobData>): string {
   const payload = (job.data.payload || {}) as JsonRecord
   const direct = typeof payload.runId === 'string' ? payload.runId.trim() : ''
@@ -32,6 +40,7 @@ export async function executePlanningJsonStep(params: {
   stepTitle: string
   stepIndex: number
   stepTotal: number
+  stepAttempt?: number
   temperature?: number
 }) {
   const streamContext = createWorkerLLMStreamContext(params.job, params.stepId)
@@ -49,13 +58,25 @@ export async function executePlanningJsonStep(params: {
         reasoning: true,
         meta: {
           stepId: params.stepId,
+          stepAttempt: params.stepAttempt,
           stepTitle: params.stepTitle,
           stepIndex: params.stepIndex,
           stepTotal: params.stepTotal,
         },
       }),
     )
-    return safeParseJsonObject(completion.text)
+    try {
+      return safeParseJsonObject(completion.text)
+    } catch (error) {
+      const parseError = new Error(
+        error instanceof Error ? error.message : 'Expected JSON object from LLM output',
+      ) as PlanningJsonParseError
+      parseError.name = 'PlanningJsonParseError'
+      parseError.code = PLANNING_JSON_PARSE_ERROR_CODE
+      parseError.rawText = completion.text
+      parseError.cause = error
+      throw parseError
+    }
   } finally {
     await callbacks.flush()
   }

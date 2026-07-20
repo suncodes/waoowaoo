@@ -8,6 +8,13 @@ Clips：{clips_json}
 画幅：{video_ratio}
 艺术风格：{art_style}
 
+输出前必须逐项自检以下硬性约束：
+1. visualUnits 必须覆盖 Clips 中的每一个 id，每个 clip 至少有一个视觉单元。
+2. 每个 visualUnit 都必须提供非空的 clipId、description、imagePrompt 和 videoPrompt，禁止 null、空字符串或省略字段。
+3. 即使 renderMode 是 text_card，imagePrompt 也必须描述背景、版式、主体、留白和文字安全区；实际文字只放在 onScreenText，避免要求图片模型直接生成长文字。
+4. imagePrompt 必须是可直接用于图片生成的完整提示词，videoPrompt 必须描述首帧之后的主体动作和运镜，不能只写字段说明。
+5. 只允许使用 Clips 中真实存在的 clipId。输出必须是完整闭合、可解析的 JSON，不要输出解释或 Markdown。
+
 只输出 JSON：
 {
   "directorTreatment": {
@@ -61,4 +68,4 @@ Clips：{clips_json}
   }]
 }
 
-导读必须覆盖每个 clip，并在书封、引用卡、图表、插画、动态文字之间按信息功能选择，不要全部生成人物插画。剧情可以给每个 clip 提供少量全局建议，后续细分镜仍必须服从 Treatment 和 Bible。
+导读必须覆盖每个 clip，并在书封、引用卡、图表、插画、动态文字之间按信息功能选择，不要全部生成人物插画。剧情也必须覆盖每个 clip，可以为每个 clip 提供少量全局建议，后续细分镜仍必须服从 Treatment 和 Bible。

@@ -184,6 +184,16 @@ export const PROMPT_CATALOG: Record<PromptId, PromptCatalogEntry> = {
       'art_style',
     ],
   },
+  [PROMPT_IDS.NP_VISUAL_PLAN_REPAIR]: {
+    pathStem: 'novel-promotion/visual_plan_repair',
+    variableKeys: [
+      'validation_error',
+      'candidate_output',
+      'profile_json',
+      'clips_json',
+      'assets_json',
+    ],
+  },
   [PROMPT_IDS.NP_VISUAL_QUALITY_REVIEW]: {
     pathStem: 'novel-promotion/visual_quality_review',
     variableKeys: ['target_spec_json', 'technical_checks_json', 'candidate_count'],

@@ -116,6 +116,8 @@ describe('video quality workflow contracts', () => {
     expect(result.visualUnits[0].shotSpec.durationIntent).toBe('8 seconds')
     expect(() => parseVisualPlanResult(rawPlan, profile, ['clip-other']))
       .toThrow('clipId does not exist')
+    expect(() => parseVisualPlanResult(rawPlan, profile, ['clip-1', 'clip-2']))
+      .toThrow('visualUnits missing clipIds: clip-2')
   })
 
   it('uses thresholds and bounded retries to choose approve, edit, regenerate, or human review', () => {

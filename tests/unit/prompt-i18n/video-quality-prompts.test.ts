@@ -23,6 +23,16 @@ const CASES = [
     },
   },
   {
+    promptId: PROMPT_IDS.NP_VISUAL_PLAN_REPAIR,
+    variables: {
+      validation_error: 'visualUnits.0.imagePrompt is required',
+      candidate_output: '{}',
+      profile_json: '{}',
+      clips_json: '[]',
+      assets_json: '{}',
+    },
+  },
+  {
     promptId: PROMPT_IDS.NP_VISUAL_QUALITY_REVIEW,
     variables: { target_spec_json: '{}', technical_checks_json: '[]', candidate_count: '1' },
   },

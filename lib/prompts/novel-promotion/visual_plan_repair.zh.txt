@@ -1,0 +1,25 @@
+你是视觉方案 JSON 校对器。候选输出没有通过系统校验，请在保留所有有效内容的前提下修复它，不要重新改变已经合理的创作方向。
+
+校验错误：
+{validation_error}
+
+VideoProfile：
+{profile_json}
+
+必须覆盖的 Clips：
+{clips_json}
+
+可用资产：
+{assets_json}
+
+待修复的候选输出（可能是不完整 JSON）：
+{candidate_output}
+
+硬性要求：
+1. 只输出一份完整、闭合、可解析的 JSON 对象，不输出解释或 Markdown。
+2. 顶层必须包含 directorTreatment、productionBible、shotPlan、visualUnits。
+3. visualUnits 必须覆盖每一个 Clips.id，每个 clip 至少一个视觉单元，且不得使用不存在的 clipId。
+4. 每个 visualUnit 的 clipId、description、imagePrompt、videoPrompt 都必须是非空字符串。
+5. 即使 renderMode 为 text_card，imagePrompt 也必须描述可生成的背景、版式、主体、留白和文字安全区；准确文字放在 onScreenText。
+6. 保留候选输出中已经有效的导演策略、视觉风格和画面内容，只补全、纠正或续写不合格部分。
+7. 输出结构和字段命名必须与候选输出中的既有结构一致，使用 camelCase。

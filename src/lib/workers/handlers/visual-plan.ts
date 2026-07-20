@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { createArtifact } from '@/lib/run-runtime/service'
 import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
 import { isBookGuideProfile, resolveVideoProfile } from '@/lib/video-profile'
-import { parseVisualPlanResult } from '@/lib/visual-planning'
+import { parseVisualPlanResult, type VisualPlanResult } from '@/lib/visual-planning'
 import type { TaskJobData } from '@/lib/task/types'
 import { reportTaskProgress } from '@/lib/workers/shared'
 import { assertTaskActive } from '@/lib/workers/utils'
@@ -20,12 +20,89 @@ import {
 import { isWorkspaceClipActive } from '@/lib/creation-workspace/guide-clips'
 import {
   executePlanningJsonStep,
+  PLANNING_JSON_PARSE_ERROR_CODE,
   readTaskRunId,
   toJsonRecord,
 } from './planning-task-shared'
 
+const MAX_VISUAL_PLAN_OUTPUT_ATTEMPTS = 3
+
 function readText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+function readErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function isRepairableVisualPlanOutputError(error: unknown): boolean {
+  if (error instanceof SyntaxError) return true
+  const record = error && typeof error === 'object'
+    ? error as { code?: unknown }
+    : null
+  return record?.code === PLANNING_JSON_PARSE_ERROR_CODE
+    || readErrorMessage(error).startsWith('VISUAL_PLAN_INVALID:')
+}
+
+function readInvalidCandidateOutput(
+  candidate: Record<string, unknown> | null,
+  error: unknown,
+): string {
+  if (candidate) return JSON.stringify(candidate, null, 2)
+  if (error && typeof error === 'object') {
+    const rawText = (error as { rawText?: unknown }).rawText
+    if (typeof rawText === 'string' && rawText.trim()) return rawText.trim()
+  }
+  return '{}'
+}
+
+async function generateValidatedVisualPlan(params: {
+  job: Job<TaskJobData>
+  model: string
+  initialPrompt: string
+  profile: ReturnType<typeof resolveVideoProfile>
+  clipIds: string[]
+  clipsJson: string
+  assetsJson: string
+}): Promise<VisualPlanResult> {
+  let prompt = params.initialPrompt
+
+  for (let attempt = 1; attempt <= MAX_VISUAL_PLAN_OUTPUT_ATTEMPTS; attempt += 1) {
+    let candidate: Record<string, unknown> | null = null
+    try {
+      candidate = await executePlanningJsonStep({
+        job: params.job,
+        model: params.model,
+        prompt,
+        action: attempt === 1 ? 'visual_plan_generate' : 'visual_plan_repair',
+        stepId: 'visual_plan_generate',
+        stepTitle: 'progress.stage.visualPlanGenerate',
+        stepIndex: 1,
+        stepTotal: 1,
+        stepAttempt: attempt,
+        temperature: attempt === 1 ? 0.4 : 0.2,
+      })
+      return parseVisualPlanResult(candidate, params.profile, params.clipIds)
+    } catch (error) {
+      if (!isRepairableVisualPlanOutputError(error) || attempt === MAX_VISUAL_PLAN_OUTPUT_ATTEMPTS) {
+        throw error
+      }
+      await assertTaskActive(params.job, 'visual_plan_repair')
+      prompt = buildPrompt({
+        promptId: PROMPT_IDS.NP_VISUAL_PLAN_REPAIR,
+        locale: params.job.data.locale,
+        variables: {
+          validation_error: readErrorMessage(error),
+          candidate_output: readInvalidCandidateOutput(candidate, error),
+          profile_json: JSON.stringify(params.profile, null, 2),
+          clips_json: params.clipsJson,
+          assets_json: params.assetsJson,
+        },
+      })
+    }
+  }
+
+  throw new Error('VISUAL_PLAN_INVALID: no valid result after repair')
 }
 
 export async function handleVisualPlanTask(job: Job<TaskJobData>) {
@@ -86,29 +163,30 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
 
   await reportTaskProgress(job, 18, { stage: 'visual_plan_prepare', displayMode: 'detail' })
   await assertTaskActive(job, 'visual_plan_prepare')
-  const rawPlan = await executePlanningJsonStep({
+  const clipsJson = JSON.stringify(clips, null, 2)
+  const assetsJson = JSON.stringify(assets, null, 2)
+  const initialPrompt = buildPrompt({
+    promptId: PROMPT_IDS.NP_VISUAL_PLAN,
+    locale: job.data.locale,
+    variables: {
+      profile_json: JSON.stringify(profile, null, 2),
+      creative_brief_json: JSON.stringify(episode.creativeBrief, null, 2),
+      content_plan_json: JSON.stringify(stripWorkspaceArtifactMeta(episode.contentPlan), null, 2),
+      clips_json: clipsJson,
+      assets_json: assetsJson,
+      video_ratio: novelData.videoRatio,
+      art_style: novelData.artStylePrompt || novelData.artStyle,
+    },
+  })
+  const parsedResult = await generateValidatedVisualPlan({
     job,
     model,
-    prompt: buildPrompt({
-      promptId: PROMPT_IDS.NP_VISUAL_PLAN,
-      locale: job.data.locale,
-      variables: {
-        profile_json: JSON.stringify(profile, null, 2),
-        creative_brief_json: JSON.stringify(episode.creativeBrief, null, 2),
-        content_plan_json: JSON.stringify(stripWorkspaceArtifactMeta(episode.contentPlan), null, 2),
-        clips_json: JSON.stringify(clips, null, 2),
-        assets_json: JSON.stringify(assets, null, 2),
-        video_ratio: novelData.videoRatio,
-        art_style: novelData.artStylePrompt || novelData.artStyle,
-      },
-    }),
-    action: 'visual_plan_generate',
-    stepId: 'visual_plan_generate',
-    stepTitle: 'progress.stage.visualPlanGenerate',
-    stepIndex: 1,
-    stepTotal: 1,
+    initialPrompt,
+    profile,
+    clipIds: clips.map((clip) => clip.id),
+    clipsJson,
+    assetsJson,
   })
-  const parsedResult = parseVisualPlanResult(rawPlan, profile, clips.map((clip) => clip.id))
   const anchors = buildVisualAnchors({
     contentPlan: episode.contentPlan,
     clips,
