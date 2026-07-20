@@ -89,6 +89,11 @@
         "guideStoryboardRunning": "Generating visuals and storyboard",
         "detailedAssets": "Open detailed image production tools",
         "detailedAssetsHint": "Generate candidates, upload replacements, or refine visuals",
+        "coreGate": {
+          "title": "Core visuals are not finalized",
+          "description": "{count} recurring characters or scenes still need a final image before this stage can be confirmed.",
+          "action": "Complete core visuals"
+        },
         "summary": {
           "total": "{count} visual items",
           "confirmed": "{count} confirmed",
@@ -169,11 +174,14 @@
       "generateVisualPlan": "Generate visual plan",
       "identifyCoreAssets": "Identify core visual elements",
       "identifyingCoreAssets": "Identifying core visual elements",
-      "checkingCoreAssets": "Checking core visuals",
+        "checkingCoreAssets": "Checking core visuals",
         "completeCoreAssets": "Complete {count} core visuals",
+        "completeCoreAssetsHint": "{count} core visuals still need a final image in this stage",
         "approveVisuals": "Confirm visual preparation",
         "openStoryboard": "Open storyboard preview",
         "generateStoryboard": "Generate storyboard",
+        "visualGenerationInStageHint": "Generate or update this stage's visual plan in the main workspace",
+        "storyboardGenerationInStageHint": "Generate or update this stage's storyboard in the main workspace",
         "stageApproved": "Current result confirmed",
         "stageStale": "Upstream content changed",
         "stageNeedsReview": "Current result needs confirmation"
@@ -451,12 +459,30 @@
         "bible": "Visual Bible"
       },
       "status": {
-        "ready": "Plan ready"
+        "ready": "Plan ready",
+        "updating": "Updating",
+        "stale": "Update required",
+        "failed": "Generation failed"
       },
       "empty": {
         "title": "No visual plan yet",
-        "description": "Complete the script or narration before generating the production-wide visual strategy.",
-        "action": "Back to writing"
+        "description": "The content and visual requirements are confirmed. Generate the overall style and shot rules for this video.",
+        "action": "Generate visual plan"
+      },
+      "generation": {
+        "runningTitle": "Generating visual plan",
+        "updatingTitle": "Updating visual plan",
+        "updatingDescription": "The overall style and shot rules are being updated from the latest content.",
+        "runningAction": "Generating",
+        "failedTitle": "Visual plan generation failed",
+        "failedDescription": "This run did not produce a usable result. Generate it again.",
+        "retryAction": "Regenerate visual plan",
+        "staleTitle": "The content changed and the visual plan needs an update",
+        "staleDescription": "The previous plan remains visible, but it cannot drive the next storyboard until updated.",
+        "missingAnchorsTitle": "Visual elements are not linked to this plan",
+        "missingAnchorsDescription": "Confirmed characters, props, or scenes are missing from the current plan. Regenerate it before confirmation.",
+        "refreshAction": "Update visual plan",
+        "actionFailed": "Could not generate the visual plan. Try again."
       },
       "treatmentOverview": "Production direction",
       "visualBaseline": "Production visual baseline",
@@ -474,6 +500,20 @@
         "continuityRules": "Continuity rules",
         "forbiddenPatterns": "Forbidden patterns"
       }
+    },
+    "storyboardGeneration": {
+      "emptyTitle": "No storyboard yet",
+      "emptyDescription": "Visual preparation is confirmed. Generate this stage's storyboard from the content and visual plan.",
+      "generateAction": "Generate storyboard",
+      "runningTitle": "Generating storyboard",
+      "runningAction": "Generating",
+      "failedTitle": "Storyboard generation failed",
+      "failedDescription": "This run did not produce a usable storyboard. Generate it again.",
+      "retryAction": "Regenerate storyboard",
+      "staleTitle": "Upstream content changed and the storyboard needs an update",
+      "staleDescription": "The previous storyboard remains visible, but it must be regenerated before shot production.",
+      "refreshAction": "Update storyboard",
+      "actionFailed": "Could not generate the storyboard. Try again."
     },
     "taskPanel": {
       "title": "Run Details",

@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import type { VisualAssetSummary } from '@/lib/assets/contracts'
 import { readVisualArtifactMeta } from '@/lib/creation-workspace/artifact-state'
+import type { CreationWorkflowState } from '@/lib/creation-workspace/workflow-state'
 import { resolveVisualAnchorReadiness } from '@/lib/creation-workspace/visual-readiness'
 import { useAssets } from '@/lib/query/hooks'
 import { useWorkspaceProvider } from '../../../WorkspaceProvider'
@@ -16,9 +17,10 @@ import VisualAnchorBoard from '../artifacts/VisualAnchorBoard'
 
 interface VisualDesignStageProps {
   stageView?: string
+  workflowState: CreationWorkflowState
 }
 
-export default function VisualDesignStage({ stageView }: VisualDesignStageProps) {
+export default function VisualDesignStage({ stageView, workflowState }: VisualDesignStageProps) {
   const t = useTranslations('novelPromotion.workspaceFlow.v2.views.visualDesign')
   const { projectId } = useWorkspaceProvider()
   const runtime = useWorkspaceStageRuntime()
@@ -34,6 +36,11 @@ export default function VisualDesignStage({ stageView }: VisualDesignStageProps)
   const runningAssets = visualAssets.filter((asset) => asset.taskState.isRunning || asset.variants.some((variant) => variant.taskState.isRunning)).length
   const pendingAssets = readiness.missingCoreItems.length
   const currentView = stageView === 'assets' ? 'assets' : 'direction'
+  const showCoreAssetGate = currentView === 'direction'
+    && !!visualMeta?.plan
+    && visualMeta.status !== 'approved'
+    && visualMeta.status !== 'stale'
+    && readiness.missingCoreItems.length > 0
   const options = useMemo(() => [
     { value: 'direction' as const, label: t('direction') },
     { value: 'assets' as const, label: t('assets') },
@@ -55,6 +62,23 @@ export default function VisualDesignStage({ stageView }: VisualDesignStageProps)
           layout="compact"
         />
       </div>
+      {showCoreAssetGate ? (
+        <div className="mb-4 flex flex-col gap-3 border-y border-[var(--glass-stroke-warning)] bg-[var(--glass-tone-warning-bg)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-[var(--glass-text-primary)]">{t('coreGate.title')}</h2>
+            <p className="mt-1 text-sm leading-6 text-[var(--glass-text-secondary)]">
+              {t('coreGate.description', { count: readiness.missingCoreItems.length })}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => runtime.onStageChange('assets')}
+            className="glass-btn-base glass-btn-secondary h-10 shrink-0 px-4 text-sm"
+          >
+            {t('coreGate.action')}
+          </button>
+        </div>
+      ) : null}
       {currentView === 'assets' ? (
         <div className="space-y-6">
           <VisualAnchorBoard />
@@ -71,7 +95,7 @@ export default function VisualDesignStage({ stageView }: VisualDesignStageProps)
             </div>
           </details>
         </div>
-      ) : <VisualPlanStage />}
+      ) : <VisualPlanStage workflowState={workflowState} />}
     </section>
   )
 }

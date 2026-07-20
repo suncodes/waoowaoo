@@ -8,6 +8,10 @@ import {
   readContentArtifactMeta,
   readVisualArtifactMeta,
 } from '@/lib/creation-workspace/artifact-state'
+import {
+  resolveStoryboardFooterAction,
+  resolveVisualDesignFooterAction,
+} from '@/lib/creation-workspace/stage-actions'
 import { resolveVisualAnchorReadiness } from '@/lib/creation-workspace/visual-readiness'
 import type { CreationWorkflowState } from '@/lib/creation-workspace/workflow-state'
 import { useAssets } from '@/lib/query/hooks'
@@ -59,7 +63,6 @@ export default function CreationStageActionBar({
     [visualAssets, visualMeta?.anchors],
   )
   const isBookGuide = workflowState.facts.isBookGuide
-  const storyboardStage = items.find((item) => item.id === 'storyboard-preview')
   const contentDocumentApproved = workflowState.facts.contentDocumentApproved
   const assetRequirementStatus = workflowState.facts.assetRequirementStatus
   const assetRequirementCount = workflowState.facts.assetRequirementCount
@@ -106,6 +109,7 @@ export default function CreationStageActionBar({
     hint: t('workingHint'),
     run: () => undefined,
   } : continueAction
+  let stageHint: string | undefined
   if (currentStage === 'content' && !currentTask) {
     if (contentView === 'plan') {
       primary = workflowState.contentSteps.plan.hasArtifact
@@ -233,71 +237,57 @@ export default function CreationStageActionBar({
     }
   }
 
-  if (currentStage === 'visual-design' && !currentTask) {
-    if (!contentReadyForVisuals) {
-      primary = {
-        label: contentDocumentApproved ? t('returnToAssetRequirements') : t('returnToContent'),
-        icon: 'chevronLeft',
-        hint: contentDocumentApproved ? t('returnToAssetRequirementsHint') : t('returnToContentHint'),
-        run: () => onStageChange(contentDocumentApproved ? 'content-assets' : 'script'),
-      }
-    } else if (!visualMeta?.plan || visualMeta.status === 'stale') {
-      primary = {
-        label: visualMeta?.status === 'stale' ? t('refreshVisualPlan') : t('generateVisualPlan'),
-        icon: 'sparkles',
-        disabled: workspaceBusy,
-        run: runtime.onRunVisualPlan,
-      }
-    } else if (visualMeta.status !== 'approved') {
-      if (runtime.isAssetAnalysisRunning) {
-        primary = {
-          label: t('identifyingCoreAssets'),
-          icon: 'loader',
-          disabled: true,
-          run: () => undefined,
-        }
-      } else if (assetsQuery.isLoading) {
-        primary = {
-          label: t('checkingCoreAssets'),
-          icon: 'loader',
-          disabled: true,
-          run: () => undefined,
-        }
-      } else if (visualMeta.anchors.length === 0 && assetRequirementCount > 0) {
-        primary = {
-          label: t('refreshVisualPlan'),
-          icon: 'sparkles',
-          disabled: workspaceBusy,
-          hint: t('refreshVisualPlanMissingAnchorsHint'),
-          run: runtime.onRunVisualPlan,
-        }
-      } else if (visualReadiness.missingCoreItems.length > 0) {
-        primary = {
-          label: t('completeCoreAssets', { count: visualReadiness.missingCoreItems.length }),
-          icon: 'imageEdit',
-          run: () => onStageChange('assets'),
-        }
-      } else {
-        primary = {
-          label: t('approveVisuals'),
-          icon: 'clipboardCheck',
-          disabled: workspaceBusy,
-          run: () => runtime.onApproveStage('visual-design'),
-        }
-      }
-    } else if (storyboardStage?.status === 'completed' || storyboardStage?.status === 'stale') {
+  if (currentStage === 'visual-design') {
+    const visualFooterAction = resolveVisualDesignFooterAction({
+      contentReady: contentReadyForVisuals,
+      stageStatus: workflowState.stages['visual-design'].status,
+      hasPlan: !!visualMeta?.plan || workflowState.stages['visual-design'].hasArtifact,
+      taskRunning: !!currentTask,
+      assetsLoading: assetsQuery.isLoading,
+      assetAnalysisRunning: runtime.isAssetAnalysisRunning,
+      missingAnchors: !!visualMeta?.plan && visualMeta.anchors.length === 0 && assetRequirementCount > 0,
+      missingCoreCount: visualReadiness.missingCoreItems.length,
+    })
+
+    if (visualFooterAction.kind === 'continue') {
       primary = {
         label: t('openStoryboard'),
         icon: 'arrowRight',
         run: () => onStageChange('storyboard'),
       }
-    } else {
+    } else if (visualFooterAction.kind === 'approve') {
+      const hint = visualFooterAction.reason === 'checking_assets'
+        ? t('checkingCoreAssets')
+        : visualFooterAction.reason === 'missing_anchors'
+          ? t('refreshVisualPlanMissingAnchorsHint')
+          : visualFooterAction.reason === 'missing_core_assets'
+            ? t('completeCoreAssetsHint', { count: visualReadiness.missingCoreItems.length })
+            : undefined
       primary = {
-        label: t('generateStoryboard'),
-        icon: 'clapperboard',
-        disabled: workspaceBusy,
-        run: isBookGuide ? runtime.onMaterializeGuideStoryboard : runtime.onRunScriptToStoryboard,
+        label: t('approveVisuals'),
+        icon: 'clipboardCheck',
+        disabled: visualFooterAction.disabled || workspaceBusy,
+        hint,
+        run: () => runtime.onApproveStage('visual-design'),
       }
+    } else {
+      primary = null
+      stageHint = visualFooterAction.reason === 'task_running'
+        ? t('workingHint')
+        : t('visualGenerationInStageHint')
+    }
+  }
+
+  if (currentStage === 'storyboard-preview') {
+    const storyboardFooterAction = resolveStoryboardFooterAction({
+      stageStatus: workflowState.stages['storyboard-preview'].status,
+      taskRunning: !!currentTask,
+    })
+    primary = storyboardFooterAction === 'continue'
+      ? continueAction
+      : null
+    if (storyboardFooterAction === 'none') {
+      stageHint = currentTask ? t('workingHint') : t('storyboardGenerationInStageHint')
     }
   }
 
@@ -336,7 +326,7 @@ export default function CreationStageActionBar({
 
       <span className="inline-flex min-w-0 flex-1 items-center justify-center gap-2 text-center text-xs text-[var(--glass-text-tertiary)]">
         <AppIcon name={current?.status === 'completed' ? 'check' : current?.status === 'stale' || current?.status === 'attention' ? 'alert' : 'clock'} className={`h-3.5 w-3.5 ${current?.status === 'completed' ? 'text-[var(--glass-tone-success-fg)]' : current?.status === 'stale' || current?.status === 'attention' ? 'text-[var(--glass-tone-warning-fg)]' : ''}`} />
-        <span>{primary?.hint || (current?.status === 'completed' ? t('stageApproved') : current?.status === 'stale' ? t('stageStale') : current?.status === 'attention' ? t('stageNeedsReview') : t('autoSaved'))}</span>
+        <span>{primary?.hint || stageHint || (current?.status === 'completed' ? t('stageApproved') : current?.status === 'stale' ? t('stageStale') : current?.status === 'attention' ? t('stageNeedsReview') : t('autoSaved'))}</span>
       </span>
 
       {primary ? (
@@ -350,9 +340,9 @@ export default function CreationStageActionBar({
           <AppIcon name={workspaceBusy ? 'loader' : primary.icon} className={`h-4 w-4 ${workspaceBusy || primary.icon === 'loader' ? 'animate-spin' : ''}`} />
           <span>{primary.label}</span>
         </button>
-      ) : (
+      ) : !next ? (
         <span className="text-xs font-medium text-[var(--glass-text-secondary)]">{t('finalStage')}</span>
-      )}
+      ) : null}
 
       {error ? <p className="basis-full text-right text-xs text-[var(--glass-tone-danger-fg)]">{error}</p> : null}
     </div>

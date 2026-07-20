@@ -15,6 +15,7 @@ interface StoryboardHeaderProps {
   onDownloadAllImages: () => void
   onGenerateAllPanels: () => void
   onBack: () => void
+  showBackAction?: boolean
 }
 
 export default function StoryboardHeader({
@@ -26,7 +27,8 @@ export default function StoryboardHeader({
   isBatchSubmitting,
   onDownloadAllImages,
   onGenerateAllPanels,
-  onBack
+  onBack,
+  showBackAction = true,
 }: StoryboardHeaderProps) {
   const t = useTranslations('storyboard')
   const storyboardTaskRunningState = runningCount > 0
@@ -83,7 +85,9 @@ export default function StoryboardHeader({
           {isDownloadingImages ? t('header.downloading') : t('header.downloadAll')}
         </GlassButton>
 
-        <GlassButton variant="ghost" onClick={onBack}>{t('header.back')}</GlassButton>
+        {showBackAction ? (
+          <GlassButton variant="ghost" onClick={onBack}>{t('header.back')}</GlassButton>
+        ) : null}
       </div>
     </GlassSurface>
   )

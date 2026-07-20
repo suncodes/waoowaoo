@@ -20,6 +20,7 @@ interface StoryboardToolbarProps {
   onGenerateAllPanels: () => Promise<void>
   onAddStoryboardGroupAtStart: () => void
   onBack: () => void
+  showBackAction?: boolean
 }
 
 export default function StoryboardToolbar({
@@ -35,6 +36,7 @@ export default function StoryboardToolbar({
   onGenerateAllPanels,
   onAddStoryboardGroupAtStart,
   onBack,
+  showBackAction = true,
 }: StoryboardToolbarProps) {
   const t = useTranslations('storyboard')
   return (
@@ -49,6 +51,7 @@ export default function StoryboardToolbar({
         onDownloadAllImages={onDownloadAllImages}
         onGenerateAllPanels={onGenerateAllPanels}
         onBack={onBack}
+        showBackAction={showBackAction}
       />
 
       <div className="flex justify-center">

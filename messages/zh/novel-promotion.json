@@ -89,6 +89,11 @@
         "guideStoryboardRunning": "正在生成画面与分镜",
         "detailedAssets": "展开详细图片制作工具",
         "detailedAssetsHint": "生成候选图、上传替换或调整形象",
+        "coreGate": {
+          "title": "核心画面还未定稿",
+          "description": "还有 {count} 项会重复出现的形象或场景需要确认，完成后才能确认本阶段。",
+          "action": "处理核心画面"
+        },
         "summary": {
           "total": "共 {count} 项画面",
           "confirmed": "{count} 项已确认",
@@ -169,11 +174,14 @@
       "generateVisualPlan": "生成画面方案",
       "identifyCoreAssets": "识别核心画面元素",
       "identifyingCoreAssets": "正在识别核心画面元素",
-      "checkingCoreAssets": "正在检查核心画面",
+        "checkingCoreAssets": "正在检查核心画面",
         "completeCoreAssets": "处理 {count} 项核心画面",
+        "completeCoreAssetsHint": "还有 {count} 项核心画面未定稿，请先在本阶段完成处理",
         "approveVisuals": "确认画面准备",
         "openStoryboard": "进入分镜预演",
         "generateStoryboard": "生成分镜",
+        "visualGenerationInStageHint": "请在页面中生成或更新本阶段的画面方案",
+        "storyboardGenerationInStageHint": "请在页面中生成或更新本阶段的分镜",
         "stageApproved": "当前成果已确认",
         "stageStale": "上游已修改，需要更新",
         "stageNeedsReview": "当前成果等待确认"
@@ -451,12 +459,30 @@
         "bible": "视觉规范"
       },
       "status": {
-        "ready": "方案已生成"
+        "ready": "方案已生成",
+        "updating": "正在更新",
+        "stale": "需要更新",
+        "failed": "生成失败"
       },
       "empty": {
         "title": "视觉方案尚未生成",
-        "description": "当前剧集还没有全片视觉策略。完成剧本或解说稿后即可生成。",
-        "action": "返回文稿"
+        "description": "内容与画面需求已确认，现在可以生成本片的整体风格和镜头规则。",
+        "action": "生成画面方案"
+      },
+      "generation": {
+        "runningTitle": "正在生成画面方案",
+        "updatingTitle": "正在更新画面方案",
+        "updatingDescription": "系统正在根据最新内容更新整体风格和镜头规则。",
+        "runningAction": "正在生成",
+        "failedTitle": "画面方案生成失败",
+        "failedDescription": "本次生成没有得到可用结果，可以重新生成。",
+        "retryAction": "重新生成画面方案",
+        "staleTitle": "内容已变化，需要更新画面方案",
+        "staleDescription": "旧方案仍保留供查看，但不能用于后续分镜，请根据最新内容更新。",
+        "missingAnchorsTitle": "画面元素尚未关联到方案",
+        "missingAnchorsDescription": "已确认的角色、道具或场景没有进入当前方案，需要重新生成后再确认。",
+        "refreshAction": "更新画面方案",
+        "actionFailed": "画面方案生成失败，请稍后重试。"
       },
       "treatmentOverview": "全片导演策略",
       "visualBaseline": "全片视觉基线",
@@ -474,6 +500,20 @@
         "continuityRules": "连续性规则",
         "forbiddenPatterns": "禁止模式"
       }
+    },
+    "storyboardGeneration": {
+      "emptyTitle": "分镜尚未生成",
+      "emptyDescription": "画面准备已确认，现在可以根据内容和画面方案生成本阶段的分镜。",
+      "generateAction": "生成分镜",
+      "runningTitle": "正在生成分镜",
+      "runningAction": "正在生成",
+      "failedTitle": "分镜生成失败",
+      "failedDescription": "本次生成没有得到可用分镜，可以重新生成。",
+      "retryAction": "重新生成分镜",
+      "staleTitle": "上游内容已变化，需要更新分镜",
+      "staleDescription": "旧分镜仍保留供查看，但进入镜头制作前需要根据最新方案重新生成。",
+      "refreshAction": "更新分镜",
+      "actionFailed": "分镜生成失败，请稍后重试。"
     },
     "taskPanel": {
       "title": "运行详情",

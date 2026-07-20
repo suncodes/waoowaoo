@@ -20,6 +20,7 @@ interface StoryboardStageProps {
   onBack: () => void
   onNext: () => void
   isTransitioning?: boolean
+  showWorkflowNavigation?: boolean
 }
 
 export default function StoryboardStage({
@@ -31,6 +32,7 @@ export default function StoryboardStage({
   onBack,
   onNext,
   isTransitioning = false,
+  showWorkflowNavigation = true,
 }: StoryboardStageProps) {
   const controller = useStoryboardStageController({
     projectId,
@@ -148,6 +150,7 @@ export default function StoryboardStage({
         isNextDisabled={isTransitioning || localStoryboards.length === 0}
         transitioningState={transitioningState}
         onNext={onNext}
+        showNextAction={showWorkflowNavigation}
       >
         <StoryboardToolbar
           totalSegments={sortedStoryboards.length}
@@ -162,6 +165,7 @@ export default function StoryboardStage({
           onGenerateAllPanels={handleGenerateAllPanels}
           onAddStoryboardGroupAtStart={() => addStoryboardGroup(0)}
           onBack={onBack}
+          showBackAction={showWorkflowNavigation}
         />
 
         <StoryboardCanvas

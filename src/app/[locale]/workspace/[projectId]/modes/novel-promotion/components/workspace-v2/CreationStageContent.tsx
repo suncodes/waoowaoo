@@ -24,8 +24,8 @@ export default function CreationStageContent({
     <div key={`${currentStage}:${stageView || ''}`} className="animate-page-enter">
       {currentStage === 'setup' ? <ConfigStage workspaceLayout /> : null}
       {currentStage === 'content' ? <ContentStage stageView={stageView} workflowState={workflowState} /> : null}
-      {currentStage === 'visual-design' ? <VisualDesignStage stageView={stageView} /> : null}
-      {currentStage === 'storyboard-preview' ? <StoryboardStage /> : null}
+      {currentStage === 'visual-design' ? <VisualDesignStage stageView={stageView} workflowState={workflowState} /> : null}
+      {currentStage === 'storyboard-preview' ? <StoryboardStage workspaceLayout workflowState={workflowState} /> : null}
       {currentStage === 'production' ? <ProductionStage stageView={stageView} /> : null}
       {currentStage === 'edit' ? <EditStage /> : null}
     </div>
