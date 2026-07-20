@@ -39,6 +39,9 @@ export interface CreationStageNavItem {
   description: string
   status: CreationStageStatus
   issueCount: number
+  locked?: boolean
+  blockedByStageId?: CreationStageId
+  blockedByLabel?: string
 }
 
 function resolveRunStatus(streams: StageRunState[]): 'running' | 'failed' | null {
@@ -92,7 +95,16 @@ export function buildCreationStageNavigation({
   const contentMeta = readContentArtifactMeta(contentPlan)
   const visualMeta = readVisualArtifactMeta(productionBible)
   const legacyContentCompleted = stageArtifacts.hasContentPlan && (isBookGuide || stageArtifacts.hasScript)
-  const contentCompleted = contentMeta ? contentMeta.status === 'approved' : legacyContentCompleted
+  const contentDocumentApproved = contentMeta ? contentMeta.status === 'approved' : legacyContentCompleted
+  const assetRequirementsApproved = !contentMeta
+    || contentMeta.assetRequirements.status === 'approved'
+    || stageArtifacts.hasVisualPlan
+  const contentCompleted = contentDocumentApproved && assetRequirementsApproved
+  const contentArtifactStatus = contentMeta
+    && contentDocumentApproved
+    && !assetRequirementsApproved
+    ? 'needs_review'
+    : contentMeta?.status
   const visualReady = contentCompleted || stageArtifacts.hasScript
   const legacyVisualCompleted = stageArtifacts.hasVisualPlan
   const visualCompleted = visualMeta ? visualMeta.status === 'approved' : legacyVisualCompleted
@@ -110,7 +122,7 @@ export function buildCreationStageNavigation({
       ready: true,
     }),
     content: resolveArtifactStatus({
-      artifactStatus: contentMeta?.status,
+      artifactStatus: contentArtifactStatus,
       completed: legacyContentCompleted,
       ready: stageArtifacts.hasStory,
       streams: isBookGuide ? [contentPlanStream] : [contentPlanStream, storyToScriptStream],
@@ -136,7 +148,7 @@ export function buildCreationStageNavigation({
     }),
   }
 
-  return CREATION_STAGE_REGISTRY.map((definition) => ({
+  const baseItems = CREATION_STAGE_REGISTRY.map((definition) => ({
     id: definition.id,
     icon: definition.icon,
     label: t(definition.labelKey),
@@ -148,4 +160,22 @@ export function buildCreationStageNavigation({
       ? 1
       : 0,
   }))
+
+  return baseItems.map((item) => {
+    const definition = CREATION_STAGE_REGISTRY.find((candidate) => candidate.id === item.id)
+    const blockedBy = definition?.dependencies
+      .map((dependencyId) => baseItems.find((candidate) => candidate.id === dependencyId))
+      .find((dependency) => dependency?.status !== 'completed')
+    const locked = item.status === 'not_started' && !!blockedBy
+    return {
+      ...item,
+      locked,
+      ...(locked && blockedBy
+        ? {
+            blockedByStageId: blockedBy.id,
+            blockedByLabel: blockedBy.label,
+          }
+        : {}),
+    }
+  })
 }

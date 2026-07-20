@@ -69,6 +69,7 @@ interface UseWorkspaceStageRuntimeParams {
   discardContentCandidate: (unitId: string) => Promise<WorkspaceArtifactCommandResult>
   restoreContentUnit: (unitId: string) => Promise<WorkspaceArtifactCommandResult>
   approveStage: (stageId: 'content' | 'visual-design') => Promise<WorkspaceArtifactCommandResult>
+  approveAssetRequirements: () => Promise<WorkspaceArtifactCommandResult>
   materializeGuideStoryboard: () => Promise<WorkspaceArtifactCommandResult>
 }
 
@@ -108,6 +109,7 @@ export function useWorkspaceStageRuntime({
   discardContentCandidate,
   restoreContentUnit,
   approveStage,
+  approveAssetRequirements,
   materializeGuideStoryboard,
 }: UseWorkspaceStageRuntimeParams) {
   const [contentEditingState, setContentEditingState] = useState({ dirty: false, saving: false })
@@ -147,6 +149,7 @@ export function useWorkspaceStageRuntime({
     onDiscardContentCandidate: discardContentCandidate,
     onRestoreContentUnit: restoreContentUnit,
     onApproveStage: approveStage,
+    onApproveAssetRequirements: approveAssetRequirements,
     onMaterializeGuideStoryboard: materializeGuideStoryboard,
     onVideoRatioChange: (value) => handleUpdateConfig('videoRatio', value),
     onVideoProfileChange: (preset) => handleUpdateConfig('videoProfile', resolveVideoProfile({
@@ -215,6 +218,7 @@ export function useWorkspaceStageRuntime({
     discardContentCandidate,
     restoreContentUnit,
     approveStage,
+    approveAssetRequirements,
     materializeGuideStoryboard,
     resolvedUserVideoModels,
     capabilityOverrides,

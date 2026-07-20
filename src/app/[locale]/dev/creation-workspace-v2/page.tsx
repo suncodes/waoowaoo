@@ -104,6 +104,13 @@ export default function CreationWorkspaceV2PreviewPage() {
     description: t(stage.descriptionKey),
     status: index <= 2 ? 'completed' : index === 3 ? 'ready' : 'not_started',
     issueCount: 0,
+    locked: index > 3,
+    ...(index > 3
+      ? {
+          blockedByStageId: CREATION_STAGE_REGISTRY[index - 1].id,
+          blockedByLabel: t(CREATION_STAGE_REGISTRY[index - 1].labelKey),
+        }
+      : {}),
   })), [t])
   const completedStream = useMemo(createPreviewStream, [])
   const idleStream = useMemo<WorkspaceRunStreamState>(() => ({

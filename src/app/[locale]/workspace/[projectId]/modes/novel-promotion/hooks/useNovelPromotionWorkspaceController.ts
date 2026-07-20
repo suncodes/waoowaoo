@@ -210,6 +210,7 @@ export function useNovelPromotionWorkspaceController({
     discardContentCandidate: artifactCommands.discardContentCandidate,
     restoreContentUnit: artifactCommands.restoreContentUnit,
     approveStage: artifactCommands.approveStage,
+    approveAssetRequirements: artifactCommands.approveAssetRequirements,
     materializeGuideStoryboard: async () => {
       const result = await artifactCommands.materializeGuideStoryboard()
       configActions.handleStageChange('storyboard')

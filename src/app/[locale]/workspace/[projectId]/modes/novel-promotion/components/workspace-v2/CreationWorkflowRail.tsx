@@ -58,24 +58,20 @@ export default function CreationWorkflowRail({
 
   const renderItem = (item: CreationStageNavItem, compact: boolean) => {
     const active = item.id === currentStage
-    return (
-      <Link
-        href={buildHref(item.id)}
-        aria-current={active ? 'step' : undefined}
-        onClick={(event) => {
-          if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
-            event.preventDefault()
-            onStageChange(item.id)
-          }
-        }}
-        className={`group flex cursor-pointer items-center gap-3 border transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--glass-stroke-focus)] ${compact
+    const blockedLabel = item.blockedByLabel
+      ? t('v2.navigation.completeStageFirst', { stage: item.blockedByLabel })
+      : undefined
+    const className = `group flex items-center gap-3 border transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--glass-stroke-focus)] ${compact
           ? 'h-14 min-w-36 rounded-lg px-3'
           : 'min-h-16 w-full rounded-lg px-3 py-2.5 text-left'
-        } ${active
+        } ${item.locked
+          ? 'cursor-not-allowed border-transparent bg-[var(--glass-bg-muted)]/50 text-[var(--glass-text-tertiary)] opacity-70'
+          : active
           ? 'border-[var(--glass-stroke-focus)] bg-[var(--glass-tone-info-bg)] text-[var(--glass-text-primary)]'
-          : 'border-transparent text-[var(--glass-text-secondary)] hover:border-[var(--glass-stroke-base)] hover:bg-[var(--glass-bg-surface-strong)] hover:text-[var(--glass-text-primary)]'
-        }`}
-      >
+          : 'cursor-pointer border-transparent text-[var(--glass-text-secondary)] hover:border-[var(--glass-stroke-base)] hover:bg-[var(--glass-bg-surface-strong)] hover:text-[var(--glass-text-primary)]'
+        }`
+    const content = (
+      <>
         <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${active
           ? 'bg-[var(--glass-tone-info-fg)] text-white'
           : 'bg-[var(--glass-bg-muted)] text-[var(--glass-text-secondary)]'
@@ -86,18 +82,42 @@ export default function CreationWorkflowRail({
           <span className="block truncate text-sm font-semibold">{item.label}</span>
           {!compact ? (
             <span className="mt-0.5 block text-xs text-[var(--glass-text-tertiary)]">
-              {statusLabels[item.status]}
+              {blockedLabel || statusLabels[item.status]}
             </span>
           ) : null}
         </span>
         <span className={`relative inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${statusClass(item.status)}`}>
-          <AppIcon name={statusIcon(item.status)} className={`h-3.5 w-3.5 ${item.status === 'running' ? 'animate-spin' : ''}`} />
+          <AppIcon name={item.locked ? 'lock' : statusIcon(item.status)} className={`h-3.5 w-3.5 ${item.status === 'running' ? 'animate-spin' : ''}`} />
           {item.issueCount > 0 ? (
             <span className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--glass-tone-danger-fg)] px-1 text-[10px] font-bold text-white">
               {item.issueCount}
             </span>
           ) : null}
         </span>
+      </>
+    )
+
+    if (item.locked) {
+      return (
+        <div aria-disabled="true" title={blockedLabel} className={className}>
+          {content}
+        </div>
+      )
+    }
+
+    return (
+      <Link
+        href={buildHref(item.id)}
+        aria-current={active ? 'step' : undefined}
+        onClick={(event) => {
+          if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+            event.preventDefault()
+            onStageChange(item.id)
+          }
+        }}
+        className={className}
+      >
+        {content}
       </Link>
     )
   }

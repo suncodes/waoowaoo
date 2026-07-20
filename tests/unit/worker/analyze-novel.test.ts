@@ -240,4 +240,97 @@ describe('worker analyze-novel behavior', () => {
       }),
     )
   })
+
+  it('persists a reviewable empty visual requirement result', async () => {
+    prismaMock.novelPromotionEpisode.findUnique.mockResolvedValue({
+      id: 'episode-1',
+      novelPromotionProjectId: 'np-project-1',
+      novelText: '只使用抽象知识图形，不包含固定人物、地点或道具。',
+      contentPlan: {
+        planType: 'guide',
+        title: '知识导读',
+        thesis: '核心观点',
+        recommendationAngle: '理解概念',
+        outline: [],
+        segments: [],
+      },
+      productionBible: null,
+      clips: [],
+    })
+    llmMock.getCompletionContent
+      .mockReset()
+      .mockReturnValueOnce(JSON.stringify({ characters: [] }))
+      .mockReturnValueOnce(JSON.stringify({ locations: [] }))
+      .mockReturnValueOnce(JSON.stringify({ props: [] }))
+
+    await handleAnalyzeNovelTask(buildJob())
+
+    expect(prismaMock.novelPromotionEpisode.update).toHaveBeenCalledWith({
+      where: { id: 'episode-1' },
+      data: {
+        contentPlan: expect.objectContaining({
+          _workspace: expect.objectContaining({
+            assetRequirements: {
+              status: 'needs_review',
+              analyzedRevision: 1,
+              analyzedAt: expect.any(String),
+              approvedAt: null,
+              assetIds: [],
+            },
+          }),
+        }),
+      },
+    })
+  })
+
+  it('keeps an outdated visual plan stale while refreshing visual requirements', async () => {
+    prismaMock.novelPromotionEpisode.findUnique.mockResolvedValue({
+      id: 'episode-1',
+      novelPromotionProjectId: 'np-project-1',
+      novelText: '更新后的导读内容。',
+      contentPlan: {
+        planType: 'guide',
+        title: '知识导读',
+        thesis: '核心观点',
+        recommendationAngle: '理解概念',
+        outline: [],
+        segments: [],
+      },
+      productionBible: {
+        visualStyle: 'cinematic',
+        visualMotifs: [],
+        continuityRules: [],
+        negativeConstraints: [],
+        _workspace: {
+          schemaVersion: 1,
+          status: 'stale',
+          revision: 3,
+          approvedRevision: 2,
+          updatedAt: '2026-07-20T00:00:00.000Z',
+          updatedBy: 'user',
+          anchors: [],
+          plan: { shotPlan: {}, visualUnits: [] },
+          latestImpact: null,
+          downstream: { storyboard: true, production: true },
+        },
+      },
+      clips: [],
+    })
+    llmMock.getCompletionContent
+      .mockReset()
+      .mockReturnValueOnce(JSON.stringify({ characters: [] }))
+      .mockReturnValueOnce(JSON.stringify({ locations: [] }))
+      .mockReturnValueOnce(JSON.stringify({ props: [] }))
+
+    await handleAnalyzeNovelTask(buildJob())
+
+    expect(prismaMock.novelPromotionEpisode.update).toHaveBeenCalledWith({
+      where: { id: 'episode-1' },
+      data: expect.objectContaining({
+        productionBible: expect.objectContaining({
+          _workspace: expect.objectContaining({ status: 'stale' }),
+        }),
+      }),
+    })
+  })
 })

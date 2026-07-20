@@ -6,9 +6,11 @@ import type { CreationStageNavItem } from '../../hooks/useCreationStageNavigatio
 
 interface CreationStageHeaderProps {
   item: CreationStageNavItem
+  stepNumber: number
+  stepTotal: number
 }
 
-export default function CreationStageHeader({ item }: CreationStageHeaderProps) {
+export default function CreationStageHeader({ item, stepNumber, stepTotal }: CreationStageHeaderProps) {
   const t = useTranslations('novelPromotion.workspaceFlow')
   return (
     <header className="mb-4 border-b border-[var(--glass-stroke-base)] pb-4">
@@ -18,6 +20,9 @@ export default function CreationStageHeader({ item }: CreationStageHeaderProps) 
             <AppIcon name={item.icon} className="h-5 w-5" />
           </span>
           <div className="min-w-0">
+            <p className="text-xs font-medium text-[var(--glass-text-tertiary)]">
+              {t('v2.navigation.stepCount', { current: stepNumber, total: stepTotal })}
+            </p>
             <h1 className="text-xl font-semibold text-[var(--glass-text-primary)]">{item.label}</h1>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-[var(--glass-text-secondary)]">{item.description}</p>
           </div>

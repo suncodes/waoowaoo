@@ -24,6 +24,7 @@ import {
   stripWorkspaceArtifactMeta,
   withVisualArtifactMeta,
 } from '@/lib/creation-workspace/artifact-state'
+import { markContentAssetRequirementsAnalyzed } from '@/lib/creation-workspace/content-artifacts'
 import type { Prisma } from '@prisma/client'
 
 function readAssetKind(value: Record<string, unknown>): string {
@@ -92,7 +93,7 @@ async function syncEpisodeVisualAnchors(params: {
       },
     }),
   ])
-  if (!projectAssets || !episode?.contentPlan || !episode.productionBible) return
+  if (!projectAssets || !episode?.contentPlan) return
 
   const anchors = buildVisualAnchors({
     contentPlan: episode.contentPlan,
@@ -102,21 +103,30 @@ async function syncEpisodeVisualAnchors(params: {
     includeAssetIds: params.includeAssetIds,
   })
   const now = new Date().toISOString()
-  const existingMeta = readVisualArtifactMeta(episode.productionBible)
-  if (existingMeta && JSON.stringify(existingMeta.anchors) === JSON.stringify(anchors)) return
-  const meta = cloneWorkspaceValue(existingMeta || createVisualArtifactMeta(now, 'ai'))
-  meta.anchors = anchors
-  if (meta.plan) {
-    meta.plan.visualUnits = bindStoredVisualUnitsToAnchors(meta.plan.visualUnits, anchors)
+  const contentPlan = markContentAssetRequirementsAnalyzed({
+    contentPlan: episode.contentPlan,
+    assetIds: anchors.map((anchor) => anchor.assetId),
+    now,
+  })
+  let productionBible = episode.productionBible
+  if (productionBible) {
+    const existingMeta = readVisualArtifactMeta(productionBible)
+    const meta = cloneWorkspaceValue(existingMeta || createVisualArtifactMeta(now, 'ai'))
+    meta.anchors = anchors
+    if (meta.plan) {
+      meta.plan.visualUnits = bindStoredVisualUnitsToAnchors(meta.plan.visualUnits, anchors)
+    }
+    meta.status = existingMeta?.status === 'stale' ? 'stale' : 'needs_review'
+    meta.revision = existingMeta ? existingMeta.revision + 1 : 1
+    meta.updatedAt = now
+    meta.updatedBy = 'ai'
+    productionBible = withVisualArtifactMeta(productionBible, meta)
   }
-  meta.status = 'needs_review'
-  meta.revision = existingMeta ? existingMeta.revision + 1 : 1
-  meta.updatedAt = now
-  meta.updatedBy = 'ai'
   await prisma.novelPromotionEpisode.update({
     where: { id: params.episodeId },
     data: {
-      productionBible: asInputJson(withVisualArtifactMeta(episode.productionBible, meta)),
+      contentPlan: asInputJson(contentPlan),
+      ...(productionBible ? { productionBible: asInputJson(productionBible) } : {}),
     },
   })
 }
@@ -161,6 +171,18 @@ export async function handleAnalyzeNovelTask(job: Job<TaskJobData>) {
           novelText: true,
           contentPlan: true,
           productionBible: true,
+          clips: {
+            orderBy: [{ start: 'asc' }, { createdAt: 'asc' }],
+            select: {
+              id: true,
+              summary: true,
+              content: true,
+              screenplay: true,
+              characters: true,
+              location: true,
+              props: true,
+            },
+          },
         },
       })
     : await prisma.novelPromotionEpisode.findFirst({
@@ -172,6 +194,18 @@ export async function handleAnalyzeNovelTask(job: Job<TaskJobData>) {
           novelText: true,
           contentPlan: true,
           productionBible: true,
+          clips: {
+            orderBy: [{ start: 'asc' }, { createdAt: 'asc' }],
+            select: {
+              id: true,
+              summary: true,
+              content: true,
+              screenplay: true,
+              characters: true,
+              location: true,
+              props: true,
+            },
+          },
         },
       })
   if (requestedEpisodeId && (!targetEpisode || targetEpisode.novelPromotionProjectId !== novelData.id)) {
@@ -184,6 +218,9 @@ export async function handleAnalyzeNovelTask(job: Job<TaskJobData>) {
   }
   if (targetEpisode?.contentPlan) {
     analysisSources.push(`【内容结构与画面提示】\n${JSON.stringify(stripWorkspaceArtifactMeta(targetEpisode.contentPlan), null, 2)}`)
+  }
+  if (targetEpisode?.clips?.length) {
+    analysisSources.push(`【当前剧本文稿】\n${JSON.stringify(targetEpisode.clips, null, 2)}`)
   }
   if (readText(novelData.globalAssetText)) {
     analysisSources.push(`【全局设定】\n${readText(novelData.globalAssetText)}`)
@@ -475,7 +512,7 @@ export async function handleAnalyzeNovelTask(job: Job<TaskJobData>) {
     createdProps.push(created)
   }
 
-  if (targetEpisode?.id && targetEpisode.productionBible) {
+  if (targetEpisode?.id && targetEpisode.contentPlan) {
     await syncEpisodeVisualAnchors({
       projectInternalId: novelData.id,
       episodeId: targetEpisode.id,

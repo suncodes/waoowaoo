@@ -34,6 +34,15 @@ function ensureUnitState(
   return meta.units[unitId] || { locked: false, revision: 0 }
 }
 
+function invalidateAssetRequirements(meta: ContentArtifactMeta) {
+  if (meta.assetRequirements.status === 'not_started') return
+  meta.assetRequirements = {
+    ...meta.assetRequirements,
+    status: 'stale',
+    approvedAt: null,
+  }
+}
+
 function preserveLockedGuideSegments(
   existingPlan: ContentPlan | unknown,
   generatedPlan: ContentPlan,
@@ -102,6 +111,7 @@ export function prepareGeneratedContentPlan(params: {
   meta.revision = revision
   meta.updatedAt = params.now
   meta.updatedBy = 'ai'
+  if (existingMeta) invalidateAssetRequirements(meta)
   meta.latestImpact = existingMeta
     ? {
         sourceUnitIds: [...nextSegments.keys()],
@@ -163,6 +173,7 @@ export function prepareEditedContentPlan(params: {
   meta.revision += 1
   meta.updatedAt = params.now
   meta.updatedBy = author
+  invalidateAssetRequirements(meta)
   meta.latestImpact = cloneWorkspaceValue(params.impact)
   meta.downstream = {
     visualDesign: true,
@@ -201,6 +212,7 @@ export function markExternalContentUnitEdited(params: {
   meta.revision += 1
   meta.updatedAt = params.now
   meta.updatedBy = params.author || 'user'
+  invalidateAssetRequirements(meta)
   meta.latestImpact = cloneWorkspaceValue(params.impact)
   meta.downstream = {
     visualDesign: true,
@@ -238,6 +250,43 @@ export function approveContentArtifact(contentPlan: unknown, now: string): unkno
   meta.updatedAt = now
   meta.updatedBy = 'user'
   return withContentArtifactMeta(contentPlan, meta)
+}
+
+export function markContentAssetRequirementsAnalyzed(params: {
+  contentPlan: unknown
+  assetIds: string[]
+  now: string
+}): unknown {
+  const meta = cloneWorkspaceValue(
+    readContentArtifactMeta(params.contentPlan) || createContentArtifactMeta(params.now, 'ai'),
+  )
+  meta.assetRequirements = {
+    status: 'needs_review',
+    analyzedRevision: meta.revision,
+    analyzedAt: params.now,
+    approvedAt: null,
+    assetIds: [...new Set(params.assetIds.filter(Boolean))],
+  }
+  meta.updatedAt = params.now
+  meta.updatedBy = 'ai'
+  return withContentArtifactMeta(params.contentPlan, meta)
+}
+
+export function approveContentAssetRequirements(contentPlan: unknown, now: string): unknown {
+  const meta = readContentArtifactMeta(contentPlan)
+  if (!meta || meta.status !== 'approved') throw new Error('CONTENT_NOT_APPROVED')
+  if (meta.assetRequirements.status !== 'needs_review') {
+    throw new Error('ASSET_REQUIREMENTS_NOT_READY')
+  }
+  if (meta.assetRequirements.analyzedRevision !== meta.revision) {
+    throw new Error('ASSET_REQUIREMENTS_STALE')
+  }
+  const next = cloneWorkspaceValue(meta)
+  next.assetRequirements.status = 'approved'
+  next.assetRequirements.approvedAt = now
+  next.updatedAt = now
+  next.updatedBy = 'user'
+  return withContentArtifactMeta(contentPlan, next)
 }
 
 export function storeContentUnitCandidate(params: {

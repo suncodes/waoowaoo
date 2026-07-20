@@ -5,7 +5,7 @@ import { useMemo } from 'react'
 import { useLocale, useTranslations } from 'next-intl'
 import { AppIcon, type AppIconName } from '@/components/ui/icons'
 import type { VisualAssetSummary } from '@/lib/assets/contracts'
-import { readVisualArtifactMeta, type VisualAnchor } from '@/lib/creation-workspace/artifact-state'
+import { readContentArtifactMeta, readVisualArtifactMeta, type VisualAnchor } from '@/lib/creation-workspace/artifact-state'
 import { resolveVisualAnchorReadiness } from '@/lib/creation-workspace/visual-readiness'
 import { useAssets } from '@/lib/query/hooks'
 import { useWorkspaceProvider } from '../../../WorkspaceProvider'
@@ -26,9 +26,10 @@ export default function VisualAnchorBoard() {
   const locale = useLocale()
   const { projectId } = useWorkspaceProvider()
   const runtime = useWorkspaceStageRuntime()
-  const { productionBible } = useWorkspaceEpisodeStageData()
+  const { contentPlan, productionBible } = useWorkspaceEpisodeStageData()
   const assetsQuery = useAssets({ scope: 'project', projectId })
   const meta = useMemo(() => readVisualArtifactMeta(productionBible), [productionBible])
+  const contentMeta = useMemo(() => readContentArtifactMeta(contentPlan), [contentPlan])
   const assets = assetsQuery.data.filter((asset): asset is VisualAssetSummary => asset.family === 'visual')
   const readiness = useMemo(
     () => resolveVisualAnchorReadiness(meta?.anchors || [], assets),
@@ -59,22 +60,20 @@ export default function VisualAnchorBoard() {
   }
 
   if (readiness.items.length === 0) {
+    const confirmedEmpty = contentMeta?.assetRequirements.status === 'approved'
+      && contentMeta.assetRequirements.assetIds.length === 0
     return (
       <div className="flex min-h-64 flex-col items-center justify-center border-y border-[var(--glass-stroke-base)] px-5 py-10 text-center">
-        <AppIcon name="folderCards" className="h-9 w-9 text-[var(--glass-text-tertiary)]" />
-        <h2 className="mt-3 text-base font-semibold text-[var(--glass-text-primary)]">{t('emptyTitle')}</h2>
-        <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--glass-text-secondary)]">{t('emptyDescription')}</p>
-        <button type="button" onClick={() => { void runtime.onAnalyzeAssets() }} disabled={runtime.isAssetAnalysisRunning} className="glass-btn-base glass-btn-primary mt-4 h-10 px-4 text-sm">
-          <AppIcon name={runtime.isAssetAnalysisRunning ? 'loader' : 'sparkles'} className={`h-4 w-4 ${runtime.isAssetAnalysisRunning ? 'animate-spin' : ''}`} />
-          {runtime.isAssetAnalysisRunning ? t('analyzing') : t('analyze')}
-        </button>
+        <AppIcon name={confirmedEmpty ? 'check' : 'folderCards'} className={`h-9 w-9 ${confirmedEmpty ? 'text-[var(--glass-tone-success-fg)]' : 'text-[var(--glass-text-tertiary)]'}`} />
+        <h2 className="mt-3 text-base font-semibold text-[var(--glass-text-primary)]">{confirmedEmpty ? t('confirmedEmptyTitle') : t('emptyTitle')}</h2>
+        <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--glass-text-secondary)]">{confirmedEmpty ? t('confirmedEmptyDescription') : t('emptyDescription')}</p>
       </div>
     )
   }
 
   return (
     <section className="min-w-0 space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-y border-[var(--glass-stroke-base)] px-1 py-3">
+      <div className="flex flex-wrap items-center gap-5 border-y border-[var(--glass-stroke-base)] px-1 py-3">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
           <span className="font-semibold text-[var(--glass-text-primary)]">{t('total', { count: readiness.items.length })}</span>
           <span className="text-[var(--glass-tone-success-fg)]">{t('confirmed', { count: readiness.confirmedCount })}</span>
@@ -82,10 +81,6 @@ export default function VisualAnchorBoard() {
             {t('corePending', { count: readiness.missingCoreItems.length })}
           </span>
         </div>
-        <button type="button" onClick={() => { void runtime.onAnalyzeAssets() }} disabled={runtime.isAssetAnalysisRunning} className="glass-btn-base glass-btn-secondary h-9 px-3 text-xs">
-          <AppIcon name={runtime.isAssetAnalysisRunning ? 'loader' : 'refresh'} className={`h-3.5 w-3.5 ${runtime.isAssetAnalysisRunning ? 'animate-spin' : ''}`} />
-          {runtime.isAssetAnalysisRunning ? t('analyzing') : t('reanalyze')}
-        </button>
       </div>
 
       <div>

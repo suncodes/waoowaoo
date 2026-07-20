@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { AppIcon, type AppIconName } from '@/components/ui/icons'
 import type { VisualAssetSummary } from '@/lib/assets/contracts'
+import { readContentArtifactMeta } from '@/lib/creation-workspace/artifact-state'
 import {
   resolveVisualAssetStatus,
   selectedVisualAssetImage,
@@ -14,7 +15,6 @@ import { useAssetActions, useAssets } from '@/lib/query/hooks'
 import { useWorkspaceProvider } from '../../../WorkspaceProvider'
 import { useWorkspaceStageRuntime } from '../../../WorkspaceStageRuntimeContext'
 import { useWorkspaceEpisodeStageData } from '../../../hooks/useWorkspaceEpisodeStageData'
-import { fuzzyMatchLocation, getAllClipsAssets } from '../../script-view/clip-asset-utils'
 
 type AssetRequirementStatus = WorkspaceVisualAssetStatus
 
@@ -63,7 +63,7 @@ export default function ContentAssetRequirements() {
   const t = useTranslations('novelPromotion.workspaceFlow.v2.assetRequirements')
   const { projectId } = useWorkspaceProvider()
   const runtime = useWorkspaceStageRuntime()
-  const { contentPlan, clips } = useWorkspaceEpisodeStageData()
+  const { contentPlan } = useWorkspaceEpisodeStageData()
   const assetsQuery = useAssets({ scope: 'project', projectId })
   const characterActions = useAssetActions({ scope: 'project', projectId, kind: 'character' })
   const locationActions = useAssetActions({ scope: 'project', projectId, kind: 'location' })
@@ -74,20 +74,17 @@ export default function ContentAssetRequirements() {
   const [savingId, setSavingId] = useState<string | null>(null)
   const [saveError, setSaveError] = useState('')
 
+  const contentMeta = useMemo(() => readContentArtifactMeta(contentPlan), [contentPlan])
+  const requirementState = contentMeta?.assetRequirements
+  const requirementStatus = requirementState?.status || 'not_started'
+  const requirementAssetIds = useMemo(
+    () => new Set(requirementState?.assetIds || []),
+    [requirementState?.assetIds],
+  )
   const assets = useMemo(() => {
     const visualAssets = assetsQuery.data.filter((asset): asset is VisualAssetSummary => asset.family === 'visual')
-    if (clips.length === 0) return visualAssets
-    const { allCharNames, allLocNames, allPropNames } = getAllClipsAssets(clips)
-    return visualAssets.filter((asset) => {
-      if (asset.kind === 'character') {
-        return asset.name.split('/').some((name) => allCharNames.has(name.trim()))
-      }
-      if (asset.kind === 'location') {
-        return [...allLocNames].some((name) => fuzzyMatchLocation(name, asset.name))
-      }
-      return [...allPropNames].some((name) => name.toLowerCase() === asset.name.toLowerCase())
-    })
-  }, [assetsQuery.data, clips])
+    return visualAssets.filter((asset) => requirementAssetIds.has(asset.id))
+  }, [assetsQuery.data, requirementAssetIds])
   const hints = useMemo(() => collectVisualHints(contentPlan), [contentPlan])
   const confirmedCount = assets.filter((asset) => resolveStatus(asset) === 'confirmed').length
   const attentionCount = assets.filter((asset) => ['failed', 'candidate', 'missing'].includes(resolveStatus(asset))).length
@@ -123,22 +120,24 @@ export default function ContentAssetRequirements() {
 
   return (
     <section className="min-w-0 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-4 border-y border-[var(--glass-stroke-base)] px-1 py-3">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
-          <span className="font-semibold text-[var(--glass-text-primary)]">{t('summary', { count: assets.length })}</span>
-          <span className="text-[var(--glass-tone-success-fg)]">{t('confirmedCount', { count: confirmedCount })}</span>
-          <span className="text-[var(--glass-text-secondary)]">{t('attentionCount', { count: attentionCount })}</span>
+      {requirementStatus !== 'not_started' ? (
+        <div className="flex flex-wrap items-center justify-between gap-4 border-y border-[var(--glass-stroke-base)] px-1 py-3">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+            <span className="font-semibold text-[var(--glass-text-primary)]">{t('summary', { count: requirementState?.assetIds.length || 0 })}</span>
+            <span className="text-[var(--glass-tone-success-fg)]">{t('confirmedCount', { count: confirmedCount })}</span>
+            <span className="text-[var(--glass-text-secondary)]">{t('attentionCount', { count: attentionCount })}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => { void runtime.onAnalyzeAssets() }}
+            disabled={runtime.isAssetAnalysisRunning}
+            className="glass-btn-base glass-btn-secondary h-9 px-3 text-xs"
+          >
+            <AppIcon name={runtime.isAssetAnalysisRunning ? 'loader' : 'refresh'} className={`h-3.5 w-3.5 ${runtime.isAssetAnalysisRunning ? 'animate-spin' : ''}`} />
+            {runtime.isAssetAnalysisRunning ? t('analyzing') : t('reanalyze')}
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => { void runtime.onAnalyzeAssets() }}
-          disabled={runtime.isAssetAnalysisRunning}
-          className="glass-btn-base glass-btn-secondary h-9 px-3 text-xs"
-        >
-          <AppIcon name={runtime.isAssetAnalysisRunning ? 'loader' : 'refresh'} className={`h-3.5 w-3.5 ${runtime.isAssetAnalysisRunning ? 'animate-spin' : ''}`} />
-          {runtime.isAssetAnalysisRunning ? t('analyzing') : t('reanalyze')}
-        </button>
-      </div>
+      ) : null}
 
       <div className="border-b border-[var(--glass-stroke-base)] pb-4">
         <h2 className="text-sm font-semibold text-[var(--glass-text-primary)]">{t('title')}</h2>
@@ -152,25 +151,61 @@ export default function ContentAssetRequirements() {
         ) : null}
       </div>
 
-      {assetsQuery.isLoading ? (
+      {requirementStatus === 'stale' ? (
+        <div className="flex gap-3 rounded-md bg-[var(--glass-tone-warning-bg)] px-3 py-3 text-sm text-[var(--glass-tone-warning-fg)]">
+          <AppIcon name="alert" className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <p className="font-semibold">{t('staleTitle')}</p>
+            <p className="mt-1 leading-5">{t('staleDescription')}</p>
+          </div>
+        </div>
+      ) : requirementStatus === 'needs_review' ? (
+        <div className="flex gap-3 rounded-md bg-[var(--glass-tone-info-bg)] px-3 py-3 text-sm text-[var(--glass-tone-info-fg)]">
+          <AppIcon name="clipboardCheck" className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <p className="font-semibold">{t('reviewTitle')}</p>
+            <p className="mt-1 leading-5">{t('reviewDescription')}</p>
+          </div>
+        </div>
+      ) : requirementStatus === 'approved' ? (
+        <div className="flex gap-3 rounded-md bg-[var(--glass-tone-success-bg)] px-3 py-3 text-sm text-[var(--glass-tone-success-fg)]">
+          <AppIcon name="check" className="mt-0.5 h-4 w-4 shrink-0" />
+          <p className="font-semibold">{t('approvedDescription')}</p>
+        </div>
+      ) : null}
+
+      {runtime.isAssetAnalysisRunning ? (
+        <div className="flex min-h-60 flex-col items-center justify-center border-y border-[var(--glass-stroke-base)] px-5 py-10 text-center">
+          <AppIcon name="loader" className="h-9 w-9 animate-spin text-[var(--glass-tone-info-fg)]" />
+          <h3 className="mt-3 text-base font-semibold text-[var(--glass-text-primary)]">{t('analyzingTitle')}</h3>
+          <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--glass-text-secondary)]">{t('analyzingDescription')}</p>
+        </div>
+      ) : assetsQuery.isLoading && requirementStatus !== 'not_started' ? (
         <div className="flex min-h-52 items-center justify-center text-sm text-[var(--glass-text-tertiary)]">
           <AppIcon name="loader" className="mr-2 h-4 w-4 animate-spin" />
           {t('loading')}
         </div>
       ) : assets.length === 0 ? (
         <div className="flex min-h-60 flex-col items-center justify-center border-y border-[var(--glass-stroke-base)] px-5 py-10 text-center">
-          <AppIcon name="folderCards" className="h-9 w-9 text-[var(--glass-text-tertiary)]" />
-          <h3 className="mt-3 text-base font-semibold text-[var(--glass-text-primary)]">{t('emptyTitle')}</h3>
-          <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--glass-text-secondary)]">{t('emptyDescription')}</p>
-          <button
-            type="button"
-            onClick={() => { void runtime.onAnalyzeAssets() }}
-            disabled={runtime.isAssetAnalysisRunning}
-            className="glass-btn-base glass-btn-primary mt-4 h-10 px-4 text-sm"
-          >
-            <AppIcon name={runtime.isAssetAnalysisRunning ? 'loader' : 'sparkles'} className={`h-4 w-4 ${runtime.isAssetAnalysisRunning ? 'animate-spin' : ''}`} />
-            {runtime.isAssetAnalysisRunning ? t('analyzing') : t('analyzeAction')}
-          </button>
+          <AppIcon name={requirementStatus === 'not_started' ? 'folderCards' : 'check'} className={`h-9 w-9 ${requirementStatus === 'not_started' ? 'text-[var(--glass-text-tertiary)]' : 'text-[var(--glass-tone-success-fg)]'}`} />
+          <h3 className="mt-3 text-base font-semibold text-[var(--glass-text-primary)]">
+            {requirementStatus === 'not_started'
+              ? t('emptyTitle')
+              : requirementStatus === 'approved'
+                ? t('approvedEmptyTitle')
+                : requirementStatus === 'stale'
+                  ? t('staleEmptyTitle')
+                  : t('analyzedEmptyTitle')}
+          </h3>
+          <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--glass-text-secondary)]">
+            {requirementStatus === 'not_started'
+              ? t('emptyDescription')
+              : requirementStatus === 'approved'
+                ? t('approvedEmptyDescription')
+                : requirementStatus === 'stale'
+                  ? t('staleDescription')
+                  : t('analyzedEmptyDescription')}
+          </p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -241,8 +276,9 @@ export default function ContentAssetRequirements() {
                           <button
                             type="button"
                             onClick={() => beginEdit(asset)}
-                            className="glass-btn-base glass-btn-secondary h-8 w-8 shrink-0 p-0"
-                            title={t('edit')}
+                            disabled={requirementStatus === 'stale'}
+                            className="glass-btn-base glass-btn-secondary h-8 w-8 shrink-0 p-0 disabled:cursor-not-allowed disabled:opacity-50"
+                            title={requirementStatus === 'stale' ? t('editStaleDisabled') : t('edit')}
                           >
                             <AppIcon name="edit" className="h-3.5 w-3.5" />
                           </button>
@@ -261,12 +297,8 @@ export default function ContentAssetRequirements() {
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--glass-stroke-base)] pt-4">
+      <div className="border-t border-[var(--glass-stroke-base)] pt-4">
         <p className="text-xs leading-5 text-[var(--glass-text-tertiary)]">{t('boundaryHint')}</p>
-        <button type="button" onClick={() => runtime.onStageChange('visual-plan')} className="glass-btn-base glass-btn-primary h-10 px-4 text-sm">
-          {t('continueAction')}
-          <AppIcon name="arrowRight" className="h-4 w-4" />
-        </button>
       </div>
     </section>
   )

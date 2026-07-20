@@ -18,6 +18,9 @@ export type WorkspaceArtifactCommand =
       stageId: Extract<CreationStageId, 'content' | 'visual-design'>
     }
   | {
+      type: 'approve_asset_requirements'
+    }
+  | {
       type: 'accept_content_candidate'
       unitId: string
     }

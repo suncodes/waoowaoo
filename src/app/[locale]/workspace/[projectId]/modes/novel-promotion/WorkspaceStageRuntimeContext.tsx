@@ -46,6 +46,7 @@ export interface WorkspaceStageRuntimeValue {
   onDiscardContentCandidate: (unitId: string) => Promise<WorkspaceArtifactCommandResult>
   onRestoreContentUnit: (unitId: string) => Promise<WorkspaceArtifactCommandResult>
   onApproveStage: (stageId: 'content' | 'visual-design') => Promise<WorkspaceArtifactCommandResult>
+  onApproveAssetRequirements: () => Promise<WorkspaceArtifactCommandResult>
   onMaterializeGuideStoryboard: () => Promise<WorkspaceArtifactCommandResult>
   onVideoRatioChange: (value: string) => Promise<void>
   onVideoProfileChange: (value: VideoProfilePreset) => Promise<void>

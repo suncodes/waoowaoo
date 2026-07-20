@@ -14,6 +14,7 @@ import {
   type WorkspaceImpactSummary,
 } from './artifact-state'
 import {
+  approveContentAssetRequirements,
   approveContentArtifact,
   clearContentUnitCandidate,
   markExternalContentUnitEdited,
@@ -241,8 +242,14 @@ async function approveVisualStage(params: {
     },
   })
   if (!project || !episode) invalid('project or episode not found')
-  if (readContentArtifactMeta(episode.contentPlan)?.status !== 'approved') {
+  const contentMeta = readContentArtifactMeta(episode.contentPlan)
+  if (contentMeta?.status !== 'approved') {
     invalid('content must be approved first')
+  }
+  const rawContentMeta = asWorkspaceRecord(asWorkspaceRecord(episode.contentPlan)?._workspace)
+  if (asWorkspaceRecord(rawContentMeta?.assetRequirements)
+    && contentMeta.assetRequirements.status !== 'approved') {
+    invalid('asset requirements must be approved first')
   }
   if (!episode.directorTreatment || !episode.productionBible) invalid('visual plan not found')
   const meta = readVisualArtifactMeta(episode.productionBible)
@@ -412,6 +419,19 @@ export async function executeWorkspaceArtifactCommand(params: {
       } else {
         await approveVisualStage({ tx, projectId: params.projectId, episodeId: params.episodeId })
       }
+      return { success: true }
+    }
+
+    if (params.command.type === 'approve_asset_requirements') {
+      await tx.novelPromotionEpisode.update({
+        where: { id: params.episodeId },
+        data: {
+          contentPlan: asInputJson(approveContentAssetRequirements(
+            current.contentPlan,
+            nowIso(),
+          )),
+        },
+      })
       return { success: true }
     }
 

@@ -151,4 +151,81 @@ describe('creation stage navigation', () => {
     expect(items.find((item) => item.id === 'storyboard-preview')?.status).toBe('stale')
     expect(items.find((item) => item.id === 'production')?.status).toBe('stale')
   })
+
+  it('locks visual preparation until visual requirements are confirmed', () => {
+    const items = buildCreationStageNavigation({
+      stageArtifacts: { ...emptyArtifacts, hasContentPlan: true },
+      videoProfile: resolveVideoProfile({ preset: VIDEO_PROFILE_PRESET.BOOK_GUIDE }),
+      contentPlanStream: idleStream,
+      storyToScriptStream: idleStream,
+      visualPlanStream: idleStream,
+      scriptToStoryboardStream: idleStream,
+      contentPlan: {
+        _workspace: {
+          schemaVersion: 1,
+          status: 'approved',
+          revision: 2,
+          approvedRevision: 2,
+          updatedAt: '2026-07-20T00:00:00.000Z',
+          updatedBy: 'user',
+          units: {},
+          assetRequirements: {
+            status: 'needs_review',
+            analyzedRevision: 2,
+            analyzedAt: '2026-07-20T00:01:00.000Z',
+            approvedAt: null,
+            assetIds: [],
+          },
+          latestImpact: null,
+          downstream: { visualDesign: false, storyboard: false, production: false },
+        },
+      },
+      t: (key) => key,
+    })
+
+    expect(items.find((item) => item.id === 'content')?.status).toBe('attention')
+    expect(items.find((item) => item.id === 'visual-design')).toMatchObject({
+      status: 'not_started',
+      locked: true,
+      blockedByStageId: 'content',
+    })
+  })
+
+  it('unlocks visual preparation after an empty requirement result is confirmed', () => {
+    const items = buildCreationStageNavigation({
+      stageArtifacts: { ...emptyArtifacts, hasContentPlan: true },
+      videoProfile: resolveVideoProfile({ preset: VIDEO_PROFILE_PRESET.BOOK_GUIDE }),
+      contentPlanStream: idleStream,
+      storyToScriptStream: idleStream,
+      visualPlanStream: idleStream,
+      scriptToStoryboardStream: idleStream,
+      contentPlan: {
+        _workspace: {
+          schemaVersion: 1,
+          status: 'approved',
+          revision: 2,
+          approvedRevision: 2,
+          updatedAt: '2026-07-20T00:00:00.000Z',
+          updatedBy: 'user',
+          units: {},
+          assetRequirements: {
+            status: 'approved',
+            analyzedRevision: 2,
+            analyzedAt: '2026-07-20T00:01:00.000Z',
+            approvedAt: '2026-07-20T00:02:00.000Z',
+            assetIds: [],
+          },
+          latestImpact: null,
+          downstream: { visualDesign: false, storyboard: false, production: false },
+        },
+      },
+      t: (key) => key,
+    })
+
+    expect(items.find((item) => item.id === 'content')?.status).toBe('completed')
+    expect(items.find((item) => item.id === 'visual-design')).toMatchObject({
+      status: 'ready',
+      locked: false,
+    })
+  })
 })

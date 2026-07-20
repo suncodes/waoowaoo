@@ -45,6 +45,7 @@ export default function CreationWorkspaceShell({
 }: CreationWorkspaceShellProps) {
   const t = useTranslations('novelPromotion.workspaceFlow.v2')
   const current = items.find((item) => item.id === currentStage) || items[0]
+  const currentIndex = Math.max(0, items.findIndex((item) => item.id === current?.id))
   const profileLabel = isBookGuideProfile(videoProfile) ? t('profile.bookGuide') : t('profile.aiComic')
 
   useCreationWorkspaceAutoFollow({
@@ -88,9 +89,29 @@ export default function CreationWorkspaceShell({
         />
 
         <main id="workspace-stage-content" className="min-w-0 scroll-mt-32 pb-3">
-          <CreationStageHeader item={current} />
-          {children ?? <CreationStageContent currentStage={currentStage} stageView={stageView} />}
-          <CreationStageActionBar items={items} currentStage={currentStage} onStageChange={onStageChange} />
+          <CreationStageHeader item={current} stepNumber={currentIndex + 1} stepTotal={items.length} />
+          {current.locked ? (
+            <section className="flex min-h-72 flex-col items-center justify-center border-y border-[var(--glass-stroke-base)] px-5 py-10 text-center">
+              <span className="inline-flex h-12 w-12 items-center justify-center rounded-lg bg-[var(--glass-bg-muted)] text-[var(--glass-text-tertiary)]">
+                <AppIcon name="lock" className="h-5 w-5" />
+              </span>
+              <h2 className="mt-4 text-base font-semibold text-[var(--glass-text-primary)]">{t('navigation.lockedTitle')}</h2>
+              <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--glass-text-secondary)]">
+                {t('navigation.lockedDescription', { stage: current.blockedByLabel || '' })}
+              </p>
+              {current.blockedByStageId ? (
+                <button type="button" onClick={() => onStageChange(current.blockedByStageId!)} className="glass-btn-base glass-btn-primary mt-5 h-10 px-4 text-sm">
+                  {t('navigation.returnToRequired', { stage: current.blockedByLabel || '' })}
+                  <AppIcon name="arrowRight" className="h-4 w-4" />
+                </button>
+              ) : null}
+            </section>
+          ) : (
+            <>
+              {children ?? <CreationStageContent currentStage={currentStage} stageView={stageView} />}
+              <CreationStageActionBar items={items} currentStage={currentStage} stageView={stageView} onStageChange={onStageChange} />
+            </>
+          )}
         </main>
 
         <CreationAssistantPanel

@@ -5,6 +5,7 @@ export const WORKSPACE_ARTIFACT_META_KEY = '_workspace'
 export type WorkspaceArtifactStatus = 'draft' | 'needs_review' | 'approved' | 'stale'
 export type WorkspaceArtifactAuthor = 'ai' | 'user'
 export type ContentUnitKind = 'guide_segment' | 'script_clip'
+export type AssetRequirementStatus = 'not_started' | 'needs_review' | 'approved' | 'stale'
 
 export interface WorkspaceImpactSummary {
   sourceUnitIds: string[]
@@ -32,6 +33,14 @@ export interface ContentUnitArtifactState {
   candidate?: ContentUnitSnapshot
 }
 
+export interface AssetRequirementArtifactState {
+  status: AssetRequirementStatus
+  analyzedRevision: number | null
+  analyzedAt: string | null
+  approvedAt: string | null
+  assetIds: string[]
+}
+
 export interface ContentArtifactMeta {
   schemaVersion: 1
   status: WorkspaceArtifactStatus
@@ -40,6 +49,7 @@ export interface ContentArtifactMeta {
   updatedAt: string
   updatedBy: WorkspaceArtifactAuthor
   units: Record<string, ContentUnitArtifactState>
+  assetRequirements: AssetRequirementArtifactState
   latestImpact: WorkspaceImpactSummary | null
   downstream: {
     visualDesign: boolean
@@ -163,6 +173,25 @@ function readUnitStates(value: unknown): Record<string, ContentUnitArtifactState
   return result
 }
 
+function readAssetRequirementStatus(value: unknown): AssetRequirementStatus {
+  return value === 'needs_review' || value === 'approved' || value === 'stale'
+    ? value
+    : 'not_started'
+}
+
+function readAssetRequirements(value: unknown): AssetRequirementArtifactState {
+  const record = asWorkspaceRecord(value)
+  return {
+    status: readAssetRequirementStatus(record?.status),
+    analyzedRevision: typeof record?.analyzedRevision === 'number'
+      ? Math.max(1, Math.round(record.analyzedRevision))
+      : null,
+    analyzedAt: readString(record?.analyzedAt) || null,
+    approvedAt: readString(record?.approvedAt) || null,
+    assetIds: [...new Set(readStringArray(record?.assetIds))],
+  }
+}
+
 function readImpact(value: unknown): WorkspaceImpactSummary | null {
   const record = asWorkspaceRecord(value)
   if (!record) return null
@@ -193,6 +222,13 @@ export function createContentArtifactMeta(now: string, author: WorkspaceArtifact
     updatedAt: now,
     updatedBy: author,
     units: {},
+    assetRequirements: {
+      status: 'not_started',
+      analyzedRevision: null,
+      analyzedAt: null,
+      approvedAt: null,
+      assetIds: [],
+    },
     latestImpact: null,
     downstream: {
       visualDesign: false,
@@ -217,6 +253,7 @@ export function readContentArtifactMeta(value: unknown): ContentArtifactMeta | n
     updatedAt: readString(meta.updatedAt) || new Date(0).toISOString(),
     updatedBy: readAuthor(meta.updatedBy),
     units: readUnitStates(meta.units),
+    assetRequirements: readAssetRequirements(meta.assetRequirements),
     latestImpact: readImpact(meta.latestImpact),
     downstream: {
       visualDesign: downstream?.visualDesign === true,

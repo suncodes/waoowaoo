@@ -46,6 +46,9 @@ export function useWorkspaceArtifactCommands({
       type: 'approve_stage',
       stageId,
     }),
+    approveAssetRequirements: () => execute({
+      type: 'approve_asset_requirements',
+    }),
     acceptContentCandidate: (unitId: string) => execute({
       type: 'accept_content_candidate',
       unitId,
