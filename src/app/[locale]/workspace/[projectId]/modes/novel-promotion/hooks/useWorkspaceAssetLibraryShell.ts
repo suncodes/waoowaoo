@@ -78,7 +78,11 @@ export function useWorkspaceAssetLibraryShell({
       currentStage === 'script' ||
       currentStage === 'assets' ||
       currentStage === 'storyboard' ||
-      currentStage === 'videos'
+      currentStage === 'videos' ||
+      currentStage === 'content' ||
+      currentStage === 'visual-design' ||
+      currentStage === 'storyboard-preview' ||
+      currentStage === 'production'
 
     if (needsAssets) {
       onRefresh({ scope: 'assets' })

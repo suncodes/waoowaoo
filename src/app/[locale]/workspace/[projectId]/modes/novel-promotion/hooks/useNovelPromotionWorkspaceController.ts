@@ -12,6 +12,7 @@ import { useWorkspaceExecution } from './useWorkspaceExecution'
 import { useWorkspaceVideoActions } from './useWorkspaceVideoActions'
 import { useWorkspaceAssetLibraryShell } from './useWorkspaceAssetLibraryShell'
 import { useWorkspaceStageNavigation } from './useWorkspaceStageNavigation'
+import { buildCreationStageNavigation } from './useCreationStageNavigation'
 import { useWorkspaceProjectSnapshot } from './useWorkspaceProjectSnapshot'
 import { useWorkspaceModalEscape } from './useWorkspaceModalEscape'
 import { useWorkspaceStageRuntime } from './useWorkspaceStageRuntime'
@@ -28,6 +29,7 @@ export function useNovelPromotionWorkspaceController({
   episodeId,
   episode,
   urlStage,
+  urlStageView,
   onStageChange,
 }: NovelPromotionWorkspaceProps) {
   const t = useTranslations('novelPromotion')
@@ -38,8 +40,13 @@ export function useNovelPromotionWorkspaceController({
   const router = useRouter()
   const { onRefresh } = useWorkspaceProvider()
 
-  const projectSnapshot = useWorkspaceProjectSnapshot({ project, episode, urlStage })
-  const { currentStage, ...projectSection } = projectSnapshot
+  const projectSnapshot = useWorkspaceProjectSnapshot({ project, episode, urlStage, urlStageView })
+  const {
+    currentStage,
+    stageView,
+    workspaceV2Enabled,
+    ...projectSection
+  } = projectSnapshot
 
   const assetsLoading = false
   const assetsLoadingState = assetsLoading
@@ -96,6 +103,7 @@ export function useNovelPromotionWorkspaceController({
     projectId,
     episodeId,
     currentStage,
+    currentStageView: stageView,
     analysisModel: projectSnapshot.analysisModel,
     videoProfile: projectSnapshot.videoProfile,
     contentPlan: projectSnapshot.contentPlan,
@@ -132,7 +140,7 @@ export function useNovelPromotionWorkspaceController({
     runStoryToScriptFlow: execution.runStoryToScriptFlow,
   })
 
-  const workflowItems = useWorkspaceStageNavigation({
+  const legacyWorkflowItems = useWorkspaceStageNavigation({
     stageArtifacts,
     videoProfile: projectSnapshot.videoProfile,
     contentPlanStream: execution.contentPlanStream,
@@ -141,9 +149,20 @@ export function useNovelPromotionWorkspaceController({
     scriptToStoryboardStream: execution.scriptToStoryboardStream,
     t,
   })
+  const creationWorkflowItems = buildCreationStageNavigation({
+    stageArtifacts,
+    videoProfile: projectSnapshot.videoProfile,
+    contentPlanStream: execution.contentPlanStream,
+    storyToScriptStream: execution.storyToScriptStream,
+    visualPlanStream: execution.visualPlanStream,
+    scriptToStoryboardStream: execution.scriptToStoryboardStream,
+    t: (key) => t(`workspaceFlow.v2.${key}`),
+  })
+  const workflowItems = workspaceV2Enabled ? creationWorkflowItems : legacyWorkflowItems
 
   const stageRuntime = useWorkspaceStageRuntime({
     assetsLoading,
+    isAssetAnalysisRunning: execution.isAssetAnalysisRunning,
     isSubmittingTTS: execution.isSubmittingTTS,
     isTransitioning: execution.isTransitioning,
     isConfirmingAssets: execution.isConfirmingAssets,
@@ -192,6 +211,8 @@ export function useNovelPromotionWorkspaceController({
 
   const stageNavState = {
     currentStage,
+    stageView,
+    workspaceV2Enabled,
     workflowItems,
     handleStageChange: configActions.handleStageChange,
   }

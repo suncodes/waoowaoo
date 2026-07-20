@@ -19,9 +19,13 @@ import { AppIcon } from '@/components/ui/icons'
 import { readConfiguredAnalysisModel, shouldGuideToModelSetup } from '@/lib/workspace/model-setup'
 import { useRouter } from '@/i18n/navigation'
 import { readApiErrorMessage } from '@/lib/api/read-error-message'
+import { isCreationWorkspaceV2Enabled } from '@/lib/creation-workspace/feature'
+import {
+  isKnownCreationStageRoute,
+  resolveCreationStageRoute,
+} from '@/lib/creation-workspace/stages'
 
-// 有效的stage值
-const VALID_STAGES = [
+const LEGACY_VALID_STAGES = [
   'config',
   'content-plan',
   'script',
@@ -33,7 +37,6 @@ const VALID_STAGES = [
   'voice',
   'editor',
 ] as const
-type Stage = typeof VALID_STAGES[number]
 
 interface Episode {
   id: string
@@ -69,9 +72,13 @@ export default function ProjectDetailPage() {
   const tc = useTranslations('common')
 
   // 从URL读取参数
-  const urlStage = searchParams.get('stage') as Stage | null
+  const workspaceV2Enabled = isCreationWorkspaceV2Enabled()
+  const urlStage = searchParams.get('stage')
+  const urlStageView = searchParams.get('view')
   const urlEpisodeId = searchParams.get('episode') ?? null
-  const currentUrlStage = urlStage && VALID_STAGES.includes(urlStage) ? urlStage : null
+  const currentUrlStage = workspaceV2Enabled
+    ? (isKnownCreationStageRoute(urlStage) ? urlStage : null)
+    : (urlStage && LEGACY_VALID_STAGES.includes(urlStage as typeof LEGACY_VALID_STAGES[number]) ? urlStage : null)
 
   // 🔥 React Query 数据获取
   const queryClient = useQueryClient()
@@ -90,10 +97,21 @@ export default function ProjectDetailPage() {
   const llmModelOptions = userModelsQuery.data?.llm || []
 
   // 更新URL参数（stage 和/或 episode）
-  const updateUrlParams = useCallback((updates: { stage?: string; episode?: string | null }) => {
+  const updateUrlParams = useCallback((updates: {
+    stage?: string
+    stageView?: string | null
+    episode?: string | null
+  }) => {
     const params = new URLSearchParams(searchParams.toString())
     if (updates.stage !== undefined) {
       params.set('stage', updates.stage)
+    }
+    if (updates.stageView !== undefined) {
+      if (updates.stageView) {
+        params.set('view', updates.stageView)
+      } else {
+        params.delete('view')
+      }
     }
     if (updates.episode !== undefined) {
       if (updates.episode) {
@@ -114,13 +132,28 @@ export default function ProjectDetailPage() {
 
   // 更新URL中的stage参数（保持向后兼容）
   const updateUrlStage = useCallback((stage: string) => {
-    updateUrlParams({ stage })
-  }, [updateUrlParams])
+    if (!workspaceV2Enabled) {
+      updateUrlParams({ stage, stageView: null })
+      return
+    }
+    const route = resolveCreationStageRoute(stage)
+    updateUrlParams({ stage: route.stageId, stageView: route.view || null })
+  }, [updateUrlParams, workspaceV2Enabled])
 
-  // Stage 状态完全由 URL 控制，不再从数据库同步
-  // 如果 URL 没有 stage 参数，默认使用 'config'
-  // 🚧 剪辑阶段 (editor) 暂时禁用，自动重定向到成片阶段 (videos)
-  const effectiveStage = currentUrlStage === 'editor' ? 'videos' : (currentUrlStage || 'config')
+  useEffect(() => {
+    if (!workspaceV2Enabled) return
+    const route = resolveCreationStageRoute(currentUrlStage, urlStageView)
+    const normalizedView = route.view || null
+    if (urlStage === route.stageId && urlStageView === normalizedView) return
+    updateUrlParams({ stage: route.stageId, stageView: normalizedView })
+  }, [currentUrlStage, updateUrlParams, urlStage, urlStageView, workspaceV2Enabled])
+
+  const effectiveStage = workspaceV2Enabled
+    ? (currentUrlStage || 'setup')
+    : (currentUrlStage === 'editor' ? 'videos' : (currentUrlStage || 'config'))
+  const effectiveStageView = workspaceV2Enabled
+    ? resolveCreationStageRoute(currentUrlStage, urlStageView).view || null
+    : null
 
   // 获取剧集列表
   const novelPromotionData = project?.novelPromotionData as NovelPromotionData | undefined
@@ -255,7 +288,11 @@ export default function ProjectDetailPage() {
           _ulogInfo('[Page] 触发全局分析，跳转到 assets 阶段，带 globalAnalyze=1 参数')
           // 使用相对路径更新，保留 locale
           const params = new URLSearchParams()
-          params.set('stage', 'assets')
+          const assetRoute = workspaceV2Enabled
+            ? resolveCreationStageRoute('assets')
+            : { stageId: 'assets', view: undefined }
+          params.set('stage', assetRoute.stageId)
+          if (assetRoute.view) params.set('view', assetRoute.view)
           params.set('episode', newEpisodes[0].id)
           params.set('globalAnalyze', '1')
           const newUrl = `?${params.toString()}`
@@ -410,6 +447,7 @@ export default function ProjectDetailPage() {
                 projectId={projectId}
                 viewMode="global-assets"
                 urlStage={effectiveStage}
+                urlStageView={effectiveStageView}
                 onStageChange={updateUrlStage}
               />
             </div>
@@ -526,6 +564,7 @@ export default function ProjectDetailPage() {
               episode={currentEpisode}
               viewMode="episode"
               urlStage={effectiveStage}
+              urlStageView={effectiveStageView}
               onStageChange={updateUrlStage}
               episodes={episodes}
               onEpisodeSelect={handleEpisodeSelect}

@@ -9,6 +9,7 @@ import { resolveVideoProfile, type VideoProfile } from '@/lib/video-profile'
 
 interface UseWorkspaceStageRuntimeParams {
   assetsLoading: boolean
+  isAssetAnalysisRunning: boolean
   isSubmittingTTS: boolean
   isTransitioning: boolean
   isConfirmingAssets: boolean
@@ -61,6 +62,7 @@ interface UseWorkspaceStageRuntimeParams {
 
 export function useWorkspaceStageRuntime({
   assetsLoading,
+  isAssetAnalysisRunning,
   isSubmittingTTS,
   isTransitioning,
   isConfirmingAssets,
@@ -93,6 +95,7 @@ export function useWorkspaceStageRuntime({
 
   return useMemo<WorkspaceStageRuntimeValue>(() => ({
     assetsLoading,
+    isAssetAnalysisRunning,
     isSubmittingTTS,
     isTransitioning,
     isConfirmingAssets,
@@ -144,6 +147,7 @@ export function useWorkspaceStageRuntime({
     artStyle,
     artStyleReferenceEnabled,
     assetsLoading,
+    isAssetAnalysisRunning,
     handleGenerateAllVideos,
     handleGenerateVideo,
     handleStageChange,

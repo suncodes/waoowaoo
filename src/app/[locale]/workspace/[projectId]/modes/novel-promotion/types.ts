@@ -32,6 +32,7 @@ export interface NovelPromotionWorkspaceProps {
   episode?: Episode | null
   viewMode?: 'global-assets' | 'episode'
   urlStage?: string | null
+  urlStageView?: string | null
   onStageChange?: (stage: string) => void
   episodes?: Episode[]
   onEpisodeSelect?: (episodeId: string) => void

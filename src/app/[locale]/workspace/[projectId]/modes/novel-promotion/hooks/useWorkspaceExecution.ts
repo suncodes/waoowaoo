@@ -14,6 +14,7 @@ interface UseWorkspaceExecutionParams {
   projectId: string
   episodeId?: string
   currentStage: string
+  currentStageView?: string
   analysisModel?: string | null
   videoProfile?: unknown
   contentPlan?: unknown
@@ -39,6 +40,7 @@ export function useWorkspaceExecution({
   projectId,
   episodeId,
   currentStage,
+  currentStageView,
   analysisModel,
   videoProfile,
   contentPlan,
@@ -258,7 +260,11 @@ export function useWorkspaceExecution({
       }
       return
     }
-    if (storyToScriptStream.status === 'completed' && currentStage === 'config' && storyToScriptStream.runId) {
+    if (
+      storyToScriptStream.status === 'completed'
+      && (currentStage === 'config' || currentStage === 'setup')
+      && storyToScriptStream.runId
+    ) {
       void finalizeStoryToScriptSuccess(storyToScriptStream.runId)
       return
     }
@@ -291,7 +297,11 @@ export function useWorkspaceExecution({
       }
       return
     }
-    if (scriptToStoryboardStream.status === 'completed' && currentStage === 'script' && scriptToStoryboardStream.runId) {
+    if (
+      scriptToStoryboardStream.status === 'completed'
+      && (currentStage === 'script' || (currentStage === 'content' && currentStageView === 'script'))
+      && scriptToStoryboardStream.runId
+    ) {
       void finalizeScriptToStoryboardSuccess(scriptToStoryboardStream.runId)
       return
     }
@@ -300,6 +310,7 @@ export function useWorkspaceExecution({
     }
   }, [
     currentStage,
+    currentStageView,
     finalizeScriptToStoryboardSuccess,
     scriptToStoryboardStream.isRecoveredRunning,
     scriptToStoryboardStream.isRunning,

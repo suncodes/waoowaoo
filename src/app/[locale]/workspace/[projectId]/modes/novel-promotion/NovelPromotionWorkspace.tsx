@@ -8,9 +8,12 @@ import WorkspaceAssetLibraryModal from './components/WorkspaceAssetLibraryModal'
 import WorkspaceHeaderShell from './components/WorkspaceHeaderShell'
 import WorkspaceTaskPanel from './components/WorkspaceTaskPanel'
 import WorkspaceWorkflowRail from './components/WorkspaceWorkflowRail'
+import CreationWorkspaceShell from './components/workspace-v2/CreationWorkspaceShell'
 import { WorkspaceStageRuntimeProvider } from './WorkspaceStageRuntimeContext'
 import { useNovelPromotionWorkspaceController } from './hooks/useNovelPromotionWorkspaceController'
+import type { CreationStageNavItem } from './hooks/useCreationStageNavigation'
 import type { NovelPromotionWorkspaceProps } from './types'
+import type { CreationStageId } from '@/lib/creation-workspace/stages'
 import '@/styles/animations.css'
 
 function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
@@ -84,28 +87,44 @@ function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
 
       <div className="relative left-1/2 w-[min(1800px,calc(100vw-2rem))] -translate-x-1/2 pt-28">
         <WorkspaceStageRuntimeProvider value={vm.runtime.stageRuntime}>
-          <div className="grid min-w-0 gap-4 lg:grid-cols-[220px_minmax(0,1fr)] 2xl:grid-cols-[220px_minmax(0,1fr)_340px]">
-            <WorkspaceWorkflowRail
-              items={vm.stageNav.workflowItems}
-              currentStage={vm.stageNav.currentStage}
+          {vm.stageNav.workspaceV2Enabled ? (
+            <CreationWorkspaceShell
+              items={vm.stageNav.workflowItems as CreationStageNavItem[]}
+              currentStage={vm.stageNav.currentStage as CreationStageId}
+              stageView={vm.stageNav.stageView}
               projectId={projectId}
               episodeId={episodeId}
-              onStageChange={vm.stageNav.handleStageChange}
-            />
-
-            <main id="workspace-stage-content" className="min-w-0 scroll-mt-32">
-              <WorkspaceStageContent currentStage={vm.stageNav.currentStage} />
-            </main>
-
-            <WorkspaceTaskPanel
-              currentStage={vm.stageNav.currentStage}
               videoProfile={vm.project.videoProfile}
+              onStageChange={vm.stageNav.handleStageChange}
               contentPlanStream={vm.execution.contentPlanStream}
               storyToScriptStream={vm.execution.storyToScriptStream}
               visualPlanStream={vm.execution.visualPlanStream}
               scriptToStoryboardStream={vm.execution.scriptToStoryboardStream}
             />
-          </div>
+          ) : (
+            <div className="grid min-w-0 gap-4 lg:grid-cols-[220px_minmax(0,1fr)] 2xl:grid-cols-[220px_minmax(0,1fr)_340px]">
+              <WorkspaceWorkflowRail
+                items={vm.stageNav.workflowItems}
+                currentStage={vm.stageNav.currentStage}
+                projectId={projectId}
+                episodeId={episodeId}
+                onStageChange={vm.stageNav.handleStageChange}
+              />
+
+              <main id="workspace-stage-content" className="min-w-0 scroll-mt-32">
+                <WorkspaceStageContent currentStage={vm.stageNav.currentStage} />
+              </main>
+
+              <WorkspaceTaskPanel
+                currentStage={vm.stageNav.currentStage}
+                videoProfile={vm.project.videoProfile}
+                contentPlanStream={vm.execution.contentPlanStream}
+                storyToScriptStream={vm.execution.storyToScriptStream}
+                visualPlanStream={vm.execution.visualPlanStream}
+                scriptToStoryboardStream={vm.execution.scriptToStoryboardStream}
+              />
+            </div>
+          )}
         </WorkspaceStageRuntimeProvider>
 
         <WorkspaceAssetLibraryModal

@@ -4,7 +4,10 @@
 - 适用项目：`waoowaoo`
 - 更新时间：2026-07-17
 - 关联方案：`standards/design/video-generation-quality-optimization.md`
+- 后续目标产品架构：`standards/design/ai-video-creation-workspace-product-redesign.md`
 - 实施范围：工作流导航、内容策划工作区、视觉方案工作区、统一运行详情、响应式布局
+
+> 本文记录 2026-07-17 已落地的七阶段 UI 基线。后续面向非专业创作者的流程、编辑能力和工作台重构以“AI 视频创作工作台目标产品与重构方案”为准；本文不再作为目标信息架构。
 
 ## 1. 背景与问题
 

@@ -5,7 +5,8 @@
 - 更新时间：2026-07-17
 - 方案范围：Creative Brief、内容类型分流、剧本与导演门禁、Animatic、图片自动质检与自修复、分镜到视频的提示词编译、跨镜头连续性、粗剪反馈、生成后质量诊断与局部重跑
 - 当前代码范围：`VideoProfile`、内容规划与评审、视觉规划、分镜图片影子评审/自动修复、视频生成门禁；完整范围和未实现项见第 18 节
-- 工作台 UI 重构：`standards/design/ai-creation-workspace-ui-redesign.md`
+- 当前工作台 UI 基线：`standards/design/ai-creation-workspace-ui-redesign.md`
+- 目标产品与工作台重构：`standards/design/ai-video-creation-workspace-product-redesign.md`
 
 ## 1. 决策摘要
 

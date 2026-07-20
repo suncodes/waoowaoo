@@ -76,6 +76,8 @@ interface BuildWorkspaceControllerViewModelParams {
   }
   stageNavState: {
     currentStage: string
+    stageView?: string
+    workspaceV2Enabled: boolean
     workflowItems: WorkspaceStageNavItem[]
     handleStageChange: (stage: string) => void
   }

@@ -26,6 +26,103 @@
     "title": "Production Flow",
     "stageCount": "{count} stages",
     "skipToContent": "Skip to current stage",
+    "v2": {
+      "flowTitle": "Creation flow",
+      "profile": {
+        "aiComic": "AI comic",
+        "bookGuide": "Book guide"
+      },
+      "mode": {
+        "auto": "Automatic creation"
+      },
+      "stages": {
+        "setup": {
+          "label": "Creative setup",
+          "description": "Set the source material, video type, frame ratio, and overall style."
+        },
+        "content": {
+          "label": "Content draft",
+          "description": "Shape the content structure and prepare the script or narration used downstream."
+        },
+        "visualDesign": {
+          "label": "Visual design",
+          "description": "Set the production-wide visual direction and manage recurring visual elements."
+        },
+        "storyboardPreview": {
+          "label": "Storyboard preview",
+          "description": "Review shot order, visual content, and pacing before final generation."
+        },
+        "production": {
+          "label": "Shot production",
+          "description": "Generate and manage shot images, videos, and narration assets in one place."
+        },
+        "edit": {
+          "label": "Edit and deliver",
+          "description": "Assemble the project, review the final cut, and export the finished video."
+        }
+      },
+      "views": {
+        "content": {
+          "plan": "Content structure",
+          "script": "Script",
+          "guideScript": "Narration draft"
+        },
+        "visualDesign": {
+          "direction": "Visual direction",
+          "assets": "Core visual elements"
+        },
+        "production": {
+          "shots": "Shot assets",
+          "voice": "Narration voice"
+        }
+      },
+      "actionBar": {
+        "previous": "Previous",
+        "autoSaved": "Changes saved automatically",
+        "continue": "Continue to {stage}",
+        "completeFirst": "Complete the current stage first",
+        "finalStage": "This is the final stage"
+      },
+      "assistant": {
+        "title": "Stage assistant",
+        "open": "Open stage assistant",
+        "close": "Close stage assistant",
+        "currentStatus": "Current progress",
+        "issues": "Issues to resolve",
+        "noIssues": "None",
+        "generationDetails": "Generation details",
+        "expand": "Expand",
+        "runningCount": "{count} running",
+        "noGeneration": "This stage has no separate generation task.",
+        "stepCount": "{current}/{total} steps",
+        "waiting": "Waiting for the task to start",
+        "waitingSteps": "Task started, loading steps",
+        "noRun": "No run history for this stage",
+        "outputTitle": "View generated result",
+        "stop": "Stop",
+        "retry": "Retry",
+        "statusMessage": {
+          "notStarted": "This stage has not started. You can still review its content and prerequisites.",
+          "ready": "The prerequisites are ready and this stage can begin.",
+          "running": "AI is processing the project and generation details will keep updating.",
+          "attention": "This stage has items that need confirmation.",
+          "completed": "This stage has a usable result. Continue or return to review it.",
+          "failed": "Generation failed. Review the issue or generation details for the cause.",
+          "stale": "Upstream content changed and this result needs confirmation."
+        },
+        "tasks": {
+          "contentPlan": "Shape content structure",
+          "storyScript": "Generate script",
+          "visualPlan": "Set visual direction",
+          "storyboard": "Generate storyboard"
+        }
+      },
+      "editStage": {
+        "title": "Editing workspace will arrive in a later batch",
+        "description": "This release focuses on the six-stage migration. Existing preview, merge, and export tools remain available under shot production.",
+        "backToProduction": "Back to shot production"
+      }
+    },
     "status": {
       "notStarted": "Not started",
       "ready": "Ready",

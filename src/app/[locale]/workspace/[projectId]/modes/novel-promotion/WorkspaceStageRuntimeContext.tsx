@@ -17,6 +17,7 @@ export interface WorkspaceStageVideoModelOption {
 
 export interface WorkspaceStageRuntimeValue {
   assetsLoading: boolean
+  isAssetAnalysisRunning: boolean
   isSubmittingTTS: boolean
   isTransitioning: boolean
   isConfirmingAssets: boolean
