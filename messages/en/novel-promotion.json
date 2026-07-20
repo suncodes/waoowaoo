@@ -26,6 +26,38 @@
     "title": "Production Flow",
     "stageCount": "{count} stages",
     "skipToContent": "Skip to current stage",
+    "runCenter": {
+      "title": "Run details",
+      "open": "Open run details",
+      "runningCount": "{count} running",
+      "stop": "Stop",
+      "minimize": "Minimize",
+      "retryModelPrompt": "Optional: enter a retry model, or leave blank to use the current model",
+      "status": {
+        "idle": "Waiting",
+        "failed": "Needs attention",
+        "completed": "Completed"
+      },
+      "tasks": {
+        "contentPlan": "Shape content structure",
+        "contentRewrite": "Rewrite selected content",
+        "storyScript": "Generate script",
+        "visualPlan": "Set visual direction",
+        "storyboard": "Generate storyboard"
+      },
+      "running": {
+        "contentPlan": "Generating content structure",
+        "storyScript": "Generating script",
+        "visualPlan": "Generating visual direction",
+        "storyboard": "Generating storyboard"
+      },
+      "subtitles": {
+        "contentPlan": "Content structure run log",
+        "storyScript": "Script run log",
+        "visualPlan": "Visual direction run log",
+        "storyboard": "Storyboard run log"
+      }
+    },
     "v2": {
       "flowTitle": "Creation flow",
       "profile": {

@@ -200,10 +200,6 @@ export default function CreationWorkspaceV2PreviewPage() {
               setCurrentStage(stage as CreationStageId)
             }
           }}
-          contentPlanStream={completedStream}
-          storyToScriptStream={idleStream}
-          visualPlanStream={completedStream}
-          scriptToStoryboardStream={idleStream}
         >
           {currentStage === 'setup' ? (
             <NovelInputStage

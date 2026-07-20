@@ -8,8 +8,6 @@ import type { CreationStageId } from '@/lib/creation-workspace/stages'
 import type { CreationWorkflowState } from '@/lib/creation-workspace/workflow-state'
 import type { CreationStageNavItem } from '../../hooks/useCreationStageNavigation'
 import { useCreationWorkspaceAutoFollow } from '../../hooks/useCreationWorkspaceAutoFollow'
-import type { WorkspaceRunStreamState } from '../workspace-run-types'
-import CreationAssistantPanel from './CreationAssistantPanel'
 import CreationStageActionBar from './CreationStageActionBar'
 import CreationStageContent from './CreationStageContent'
 import CreationStageHeader from './CreationStageHeader'
@@ -24,10 +22,6 @@ interface CreationWorkspaceShellProps {
   videoProfile: VideoProfile
   workflowState: CreationWorkflowState
   onStageChange: (stage: string) => void
-  contentPlanStream: WorkspaceRunStreamState
-  storyToScriptStream: WorkspaceRunStreamState
-  visualPlanStream: WorkspaceRunStreamState
-  scriptToStoryboardStream: WorkspaceRunStreamState
   children?: ReactNode
 }
 
@@ -40,10 +34,6 @@ export default function CreationWorkspaceShell({
   videoProfile,
   workflowState,
   onStageChange,
-  contentPlanStream,
-  storyToScriptStream,
-  visualPlanStream,
-  scriptToStoryboardStream,
   children,
 }: CreationWorkspaceShellProps) {
   const t = useTranslations('novelPromotion.workspaceFlow.v2')
@@ -79,7 +69,7 @@ export default function CreationWorkspaceShell({
         </span>
       </div>
 
-      <div className="grid min-w-0 gap-4 lg:grid-cols-[232px_minmax(0,1fr)] 2xl:grid-cols-[232px_minmax(0,1fr)_340px]">
+      <div className="grid min-w-0 gap-4 lg:grid-cols-[232px_minmax(0,1fr)]">
         <CreationWorkflowRail
           items={items}
           currentStage={currentStage}
@@ -125,16 +115,6 @@ export default function CreationWorkspaceShell({
             </>
           )}
         </main>
-
-        <CreationAssistantPanel
-          currentStage={currentStage}
-          items={items}
-          videoProfile={videoProfile}
-          contentPlanStream={contentPlanStream}
-          storyToScriptStream={storyToScriptStream}
-          visualPlanStream={visualPlanStream}
-          scriptToStoryboardStream={scriptToStoryboardStream}
-        />
       </div>
     </section>
   )

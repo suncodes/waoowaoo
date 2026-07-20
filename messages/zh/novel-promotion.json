@@ -26,6 +26,38 @@
     "title": "制作流程",
     "stageCount": "共 {count} 个阶段",
     "skipToContent": "跳到当前阶段内容",
+    "runCenter": {
+      "title": "运行详情",
+      "open": "查看运行详情",
+      "runningCount": "{count} 项生成中",
+      "stop": "停止",
+      "minimize": "最小化",
+      "retryModelPrompt": "可选：输入重试模型（留空使用当前模型）",
+      "status": {
+        "idle": "等待中",
+        "failed": "需要处理",
+        "completed": "已完成"
+      },
+      "tasks": {
+        "contentPlan": "整理内容结构",
+        "contentRewrite": "局部改写文稿",
+        "storyScript": "生成剧本文稿",
+        "visualPlan": "制定画面方向",
+        "storyboard": "生成分镜"
+      },
+      "running": {
+        "contentPlan": "内容结构生成中",
+        "storyScript": "剧本文稿生成中",
+        "visualPlan": "画面方向生成中",
+        "storyboard": "分镜生成中"
+      },
+      "subtitles": {
+        "contentPlan": "内容结构运行日志",
+        "storyScript": "剧本文稿运行日志",
+        "visualPlan": "画面方向运行日志",
+        "storyboard": "分镜生成运行日志"
+      }
+    },
     "v2": {
       "flowTitle": "创作流程",
       "profile": {

@@ -6,7 +6,7 @@ import { WorkspaceProvider } from './WorkspaceProvider'
 import WorkspaceStageContent from './components/WorkspaceStageContent'
 import WorkspaceAssetLibraryModal from './components/WorkspaceAssetLibraryModal'
 import WorkspaceHeaderShell from './components/WorkspaceHeaderShell'
-import WorkspaceTaskPanel from './components/WorkspaceTaskPanel'
+import WorkspaceRunStreamConsoles from './components/WorkspaceRunStreamConsoles'
 import WorkspaceWorkflowRail from './components/WorkspaceWorkflowRail'
 import CreationWorkspaceShell from './components/workspace-v2/CreationWorkspaceShell'
 import { WorkspaceStageRuntimeProvider } from './WorkspaceStageRuntimeContext'
@@ -97,13 +97,9 @@ function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
               videoProfile={vm.project.videoProfile}
               workflowState={vm.stageNav.workflowState}
               onStageChange={vm.stageNav.handleStageChange}
-              contentPlanStream={vm.execution.contentPlanStream}
-              storyToScriptStream={vm.execution.storyToScriptStream}
-              visualPlanStream={vm.execution.visualPlanStream}
-              scriptToStoryboardStream={vm.execution.scriptToStoryboardStream}
             />
           ) : (
-            <div className="grid min-w-0 gap-4 lg:grid-cols-[220px_minmax(0,1fr)] 2xl:grid-cols-[220px_minmax(0,1fr)_340px]">
+            <div className="grid min-w-0 gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
               <WorkspaceWorkflowRail
                 items={vm.stageNav.workflowItems}
                 currentStage={vm.stageNav.currentStage}
@@ -115,15 +111,6 @@ function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
               <main id="workspace-stage-content" className="min-w-0 scroll-mt-32">
                 <WorkspaceStageContent currentStage={vm.stageNav.currentStage} />
               </main>
-
-              <WorkspaceTaskPanel
-                currentStage={vm.stageNav.currentStage}
-                videoProfile={vm.project.videoProfile}
-                contentPlanStream={vm.execution.contentPlanStream}
-                storyToScriptStream={vm.execution.storyToScriptStream}
-                visualPlanStream={vm.execution.visualPlanStream}
-                scriptToStoryboardStream={vm.execution.scriptToStoryboardStream}
-              />
             </div>
           )}
         </WorkspaceStageRuntimeProvider>
@@ -154,6 +141,14 @@ function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
           onCancel={vm.rebuild.handleCancelRebuildConfirm}
         />
 
+        <WorkspaceRunStreamConsoles
+          currentStage={vm.stageNav.currentStage}
+          videoProfile={vm.project.videoProfile}
+          contentPlanStream={vm.execution.contentPlanStream}
+          storyToScriptStream={vm.execution.storyToScriptStream}
+          visualPlanStream={vm.execution.visualPlanStream}
+          scriptToStoryboardStream={vm.execution.scriptToStoryboardStream}
+        />
       </div>
     </div>
   )

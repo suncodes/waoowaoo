@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslations } from 'next-intl'
+import { AppIcon } from '@/components/ui/icons'
 
 export type LLMStageViewStatus =
   | 'pending'
@@ -385,7 +386,7 @@ export default function LLMStageStreamCard({
         {errorMessage && (
           <div className="mt-3 flex flex-col gap-2 rounded-lg bg-[var(--glass-tone-danger-bg)] px-4 py-2.5 text-[var(--glass-tone-danger-fg)]">
             <div className="flex items-center gap-2">
-              <span className="text-base">⚠️</span>
+              <AppIcon name="alert" className="h-4 w-4 shrink-0" />
               <span className="text-sm font-medium">{errorMessage}</span>
             </div>
           </div>
