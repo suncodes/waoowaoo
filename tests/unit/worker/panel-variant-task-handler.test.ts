@@ -43,17 +43,12 @@ const sharedMock = vi.hoisted(() => ({
   })),
 }))
 
-const outboundMock = vi.hoisted(() => ({
-  normalizeReferenceImagesForGeneration: vi.fn(async (refs: string[]) => refs.map((item) => `normalized:${item}`)),
-}))
-
 const promptMock = vi.hoisted(() => ({
   buildPrompt: vi.fn(() => 'panel-variant-prompt'),
 }))
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('@/lib/workers/utils', () => utilsMock)
-vi.mock('@/lib/media/outbound-image', () => outboundMock)
 vi.mock('@/lib/logging/core', () => ({ logInfo: vi.fn() }))
 vi.mock('@/lib/workers/handlers/image-task-handler-shared', async () => {
   const actual = await vi.importActual<typeof import('@/lib/workers/handlers/image-task-handler-shared')>(
@@ -146,8 +141,8 @@ describe('worker panel-variant-task-handler behavior', () => {
         options: expect.objectContaining({
           aspectRatio: '16:9',
           referenceImages: [
-            'normalized:https://signed.example/cos/panel-source.png',
-            'normalized:https://signed.example/cos/hero-default.png',
+            'https://signed.example/cos/panel-source.png',
+            'https://signed.example/ref-character.png',
           ],
         }),
       }),
@@ -184,11 +179,26 @@ describe('worker panel-variant-task-handler behavior', () => {
       },
     }
 
+    sharedMock.collectPanelReferenceImages.mockResolvedValueOnce([])
     await handlePanelVariantTask(buildJob(payload))
 
-    expect(outboundMock.normalizeReferenceImagesForGeneration).toHaveBeenCalledWith([
-      'https://signed.example/cos/panel-source.png',
-    ])
+    expect(sharedMock.collectPanelReferenceImages).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        includeCharacterAssets: false,
+        includeLocationAssets: false,
+        includePropAssets: true,
+      }),
+    )
+    expect(utilsMock.resolveImageSourceFromGeneration).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        options: expect.objectContaining({
+          referenceImages: ['https://signed.example/cos/panel-source.png'],
+        }),
+      }),
+    )
     expect(promptMock.buildPrompt).toHaveBeenCalledWith(expect.objectContaining({
       variables: expect.objectContaining({
         character_assets: '未使用角色参考图',

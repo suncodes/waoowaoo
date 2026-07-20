@@ -13,6 +13,18 @@ import { resolveAnalysisModel } from './resolve-analysis-model'
 import { seedProjectLocationBackedImageSlots } from '@/lib/assets/services/location-backed-assets'
 import { normalizeLocationAvailableSlots } from '@/lib/location-available-slots'
 import { resolvePropVisualDescription } from '@/lib/assets/prop-description'
+import {
+  bindStoredVisualUnitsToAnchors,
+  buildVisualAnchors,
+} from '@/lib/creation-workspace/visual-anchors'
+import {
+  cloneWorkspaceValue,
+  createVisualArtifactMeta,
+  readVisualArtifactMeta,
+  stripWorkspaceArtifactMeta,
+  withVisualArtifactMeta,
+} from '@/lib/creation-workspace/artifact-state'
+import type { Prisma } from '@prisma/client'
 
 function readAssetKind(value: Record<string, unknown>): string {
   return typeof value.assetKind === 'string' ? value.assetKind : 'location'
@@ -41,6 +53,72 @@ function nameMatchesWithAlias(existingName: string, newName: string): boolean {
 
 function parseJsonResponse(responseText: string): Record<string, unknown> {
   return safeParseJsonObject(responseText)
+}
+
+function asInputJson(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
+}
+
+async function syncEpisodeVisualAnchors(params: {
+  projectInternalId: string
+  episodeId: string
+  includeAssetIds: string[]
+}) {
+  const [projectAssets, episode] = await Promise.all([
+    prisma.novelPromotionProject.findUnique({
+      where: { id: params.projectInternalId },
+      include: {
+        characters: { select: { id: true, name: true, introduction: true } },
+        locations: { select: { id: true, name: true, summary: true, assetKind: true } },
+      },
+    }),
+    prisma.novelPromotionEpisode.findUnique({
+      where: { id: params.episodeId },
+      select: {
+        contentPlan: true,
+        productionBible: true,
+        clips: {
+          orderBy: [{ start: 'asc' }, { createdAt: 'asc' }],
+          select: {
+            id: true,
+            summary: true,
+            content: true,
+            screenplay: true,
+            characters: true,
+            location: true,
+            props: true,
+          },
+        },
+      },
+    }),
+  ])
+  if (!projectAssets || !episode?.contentPlan || !episode.productionBible) return
+
+  const anchors = buildVisualAnchors({
+    contentPlan: episode.contentPlan,
+    clips: episode.clips,
+    characters: projectAssets.characters,
+    locations: projectAssets.locations,
+    includeAssetIds: params.includeAssetIds,
+  })
+  const now = new Date().toISOString()
+  const existingMeta = readVisualArtifactMeta(episode.productionBible)
+  if (existingMeta && JSON.stringify(existingMeta.anchors) === JSON.stringify(anchors)) return
+  const meta = cloneWorkspaceValue(existingMeta || createVisualArtifactMeta(now, 'ai'))
+  meta.anchors = anchors
+  if (meta.plan) {
+    meta.plan.visualUnits = bindStoredVisualUnitsToAnchors(meta.plan.visualUnits, anchors)
+  }
+  meta.status = 'needs_review'
+  meta.revision = existingMeta ? existingMeta.revision + 1 : 1
+  meta.updatedAt = now
+  meta.updatedBy = 'ai'
+  await prisma.novelPromotionEpisode.update({
+    where: { id: params.episodeId },
+    data: {
+      productionBible: asInputJson(withVisualArtifactMeta(episode.productionBible, meta)),
+    },
+  })
 }
 
 export async function handleAnalyzeNovelTask(job: Job<TaskJobData>) {
@@ -73,15 +151,45 @@ export async function handleAnalyzeNovelTask(job: Job<TaskJobData>) {
     projectAnalysisModel: novelData.analysisModel,
   })
 
-  const firstEpisode = await prisma.novelPromotionEpisode.findFirst({
-    where: { novelPromotionProjectId: novelData.id },
-    orderBy: { createdAt: 'asc' },
-    select: {
-      novelText: true,
-    },
-  })
+  const requestedEpisodeId = readText(payload.episodeId) || readText(job.data.episodeId)
+  const targetEpisode = requestedEpisodeId
+    ? await prisma.novelPromotionEpisode.findUnique({
+        where: { id: requestedEpisodeId },
+        select: {
+          id: true,
+          novelPromotionProjectId: true,
+          novelText: true,
+          contentPlan: true,
+          productionBible: true,
+        },
+      })
+    : await prisma.novelPromotionEpisode.findFirst({
+        where: { novelPromotionProjectId: novelData.id },
+        orderBy: { createdAt: 'asc' },
+        select: {
+          id: true,
+          novelPromotionProjectId: true,
+          novelText: true,
+          contentPlan: true,
+          productionBible: true,
+        },
+      })
+  if (requestedEpisodeId && (!targetEpisode || targetEpisode.novelPromotionProjectId !== novelData.id)) {
+    throw new Error('Episode not found')
+  }
 
-  let contentToAnalyze = readText(novelData.globalAssetText) || readText(firstEpisode?.novelText)
+  const analysisSources: string[] = []
+  if (readText(targetEpisode?.novelText)) {
+    analysisSources.push(`【当前内容】\n${readText(targetEpisode?.novelText)}`)
+  }
+  if (targetEpisode?.contentPlan) {
+    analysisSources.push(`【内容结构与画面提示】\n${JSON.stringify(stripWorkspaceArtifactMeta(targetEpisode.contentPlan), null, 2)}`)
+  }
+  if (readText(novelData.globalAssetText)) {
+    analysisSources.push(`【全局设定】\n${readText(novelData.globalAssetText)}`)
+  }
+
+  let contentToAnalyze = analysisSources.join('\n\n')
   if (!contentToAnalyze.trim()) {
     throw new Error('请先填写全局资产设定或剧本内容')
   }
@@ -151,7 +259,7 @@ export async function handleAnalyzeNovelTask(job: Job<TaskJobData>) {
                 stepId: 'analyze_characters',
                 stepTitle: '角色分析',
                 stepIndex: 1,
-                stepTotal: 2,
+                stepTotal: 3,
               },
             }),
             executeAiTextStep({
@@ -365,6 +473,18 @@ export async function handleAnalyzeNovelTask(job: Job<TaskJobData>) {
     })
     existingPropNameSet.add(normalizedName)
     createdProps.push(created)
+  }
+
+  if (targetEpisode?.id && targetEpisode.productionBible) {
+    await syncEpisodeVisualAnchors({
+      projectInternalId: novelData.id,
+      episodeId: targetEpisode.id,
+      includeAssetIds: [
+        ...createdCharacters.map((item) => item.id),
+        ...createdLocations.map((item) => item.id),
+        ...createdProps.map((item) => item.id),
+      ],
+    })
   }
 
   await reportTaskProgress(job, 96, {

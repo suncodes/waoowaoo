@@ -11,6 +11,8 @@ interface AutoFollowStream {
   status?: string | null
   isRunning?: boolean
   isRecoveredRunning?: boolean
+  activeStepId?: string | null
+  orderedSteps?: Array<{ id: string }>
 }
 
 interface CreationWorkspaceAutoFollowInput {
@@ -35,6 +37,12 @@ function isActive(stream: AutoFollowStream) {
 
 function targetKey(taskId: string, stream: AutoFollowStream) {
   return `${taskId}:${stream.runId?.trim() || 'active'}`
+}
+
+function isContentUnitRewrite(stream: AutoFollowStream) {
+  return stream.activeStepId === 'content_unit_rewrite'
+    || stream.activeStepId === 'content_unit_review'
+    || stream.orderedSteps?.some((step) => step.id === 'content_unit_rewrite') === true
 }
 
 export function resolveCreationWorkspaceAutoFollowTarget({
@@ -67,6 +75,14 @@ export function resolveCreationWorkspaceAutoFollowTarget({
     }
   }
   if (isActive(contentPlanStream)) {
+    if (isContentUnitRewrite(contentPlanStream)) {
+      return {
+        key: targetKey('content-unit-rewrite', contentPlanStream),
+        stageId: 'content',
+        view: 'script',
+        route: 'script',
+      }
+    }
     return {
       key: targetKey('content-plan', contentPlanStream),
       stageId: 'content',
@@ -107,6 +123,7 @@ export function useCreationWorkspaceAutoFollow({
 
     handledTargetRef.current = target.key
     if (stageOrder(currentStage) > stageOrder(target.stageId)) return
+    if (target.route === 'content-plan' && currentStage === 'content' && stageView === 'script') return
     if (currentStage === target.stageId && (!target.view || stageView === target.view)) return
 
     onStageChange(target.route)

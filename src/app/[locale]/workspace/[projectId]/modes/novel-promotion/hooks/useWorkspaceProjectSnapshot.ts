@@ -50,6 +50,7 @@ export function useWorkspaceProjectSnapshot({
       globalAssetText: projectData?.globalAssetText || '',
       novelText: episode?.novelText || '',
       contentPlan: episode?.contentPlan,
+      productionBible: episode?.productionBible,
       analysisModel: projectData?.analysisModel,
       characterModel: projectData?.characterModel,
       locationModel: projectData?.locationModel,
@@ -68,5 +69,5 @@ export function useWorkspaceProjectSnapshot({
       customArtStyleReferenceImageUrl: projectData?.customArtStyleReferenceImageUrl || projectData?.customArtStyleReferenceImage || '',
       videoProfile: resolveVideoProfile(projectData?.videoProfile),
     }
-  }, [episode?.contentPlan, episode?.novelText, episode?.storyboards, project.novelPromotionData, urlStage, urlStageView])
+  }, [episode?.contentPlan, episode?.novelText, episode?.productionBible, episode?.storyboards, project.novelPromotionData, urlStage, urlStageView])
 }

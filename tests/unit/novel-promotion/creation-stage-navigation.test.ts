@@ -89,4 +89,66 @@ describe('creation stage navigation', () => {
     expect(items.find((item) => item.id === 'content')?.status).toBe('completed')
     expect(items.find((item) => item.id === 'visual-design')?.status).toBe('ready')
   })
+
+  it('uses workspace approval state before legacy data readiness', () => {
+    const contentPlan = {
+      _workspace: {
+        schemaVersion: 1,
+        status: 'needs_review',
+        revision: 2,
+        approvedRevision: null,
+        updatedAt: '2026-07-20T00:00:00.000Z',
+        updatedBy: 'ai',
+        units: {},
+        latestImpact: null,
+        downstream: { visualDesign: false, storyboard: false, production: false },
+      },
+    }
+    const items = buildCreationStageNavigation({
+      stageArtifacts: { ...emptyArtifacts, hasContentPlan: true },
+      videoProfile: resolveVideoProfile({ preset: VIDEO_PROFILE_PRESET.BOOK_GUIDE }),
+      contentPlanStream: idleStream,
+      storyToScriptStream: idleStream,
+      visualPlanStream: idleStream,
+      scriptToStoryboardStream: idleStream,
+      contentPlan,
+      t: (key) => key,
+    })
+    expect(items.find((item) => item.id === 'content')?.status).toBe('attention')
+    expect(items.find((item) => item.id === 'visual-design')?.status).toBe('not_started')
+  })
+
+  it('marks persisted storyboard and production work stale after an upstream edit', () => {
+    const items = buildCreationStageNavigation({
+      stageArtifacts: {
+        ...emptyArtifacts,
+        hasContentPlan: true,
+        hasScript: true,
+        hasVisualPlan: true,
+        hasStoryboard: true,
+        hasVideo: true,
+      },
+      videoProfile: resolveVideoProfile({ preset: VIDEO_PROFILE_PRESET.AI_COMIC }),
+      contentPlanStream: idleStream,
+      storyToScriptStream: idleStream,
+      visualPlanStream: idleStream,
+      scriptToStoryboardStream: idleStream,
+      contentPlan: {
+        _workspace: {
+          schemaVersion: 1,
+          status: 'approved',
+          revision: 3,
+          approvedRevision: 3,
+          updatedAt: '2026-07-20T00:00:00.000Z',
+          updatedBy: 'user',
+          units: {},
+          latestImpact: null,
+          downstream: { visualDesign: false, storyboard: true, production: true },
+        },
+      },
+      t: (key) => key,
+    })
+    expect(items.find((item) => item.id === 'storyboard-preview')?.status).toBe('stale')
+    expect(items.find((item) => item.id === 'production')?.status).toBe('stale')
+  })
 })

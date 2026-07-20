@@ -34,6 +34,7 @@ import { resolveAnalysisModel } from './resolve-analysis-model'
 import { createArtifact, listArtifacts } from '@/lib/run-runtime/service'
 import { assertWorkflowRunActive, withWorkflowRunLease } from '@/lib/run-runtime/workflow-lease'
 import { parseScreenplayPayload } from './screenplay-convert-helpers'
+import { readContentArtifactMeta } from '@/lib/creation-workspace/artifact-state'
 
 function readAssetKind(value: Record<string, unknown>): string {
   return typeof value.assetKind === 'string' ? value.assetKind : 'location'
@@ -103,11 +104,18 @@ export async function handleStoryToScriptTask(job: Job<TaskJobData>) {
       id: true,
       novelPromotionProjectId: true,
       novelText: true,
+      contentPlan: true,
     },
   })
   if (!episode || episode.novelPromotionProjectId !== novelData.id) {
     throw new Error('Episode not found')
   }
+  const contentMeta = readContentArtifactMeta(episode.contentPlan)
+  const lockedClipIds = new Set(
+    Object.entries(contentMeta?.units || {})
+      .filter(([, state]) => state.locked)
+      .map(([unitId]) => unitId),
+  )
 
   const model = await resolveAnalysisModel({
     userId: job.data.userId,
@@ -556,6 +564,7 @@ export async function handleStoryToScriptTask(job: Job<TaskJobData>) {
           episodeId,
           clipList: result.clipList,
           db: tx,
+          lockedClipIds,
         })
         const clipIdMap = new Map(createdClipRows.map((item) => [item.clipKey, item.id]))
 
@@ -563,6 +572,7 @@ export async function handleStoryToScriptTask(job: Job<TaskJobData>) {
           if (!screenplayResult.success || !screenplayResult.screenplay) continue
           const clipRecordId = resolveClipRecordId(clipIdMap, screenplayResult.clipId)
           if (!clipRecordId) continue
+          if (lockedClipIds.has(clipRecordId)) continue
           await tx.novelPromotionClip.update({
             where: { id: clipRecordId },
             data: {

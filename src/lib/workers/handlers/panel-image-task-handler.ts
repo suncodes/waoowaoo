@@ -69,6 +69,8 @@ function buildPanelPromptContext(params: {
     videoPrompt: string | null
     location: string | null
     characters: string | null
+    props: string | null
+    sourceAnchor: unknown
     srtSegment: string | null
     photographyRules: string | null
     actingNotes: string | null
@@ -124,6 +126,8 @@ function buildPanelPromptContext(params: {
       video_prompt: params.panel.videoPrompt || '',
       location: params.panel.location || '',
       characters: panelCharacters,
+      props: parseDescriptionList(params.panel.props),
+      source_anchor: params.panel.sourceAnchor || null,
       source_text: params.panel.srtSegment || '',
       photography_rules: parseJsonUnknown(params.panel.photographyRules),
       acting_notes: parseJsonUnknown(params.panel.actingNotes),
@@ -231,6 +235,8 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
       videoPrompt: panel.videoPrompt,
       location: panel.location,
       characters: panel.characters,
+      props: panel.props,
+      sourceAnchor: panel.sourceAnchor,
       srtSegment: panel.srtSegment,
       photographyRules: panel.photographyRules,
       actingNotes: panel.actingNotes,

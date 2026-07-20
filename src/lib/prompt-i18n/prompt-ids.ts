@@ -18,6 +18,7 @@ export const PROMPT_IDS = {
   NP_CHARACTER_REGENERATE: 'np_character_regenerate',
   NP_CONTENT_PLAN: 'np_content_plan',
   NP_CONTENT_REVIEW: 'np_content_review',
+  NP_CONTENT_UNIT_REWRITE: 'np_content_unit_rewrite',
   NP_EPISODE_SPLIT: 'np_episode_split',
   NP_IMAGE_PROMPT_MODIFY: 'np_image_prompt_modify',
   NP_LOCATION_CREATE: 'np_location_create',

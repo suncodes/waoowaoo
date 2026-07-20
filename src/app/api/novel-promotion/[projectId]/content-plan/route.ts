@@ -13,6 +13,7 @@ export const POST = apiHandler(async (
   const { projectId } = await context.params
   const body = await request.json().catch(() => ({}))
   const episodeId = typeof body?.episodeId === 'string' ? body.episodeId.trim() : ''
+  const targetUnitId = typeof body?.targetUnitId === 'string' ? body.targetUnitId.trim() : ''
   if (!episodeId) throw new ApiError('INVALID_PARAMS')
 
   const authResult = await requireProjectAuthLight(projectId)
@@ -27,7 +28,9 @@ export const POST = apiHandler(async (
     targetId: episodeId,
     routePath: `/api/novel-promotion/${projectId}/content-plan`,
     body: { ...body, displayMode: 'detail' },
-    dedupeKey: `content_plan_run:${episodeId}`,
+    dedupeKey: targetUnitId
+      ? `content_plan_unit_rewrite:${episodeId}:${targetUnitId}`
+      : `content_plan_run:${episodeId}`,
     priority: 2,
   })
   if (response) return response

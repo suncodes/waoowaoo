@@ -37,12 +37,33 @@ export function useWorkspacePlanningFlows({
     }
   }, [analysisModel, contentPlanStream, episodeId, setTransitionProgress, t])
 
-  const runVisualPlan = useCallback(async () => {
+  const runContentUnitRewrite = useCallback(async (
+    content: string,
+    targetUnitId: string,
+    instruction?: string,
+  ) => {
+    if (!episodeId) throw new Error(t('execution.selectEpisode'))
+    setTransitionProgress({ message: t('execution.contentPlanRunning'), step: 'planning' })
+    const result = await contentPlanStream.run({
+      episodeId,
+      content,
+      model: analysisModel || undefined,
+      mode: 'rewrite_unit',
+      targetUnitId,
+      instruction,
+    })
+    if (result.status !== 'completed') {
+      throw new Error(result.errorMessage || t('execution.contentPlanFailed'))
+    }
+  }, [analysisModel, contentPlanStream, episodeId, setTransitionProgress, t])
+
+  const runVisualPlan = useCallback(async (deferStoryboard = false) => {
     if (!episodeId) throw new Error(t('execution.selectEpisode'))
     setTransitionProgress({ message: t('execution.visualPlanRunning'), step: 'planning' })
     const result = await visualPlanStream.run({
       episodeId,
       model: analysisModel || undefined,
+      deferStoryboard,
     })
     if (result.status !== 'completed') {
       throw new Error(result.errorMessage || t('execution.visualPlanFailed'))
@@ -65,6 +86,7 @@ export function useWorkspacePlanningFlows({
     contentPlanStream,
     visualPlanStream,
     runContentPlan,
+    runContentUnitRewrite,
     runVisualPlan,
     isPlanning,
   }

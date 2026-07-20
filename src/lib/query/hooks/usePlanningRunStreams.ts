@@ -17,9 +17,14 @@ type BasePlanningParams = {
 
 export type ContentPlanRunParams = BasePlanningParams & {
   content: string
+  mode?: 'full' | 'rewrite_unit'
+  targetUnitId?: string
+  instruction?: string
 }
 
-export type VisualPlanRunParams = BasePlanningParams
+export type VisualPlanRunParams = BasePlanningParams & {
+  deferStoryboard?: boolean
+}
 export type PlanningRunResult = RunResult
 
 async function resolvePlanningRunId(params: {
@@ -77,6 +82,9 @@ export function useContentPlanRunStream({ projectId, episodeId }: PlanningRunOpt
       episodeId: params.episodeId,
       content: params.content,
       model: params.model || undefined,
+      mode: params.mode || 'full',
+      targetUnitId: params.targetUnitId || undefined,
+      instruction: params.instruction || undefined,
       async: true,
       displayMode: 'detail',
     }),
@@ -100,6 +108,7 @@ export function useVisualPlanRunStream({ projectId, episodeId }: PlanningRunOpti
     buildRequestBody: (params) => ({
       episodeId: params.episodeId,
       model: params.model || undefined,
+      deferStoryboard: params.deferStoryboard === true,
       async: true,
       displayMode: 'detail',
     }),

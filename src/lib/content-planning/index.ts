@@ -52,6 +52,9 @@ function parseSourceAnchor(value: unknown, field: string, required: boolean): So
     ...(optionalString(value.startText) ? { startText: optionalString(value.startText) } : {}),
     ...(optionalString(value.endText) ? { endText: optionalString(value.endText) } : {}),
     ...(optionalString(value.chapter) ? { chapter: optionalString(value.chapter) } : {}),
+    ...(stringArray(value.visualAssetIds).length > 0
+      ? { visualAssetIds: stringArray(value.visualAssetIds) }
+      : {}),
   }
 }
 

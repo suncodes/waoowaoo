@@ -10,6 +10,12 @@ import { assertTaskActive } from '@/lib/workers/utils'
 import { resolveAnalysisModel } from './resolve-analysis-model'
 import { persistVisualPlan } from './visual-plan-persist'
 import {
+  bindVisualUnitsToAnchors,
+  buildVisualAnchors,
+} from '@/lib/creation-workspace/visual-anchors'
+import { stripWorkspaceArtifactMeta } from '@/lib/creation-workspace/artifact-state'
+import { isWorkspaceClipActive } from '@/lib/creation-workspace/guide-clips'
+import {
   executePlanningJsonStep,
   readTaskRunId,
   toJsonRecord,
@@ -27,8 +33,8 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
   const novelData = await prisma.novelPromotionProject.findUnique({
     where: { projectId: job.data.projectId },
     include: {
-      characters: { select: { name: true, introduction: true } },
-      locations: { select: { name: true, summary: true, assetKind: true } },
+      characters: { select: { id: true, name: true, introduction: true } },
+      locations: { select: { id: true, name: true, summary: true, assetKind: true } },
     },
   })
   if (!novelData) throw new Error('Novel promotion data not found')
@@ -38,7 +44,8 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
   })
   if (!episode || episode.novelPromotionProjectId !== novelData.id) throw new Error('Episode not found')
   if (!episode.creativeBrief || !episode.contentPlan) throw new Error('CONTENT_PLAN_REQUIRED')
-  if (episode.clips.length === 0) throw new Error('No clips found')
+  const activeClips = episode.clips.filter(isWorkspaceClipActive)
+  if (activeClips.length === 0) throw new Error('No clips found')
 
   const profile = resolveVideoProfile(payload.videoProfile ?? novelData.videoProfile)
   const model = await resolveAnalysisModel({
@@ -46,11 +53,14 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     inputModel: payload.model,
     projectAnalysisModel: novelData.analysisModel,
   })
-  const clips = episode.clips.map((clip) => ({
+  const clips = activeClips.map((clip) => ({
     id: clip.id,
     summary: clip.summary,
     content: clip.content,
     screenplay: clip.screenplay,
+    characters: clip.characters,
+    location: clip.location,
+    props: clip.props,
     duration: clip.duration,
   }))
   const assets = {
@@ -70,7 +80,7 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
       variables: {
         profile_json: JSON.stringify(profile, null, 2),
         creative_brief_json: JSON.stringify(episode.creativeBrief, null, 2),
-        content_plan_json: JSON.stringify(episode.contentPlan, null, 2),
+        content_plan_json: JSON.stringify(stripWorkspaceArtifactMeta(episode.contentPlan), null, 2),
         clips_json: JSON.stringify(clips, null, 2),
         assets_json: JSON.stringify(assets, null, 2),
         video_ratio: novelData.videoRatio,
@@ -83,7 +93,18 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     stepIndex: 1,
     stepTotal: 1,
   })
-  const result = parseVisualPlanResult(rawPlan, profile, clips.map((clip) => clip.id))
+  const parsedResult = parseVisualPlanResult(rawPlan, profile, clips.map((clip) => clip.id))
+  const anchors = buildVisualAnchors({
+    contentPlan: episode.contentPlan,
+    clips,
+    characters: novelData.characters,
+    locations: novelData.locations,
+  })
+  const result = {
+    ...parsedResult,
+    visualUnits: bindVisualUnitsToAnchors(parsedResult.visualUnits, anchors),
+  }
+  const deferStoryboard = payload.deferStoryboard === true
 
   await reportTaskProgress(job, 82, { stage: 'visual_plan_persist', displayMode: 'detail' })
   await assertTaskActive(job, 'visual_plan_persist')
@@ -92,6 +113,8 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     result,
     isBookGuide: isBookGuideProfile(profile),
     narratorLabel: job.data.locale === 'en' ? 'Narrator' : '旁白',
+    anchors,
+    deferStoryboard,
   })
   await createArtifact({
     runId: readTaskRunId(job),
@@ -105,6 +128,6 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     episodeId,
     profilePreset: profile.preset,
     visualUnitCount: result.visualUnits.length,
-    storyboardPersisted: isBookGuideProfile(profile),
+    storyboardPersisted: isBookGuideProfile(profile) && !deferStoryboard,
   }
 }

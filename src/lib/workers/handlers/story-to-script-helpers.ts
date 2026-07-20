@@ -207,6 +207,7 @@ export async function persistClips(params: {
   episodeId: string
   clipList: StoryToScriptClipCandidate[]
   db?: ClipPersistDb
+  lockedClipIds?: ReadonlySet<string>
 }) {
   const db = params.db ?? prisma
   const clipModel = db.novelPromotionClip as unknown as {
@@ -225,6 +226,10 @@ export async function persistClips(params: {
     const clip = params.clipList[index]
     const target = existing[index]
     if (target) {
+      if (params.lockedClipIds?.has(target.id)) {
+        createdClips.push({ id: target.id, clipKey: clip.id })
+        continue
+      }
       const updated = await clipModel.update({
         where: { id: target.id },
         data: {
@@ -262,7 +267,10 @@ export async function persistClips(params: {
     createdClips.push({ id: created.id, clipKey: clip.id })
   }
 
-  const staleClipIds = existing.slice(params.clipList.length).map((item) => item.id)
+  const staleClipIds = existing
+    .slice(params.clipList.length)
+    .filter((item) => !params.lockedClipIds?.has(item.id))
+    .map((item) => item.id)
   if (staleClipIds.length > 0) {
     await clipModel.deleteMany({
       where: {

@@ -1,0 +1,52 @@
+You are a video content editor. Rewrite only the requested content unit. Do not change neighboring units or invent facts absent from the source material.
+
+VideoProfile:
+{profile_json}
+
+Source material:
+{source_text}
+
+Unit type: {unit_type}
+
+Current unit:
+{current_unit_json}
+
+Neighboring units for continuity only:
+{neighbor_units_json}
+
+Revision instruction:
+{instruction}
+
+Return JSON only, without Markdown.
+
+For unit_type=guide_segment return:
+{
+  "segment": {
+    "title": "segment title",
+    "narration": "voice-ready narration",
+    "visualPurpose": "information purpose of the visual",
+    "visualHints": ["visualization idea"],
+    "onScreenText": "optional short text",
+    "estimatedDurationSec": 20,
+    "spoilerLevel": "none|light|full",
+    "sourceAnchor": {"label": "chapter or location", "quote": "include only when supported", "chapter": "chapter"}
+  }
+}
+
+For unit_type=script_clip return:
+{
+  "clip": {
+    "summary": "clip summary",
+    "content": "clip content",
+    "screenplay": {
+      "scenes": [{
+        "scene_number": 1,
+        "heading": {"int_ext": "INT or EXT", "location": "location", "time": "time"},
+        "description": "scene description",
+        "content": [{"type": "action", "text": "action"}]
+      }]
+    }
+  }
+}
+
+Keep the current unit's narrative purpose and continuity. A guide must retain reliable source support and spoiler policy. A script rewrite must affect only the selected clip. Unless instructed otherwise, favor concise, natural spoken language and executable visuals.

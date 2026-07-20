@@ -22,6 +22,7 @@ import { buildWorkspaceControllerViewModel } from './workspace-controller-view-m
 import type { NovelPromotionWorkspaceProps } from '../types'
 import { useRouter } from '@/i18n/navigation'
 import { resolveEpisodeStageArtifacts } from '@/lib/novel-promotion/stage-readiness'
+import { useWorkspaceArtifactCommands } from './useWorkspaceArtifactCommands'
 
 export function useNovelPromotionWorkspaceController({
   project,
@@ -89,6 +90,11 @@ export function useNovelPromotionWorkspaceController({
     episodeId,
     onStageChange,
   })
+  const artifactCommands = useWorkspaceArtifactCommands({
+    projectId,
+    episodeId,
+    onRefresh,
+  })
 
   const rebuildState = useRebuildConfirm({
     episodeId,
@@ -108,6 +114,7 @@ export function useNovelPromotionWorkspaceController({
     analysisModel: projectSnapshot.analysisModel,
     videoProfile: projectSnapshot.videoProfile,
     contentPlan: projectSnapshot.contentPlan,
+    productionBible: projectSnapshot.productionBible,
     novelText: projectSnapshot.novelText,
     t,
     onRefresh,
@@ -157,6 +164,8 @@ export function useNovelPromotionWorkspaceController({
     storyToScriptStream: execution.storyToScriptStream,
     visualPlanStream: execution.visualPlanStream,
     scriptToStoryboardStream: execution.scriptToStoryboardStream,
+    contentPlan: projectSnapshot.contentPlan,
+    productionBible: projectSnapshot.productionBible,
     t: (key) => t(`workspaceFlow.v2.${key}`),
   })
   const workflowItems = workspaceV2Enabled ? creationWorkflowItems : legacyWorkflowItems
@@ -180,6 +189,7 @@ export function useNovelPromotionWorkspaceController({
     handleUpdateConfig: configActions.handleUpdateConfig,
     runWithRebuildConfirm: rebuildState.runWithRebuildConfirm,
     runStoryToScriptFlow: execution.runStoryToScriptFlow,
+    runContentUnitRewrite: execution.runContentUnitRewrite,
     runVisualPlanFlow: execution.runVisualPlanFlow,
     runScriptToStoryboardFlow: execution.runScriptToStoryboardFlow,
     handleAnalyzeAssets: execution.handleAnalyzeAssets,
@@ -190,6 +200,21 @@ export function useNovelPromotionWorkspaceController({
     handleGenerateAllVideos: videoActions.handleGenerateAllVideos,
     handleUpdateVideoPrompt: videoActions.handleUpdateVideoPrompt,
     handleUpdatePanelVideoModel: videoActions.handleUpdatePanelVideoModel,
+    saveGuidePlan: (value, changedUnitIds) => artifactCommands.saveGuidePlan({
+      type: 'save_guide_plan',
+      plan: value,
+      changedUnitIds,
+    }),
+    toggleContentLock: artifactCommands.toggleContentLock,
+    acceptContentCandidate: artifactCommands.acceptContentCandidate,
+    discardContentCandidate: artifactCommands.discardContentCandidate,
+    restoreContentUnit: artifactCommands.restoreContentUnit,
+    approveStage: artifactCommands.approveStage,
+    materializeGuideStoryboard: async () => {
+      const result = await artifactCommands.materializeGuideStoryboard()
+      configActions.handleStageChange('storyboard')
+      return result
+    },
   })
 
   const uiState = {

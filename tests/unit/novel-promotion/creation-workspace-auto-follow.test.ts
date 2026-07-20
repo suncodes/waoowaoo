@@ -43,4 +43,23 @@ describe('creation workspace task auto follow', () => {
       scriptToStoryboardStream: idle,
     })).toBeNull()
   })
+
+  it('opens the document view for a local content rewrite', () => {
+    expect(resolveCreationWorkspaceAutoFollowTarget({
+      contentPlanStream: {
+        ...idle,
+        runId: 'rewrite-1',
+        status: 'running',
+        isRunning: true,
+        activeStepId: 'content_unit_rewrite',
+      },
+      storyToScriptStream: idle,
+      visualPlanStream: idle,
+      scriptToStoryboardStream: idle,
+    })).toMatchObject({
+      stageId: 'content',
+      view: 'script',
+      route: 'script',
+    })
+  })
 })

@@ -8,7 +8,11 @@ const prismaMock = vi.hoisted(() => ({
     findUnique: vi.fn(),
     update: vi.fn(async () => ({})),
   },
-  novelPromotionEpisode: { findFirst: vi.fn() },
+  novelPromotionEpisode: {
+    findFirst: vi.fn(),
+    findUnique: vi.fn(),
+    update: vi.fn(async () => ({})),
+  },
   novelPromotionCharacter: { create: vi.fn(async () => ({ id: 'char-new-1' })) },
   novelPromotionLocation: { create: vi.fn(async () => ({ id: 'loc-new-1' })) },
   locationImage: {
@@ -101,8 +105,12 @@ describe('worker analyze-novel behavior', () => {
       locations: [{ id: 'loc-existing', name: '已有场景', summary: 'old' }],
     })
 
-    prismaMock.novelPromotionEpisode.findFirst.mockResolvedValue({
+    prismaMock.novelPromotionEpisode.findUnique.mockResolvedValue({
+      id: 'episode-1',
+      novelPromotionProjectId: 'np-project-1',
       novelText: '首集内容',
+      contentPlan: null,
+      productionBible: null,
     })
 
     llmMock.getCompletionContent
@@ -146,7 +154,13 @@ describe('worker analyze-novel behavior', () => {
       characters: [],
       locations: [],
     })
-    prismaMock.novelPromotionEpisode.findFirst.mockResolvedValueOnce({ novelText: '' })
+    prismaMock.novelPromotionEpisode.findUnique.mockResolvedValueOnce({
+      id: 'episode-1',
+      novelPromotionProjectId: 'np-project-1',
+      novelText: '',
+      contentPlan: null,
+      productionBible: null,
+    })
 
     await expect(handleAnalyzeNovelTask(buildJob())).rejects.toThrow('请先填写全局资产设定或剧本内容')
   })
@@ -204,11 +218,6 @@ describe('worker analyze-novel behavior', () => {
           availableSlots: '[]',
         },
       ],
-    })
-
-    expect(prismaMock.novelPromotionProject.update).toHaveBeenCalledWith({
-      where: { id: 'np-project-1' },
-      data: { artStylePrompt: 'cinematic style' },
     })
 
     expect(workerMock.reportTaskProgress).toHaveBeenCalledWith(

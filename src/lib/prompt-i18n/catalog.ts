@@ -109,6 +109,17 @@ export const PROMPT_CATALOG: Record<PromptId, PromptCatalogEntry> = {
     pathStem: 'novel-promotion/content_review',
     variableKeys: ['profile_json', 'source_text', 'plan_json'],
   },
+  [PROMPT_IDS.NP_CONTENT_UNIT_REWRITE]: {
+    pathStem: 'novel-promotion/content_unit_rewrite',
+    variableKeys: [
+      'profile_json',
+      'source_text',
+      'unit_type',
+      'current_unit_json',
+      'neighbor_units_json',
+      'instruction',
+    ],
+  },
   [PROMPT_IDS.NP_EPISODE_SPLIT]: {
     pathStem: 'novel-promotion/episode_split',
     variableKeys: ['CONTENT'],

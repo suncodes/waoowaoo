@@ -68,12 +68,14 @@ function parseSourceAnchor(value: unknown): SourceAnchor | undefined {
   const startText = optionalString(value.startText)
   const endText = optionalString(value.endText)
   const chapter = optionalString(value.chapter)
+  const visualAssetIds = stringArray(value.visualAssetIds)
   return {
     label: value.label.trim(),
     ...(quote ? { quote } : {}),
     ...(startText ? { startText } : {}),
     ...(endText ? { endText } : {}),
     ...(chapter ? { chapter } : {}),
+    ...(visualAssetIds.length > 0 ? { visualAssetIds } : {}),
   }
 }
 

@@ -50,11 +50,14 @@ export default function CreationAssistantPanel({
   const [mobileOpen, setMobileOpen] = useState(false)
   const isBookGuide = isBookGuideProfile(videoProfile)
   const current = items.find((item) => item.id === currentStage) || items[0]
+  const isContentRewrite = contentPlanStream.activeStepId === 'content_unit_rewrite'
+    || contentPlanStream.activeStepId === 'content_unit_review'
+    || contentPlanStream.orderedSteps.some((step) => step.id === 'content_unit_rewrite')
   const allTasks = useMemo<StageTaskDescriptor[]>(() => [
     {
       id: 'content-plan',
       stageId: 'content',
-      label: t('tasks.contentPlan'),
+      label: isContentRewrite ? t('tasks.contentRewrite') : t('tasks.contentPlan'),
       stream: contentPlanStream,
       appliesToBookGuide: true,
     },
@@ -79,7 +82,7 @@ export default function CreationAssistantPanel({
       stream: scriptToStoryboardStream,
       appliesToBookGuide: false,
     },
-  ], [contentPlanStream, scriptToStoryboardStream, storyToScriptStream, t, visualPlanStream])
+  ], [contentPlanStream, isContentRewrite, scriptToStoryboardStream, storyToScriptStream, t, visualPlanStream])
   const applicableTasks = allTasks.filter((task) => !isBookGuide || task.appliesToBookGuide)
   const activeTasks = applicableTasks.filter((task) => isCreationTaskActive(task.stream))
   const stageTasks = applicableTasks.filter((task) => task.stageId === currentStage)

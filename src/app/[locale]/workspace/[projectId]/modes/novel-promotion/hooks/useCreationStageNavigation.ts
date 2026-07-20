@@ -7,6 +7,11 @@ import {
   type CreationStageId,
   type CreationStageStatus,
 } from '@/lib/creation-workspace/stages'
+import {
+  readContentArtifactMeta,
+  readVisualArtifactMeta,
+  type WorkspaceArtifactStatus,
+} from '@/lib/creation-workspace/artifact-state'
 import { isBookGuideProfile, type VideoProfile } from '@/lib/video-profile'
 
 interface StageRunState {
@@ -22,6 +27,8 @@ interface UseCreationStageNavigationParams {
   storyToScriptStream: StageRunState
   visualPlanStream: StageRunState
   scriptToStoryboardStream: StageRunState
+  contentPlan?: unknown
+  productionBible?: unknown
   t: (key: string) => string
 }
 
@@ -54,6 +61,22 @@ function resolveStageStatus(params: {
   return 'not_started'
 }
 
+function resolveArtifactStatus(params: {
+  artifactStatus?: WorkspaceArtifactStatus
+  completed: boolean
+  ready: boolean
+  streams?: StageRunState[]
+}): CreationStageStatus {
+  const runStatus = resolveRunStatus(params.streams || [])
+  if (runStatus) return runStatus
+  if (params.artifactStatus === 'approved') return 'completed'
+  if (params.artifactStatus === 'stale') return 'stale'
+  if (params.artifactStatus === 'draft' || params.artifactStatus === 'needs_review') return 'attention'
+  if (params.completed) return 'completed'
+  if (params.ready) return 'ready'
+  return 'not_started'
+}
+
 export function buildCreationStageNavigation({
   stageArtifacts,
   videoProfile,
@@ -61,34 +84,49 @@ export function buildCreationStageNavigation({
   storyToScriptStream,
   visualPlanStream,
   scriptToStoryboardStream,
+  contentPlan,
+  productionBible,
   t,
 }: UseCreationStageNavigationParams): CreationStageNavItem[] {
   const isBookGuide = isBookGuideProfile(videoProfile)
-  const contentCompleted = stageArtifacts.hasContentPlan && (isBookGuide || stageArtifacts.hasScript)
+  const contentMeta = readContentArtifactMeta(contentPlan)
+  const visualMeta = readVisualArtifactMeta(productionBible)
+  const legacyContentCompleted = stageArtifacts.hasContentPlan && (isBookGuide || stageArtifacts.hasScript)
+  const contentCompleted = contentMeta ? contentMeta.status === 'approved' : legacyContentCompleted
   const visualReady = contentCompleted || stageArtifacts.hasScript
-  const storyboardReady = stageArtifacts.hasVisualPlan || visualReady
+  const legacyVisualCompleted = stageArtifacts.hasVisualPlan
+  const visualCompleted = visualMeta ? visualMeta.status === 'approved' : legacyVisualCompleted
+  const storyboardReady = visualCompleted || (!visualMeta && visualReady)
+  const storyboardStale = stageArtifacts.hasStoryboard && (
+    contentMeta?.downstream.storyboard === true || visualMeta?.downstream.storyboard === true
+  )
+  const productionStale = stageArtifacts.hasVideo && (
+    contentMeta?.downstream.production === true || visualMeta?.downstream.production === true
+  )
 
   const statusById: Record<CreationStageId, CreationStageStatus> = {
     setup: resolveStageStatus({
       completed: stageArtifacts.hasStory,
       ready: true,
     }),
-    content: resolveStageStatus({
-      completed: contentCompleted,
+    content: resolveArtifactStatus({
+      artifactStatus: contentMeta?.status,
+      completed: legacyContentCompleted,
       ready: stageArtifacts.hasStory,
       streams: isBookGuide ? [contentPlanStream] : [contentPlanStream, storyToScriptStream],
     }),
-    'visual-design': resolveStageStatus({
-      completed: stageArtifacts.hasVisualPlan,
+    'visual-design': resolveArtifactStatus({
+      artifactStatus: visualMeta?.status,
+      completed: legacyVisualCompleted,
       ready: visualReady,
       streams: [visualPlanStream],
     }),
-    'storyboard-preview': resolveStageStatus({
+    'storyboard-preview': storyboardStale ? 'stale' : resolveStageStatus({
       completed: stageArtifacts.hasStoryboard,
       ready: storyboardReady,
       streams: isBookGuide ? [] : [scriptToStoryboardStream],
     }),
-    production: resolveStageStatus({
+    production: productionStale ? 'stale' : resolveStageStatus({
       completed: stageArtifacts.hasVideo,
       ready: stageArtifacts.hasStoryboard,
     }),
@@ -104,6 +142,10 @@ export function buildCreationStageNavigation({
     label: t(definition.labelKey),
     description: t(definition.descriptionKey),
     status: statusById[definition.id],
-    issueCount: statusById[definition.id] === 'failed' ? 1 : 0,
+    issueCount: statusById[definition.id] === 'failed'
+      || statusById[definition.id] === 'attention'
+      || statusById[definition.id] === 'stale'
+      ? 1
+      : 0,
   }))
 }

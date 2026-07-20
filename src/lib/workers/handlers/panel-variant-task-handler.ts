@@ -17,8 +17,8 @@ import {
 } from '@/lib/location-available-slots'
 import {
   AnyObj,
+  collectPanelReferenceImages,
   findCharacterByName,
-  parseImageUrls,
   parsePanelCharacterReferences,
   pickFirstString,
   resolveNovelData,
@@ -130,58 +130,28 @@ function buildLocationAssetDescription(params: {
   return params.locale === 'en' ? 'No location reference' : '无场景参考'
 }
 
-function buildVariantReferenceImages(params: {
+async function buildVariantReferenceImages(params: {
   includeCharacterAssets: boolean
   includeLocationAsset: boolean
   newPanel: {
+    sketchImageUrl: string | null
     characters: string | null
     location: string | null
+    props: string | null
+    sourceAnchor: unknown
   }
   sourcePanelImageUrl: string | null
   projectData: Awaited<ReturnType<typeof resolveNovelData>>
-}): string[] {
-  const refs: string[] = []
-  if (params.sourcePanelImageUrl) refs.push(params.sourcePanelImageUrl)
-
-  if (params.includeCharacterAssets) {
-    const panelCharacters = parsePanelCharacterReferences(params.newPanel.characters)
-    for (const item of panelCharacters) {
-      const character = findCharacterByName(params.projectData.characters || [], item.name)
-      if (!character) continue
-
-      const appearances = character.appearances || []
-      let appearance = appearances[0]
-      if (item.appearance) {
-        const matched = appearances.find((candidate) => (candidate.changeReason || '').toLowerCase() === item.appearance!.toLowerCase())
-        if (matched) appearance = matched
-      }
-
-      if (!appearance) continue
-      const imageUrls = parseImageUrls((appearance as { imageUrls?: string | null }).imageUrls || null, 'characterAppearance.imageUrls')
-      const selectedIndex = typeof (appearance as { selectedIndex?: number | null }).selectedIndex === 'number'
-        ? (appearance as { selectedIndex?: number | null }).selectedIndex
-        : null
-      const selectedUrl = (selectedIndex !== null && selectedIndex !== undefined ? imageUrls[selectedIndex] : null)
-        || imageUrls[0]
-        || appearance.imageUrl
-        || null
-      const signed = toSignedUrlIfCos(selectedUrl, 3600)
-      if (signed) refs.push(signed)
-    }
-  }
-
-  if (params.includeLocationAsset && params.newPanel.location) {
-    const location = (params.projectData.locations || []).find(
-      (item) => item.name.toLowerCase() === params.newPanel.location!.toLowerCase(),
-    )
-    if (location) {
-      const selected = (location.images || []).find((image) => image.isSelected) || location.images?.[0]
-      const signed = toSignedUrlIfCos(selected?.imageUrl, 3600)
-      if (signed) refs.push(signed)
-    }
-  }
-
-  return refs
+}): Promise<string[]> {
+  const semanticRefs = await collectPanelReferenceImages(params.projectData, params.newPanel, {
+    includeCharacterAssets: params.includeCharacterAssets,
+    includeLocationAssets: params.includeLocationAsset,
+    includePropAssets: true,
+  })
+  return [...new Set([
+    ...(params.sourcePanelImageUrl ? [params.sourcePanelImageUrl] : []),
+    ...semanticRefs,
+  ])]
 }
 
 interface PanelVariantPayload {
@@ -225,7 +195,7 @@ export async function handlePanelVariantTask(job: Job<TaskJobData>) {
 
   // 收集参考图（与 panel-image-task-handler 共用同一链路）
   const sourcePanelImageUrl = toSignedUrlIfCos(sourcePanel.imageUrl, 3600)
-  const refs = buildVariantReferenceImages({
+  const refs = await buildVariantReferenceImages({
     includeCharacterAssets,
     includeLocationAsset,
     newPanel,

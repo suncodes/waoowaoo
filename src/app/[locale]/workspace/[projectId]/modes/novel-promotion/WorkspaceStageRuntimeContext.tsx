@@ -5,6 +5,8 @@ import type { CapabilitySelections, ModelCapabilities } from '@/lib/model-config
 import type { VideoPricingTier } from '@/lib/model-pricing/video-tier'
 import type { BatchVideoGenerationParams, VideoGenerationOptions } from './components/video'
 import type { VideoProfile, VideoProfilePreset, VisualQualityMode } from '@/lib/video-profile'
+import type { ContentPlan } from '@/lib/content-planning'
+import type { WorkspaceArtifactCommandResult } from '@/lib/creation-workspace/commands'
 
 export interface WorkspaceStageVideoModelOption {
   value: string
@@ -30,8 +32,21 @@ export interface WorkspaceStageRuntimeValue {
   videoModel: string | null | undefined
   capabilityOverrides: CapabilitySelections
   userVideoModels: WorkspaceStageVideoModelOption[]
+  contentEditingState: {
+    dirty: boolean
+    saving: boolean
+  }
+  onContentEditingStateChange: (state: { dirty: boolean; saving: boolean }) => void
   onNovelTextChange: (value: string) => Promise<void>
   onContentPlanChange: (value: unknown) => Promise<void>
+  onSaveGuidePlan: (value: ContentPlan, changedUnitIds: string[]) => Promise<WorkspaceArtifactCommandResult>
+  onToggleContentLock: (unitId: string, locked: boolean) => Promise<WorkspaceArtifactCommandResult>
+  onRegenerateContentUnit: (unitId: string, instruction?: string) => Promise<void>
+  onAcceptContentCandidate: (unitId: string) => Promise<WorkspaceArtifactCommandResult>
+  onDiscardContentCandidate: (unitId: string) => Promise<WorkspaceArtifactCommandResult>
+  onRestoreContentUnit: (unitId: string) => Promise<WorkspaceArtifactCommandResult>
+  onApproveStage: (stageId: 'content' | 'visual-design') => Promise<WorkspaceArtifactCommandResult>
+  onMaterializeGuideStoryboard: () => Promise<WorkspaceArtifactCommandResult>
   onVideoRatioChange: (value: string) => Promise<void>
   onVideoProfileChange: (value: VideoProfilePreset) => Promise<void>
   onVisualQualityModeChange: (value: VisualQualityMode) => Promise<void>

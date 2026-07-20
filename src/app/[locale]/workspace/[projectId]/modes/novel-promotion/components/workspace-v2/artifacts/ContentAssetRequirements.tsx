@@ -5,13 +5,18 @@ import { useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { AppIcon, type AppIconName } from '@/components/ui/icons'
 import type { VisualAssetSummary } from '@/lib/assets/contracts'
+import {
+  resolveVisualAssetStatus,
+  selectedVisualAssetImage,
+  type WorkspaceVisualAssetStatus,
+} from '@/lib/creation-workspace/visual-readiness'
 import { useAssetActions, useAssets } from '@/lib/query/hooks'
 import { useWorkspaceProvider } from '../../../WorkspaceProvider'
 import { useWorkspaceStageRuntime } from '../../../WorkspaceStageRuntimeContext'
 import { useWorkspaceEpisodeStageData } from '../../../hooks/useWorkspaceEpisodeStageData'
 import { fuzzyMatchLocation, getAllClipsAssets } from '../../script-view/clip-asset-utils'
 
-type AssetRequirementStatus = 'running' | 'failed' | 'confirmed' | 'candidate' | 'missing'
+type AssetRequirementStatus = WorkspaceVisualAssetStatus
 
 interface AssetKindMeta {
   icon: AppIconName
@@ -45,25 +50,8 @@ function collectVisualHints(contentPlan: unknown) {
   return [...hints].slice(0, 12)
 }
 
-function selectedImageUrl(asset: VisualAssetSummary) {
-  for (const variant of asset.variants) {
-    const selected = variant.renders.find((render) => render.isSelected)
-      || variant.renders.find((render) => render.index === variant.selectionState.selectedRenderIndex)
-    if (selected?.imageUrl) return selected.imageUrl
-  }
-  return null
-}
-
-function hasCandidate(asset: VisualAssetSummary) {
-  return asset.variants.some((variant) => variant.renders.some((render) => !!render.imageUrl))
-}
-
 function resolveStatus(asset: VisualAssetSummary): AssetRequirementStatus {
-  if (asset.taskState.lastError || asset.variants.some((variant) => !!variant.taskState.lastError)) return 'failed'
-  if (asset.taskState.isRunning || asset.variants.some((variant) => variant.taskState.isRunning)) return 'running'
-  if (selectedImageUrl(asset)) return 'confirmed'
-  if (hasCandidate(asset)) return 'candidate'
-  return 'missing'
+  return resolveVisualAssetStatus(asset)
 }
 
 function assetDescription(asset: VisualAssetSummary) {
@@ -188,7 +176,7 @@ export default function ContentAssetRequirements() {
         <div className="space-y-2">
           {assets.map((asset) => {
             const meta = ASSET_KIND_META[asset.kind]
-            const imageUrl = selectedImageUrl(asset)
+            const imageUrl = selectedVisualAssetImage(asset)
             const status = resolveStatus(asset)
             const editing = editingId === asset.id
             return (

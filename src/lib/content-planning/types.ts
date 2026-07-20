@@ -6,6 +6,7 @@ export interface SourceAnchor {
   startText?: string
   endText?: string
   chapter?: string
+  visualAssetIds?: string[]
 }
 
 export interface CreativeBrief {

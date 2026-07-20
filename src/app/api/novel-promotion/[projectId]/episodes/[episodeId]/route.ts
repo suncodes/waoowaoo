@@ -6,6 +6,8 @@ import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { attachMediaFieldsToProject } from '@/lib/media/attach'
 import { resolveMediaRefFromLegacyValue } from '@/lib/media/service'
+import { executeWorkspaceArtifactCommand } from '@/lib/creation-workspace/server-commands'
+import type { WorkspaceArtifactCommand } from '@/lib/creation-workspace/commands'
 
 /**
  * GET - 获取单个剧集的完整数据
@@ -25,7 +27,7 @@ export const GET = apiHandler(async (
     where: { id: episodeId },
     include: {
       clips: {
-        orderBy: { createdAt: 'asc' }
+        orderBy: [{ start: 'asc' }, { createdAt: 'asc' }]
       },
       storyboards: {
         include: {
@@ -73,6 +75,22 @@ export const PATCH = apiHandler(async (
   if (isErrorResponse(authResult)) return authResult
 
   const body = await request.json()
+  if (body?.workspaceCommand && typeof body.workspaceCommand === 'object') {
+    try {
+      const result = await executeWorkspaceArtifactCommand({
+        projectId,
+        episodeId,
+        command: body.workspaceCommand as WorkspaceArtifactCommand,
+        locale: request.headers.get('accept-language') || 'zh',
+      })
+      return NextResponse.json(result)
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message.replace(/^WORKSPACE_COMMAND_INVALID:/, '')
+        : 'Workspace command failed'
+      throw new ApiError('INVALID_PARAMS', { message })
+    }
+  }
   const { name, description, novelText, audioUrl, srtContent } = body
 
   const updateData: Prisma.NovelPromotionEpisodeUncheckedUpdateInput = {}
@@ -85,6 +103,11 @@ export const PATCH = apiHandler(async (
     updateData.audioMediaId = media?.id || null
   }
   if (srtContent !== undefined) updateData.srtContent = srtContent
+  if (body.creativeBrief !== undefined) updateData.creativeBrief = body.creativeBrief
+  if (body.contentPlan !== undefined) updateData.contentPlan = body.contentPlan
+  if (body.contentReview !== undefined) updateData.contentReview = body.contentReview
+  if (body.directorTreatment !== undefined) updateData.directorTreatment = body.directorTreatment
+  if (body.productionBible !== undefined) updateData.productionBible = body.productionBible
 
   const episode = await prisma.novelPromotionEpisode.update({
     where: { id: episodeId },

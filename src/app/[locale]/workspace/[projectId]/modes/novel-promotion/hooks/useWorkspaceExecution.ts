@@ -9,6 +9,7 @@ import {
 } from '@/lib/query/hooks'
 import { isBookGuideProfile, resolveVideoProfile } from '@/lib/video-profile'
 import { useWorkspacePlanningFlows } from './useWorkspacePlanningFlows'
+import { readVisualArtifactMeta } from '@/lib/creation-workspace/artifact-state'
 
 interface UseWorkspaceExecutionParams {
   projectId: string
@@ -19,6 +20,7 @@ interface UseWorkspaceExecutionParams {
   analysisModel?: string | null
   videoProfile?: unknown
   contentPlan?: unknown
+  productionBible?: unknown
   novelText: string
   t: (key: string) => string
   onRefresh: (options?: { scope?: string; mode?: string }) => Promise<void>
@@ -46,6 +48,7 @@ export function useWorkspaceExecution({
   analysisModel,
   videoProfile,
   contentPlan,
+  productionBible,
   novelText,
   t,
   onRefresh,
@@ -55,7 +58,6 @@ export function useWorkspaceExecution({
 }: UseWorkspaceExecutionParams) {
   const analyzeProjectAssetsMutation = useAnalyzeProjectAssets(projectId)
   const resolvedVideoProfile = useMemo(() => resolveVideoProfile(videoProfile), [videoProfile])
-
   const [isSubmittingTTS] = useState(false)
   const [isAssetAnalysisRunning, setIsAssetAnalysisRunning] = useState(false)
   const [isConfirmingAssets, setIsConfirmingAssets] = useState(false)
@@ -211,9 +213,9 @@ export function useWorkspaceExecution({
 
     try {
       setIsTransitioning(true)
-      await planning.runVisualPlan()
+      await planning.runVisualPlan(workspaceV2Enabled && isBookGuideProfile(resolvedVideoProfile))
       await onRefresh()
-      onStageChange('storyboard')
+      onStageChange(workspaceV2Enabled ? 'visual-plan' : 'storyboard')
     } catch (err: unknown) {
       if (isAbortError(err)) {
         _ulogInfo(t('execution.requestAborted'))
@@ -224,7 +226,21 @@ export function useWorkspaceExecution({
       setIsTransitioning(false)
       setTransitionProgress({ message: '', step: '' })
     }
-  }, [episodeId, onRefresh, onStageChange, planning, t])
+  }, [episodeId, onRefresh, onStageChange, planning, resolvedVideoProfile, t, workspaceV2Enabled])
+
+  const runContentUnitRewrite = useCallback(async (unitId: string, instruction?: string) => {
+    if (!episodeId) throw new Error(t('execution.selectEpisode'))
+    try {
+      setIsTransitioning(true)
+      onStageChange('script')
+      await planning.runContentUnitRewrite(novelText, unitId, instruction)
+      await onRefresh()
+      onStageChange('script')
+    } finally {
+      setIsTransitioning(false)
+      setTransitionProgress({ message: '', step: '' })
+    }
+  }, [episodeId, novelText, onRefresh, onStageChange, planning, t])
 
   const runScriptToStoryboardFlow = useCallback(async () => {
     if (!episodeId) {
@@ -234,7 +250,9 @@ export function useWorkspaceExecution({
 
     try {
       setIsConfirmingAssets(true)
-      if (contentPlan) await planning.runVisualPlan()
+      if (contentPlan && readVisualArtifactMeta(productionBible)?.status !== 'approved') {
+        throw new Error(t('execution.visualApprovalRequired'))
+      }
       setTransitionProgress({ message: t('execution.scriptToStoryboardRunning'), step: 'streaming' })
       const runResult = await scriptToStoryboardStream.run({
         episodeId,
@@ -262,7 +280,7 @@ export function useWorkspaceExecution({
     contentPlan,
     episodeId,
     finalizeScriptToStoryboardSuccess,
-    planning,
+    productionBible,
     scriptToStoryboardStream,
     t,
   ])
@@ -373,6 +391,7 @@ export function useWorkspaceExecution({
     handleGenerateTTS,
     handleAnalyzeAssets,
     runStoryToScriptFlow,
+    runContentUnitRewrite,
     runVisualPlanFlow,
     runScriptToStoryboardFlow,
     showCreatingToast,
