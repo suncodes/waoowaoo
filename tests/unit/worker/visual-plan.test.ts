@@ -80,6 +80,31 @@ function visualPlanPayload() {
   }
 }
 
+function contentPlanWithApprovedAssets(assetIds: string[]) {
+  return {
+    planType: 'guide',
+    segments: [{ id: 'segment-1', narration: '介绍一位神秘人物。' }],
+    _workspace: {
+      schemaVersion: 1,
+      status: 'approved',
+      revision: 1,
+      approvedRevision: 1,
+      updatedAt: '2026-07-20T00:00:00.000Z',
+      updatedBy: 'user',
+      units: {},
+      assetRequirements: {
+        status: 'approved',
+        analyzedRevision: 1,
+        analyzedAt: '2026-07-20T00:00:00.000Z',
+        approvedAt: '2026-07-20T00:01:00.000Z',
+        assetIds,
+      },
+      latestImpact: null,
+      downstream: { visualDesign: false, storyboard: false, production: false },
+    },
+  }
+}
+
 describe('worker visual-plan behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -135,5 +160,55 @@ describe('worker visual-plan behavior', () => {
 
     await expect(handleVisualPlanTask(buildJob())).rejects.toThrow('CONTENT_PLAN_REQUIRED')
     expect(planningMock.executePlanningJsonStep).not.toHaveBeenCalled()
+  })
+
+  it('keeps approved visual requirements even when their names are absent from the script', async () => {
+    prismaMock.novelPromotionProject.findUnique.mockResolvedValueOnce({
+      id: 'novel-project-1',
+      analysisModel: 'google::gemini-3-flash-preview',
+      videoProfile: { preset: 'book_guide' },
+      videoRatio: '16:9',
+      artStyle: 'editorial',
+      artStylePrompt: null,
+      characters: [{
+        id: 'character-nemo',
+        name: '尼摩船长标准形象',
+        introduction: '需要贯穿全片保持一致',
+      }],
+      locations: [],
+    })
+    prismaMock.novelPromotionEpisode.findUnique.mockResolvedValueOnce({
+      id: 'episode-1',
+      novelPromotionProjectId: 'novel-project-1',
+      creativeBrief: { objective: '导读' },
+      contentPlan: contentPlanWithApprovedAssets(['character-nemo']),
+      clips: [{ id: 'clip-1', summary: '核心观点', content: '介绍一位神秘人物。', screenplay: '{}', duration: 24 }],
+    })
+
+    await handleVisualPlanTask(buildJob())
+
+    expect(persistenceMock.persistVisualPlan).toHaveBeenCalledWith(expect.objectContaining({
+      anchors: [expect.objectContaining({
+        assetId: 'character-nemo',
+        assetKind: 'character',
+        importance: 'core',
+      })],
+    }))
+  })
+
+  it('rejects deleted approved assets before generating or persisting a partial plan', async () => {
+    prismaMock.novelPromotionEpisode.findUnique.mockResolvedValueOnce({
+      id: 'episode-1',
+      novelPromotionProjectId: 'novel-project-1',
+      creativeBrief: { objective: '导读' },
+      contentPlan: contentPlanWithApprovedAssets(['deleted-asset']),
+      clips: [{ id: 'clip-1', summary: '核心观点', content: '旁白内容', screenplay: '{}', duration: 24 }],
+    })
+
+    await expect(handleVisualPlanTask(buildJob())).rejects.toThrow(
+      'VISUAL_ASSET_REQUIREMENTS_INVALID:deleted-asset',
+    )
+    expect(planningMock.executePlanningJsonStep).not.toHaveBeenCalled()
+    expect(persistenceMock.persistVisualPlan).not.toHaveBeenCalled()
   })
 })

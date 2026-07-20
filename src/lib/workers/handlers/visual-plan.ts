@@ -13,7 +13,10 @@ import {
   bindVisualUnitsToAnchors,
   buildVisualAnchors,
 } from '@/lib/creation-workspace/visual-anchors'
-import { stripWorkspaceArtifactMeta } from '@/lib/creation-workspace/artifact-state'
+import {
+  readContentArtifactMeta,
+  stripWorkspaceArtifactMeta,
+} from '@/lib/creation-workspace/artifact-state'
 import { isWorkspaceClipActive } from '@/lib/creation-workspace/guide-clips'
 import {
   executePlanningJsonStep,
@@ -68,6 +71,18 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     locations: novelData.locations.filter((item) => item.assetKind !== 'prop'),
     props: novelData.locations.filter((item) => item.assetKind === 'prop'),
   }
+  const contentMeta = readContentArtifactMeta(episode.contentPlan)
+  const requiredAssetIds = contentMeta?.assetRequirements.status === 'approved'
+    ? contentMeta.assetRequirements.assetIds
+    : []
+  const availableAssetIds = new Set([
+    ...novelData.characters.map((item) => item.id),
+    ...novelData.locations.map((item) => item.id),
+  ])
+  const missingRequiredAssetIds = requiredAssetIds.filter((assetId) => !availableAssetIds.has(assetId))
+  if (missingRequiredAssetIds.length > 0) {
+    throw new Error(`VISUAL_ASSET_REQUIREMENTS_INVALID:${missingRequiredAssetIds.join(',')}`)
+  }
 
   await reportTaskProgress(job, 18, { stage: 'visual_plan_prepare', displayMode: 'detail' })
   await assertTaskActive(job, 'visual_plan_prepare')
@@ -99,7 +114,13 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     clips,
     characters: novelData.characters,
     locations: novelData.locations,
+    includeAssetIds: requiredAssetIds,
   })
+  const anchorAssetIds = new Set(anchors.map((anchor) => anchor.assetId))
+  const missingAnchorIds = requiredAssetIds.filter((assetId) => !anchorAssetIds.has(assetId))
+  if (missingAnchorIds.length > 0) {
+    throw new Error(`VISUAL_ANCHOR_BUILD_FAILED:${missingAnchorIds.join(',')}`)
+  }
   const result = {
     ...parsedResult,
     visualUnits: bindVisualUnitsToAnchors(parsedResult.visualUnits, anchors),
