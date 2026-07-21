@@ -57,51 +57,46 @@ export default function ConfirmDialog({
   const currentStyle = typeStyles[type]
 
   return (
-    <>
-      {/* 背景遮罩 */}
-      <div
-        className="fixed inset-0 z-50 glass-overlay animate-fade-in"
-        onClick={onCancel}
-      />
-
-      {/* 对话框 */}
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+    <div
+      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onCancel()
+      }}
+    >
         <div
-          className="glass-surface-modal max-w-md w-full p-6 pointer-events-auto animate-scale-in"
-          onClick={(e) => e.stopPropagation()}
+          className="w-full max-w-md animate-scale-in rounded-lg border border-white/10 bg-[#151613] p-6 shadow-[0_30px_90px_rgba(0,0,0,0.45)]"
+          onMouseDown={(event) => event.stopPropagation()}
         >
-          {/* 图标 */}
-          <div className={`w-12 h-12 rounded-full ${currentStyle.iconBg} flex items-center justify-center mb-4`}>
+          <div className={`mb-4 flex h-12 w-12 items-center justify-center rounded-md ${currentStyle.iconBg}`}>
             {currentStyle.icon}
           </div>
 
-          {/* 标题 */}
-          <h3 className="mb-2 text-xl font-semibold text-[var(--glass-text-primary)]">
+          <h3 className="mb-2 text-xl font-semibold text-stone-50">
             {title}
           </h3>
 
-          {/* 消息 */}
-          <p className="mb-6 text-[var(--glass-text-secondary)]">
+          <p className="mb-6 text-sm leading-6 text-stone-400">
             {message}
           </p>
 
-          {/* 按钮 */}
           <div className="flex gap-3">
             <button
               onClick={onCancel}
-              className="glass-btn-base glass-btn-secondary flex-1 px-4 py-2.5 font-medium rounded-xl"
+              className="inline-flex h-10 flex-1 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] px-4 text-sm font-semibold text-stone-100 hover:bg-white/[0.08]"
             >
               {finalCancelText}
             </button>
             <button
               onClick={onConfirm}
-              className={`glass-btn-base flex-1 px-4 py-2.5 font-medium rounded-xl ${currentStyle.confirmBg}`}
+              className={`glass-btn-base flex-1 rounded-md px-4 py-2.5 font-medium ${currentStyle.confirmBg}`}
             >
               {finalConfirmText}
             </button>
           </div>
         </div>
-      </div>
-    </>
+    </div>
   )
 }

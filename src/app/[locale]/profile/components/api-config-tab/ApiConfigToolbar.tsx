@@ -22,23 +22,23 @@ export function ApiConfigToolbar({
   saveFailedLabel,
 }: ApiConfigToolbarProps) {
   return (
-    <div className="flex items-center justify-between border-b border-[var(--glass-stroke-base)] px-6 py-4">
-      <h2 className="text-lg font-semibold text-[var(--glass-text-primary)]">{title}</h2>
+    <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
+      <h2 className="text-lg font-semibold text-stone-50">{title}</h2>
       <div className="flex items-center gap-2 text-sm">
         {saveStatus === 'saving' && (
-          <span className="glass-chip glass-chip-info flex items-center gap-1">
+          <span className="inline-flex items-center gap-1 rounded-md border border-[#e8d18a]/25 bg-[#e8d18a]/10 px-2 py-1 text-xs text-[#e8d18a]">
             <TaskStatusInline state={savingState} className="[&>span]:sr-only" />
             <span>{savingLabel}</span>
           </span>
         )}
         {saveStatus === 'saved' && (
-          <span className="glass-chip glass-chip-success flex items-center gap-1">
+          <span className="inline-flex items-center gap-1 rounded-md border border-emerald-400/25 bg-emerald-400/10 px-2 py-1 text-xs text-emerald-200">
             <AppIcon name="check" className="w-4 h-4" />
             {savedLabel}
           </span>
         )}
         {saveStatus === 'error' && (
-          <span className="glass-chip glass-chip-danger flex items-center gap-1">
+          <span className="inline-flex items-center gap-1 rounded-md border border-rose-400/25 bg-rose-400/10 px-2 py-1 text-xs text-rose-200">
             <AppIcon name="close" className="w-4 h-4" />
             {saveFailedLabel}
           </span>

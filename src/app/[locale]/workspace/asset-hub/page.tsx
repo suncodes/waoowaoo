@@ -6,7 +6,7 @@ import JSZip from 'jszip'
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { useQueryClient } from '@tanstack/react-query'
-import Navbar from '@/components/Navbar'
+import ProductShell from '@/components/product/ProductShell'
 import { FolderSidebar } from './components/FolderSidebar'
 import { AssetGrid } from './components/AssetGrid'
 import { CharacterCreationModal, LocationCreationModal, PropCreationModal, CharacterEditModal, LocationEditModal, PropEditModal } from '@/components/shared/assets'
@@ -451,23 +451,27 @@ export default function AssetHubPage() {
     }
 
     return (
-        <div className="glass-page min-h-screen">
-            <Navbar />
-            <div className="max-w-7xl mx-auto px-4 py-6">
-                {/* 页面标题 */}
-                <div className="mb-6">
-                    <h1 className="text-2xl font-bold text-[var(--glass-text-primary)]">{t('title')}</h1>
-                    <p className="text-sm text-[var(--glass-text-secondary)] mt-1">{t('description')}</p>
-                    <p className="text-xs text-[var(--glass-text-tertiary)] mt-2 flex items-center gap-1">
-                        <AppIcon name="info" className="w-3.5 h-3.5" />
-                        {t('modelHint')}
-                        <Link href={{ pathname: '/profile' }} className="text-[var(--glass-tone-info-fg)] hover:underline">{t('modelHintLink')}</Link>
-                        {t('modelHintSuffix')}
-                    </p>
-                </div>
+        <ProductShell maxWidth="wide">
+            <div className="space-y-5">
+                <section className="rounded-lg border border-white/10 bg-[#10110e] p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#c8a85f]">Asset Control</p>
+                            <h1 className="mt-2 text-2xl font-semibold text-stone-50">{t('title')}</h1>
+                            <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-500">{t('description')}</p>
+                        </div>
+                        <p className="flex max-w-xl items-start gap-2 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-xs leading-5 text-stone-500">
+                            <AppIcon name="info" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#e8d18a]" />
+                            <span>
+                                {t('modelHint')}
+                                <Link href={{ pathname: '/profile' }} className="mx-1 text-[#e8d18a] hover:underline">{t('modelHintLink')}</Link>
+                                {t('modelHintSuffix')}
+                            </span>
+                        </p>
+                    </div>
+                </section>
 
-                <div className="flex gap-6">
-                    {/* 左侧文件夹树 */}
+                <section className="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
                     <FolderSidebar
                         folders={folders}
                         selectedFolderId={selectedFolderId}
@@ -483,26 +487,27 @@ export default function AssetHubPage() {
                         onDeleteFolder={handleDeleteFolder}
                     />
 
-                    {/* 右侧资产网格 */}
-                    <AssetGrid
-                        assets={assets}
-                        loading={loading}
-                        onAddCharacter={() => setShowAddCharacter(true)}
-                        onAddLocation={() => setShowAddLocation(true)}
-                        onAddProp={() => setShowAddProp(true)}
-                        onAddVoice={() => setShowAddVoice(true)}
-                        onDownloadAll={handleDownloadAll}
-                        isDownloading={isDownloading}
-                        selectedFolderId={selectedFolderId}
-                        onImageClick={setPreviewImage}
-                        onImageEdit={handleOpenImageEdit}
-                        onVoiceDesign={handleOpenVoiceDesign}
-                        onCharacterEdit={handleOpenCharacterEdit}
-                        onLocationEdit={handleOpenLocationEdit}
-                        onPropEdit={handleOpenPropEdit}
-                        onVoiceSelect={(characterId) => setVoicePickerCharacterId(characterId)}
-                    />
-                </div>
+                    <div className="min-w-0 rounded-lg border border-white/10 bg-[#10110e] p-5">
+                        <AssetGrid
+                            assets={assets}
+                            loading={loading}
+                            onAddCharacter={() => setShowAddCharacter(true)}
+                            onAddLocation={() => setShowAddLocation(true)}
+                            onAddProp={() => setShowAddProp(true)}
+                            onAddVoice={() => setShowAddVoice(true)}
+                            onDownloadAll={handleDownloadAll}
+                            isDownloading={isDownloading}
+                            selectedFolderId={selectedFolderId}
+                            onImageClick={setPreviewImage}
+                            onImageEdit={handleOpenImageEdit}
+                            onVoiceDesign={handleOpenVoiceDesign}
+                            onCharacterEdit={handleOpenCharacterEdit}
+                            onLocationEdit={handleOpenLocationEdit}
+                            onPropEdit={handleOpenPropEdit}
+                            onVoiceSelect={(characterId) => setVoicePickerCharacterId(characterId)}
+                        />
+                    </div>
+                </section>
             </div>
 
             {/* 新建角色弹窗 */}
@@ -656,6 +661,6 @@ export default function AssetHubPage() {
                     onSelect={handleVoiceSelect}
                 />
             )}
-        </div>
+        </ProductShell>
     )
 }

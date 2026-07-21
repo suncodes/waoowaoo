@@ -29,14 +29,14 @@ function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
   } = props
 
   if (!vm.project.projectData) {
-    return <div className="text-center text-(--glass-text-secondary)">{vm.i18n.tc('loading')}</div>
+    return <div className="text-center text-stone-500">{vm.i18n.tc('loading')}</div>
   }
 
   const studioEnabled = vm.stageNav.workspaceV2Enabled
 
   return (
     <div>
-      <AnimatedBackground />
+      {studioEnabled ? null : <AnimatedBackground />}
 
       <WorkspaceHeaderShell
         isSettingsModalOpen={vm.ui.isSettingsModalOpen}
@@ -86,7 +86,7 @@ function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
         {vm.i18n.t('workspaceFlow.skipToContent')}
       </a>
 
-      <div className={`relative left-1/2 -translate-x-1/2 ${studioEnabled ? 'w-[min(1840px,calc(100vw-1rem))] pt-20' : 'w-[min(1600px,calc(100vw-2rem))] pt-28'}`}>
+      <div className={`relative left-1/2 -translate-x-1/2 ${studioEnabled ? 'w-[min(1840px,calc(100vw-1rem))]' : 'w-[min(1600px,calc(100vw-2rem))] pt-28'}`}>
         <WorkspaceStageRuntimeProvider value={vm.runtime.stageRuntime}>
           {studioEnabled ? (
             <StudioWorkspaceShell

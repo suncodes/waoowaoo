@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { toMoneyNumber } from '@/lib/billing/money'
 import { isArtStyleValue } from '@/lib/constants'
 import { resolveTaskLocale } from '@/lib/task/resolve-locale'
+import { resolveVideoProfile } from '@/lib/video-profile'
 import {
   formatProjectValidationIssue,
   normalizeProjectDraft,
@@ -21,6 +23,7 @@ function readProjectDraftBody(body: unknown): ProjectDraftInput {
   return {
     name: typeof payload.name === 'string' ? payload.name : '',
     description: typeof payload.description === 'string' ? payload.description : null,
+    videoProfile: payload.videoProfile,
   }
 }
 
@@ -93,6 +96,7 @@ export const GET = apiHandler(async (request: NextRequest) => {
       where: { projectId: { in: projectIds } },
       select: {
         projectId: true,
+        videoProfile: true,
         _count: {
           select: {
             episodes: true,
@@ -136,7 +140,14 @@ export const GET = apiHandler(async (request: NextRequest) => {
   )
 
   // 构建统计映射表 + 第一集预览
-  const statsMap = new Map<string, { episodes: number; images: number; videos: number; panels: number; firstEpisodePreview: string | null }>(
+  const statsMap = new Map<string, {
+    episodes: number
+    images: number
+    videos: number
+    panels: number
+    firstEpisodePreview: string | null
+    videoProfile: unknown
+  }>(
     novelProjects.map(np => {
       let imageCount = 0
       let videoCount = 0
@@ -158,7 +169,8 @@ export const GET = apiHandler(async (request: NextRequest) => {
         images: imageCount,
         videos: videoCount,
         panels: panelCount,
-        firstEpisodePreview: preview
+        firstEpisodePreview: preview,
+        videoProfile: np.videoProfile,
       }]
     })
   )
@@ -167,7 +179,15 @@ export const GET = apiHandler(async (request: NextRequest) => {
   const projectsWithStats = projects.map(project => ({
     ...project,
     totalCost: costMap.get(project.id) ?? 0,
-    stats: statsMap.get(project.id) ?? { episodes: 0, images: 0, videos: 0, panels: 0, firstEpisodePreview: null }
+    videoProfile: statsMap.get(project.id)?.videoProfile ?? null,
+    stats: statsMap.get(project.id) ?? {
+      episodes: 0,
+      images: 0,
+      videos: 0,
+      panels: 0,
+      firstEpisodePreview: null,
+      videoProfile: null,
+    }
   }))
 
   return NextResponse.json({
@@ -235,8 +255,9 @@ export const POST = apiHandler(async (request: NextRequest) => {
         audioModel: userPreference.audioModel,
         videoRatio: userPreference.videoRatio,
         artStyle: isArtStyleValue(userPreference.artStyle) ? userPreference.artStyle : 'american-comic',
-        ttsRate: userPreference.ttsRate
-      })
+        ttsRate: userPreference.ttsRate,
+      }),
+      videoProfile: resolveVideoProfile(draft.videoProfile) as unknown as Prisma.InputJsonValue,
     }
   })
 

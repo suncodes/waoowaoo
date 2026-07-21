@@ -262,12 +262,8 @@ export function DefaultModelCards(allProps: DefaultModelCardsProps) {
         ]
 
     return (
-        <div className="p-8 rounded-3xl bg-[var(--glass-bg-base)] shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.1)] relative overflow-hidden">
-            {/* Background glow effects */}
-            <div className="absolute -top-40 -right-40 w-96 h-96 bg-blue-500/10 rounded-full blur-[100px] pointer-events-none" />
-            <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-purple-500/10 rounded-full blur-[100px] pointer-events-none" />
-
-            <div className="relative z-10">
+        <div className="rounded-lg border border-white/10 bg-[#0b0c0a] p-6">
+            <div>
                 {/* Header */}
                 <div className="mb-8">
                     <div className="flex items-center gap-2.5 mb-1">
@@ -286,7 +282,7 @@ export function DefaultModelCards(allProps: DefaultModelCardsProps) {
                 </h3>
                 <div className="flex flex-col md:flex-row gap-4 mb-8">
                     {/* Text Model Card */}
-                    <div className="flex-1 glass-surface p-4 rounded-2xl border border-[var(--glass-stroke-base)] hover:border-blue-500/30 transition-colors shadow-sm bg-gradient-to-br from-[var(--glass-bg-surface)] to-transparent">
+                    <div className="flex-1 rounded-lg border border-white/10 bg-white/[0.03] p-4 transition-colors hover:border-white/20">
                         <div className="flex items-start justify-between mb-2">
                             <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
                                 <AppIcon name="fileText" className="w-4 h-4 text-blue-500" />
@@ -316,7 +312,7 @@ export function DefaultModelCards(allProps: DefaultModelCardsProps) {
                     </div>
 
                     {/* Video Model Card */}
-                    <div className="flex-1 glass-surface p-4 rounded-2xl border border-[var(--glass-stroke-base)] hover:border-purple-500/30 transition-colors shadow-sm bg-gradient-to-br from-[var(--glass-bg-surface)] to-transparent">
+                    <div className="flex-1 rounded-lg border border-white/10 bg-white/[0.03] p-4 transition-colors hover:border-white/20">
                     <div className="flex items-start justify-between mb-2">
                         <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center">
                             <AppIcon name="clapperboard" className="w-4 h-4 text-purple-500" />
@@ -367,7 +363,7 @@ export function DefaultModelCards(allProps: DefaultModelCardsProps) {
                         />
                     </div>
                 </div>
-                <div className="glass-surface p-6 rounded-3xl border border-indigo-500/20 bg-indigo-500/[0.02] shadow-sm mb-8">
+                <div className="mb-8 rounded-lg border border-white/10 bg-white/[0.03] p-5">
                     <div className="flex items-start gap-2 mb-4 px-3 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400">
                         <AppIcon name="alert" className="w-4 h-4 shrink-0 mt-0.5" />
                         <span className="text-[12px] leading-relaxed">{t('imageModelTip')}</span>
@@ -404,7 +400,7 @@ export function DefaultModelCards(allProps: DefaultModelCardsProps) {
                         {pipelineItems.map((item) => {
                             const resolved = resolveModel(item.field, item.modelType, defaultModels, getEnabledModelsByType, parseModelKey, encodeModelKey)
                             return (
-                                <div key={item.field} className="glass-surface p-4 rounded-2xl shadow-sm bg-gradient-to-br from-[var(--glass-bg-surface)] to-transparent flex flex-col gap-3">
+                                <div key={item.field} className="flex flex-col gap-3 rounded-lg border border-white/10 bg-[#10110e] p-4">
                                     <div className="flex items-center gap-2 mb-1">
                                         <AppIcon name={item.icon} className="w-4 h-4 text-[var(--glass-text-tertiary)]" />
                                         <span className="text-[13px] font-semibold text-[var(--glass-text-secondary)]">{t(item.titleKey)}</span>
@@ -428,7 +424,7 @@ export function DefaultModelCards(allProps: DefaultModelCardsProps) {
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                     {/* Lip Sync */}
-                    <div className="glass-surface p-5 rounded-2xl shadow-sm bg-gradient-to-br from-[var(--glass-bg-surface)] to-transparent">
+                    <div className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
                         <h4 className="text-[13px] font-semibold text-[var(--glass-text-primary)] mb-4">{t('defaultModelSection.extLipSync')}</h4>
                         <SmartSelector
                             field="lipSyncModel" modelType="lipsync"
@@ -438,7 +434,7 @@ export function DefaultModelCards(allProps: DefaultModelCardsProps) {
                         />
                     </div>
                     {/* TTS */}
-                    <div className="glass-surface p-5 rounded-2xl shadow-sm bg-gradient-to-br from-[var(--glass-bg-surface)] to-transparent">
+                    <div className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
                         <h4 className="text-[13px] font-semibold text-[var(--glass-text-primary)] mb-4">{t('defaultModelSection.extTTS')}</h4>
                         <SmartSelector
                             field="audioModel" modelType="audio"
@@ -448,7 +444,7 @@ export function DefaultModelCards(allProps: DefaultModelCardsProps) {
                         />
                     </div>
                     {/* Voice Design */}
-                    <div className="glass-surface p-5 rounded-2xl shadow-sm bg-gradient-to-br from-[var(--glass-bg-surface)] to-transparent">
+                    <div className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
                         <h4 className="text-[13px] font-semibold text-[var(--glass-text-primary)] mb-4">{t('defaultModelSection.extVoiceDesign')}</h4>
                         <SmartSelector
                             field="voiceDesignModel" modelType="voicedesign"

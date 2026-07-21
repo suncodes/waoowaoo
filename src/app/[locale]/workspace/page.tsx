@@ -3,16 +3,17 @@ import { logError as _ulogError } from '@/lib/logging/core'
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
-import Navbar from '@/components/Navbar'
+import ProductShell from '@/components/product/ProductShell'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import TaskStatusInline from '@/components/task/TaskStatusInline'
 import { resolveTaskPresentationState } from '@/lib/task/presentation'
-import { AppIcon, IconGradientDefs } from '@/components/ui/icons'
+import { AppIcon } from '@/components/ui/icons'
 import { shouldGuideToModelSetup } from '@/lib/workspace/model-setup'
 import { Link, useRouter } from '@/i18n/navigation'
 import { apiFetch } from '@/lib/api-fetch'
 import { readApiErrorMessage } from '@/lib/api/read-error-message'
 import { validateProjectDraft } from '@/lib/projects/validation'
+import { resolveVideoProfile, VIDEO_PROFILE_PRESET, type VideoProfilePreset } from '@/lib/video-profile'
 
 interface ProjectStats {
   episodes: number
@@ -28,6 +29,7 @@ interface Project {
   description: string | null
   createdAt: string
   updatedAt: string
+  videoProfile?: unknown
   totalCost?: number  // 项目总费用（CNY）
   stats?: ProjectStats
 }
@@ -42,9 +44,54 @@ interface Pagination {
 const PAGE_SIZE = 7 // 加上新建项目按钮正好8个，4列布局下2行
 const DEFAULT_BILLING_CURRENCY = 'CNY'
 
+const PROJECT_TYPE_OPTIONS: Array<{
+  value: VideoProfilePreset
+  label: string
+  description: string
+  icon: 'film' | 'bookOpen'
+}> = [
+  {
+    value: VIDEO_PROFILE_PRESET.AI_COMIC,
+    label: 'AI 漫剧',
+    description: '面向剧情冲突、角色表演和连续镜头的短剧生产流程。',
+    icon: 'film',
+  },
+  {
+    value: VIDEO_PROFILE_PRESET.BOOK_GUIDE,
+    label: '书籍导读',
+    description: '面向观点提炼、章节脉络和解说节奏的导读视频流程。',
+    icon: 'bookOpen',
+  },
+]
+
 function formatProjectCost(amount: number, currency = DEFAULT_BILLING_CURRENCY): string {
   if (currency === 'USD') return `$${amount.toFixed(2)}`
   return `¥${amount.toFixed(2)}`
+}
+
+function resolveProjectType(project: Project) {
+  const profile = resolveVideoProfile(project.videoProfile)
+  return PROJECT_TYPE_OPTIONS.find((option) => option.value === profile.preset) || PROJECT_TYPE_OPTIONS[0]
+}
+
+function MetricPill({
+  icon,
+  label,
+  value,
+}: {
+  icon: 'bookOpen' | 'image' | 'video'
+  label: string
+  value: number
+}) {
+  return (
+    <div className="rounded-md border border-white/10 bg-white/[0.03] px-2 py-2">
+      <div className="flex items-center gap-1.5 text-[11px] text-stone-500">
+        <AppIcon name={icon} className="h-3.5 w-3.5" />
+        {label}
+      </div>
+      <div className="mt-1 text-sm font-semibold text-stone-100">{value}</div>
+    </div>
+  )
 }
 
 function toProjectValidationMessage(
@@ -75,7 +122,8 @@ export default function WorkspacePage() {
   const [createError, setCreateError] = useState<string | null>(null)
   const [formData, setFormData] = useState({
     name: '',
-    description: ''
+    description: '',
+    videoProfilePreset: VIDEO_PROFILE_PRESET.AI_COMIC as VideoProfilePreset,
   })
   const [editingProject, setEditingProject] = useState<Project | null>(null)
   const [showEditModal, setShowEditModal] = useState(false)
@@ -183,10 +231,19 @@ export default function WorkspacePage() {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({
+          name: formData.name,
+          description: formData.description,
+          videoProfile: resolveVideoProfile({ preset: formData.videoProfilePreset }),
+        })
       })
 
       if (response.ok) {
+        const createPayload: unknown = await response.json()
+        const createdProject = createPayload && typeof createPayload === 'object'
+          ? (createPayload as { project?: { id?: unknown } }).project
+          : null
+        const createdProjectId = typeof createdProject?.id === 'string' ? createdProject.id : ''
         let shouldOpenModelSetup = true
         const preferenceResponse = await apiFetch('/api/user-preference')
         if (preferenceResponse.ok) {
@@ -202,11 +259,17 @@ export default function WorkspacePage() {
         setPagination(prev => ({ ...prev, page: 1 }))
         void fetchProjects(1, '')
         setShowCreateModal(false)
-        setFormData({ name: '', description: '' })
+        setFormData({
+          name: '',
+          description: '',
+          videoProfilePreset: VIDEO_PROFILE_PRESET.AI_COMIC,
+        })
 
         if (shouldOpenModelSetup) {
           alert(t('analysisModelRequiredAfterCreate'))
           router.push({ pathname: '/profile' })
+        } else if (createdProjectId) {
+          router.push({ pathname: `/workspace/${createdProjectId}` })
         }
       } else {
         setCreateError(await readApiErrorMessage(response, t('createFailed')))
@@ -321,104 +384,140 @@ export default function WorkspacePage() {
 
   if (status === 'loading' || !session) {
     return (
-      <div className="glass-page min-h-screen flex items-center justify-center">
-        <div className="text-[var(--glass-text-secondary)]">{tc('loading')}</div>
+      <div className="flex min-h-screen items-center justify-center bg-[#080907]">
+        <div className="text-sm text-stone-500">{tc('loading')}</div>
       </div>
     )
   }
 
   return (
-    <div className="glass-page min-h-screen">
-      {/* Header - 统一导航栏 */}
-      <Navbar />
-
-      {/* Main Content */}
-      <main className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-10 py-8">
-        <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-[var(--glass-text-primary)] mb-2">{t('title')}</h1>
-            <p className="text-[var(--glass-text-secondary)]">{t('subtitle')}</p>
+    <ProductShell
+      title="创作台"
+      subtitle="按作品类型管理项目，从创意输入一路推进到分镜、视频和交付。"
+      actions={(
+        <button
+          type="button"
+          onClick={() => openCreateModal()}
+          className="inline-flex h-9 items-center gap-2 rounded-md bg-[#f3e9cf] px-3 text-sm font-semibold text-[#15130f] transition-colors hover:bg-[#fff5d9]"
+        >
+          <AppIcon name="plus" className="h-4 w-4" />
+          新建项目
+        </button>
+      )}
+      maxWidth="wide"
+    >
+      <div className="space-y-5">
+        <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
+          <div className="rounded-lg border border-white/10 bg-[#10110e] p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#c8a85f]">Production Console</p>
+            <h2 className="mt-3 text-2xl font-semibold text-stone-50">项目生产总览</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-500">
+              新建项目时先确定 AI 漫剧或书籍导读，后续文稿、视觉资产、分镜和镜头生产会按对应业务流程组织。
+            </p>
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-md border border-white/10 bg-white/[0.03] px-4 py-3">
+                <div className="text-xs text-stone-500">项目数</div>
+                <div className="mt-1 text-xl font-semibold text-stone-50">{pagination.total}</div>
+              </div>
+              <div className="rounded-md border border-white/10 bg-white/[0.03] px-4 py-3">
+                <div className="text-xs text-stone-500">当前页</div>
+                <div className="mt-1 text-xl font-semibold text-stone-50">{pagination.page}/{Math.max(1, pagination.totalPages)}</div>
+              </div>
+              <div className="rounded-md border border-white/10 bg-white/[0.03] px-4 py-3">
+                <div className="text-xs text-stone-500">新建入口</div>
+                <div className="mt-1 text-xl font-semibold text-stone-50">2 类</div>
+              </div>
+            </div>
           </div>
 
-          {/* 搜索框 */}
-          <div className="flex gap-2">
+          <div className="rounded-lg border border-white/10 bg-[#10110e] p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-stone-50">查找项目</h2>
+                <p className="mt-1 text-xs text-stone-500">按项目名称或描述检索。</p>
+              </div>
+              <AppIcon name="search" className="h-5 w-5 text-stone-600" />
+            </div>
+            <div className="mt-4 flex gap-2">
             <input
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
               placeholder={t('searchPlaceholder')}
-              className="glass-input-base w-64 px-3 py-2"
+                className="h-10 min-w-0 flex-1 rounded-md border border-white/10 bg-[#0b0c0a] px-3 text-sm text-stone-100 outline-none placeholder:text-stone-600 focus:border-[#e8d18a]"
             />
             <button
+                type="button"
               onClick={handleSearch}
-              className="glass-btn-base glass-btn-primary px-4 py-2"
+                className="inline-flex h-10 items-center justify-center rounded-md bg-[#f3e9cf] px-4 text-sm font-semibold text-[#15130f] hover:bg-[#fff5d9]"
             >
               {t('searchButton')}
             </button>
+            </div>
             {searchQuery && (
               <button
+                type="button"
                 onClick={() => {
                   setSearchInput('')
                   setSearchQuery('')
                   setPagination(prev => ({ ...prev, page: 1 }))
                 }}
-                className="glass-btn-base glass-btn-secondary px-4 py-2"
+                className="mt-3 inline-flex h-9 items-center rounded-md border border-white/10 bg-white/[0.03] px-3 text-sm text-stone-300 hover:bg-white/[0.07]"
               >
                 {t('clearButton')}
               </button>
             )}
           </div>
-        </div>
+        </section>
 
-        {/* Projects Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {/* New Project Card */}
-          <div
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          <button
+            type="button"
             onClick={() => openCreateModal()}
-            className="glass-surface p-6 cursor-pointer group flex items-center justify-center bg-gradient-to-br from-blue-500/5 via-cyan-500/5 to-blue-600/5 hover:from-blue-500/10 hover:via-cyan-500/10 hover:to-blue-600/10 transition-all duration-300"
+            className="group flex min-h-[220px] flex-col justify-between rounded-lg border border-dashed border-[#e8d18a]/35 bg-[#14130f] p-5 text-left transition-colors hover:border-[#e8d18a]/70 hover:bg-[#19170f]"
           >
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20 group-hover:shadow-blue-500/40 group-hover:scale-110 transition-all duration-300">
-                <AppIcon name="plus" className="w-6 h-6 text-white" />
+            <div>
+              <div className="flex h-11 w-11 items-center justify-center rounded-md bg-[#f3e9cf] text-[#15130f]">
+                <AppIcon name="plus" className="h-5 w-5" />
               </div>
-              <span className="text-sm font-medium text-[var(--glass-text-secondary)] group-hover:text-[var(--glass-text-primary)] transition-colors">{t('newProject')}</span>
+              <h3 className="mt-5 text-lg font-semibold text-stone-50">创建新作品</h3>
+              <p className="mt-2 text-sm leading-6 text-stone-500">先选择 AI 漫剧或书籍导读，再进入对应制作台。</p>
             </div>
-          </div>
+            <span className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-[#e8d18a]">
+              开始创建
+              <AppIcon name="arrowRight" className="h-4 w-4" />
+            </span>
+          </button>
 
-          {/* Project Cards */}
           {loading ? (
-            // Loading skeleton
             Array.from({ length: 3 }).map((_, index) => (
-              <div key={index} className="glass-surface p-6 animate-pulse">
-                <div className="h-4 bg-[var(--glass-bg-muted)] rounded mb-3"></div>
-                <div className="h-3 bg-[var(--glass-bg-muted)] rounded mb-2"></div>
-                <div className="h-3 bg-[var(--glass-bg-muted)] rounded w-2/3"></div>
+              <div key={index} className="min-h-[220px] animate-pulse rounded-lg border border-white/10 bg-[#10110e] p-5">
+                <div className="h-4 w-1/2 rounded bg-white/10" />
+                <div className="mt-4 h-3 rounded bg-white/10" />
+                <div className="mt-2 h-3 w-2/3 rounded bg-white/10" />
               </div>
             ))
           ) : (
-            projects.map((project) => (
-              <Link
-                key={project.id}
-                href={{ pathname: `/workspace/${project.id}` }}
-                className="glass-surface cursor-pointer relative group block hover:border-[var(--glass-tone-info-fg)]/40 transition-all duration-300 overflow-hidden"
-              >
-                {/* 悬停光效 */}
-                <div className="absolute inset-0 rounded-[inherit] bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-
-                <div className="p-5 relative z-10">
-                  {/* 操作按钮 */}
-                  <div className="absolute top-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+            projects.map((project) => {
+              const type = resolveProjectType(project)
+              return (
+                <Link
+                  key={project.id}
+                  href={{ pathname: `/workspace/${project.id}` }}
+                  className="group relative flex min-h-[220px] flex-col justify-between overflow-hidden rounded-lg border border-white/10 bg-[#10110e] p-5 transition-colors hover:border-[#e8d18a]/45 hover:bg-[#141510]"
+                >
+                  <div className="absolute right-3 top-3 flex gap-2 opacity-0 transition-opacity group-hover:opacity-100">
                     <button
                       onClick={(e) => openEditModal(project, e)}
-                      className="glass-btn-base glass-btn-secondary p-2 rounded-lg transition-colors"
+                      className="flex h-8 w-8 items-center justify-center rounded-md border border-white/10 bg-[#0b0c0a] text-stone-300 hover:text-[#e8d18a]"
                       title={t('editProject')}
                     >
-                      <AppIcon name="editSquare" className="w-4 h-4 text-[var(--glass-tone-info-fg)]" />
+                      <AppIcon name="editSquare" className="h-4 w-4" />
                     </button>
                     <button
                       onClick={(e) => openDeleteConfirm(project, e)}
-                      className="glass-btn-base glass-btn-secondary p-2 rounded-lg transition-colors"
+                      className="flex h-8 w-8 items-center justify-center rounded-md border border-white/10 bg-[#0b0c0a] text-rose-300 hover:text-rose-200"
                       title={t('deleteProject')}
                       disabled={deletingProjectId === project.id}
                     >
@@ -433,94 +532,62 @@ export default function WorkspacePage() {
                           className="[&>span]:sr-only"
                         />
                       ) : (
-                        <AppIcon name="trash" className="w-4 h-4 text-[var(--glass-tone-danger-fg)]" />
+                        <AppIcon name="trash" className="h-4 w-4" />
                       )}
                     </button>
                   </div>
 
-                  {/* 标题 */}
-                  <h3 className="text-lg font-bold text-[var(--glass-text-primary)] mb-2 line-clamp-2 pr-20 group-hover:text-[var(--glass-tone-info-fg)] transition-colors">
-                    {project.name}
-                  </h3>
-
-                  {/* 描述：优先用户描述，fallback 到第一集故事 */}
-                  {(project.description || project.stats?.firstEpisodePreview) && (
-                    <div className="flex items-start gap-2 mb-4">
-                      <AppIcon name="fileText" className="w-4 h-4 text-[var(--glass-text-tertiary)] mt-0.5 flex-shrink-0" />
-                      <p className="text-sm text-[var(--glass-text-secondary)] line-clamp-2 leading-relaxed">
-                        {project.description || project.stats?.firstEpisodePreview}
-                      </p>
+                  <div className="pr-16">
+                    <div className="inline-flex items-center gap-1.5 rounded-full border border-[#e8d18a]/25 bg-[#e8d18a]/10 px-2 py-1 text-[11px] font-semibold text-[#e8d18a]">
+                      <AppIcon name={type.icon} className="h-3.5 w-3.5" />
+                      {type.label}
                     </div>
-                  )}
-
-                  {/* 统计信息 - 整行统一渐变 */}
-                  {project.stats && (project.stats.episodes > 0 || project.stats.images > 0 || project.stats.videos > 0) ? (
-                    <div className="flex items-center gap-2 mb-3">
-                      {/* 共享渐变定义 */}
-                      <IconGradientDefs className="w-0 h-0 absolute" aria-hidden="true" />
-                      <AppIcon name="statsBarGradient" className="w-4 h-4 flex-shrink-0" />
-                      <div className="flex items-center gap-3 text-sm font-semibold bg-gradient-to-r from-blue-500 to-cyan-500 bg-clip-text text-transparent">
-                        {project.stats.episodes > 0 && (
-                          <span className="flex items-center gap-1" title={t('statsEpisodes')}>
-                            <AppIcon name="statsEpisodeGradient" className="w-3.5 h-3.5" />
-                            {project.stats.episodes}
-                          </span>
-                        )}
-                        {project.stats.images > 0 && (
-                          <span className="flex items-center gap-1" title={t('statsImages')}>
-                            <AppIcon name="statsImageGradient" className="w-3.5 h-3.5" />
-                            {project.stats.images}
-                          </span>
-                        )}
-                        {project.stats.videos > 0 && (
-                          <span className="flex items-center gap-1" title={t('statsVideos')}>
-                            <AppIcon name="statsVideoGradient" className="w-3.5 h-3.5" />
-                            {project.stats.videos}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2.5 mb-3">
-                      <AppIcon name="statsBar" className="w-4 h-4 text-[var(--glass-text-tertiary)] flex-shrink-0" />
-                      <span className="text-xs text-[var(--glass-text-tertiary)]">{t('noContent')}</span>
-                    </div>
-                  )}
-
-                  {/* 底部信息 */}
-                  <div className="flex items-center justify-between text-[11px] text-[var(--glass-text-tertiary)]">
-                    <div className="flex items-center gap-1">
-                      <AppIcon name="clock" className="w-3 h-3" />
-                      {formatDate(project.updatedAt)}
-                    </div>
-                    {project.totalCost !== undefined && project.totalCost > 0 && (
-                      <span className="text-[11px] font-mono font-medium text-[var(--glass-text-secondary)]">
-                        {formatProjectCost(project.totalCost)}
-                      </span>
-                    )}
+                    <h3 className="mt-4 line-clamp-2 text-lg font-semibold text-stone-50 group-hover:text-[#f3e9cf]">
+                      {project.name}
+                    </h3>
+                    <p className="mt-2 line-clamp-3 text-sm leading-6 text-stone-500">
+                      {project.description || project.stats?.firstEpisodePreview || '还没有内容，进入项目后从项目简报开始。'}
+                    </p>
                   </div>
-                </div>
-              </Link>
-            ))
-          )}
-        </div>
 
-        {/* Empty State */}
+                  <div>
+                    <div className="mt-5 grid grid-cols-3 gap-2">
+                      <MetricPill icon="bookOpen" label="剧集" value={project.stats?.episodes || 0} />
+                      <MetricPill icon="image" label="图片" value={project.stats?.images || 0} />
+                      <MetricPill icon="video" label="视频" value={project.stats?.videos || 0} />
+                    </div>
+                    <div className="mt-4 flex items-center justify-between gap-3 text-[11px] text-stone-600">
+                      <span className="inline-flex items-center gap-1">
+                        <AppIcon name="clock" className="h-3 w-3" />
+                        {formatDate(project.updatedAt)}
+                      </span>
+                      {project.totalCost !== undefined && project.totalCost > 0 ? (
+                        <span className="font-mono text-stone-400">{formatProjectCost(project.totalCost)}</span>
+                      ) : null}
+                    </div>
+                  </div>
+                </Link>
+              )
+            })
+          )}
+        </section>
+
         {!loading && projects.length === 0 && (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 bg-[var(--glass-bg-muted)] rounded-xl flex items-center justify-center mx-auto mb-4">
-              <AppIcon name="folderCards" className="w-8 h-8 text-[var(--glass-text-tertiary)]" />
+          <div className="rounded-lg border border-dashed border-white/15 bg-[#10110e] px-6 py-12 text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-lg bg-white/[0.04]">
+              <AppIcon name="folderCards" className="h-7 w-7 text-stone-500" />
             </div>
-            <h3 className="text-lg font-medium text-[var(--glass-text-primary)] mb-2">
+            <h3 className="mt-4 text-lg font-semibold text-stone-50">
               {searchQuery ? t('noResults') : t('noProjects')}
             </h3>
-            <p className="text-[var(--glass-text-secondary)] mb-6">
+            <p className="mt-2 text-sm text-stone-500">
               {searchQuery ? t('noResultsDesc') : t('noProjectsDesc')}
             </p>
             {!searchQuery && (
               <button
+                type="button"
                 onClick={() => openCreateModal()}
-                className="glass-btn-base glass-btn-primary px-6 py-3"
+                className="mt-5 inline-flex h-10 items-center rounded-md bg-[#f3e9cf] px-4 text-sm font-semibold text-[#15130f] hover:bg-[#fff5d9]"
               >
                 {t('newProject')}
               </button>
@@ -528,37 +595,35 @@ export default function WorkspacePage() {
           </div>
         )}
 
-        {/* 分页控件 */}
         {!loading && pagination.totalPages > 1 && (
           <div className="mt-8 flex items-center justify-center gap-2">
             <button
+              type="button"
               onClick={() => handlePageChange(pagination.page - 1)}
               disabled={pagination.page <= 1}
-              className="glass-btn-base glass-btn-secondary px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/10 bg-white/[0.03] text-stone-300 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              <AppIcon name="chevronLeft" className="w-5 h-5" />
+              <AppIcon name="chevronLeft" className="h-5 w-5" />
             </button>
 
-            {/* 页码按钮 */}
             {Array.from({ length: pagination.totalPages }, (_, i) => i + 1)
               .filter(page => {
-                // 显示第一页、最后一页、当前页及其前后两页
                 return page === 1 ||
                   page === pagination.totalPages ||
                   Math.abs(page - pagination.page) <= 2
               })
               .map((page, index, array) => (
                 <span key={page} className="flex items-center">
-                  {/* 显示省略号 */}
                   {index > 0 && array[index - 1] !== page - 1 && (
-                    <span className="px-2 text-[var(--glass-text-tertiary)]">...</span>
+                    <span className="px-2 text-stone-600">...</span>
                   )}
                   <button
+                    type="button"
                     onClick={() => handlePageChange(page)}
-                    className={`glass-btn-base px-4 py-2 ${page === pagination.page
-                      ? 'glass-btn-primary'
-                      : 'glass-btn-secondary'
-                      }`}
+                    className={`h-9 min-w-9 rounded-md px-3 text-sm font-semibold ${page === pagination.page
+                      ? 'bg-[#f3e9cf] text-[#15130f]'
+                      : 'border border-white/10 bg-white/[0.03] text-stone-300 hover:bg-white/[0.07]'
+                    }`}
                   >
                     {page}
                   </button>
@@ -566,33 +631,47 @@ export default function WorkspacePage() {
               ))}
 
             <button
+              type="button"
               onClick={() => handlePageChange(pagination.page + 1)}
               disabled={pagination.page >= pagination.totalPages}
-              className="glass-btn-base glass-btn-secondary px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/10 bg-white/[0.03] text-stone-300 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              <AppIcon name="chevronRight" className="w-5 h-5" />
+              <AppIcon name="chevronRight" className="h-5 w-5" />
             </button>
 
-            <span className="ml-4 text-sm text-[var(--glass-text-tertiary)]">
+            <span className="ml-4 text-sm text-stone-500">
               {t('totalProjects', { count: pagination.total })}
             </span>
           </div>
         )}
-      </main>
+      </div>
 
-      {/* Create Project Modal - 简化版，只有名称和描述 */}
       {showCreateModal && (
-        <div className="fixed inset-0 glass-overlay flex items-center justify-center z-50 backdrop-blur-sm">
-          <div className="glass-surface-modal p-6 w-full max-w-md mx-4">
-            <h2 className="text-xl font-bold text-[var(--glass-text-primary)] mb-4">{t('createProject')}</h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-2xl rounded-lg border border-white/10 bg-[#10110e] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#c8a85f]">New Project</p>
+                <h2 className="mt-2 text-xl font-semibold text-stone-50">{t('createProject')}</h2>
+                <p className="mt-1 text-sm text-stone-500">选择作品类型后，系统会按对应业务流程生成内容和视觉资产。</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-md border border-white/10 text-stone-400 hover:bg-white/[0.06] hover:text-stone-100"
+                aria-label={tc('cancel')}
+              >
+                <AppIcon name="close" className="h-4 w-4" />
+              </button>
+            </div>
             {modelNotConfigured && (
-              <div className="flex items-start gap-2 mb-4 px-3 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400">
-                <AppIcon name="alert" className="w-4 h-4 shrink-0 mt-0.5" />
-                <span className="text-[12px] leading-relaxed">
+              <div className="mb-4 flex items-start gap-2 rounded-md border border-amber-400/25 bg-amber-400/10 px-3 py-2.5 text-amber-100">
+                <AppIcon name="alert" className="mt-0.5 h-4 w-4 shrink-0" />
+                <span className="text-xs leading-5">
                   {t('modelNotConfigured.before')}
                   <Link
                     href={{ pathname: '/profile' }}
-                    className="font-semibold underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-300 mx-0.5"
+                    className="mx-0.5 font-semibold underline underline-offset-2 hover:text-amber-50"
                     onClick={() => setShowCreateModal(false)}
                   >
                     {t('modelNotConfigured.link')}
@@ -601,9 +680,36 @@ export default function WorkspacePage() {
                 </span>
               </div>
             )}
-            <form onSubmit={handleCreateProject}>
+            <form onSubmit={handleCreateProject} className="space-y-5">
+              <div>
+                <div className="mb-2 text-sm font-semibold text-stone-100">作品类型</div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {PROJECT_TYPE_OPTIONS.map((option) => {
+                    const selected = formData.videoProfilePreset === option.value
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, videoProfilePreset: option.value })}
+                        className={`rounded-lg border p-4 text-left transition-colors ${selected
+                          ? 'border-[#e8d18a]/70 bg-[#e8d18a]/10'
+                          : 'border-white/10 bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.06]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className={`flex h-10 w-10 items-center justify-center rounded-md ${selected ? 'bg-[#f3e9cf] text-[#15130f]' : 'bg-white/[0.06] text-stone-400'}`}>
+                            <AppIcon name={option.icon} className="h-5 w-5" />
+                          </span>
+                          <span className="text-sm font-semibold text-stone-50">{option.label}</span>
+                        </div>
+                        <p className="mt-3 text-sm leading-6 text-stone-500">{option.description}</p>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
               <div className="mb-4">
-                <label htmlFor="name" className="glass-field-label block mb-2">
+                <label htmlFor="name" className="mb-2 block text-sm font-semibold text-stone-100">
                   {t('projectName')} *
                 </label>
                 <input
@@ -616,15 +722,15 @@ export default function WorkspacePage() {
                       setCreateError(null)
                     }
                   }}
-                  className="glass-input-base w-full px-3 py-2"
+                  className="h-10 w-full rounded-md border border-white/10 bg-[#0b0c0a] px-3 text-sm text-stone-100 outline-none placeholder:text-stone-600 focus:border-[#e8d18a]"
                   placeholder={t('projectNamePlaceholder')}
                   maxLength={100}
                   required
                   autoFocus
                 />
               </div>
-              <div className="mb-6">
-                <label htmlFor="description" className="glass-field-label block mb-2">
+              <div>
+                <label htmlFor="description" className="mb-2 block text-sm font-semibold text-stone-100">
                   {t('projectDescription')}
                 </label>
                 <textarea
@@ -636,33 +742,37 @@ export default function WorkspacePage() {
                       setCreateError(null)
                     }
                   }}
-                  className="glass-textarea-base w-full px-3 py-2"
+                  className="w-full resize-y rounded-md border border-white/10 bg-[#0b0c0a] px-3 py-2 text-sm leading-6 text-stone-100 outline-none placeholder:text-stone-600 focus:border-[#e8d18a]"
                   placeholder={t('projectDescriptionPlaceholder')}
                   rows={3}
                   maxLength={500}
                 />
               </div>
               {createError && (
-                <p className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-600">
+                <p className="rounded-md border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-sm text-rose-100">
                   {createError}
                 </p>
               )}
-              <div className="flex justify-end space-x-3">
+              <div className="flex justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => {
                     setShowCreateModal(false)
                     setCreateError(null)
-                    setFormData({ name: '', description: '' })
+                    setFormData({
+                      name: '',
+                      description: '',
+                      videoProfilePreset: VIDEO_PROFILE_PRESET.AI_COMIC,
+                    })
                   }}
-                  className="glass-btn-base glass-btn-secondary px-4 py-2"
+                  className="inline-flex h-10 items-center rounded-md border border-white/10 bg-white/[0.03] px-4 text-sm font-semibold text-stone-200 hover:bg-white/[0.07]"
                   disabled={createLoading}
                 >
                   {tc('cancel')}
                 </button>
                 <button
                   type="submit"
-                  className="glass-btn-base glass-btn-primary px-4 py-2 disabled:opacity-50"
+                  className="inline-flex h-10 items-center rounded-md bg-[#f3e9cf] px-4 text-sm font-semibold text-[#15130f] hover:bg-[#fff5d9] disabled:opacity-50"
                   disabled={createLoading || !formData.name.trim()}
                 >
                   {createLoading ? t('creating') : t('createProject')}
@@ -673,14 +783,13 @@ export default function WorkspacePage() {
         </div>
       )}
 
-      {/* Edit Project Modal */}
       {showEditModal && editingProject && (
-        <div className="fixed inset-0 glass-overlay flex items-center justify-center z-50 backdrop-blur-sm">
-          <div className="glass-surface-modal p-6 w-full max-w-md mx-4">
-            <h2 className="text-xl font-bold text-[var(--glass-text-primary)] mb-4">{t('editProject')}</h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-lg border border-white/10 bg-[#10110e] p-6">
+            <h2 className="mb-4 text-xl font-semibold text-stone-50">{t('editProject')}</h2>
             <form onSubmit={handleEditProject}>
               <div className="mb-4">
-                <label htmlFor="edit-name" className="glass-field-label block mb-2">
+                <label htmlFor="edit-name" className="mb-2 block text-sm font-semibold text-stone-100">
                   {t('projectName')} *
                 </label>
                 <input
@@ -693,14 +802,14 @@ export default function WorkspacePage() {
                       setEditError(null)
                     }
                   }}
-                  className="glass-input-base w-full px-3 py-2"
+                  className="h-10 w-full rounded-md border border-white/10 bg-[#0b0c0a] px-3 text-sm text-stone-100 outline-none placeholder:text-stone-600 focus:border-[#e8d18a]"
                   placeholder={t('projectNamePlaceholder')}
                   maxLength={100}
                   required
                 />
               </div>
               <div className="mb-6">
-                <label htmlFor="edit-description" className="glass-field-label block mb-2">
+                <label htmlFor="edit-description" className="mb-2 block text-sm font-semibold text-stone-100">
                   {t('projectDescription')}
                 </label>
                 <textarea
@@ -712,14 +821,14 @@ export default function WorkspacePage() {
                       setEditError(null)
                     }
                   }}
-                  className="glass-textarea-base w-full px-3 py-2"
+                  className="w-full resize-y rounded-md border border-white/10 bg-[#0b0c0a] px-3 py-2 text-sm leading-6 text-stone-100 outline-none placeholder:text-stone-600 focus:border-[#e8d18a]"
                   placeholder={t('projectDescriptionPlaceholder')}
                   rows={3}
                   maxLength={500}
                 />
               </div>
               {editError && (
-                <p className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-600">
+                <p className="mb-4 rounded-md border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-sm text-rose-100">
                   {editError}
                 </p>
               )}
@@ -732,14 +841,14 @@ export default function WorkspacePage() {
                     setEditError(null)
                     setEditFormData({ name: '', description: '' })
                   }}
-                  className="glass-btn-base glass-btn-secondary px-4 py-2"
+                  className="inline-flex h-10 items-center rounded-md border border-white/10 bg-white/[0.03] px-4 text-sm font-semibold text-stone-200 hover:bg-white/[0.07]"
                   disabled={createLoading}
                 >
                   {tc('cancel')}
                 </button>
                 <button
                   type="submit"
-                  className="glass-btn-base glass-btn-primary px-4 py-2 disabled:opacity-50"
+                  className="inline-flex h-10 items-center rounded-md bg-[#f3e9cf] px-4 text-sm font-semibold text-[#15130f] hover:bg-[#fff5d9] disabled:opacity-50"
                   disabled={createLoading || !editFormData.name.trim()}
                 >
                   {createLoading ? t('saving') : tc('save')}
@@ -761,6 +870,6 @@ export default function WorkspacePage() {
         onConfirm={handleDeleteProject}
         onCancel={cancelDelete}
       />
-    </div>
+    </ProductShell>
   )
 }

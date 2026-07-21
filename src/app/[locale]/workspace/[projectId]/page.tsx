@@ -6,7 +6,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { useQueryClient } from '@tanstack/react-query'
-import Navbar from '@/components/Navbar'
+import ProductShell from '@/components/product/ProductShell'
 import TaskStatusInline from '@/components/task/TaskStatusInline'
 import { useProjectData, useEpisodeData, useUserModels } from '@/lib/query/hooks'
 import { queryKeys } from '@/lib/query/keys'
@@ -400,48 +400,41 @@ export default function ProjectDetailPage() {
 
   if (isInitializing) {
     return (
-      <div className="glass-page min-h-screen">
-        <Navbar />
-        <main className="flex items-center justify-center h-[calc(100vh-64px)]">
-          <div className="text-[var(--glass-text-secondary)]">{tc('loading')}</div>
-        </main>
-      </div>
+      <ProductShell title="加载项目" subtitle="正在读取项目数据与当前剧集。" maxWidth="wide">
+        <div className="flex min-h-[calc(100vh-10rem)] items-center justify-center">
+          <div className="text-sm text-stone-500">{tc('loading')}</div>
+        </div>
+      </ProductShell>
     )
   }
 
   // Error状态
   if (error || !project) {
     return (
-      <div className="glass-page min-h-screen">
-        <Navbar />
-        <main className="container mx-auto px-4 py-8">
-          <div className="glass-surface p-6 text-center">
-            <p className="text-[var(--glass-tone-danger-fg)] mb-4">{error || t('projectNotFound')}</p>
+      <ProductShell title="项目不可用" subtitle="当前项目无法打开。" maxWidth="standard">
+          <div className="rounded-lg border border-rose-400/30 bg-rose-400/10 p-6 text-center">
+            <p className="mb-4 text-sm text-rose-100">{error || t('projectNotFound')}</p>
             <button
+              type="button"
               onClick={() => router.push({ pathname: '/workspace' })}
-              className="glass-btn-base glass-btn-primary px-6 py-2"
+              className="inline-flex h-10 items-center rounded-md bg-[#f3e9cf] px-4 text-sm font-semibold text-[#15130f] hover:bg-[#fff5d9]"
             >
               {t('backToWorkspace')}
             </button>
           </div>
-        </main>
-      </div>
+      </ProductShell>
     )
   }
 
   return (
-    <div className="glass-page min-h-screen flex flex-col">
-      <Navbar />
-
-      {/* V3 UI: 浮动导航替代了旧的 Sidebar */}
-
-      {/* 主内容区 - 占满全部宽度 */}
-      <main className="flex-1 overflow-y-auto">
-        <div className="container mx-auto px-4 py-8">
+    <ProductShell
+      maxWidth="full"
+      contentClassName="px-2 py-4 sm:px-4 lg:px-5"
+    >
           {isGlobalAssetsView && project.novelPromotionData ? (
             // 全局资产视图（确保数据准备好）
             <div>
-              <h1 className="text-2xl font-bold text-[var(--glass-text-primary)] mb-6">{t('globalAssets')}</h1>
+              <h1 className="mb-6 text-2xl font-semibold text-stone-50">{t('globalAssets')}</h1>
               <NovelPromotionWorkspace
                 project={project}
                 projectId={projectId}
@@ -453,35 +446,35 @@ export default function ProjectDetailPage() {
             </div>
           ) : shouldShowImportWizard && !isGlobalAssetsView ? (
             isCheckingModelSetup ? (
-              <div className="glass-surface p-8 text-center">
-                <div className="mx-auto mb-4 w-12 h-12 rounded-full flex items-center justify-center bg-[var(--glass-bg-muted)] text-[var(--glass-text-tertiary)]">
+              <div className="mx-auto max-w-2xl rounded-lg border border-white/10 bg-[#10110e] p-8 text-center">
+                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-md bg-white/[0.05] text-stone-500">
                   <TaskStatusInline state={initLoadingState} className="[&>span]:sr-only" />
                 </div>
-                <h2 className="text-xl font-semibold text-[var(--glass-text-secondary)] mb-2">{tc('loading')}</h2>
+                <h2 className="mb-2 text-xl font-semibold text-stone-100">{tc('loading')}</h2>
               </div>
             ) : needsModelSetup ? (
-              <div className="glass-surface p-8 max-w-2xl mx-auto">
+              <div className="mx-auto max-w-2xl rounded-lg border border-white/10 bg-[#10110e] p-8">
                 <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-lg bg-[var(--glass-tone-warning-bg)] text-[var(--glass-tone-warning-fg)] flex items-center justify-center shrink-0">
-                    <AppIcon name="alert" className="w-5 h-5" />
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-amber-400/25 bg-amber-400/10 text-amber-200">
+                    <AppIcon name="alert" className="h-5 w-5" />
                   </div>
                   <div className="flex-1">
-                    <h2 className="text-xl font-semibold text-[var(--glass-text-primary)] mb-2">
+                    <h2 className="mb-2 text-xl font-semibold text-stone-50">
                       {t('modelSetup.title')}
                     </h2>
-                    <p className="text-[var(--glass-text-secondary)] mb-5">
+                    <p className="mb-5 text-sm leading-6 text-stone-400">
                       {t('modelSetup.description')}
                     </p>
                     <div className="flex flex-wrap gap-3">
                       <button
                         onClick={() => setIsModelSetupModalOpen(true)}
-                        className="glass-btn-base glass-btn-primary px-4 py-2"
+                        className="inline-flex h-10 items-center rounded-md bg-[#f3e9cf] px-4 text-sm font-semibold text-[#15130f] hover:bg-[#fff5d9]"
                       >
                         {t('modelSetup.configureNow')}
                       </button>
                       <button
                         onClick={() => router.push({ pathname: '/profile' })}
-                        className="glass-btn-base glass-btn-secondary px-4 py-2"
+                        className="inline-flex h-10 items-center rounded-md border border-white/10 bg-white/[0.04] px-4 text-sm font-semibold text-stone-100 hover:bg-white/[0.08]"
                       >
                         {t('modelSetup.goProfile')}
                       </button>
@@ -490,21 +483,21 @@ export default function ProjectDetailPage() {
                 </div>
 
                 {isModelSetupModalOpen && (
-                  <div className="fixed inset-0 glass-overlay flex items-center justify-center z-50 backdrop-blur-sm">
-                    <div className="glass-surface-modal p-6 w-full max-w-xl mx-4">
-                      <h3 className="text-xl font-bold text-[var(--glass-text-primary)] mb-2">
+                  <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
+                    <div className="w-full max-w-xl rounded-lg border border-white/10 bg-[#151613] p-6 shadow-[0_30px_90px_rgba(0,0,0,0.45)]">
+                      <h3 className="mb-2 text-xl font-semibold text-stone-50">
                         {t('modelSetup.modalTitle')}
                       </h3>
-                      <p className="text-sm text-[var(--glass-text-secondary)] mb-5">
+                      <p className="mb-5 text-sm leading-6 text-stone-400">
                         {t('modelSetup.modalDescription')}
                       </p>
 
                       <div className="mb-6">
-                        <label className="glass-field-label block mb-2">{t('modelSetup.selectModelLabel')}</label>
+                        <label className="mb-2 block text-sm font-semibold text-stone-100">{t('modelSetup.selectModelLabel')}</label>
                         {userModelsQuery.isLoading ? (
-                          <div className="text-sm text-[var(--glass-text-tertiary)]">{tc('loading')}</div>
+                          <div className="text-sm text-stone-500">{tc('loading')}</div>
                         ) : llmModelOptions.length === 0 ? (
-                          <div className="text-sm text-[var(--glass-tone-warning-fg)]">
+                          <div className="text-sm text-amber-200">
                             {t('modelSetup.noModelOptions')}
                           </div>
                         ) : (
@@ -528,7 +521,7 @@ export default function ProjectDetailPage() {
                         <button
                           type="button"
                           onClick={() => setIsModelSetupModalOpen(false)}
-                          className="glass-btn-base glass-btn-secondary px-4 py-2"
+                          className="inline-flex h-10 items-center rounded-md border border-white/10 bg-white/[0.04] px-4 text-sm font-semibold text-stone-100 hover:bg-white/[0.08]"
                           disabled={modelSetupSaving}
                         >
                           {tc('cancel')}
@@ -536,7 +529,7 @@ export default function ProjectDetailPage() {
                         <button
                           type="button"
                           onClick={() => { void handleSaveDefaultAnalysisModel() }}
-                          className="glass-btn-base glass-btn-primary px-4 py-2 disabled:opacity-50"
+                          className="inline-flex h-10 items-center rounded-md bg-[#f3e9cf] px-4 text-sm font-semibold text-[#15130f] hover:bg-[#fff5d9] disabled:opacity-50"
                           disabled={modelSetupSaving || llmModelOptions.length === 0 || !analysisModelDraft.trim()}
                         >
                           {modelSetupSaving ? tc('loading') : tc('save')}
@@ -574,15 +567,13 @@ export default function ProjectDetailPage() {
             />
           ) : (
             // 加载中
-            <div className="glass-surface p-8 text-center">
-              <div className="mx-auto mb-4 w-12 h-12 rounded-full flex items-center justify-center bg-[var(--glass-bg-muted)] text-[var(--glass-text-tertiary)]">
+            <div className="rounded-lg border border-white/10 bg-[#10110e] p-8 text-center">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-white/[0.04] text-stone-500">
                 <TaskStatusInline state={initLoadingState} className="[&>span]:sr-only" />
               </div>
-              <h2 className="text-xl font-semibold text-[var(--glass-text-secondary)] mb-2">{tc('loading')}</h2>
+              <h2 className="mb-2 text-xl font-semibold text-stone-300">{tc('loading')}</h2>
             </div>
           )}
-        </div>
-      </main>
-    </div>
+    </ProductShell>
   )
 }

@@ -124,20 +124,20 @@ export function ApiConfigProviderList({
   return (
     <>
       <div className="space-y-4">
-        <div className="flex items-start justify-between">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <span className="glass-surface-soft inline-flex h-7 w-7 items-center justify-center rounded-lg text-[var(--glass-text-secondary)]">
-              <AppIcon name="cube" className="w-4 h-4" />
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] text-[#e8d18a]">
+              <AppIcon name="cube" className="h-4 w-4" />
             </span>
             <div>
-              <h2 className="text-xl font-bold text-[var(--glass-text-primary)]">{labels.providerPool}</h2>
-              <p className="text-[13px] text-[var(--glass-text-secondary)]">{labels.providerPoolDesc}</p>
-              <p className="text-[12px] text-[var(--glass-text-tertiary)]">{labels.dragToSortHint}</p>
+              <h2 className="text-xl font-semibold text-stone-50">{labels.providerPool}</h2>
+              <p className="text-[13px] text-stone-400">{labels.providerPoolDesc}</p>
+              <p className="text-[12px] text-stone-600">{labels.dragToSortHint}</p>
             </div>
           </div>
           <button
             onClick={onAddGeminiProvider}
-            className="glass-btn-base glass-btn-primary cursor-pointer px-3 py-1.5 text-sm font-semibold"
+            className="inline-flex h-9 cursor-pointer items-center rounded-md bg-[#f3e9cf] px-3 text-sm font-semibold text-[#15130f] hover:bg-[#fff5d9]"
           >
             {labels.addGeminiProvider}
           </button>

@@ -45,16 +45,16 @@ export function FolderSidebar({
     const t = useTranslations('assetHub')
 
     return (
-        <div className="w-56 flex-shrink-0">
-            <div className="glass-surface p-4">
-                <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-medium text-[var(--glass-text-secondary)]">{t('folders')}</h3>
+        <div className="w-full">
+            <div className="rounded-lg border border-white/10 bg-[#0b0c0a] p-4">
+                <div className="mb-4 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-stone-100">{t('folders')}</h3>
                     <button
                         onClick={onCreateFolder}
-                        className="glass-btn-base glass-btn-primary h-6 w-6 rounded-full flex items-center justify-center"
+                        className="flex h-8 w-8 items-center justify-center rounded-md bg-[#f3e9cf] text-[#15130f] hover:bg-[#fff5d9]"
                         title={t('newFolder')}
                     >
-                        <PlusIcon className="w-4 h-4" />
+                        <PlusIcon className="h-4 w-4" />
                     </button>
                 </div>
 
@@ -62,12 +62,12 @@ export function FolderSidebar({
                     {/* 所有资产 */}
                     <button
                         onClick={() => onSelectFolder(null)}
-                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left text-sm transition-colors ${selectedFolderId === null
-                                ? 'bg-[var(--glass-tone-info-bg)] text-[var(--glass-tone-info-fg)]'
-                                : 'text-[var(--glass-text-secondary)] hover:bg-[var(--glass-bg-muted)]'
+                        className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${selectedFolderId === null
+                                ? 'bg-[#e8d18a]/12 text-[#f3e9cf]'
+                                : 'text-stone-400 hover:bg-white/[0.06] hover:text-stone-100'
                             }`}
                     >
-                        <FolderIcon className="w-4 h-4" />
+                        <FolderIcon className="h-4 w-4" />
                         <span className="truncate">{t('allAssets')}</span>
                     </button>
 
@@ -75,47 +75,47 @@ export function FolderSidebar({
                     {folders.map((folder) => (
                         <div
                             key={folder.id}
-                            className={`group flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${selectedFolderId === folder.id
-                                    ? 'bg-[var(--glass-tone-info-bg)] text-[var(--glass-tone-info-fg)]'
-                                    : 'text-[var(--glass-text-secondary)] hover:bg-[var(--glass-bg-muted)]'
+                            className={`group flex items-center gap-2 rounded-md px-3 py-2 transition-colors ${selectedFolderId === folder.id
+                                    ? 'bg-[#e8d18a]/12 text-[#f3e9cf]'
+                                    : 'text-stone-400 hover:bg-white/[0.06] hover:text-stone-100'
                                 }`}
                         >
                             <button
                                 onClick={() => onSelectFolder(folder.id)}
-                                className="flex-1 flex items-center gap-2 text-left text-sm min-w-0"
+                                className="flex min-w-0 flex-1 items-center gap-2 text-left text-sm"
                             >
-                                <FolderIcon className="w-4 h-4 flex-shrink-0" />
+                                <FolderIcon className="h-4 w-4 flex-shrink-0" />
                                 <span className="truncate">{folder.name}</span>
                             </button>
 
                             {/* 操作按钮 */}
-                            <div className="hidden group-hover:flex items-center gap-0.5">
+                            <div className="hidden items-center gap-1 group-hover:flex">
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation()
                                         onEditFolder(folder)
                                     }}
-                                    className="glass-btn-base glass-btn-soft h-5 w-5 rounded flex items-center justify-center"
+                                    className="flex h-6 w-6 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] text-stone-300 hover:text-[#f3e9cf]"
                                     title={t('editFolder')}
                                 >
-                                    <PencilIcon className="w-3 h-3" />
+                                    <PencilIcon className="h-3 w-3" />
                                 </button>
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation()
                                         onDeleteFolder(folder.id)
                                     }}
-                                    className="glass-btn-base glass-btn-tone-danger h-5 w-5 rounded flex items-center justify-center"
+                                    className="flex h-6 w-6 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] text-rose-300 hover:text-rose-100"
                                     title={t('deleteFolder')}
                                 >
-                                    <TrashIcon className="w-3 h-3" />
+                                    <TrashIcon className="h-3 w-3" />
                                 </button>
                             </div>
                         </div>
                     ))}
 
                     {folders.length === 0 && (
-                        <div className="text-xs text-[var(--glass-text-tertiary)] text-center py-4">
+                        <div className="py-4 text-center text-xs text-stone-600">
                             {t('noFolders')}
                         </div>
                     )}

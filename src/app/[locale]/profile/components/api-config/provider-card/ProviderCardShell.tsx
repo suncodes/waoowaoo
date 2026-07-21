@@ -61,10 +61,10 @@ export function ProviderCardShell({
     : (hideProviderLabel || t('hideProvider'))
 
   return (
-    <div className="glass-surface overflow-hidden rounded-2xl">
+    <div className="overflow-hidden rounded-lg border border-white/10 bg-[#10110e]">
 
       {/* ── 头部：logo + 名称 + 心电图 + 右侧操作 ── */}
-      <div className="flex items-center justify-between px-3.5 py-2.5">
+      <div className="flex items-center justify-between border-b border-white/10 px-3.5 py-2.5">
         <div className="flex items-center gap-2">
           {dragHandle}
           {onToggleProviderHidden && (
@@ -88,7 +88,7 @@ export function ProviderCardShell({
               <AppIcon name={isHidden ? 'plus' : 'minus'} className="h-3.5 w-3.5" />
             </button>
           )}
-          <h3 className="text-[15px] font-bold text-[var(--glass-text-primary)]">{provider.name}</h3>
+          <h3 className="text-[15px] font-semibold text-stone-50">{provider.name}</h3>
           {compatibilityLayerLabel && (
             <span className="rounded-full border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)] px-2 py-0.5 text-[10px] font-semibold text-[var(--glass-text-secondary)]">
               {compatibilityLayerLabel}

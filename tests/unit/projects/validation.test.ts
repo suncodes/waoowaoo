@@ -15,6 +15,13 @@ describe('project validation', () => {
     })
   })
 
+  it('allows callers to carry a video profile without affecting name validation', () => {
+    expect(validateProjectDraft({
+      name: '导读项目',
+      videoProfile: { preset: 'book_guide' },
+    })).toBeNull()
+  })
+
   it('rejects descriptions longer than the shared max limit', () => {
     expect(validateProjectDraft({
       name: '项目 A',
