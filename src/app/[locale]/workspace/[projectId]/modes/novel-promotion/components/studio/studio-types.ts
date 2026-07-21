@@ -103,6 +103,8 @@ export interface StudioWorkspaceModel {
     failedShots: number
   }
   workflow: {
+    isBookGuide: boolean
+    hasScriptOutput: boolean
     contentApproved: boolean
     assetRequirementStatus: string
     visualApproved: boolean

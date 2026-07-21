@@ -226,6 +226,8 @@ export function useStudioWorkspaceModel({
         failedShots: shots.filter((shot) => shot.status === 'failed').length,
       },
       workflow: {
+        isBookGuide: workflowState.facts.isBookGuide,
+        hasScriptOutput: workflowState.facts.hasScriptOutput,
         contentApproved: workflowState.facts.contentDocumentApproved,
         assetRequirementStatus: workflowState.facts.assetRequirementStatus,
         visualApproved: visualMeta?.status === 'approved',

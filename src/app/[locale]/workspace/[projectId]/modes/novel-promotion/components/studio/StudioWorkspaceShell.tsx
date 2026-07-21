@@ -396,7 +396,7 @@ export default function StudioWorkspaceShell({
           <StructurePanel model={model} onNavigate={onStageChange} />
         </div>
         <main id="workspace-stage-content" className="min-w-0">
-          <StudioStageCanvas model={model} onNavigate={onStageChange} />
+          <StudioStageCanvas model={model} onNavigate={onStageChange} workflowState={workflowState} />
         </main>
         <div className="min-h-0 lg:sticky lg:top-20 lg:h-[calc(100vh-6rem)]">
           <InspectorPanel model={model} onNavigate={onStageChange} />
