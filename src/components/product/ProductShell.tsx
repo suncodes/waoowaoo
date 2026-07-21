@@ -32,7 +32,7 @@ const NAV_ITEMS: ProductNavItem[] = [
     match: (pathname) => pathname === '/workspace' || (pathname.startsWith('/workspace/') && !pathname.startsWith('/workspace/asset-hub')),
   },
   {
-    label: '资产库',
+    label: '个人资产库',
     href: '/workspace/asset-hub',
     icon: 'folderCards',
     match: (pathname) => pathname.startsWith('/workspace/asset-hub'),

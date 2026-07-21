@@ -6,8 +6,9 @@
  * 用户输入创意/关键词/大纲，直接生成结果并回填首页主输入框
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { AppIcon } from '@/components/ui/icons'
+import ProductModalShell from '@/components/product/ProductModalShell'
 
 interface AiWriteModalProps {
   open: boolean
@@ -15,6 +16,11 @@ interface AiWriteModalProps {
   onClose: () => void
   onStart: (prompt: string) => void
   t: (key: string) => string
+  initialPrompt?: string
+  title?: string
+  description?: string
+  placeholder?: string
+  hint?: string
 }
 
 export default function AiWriteModal({
@@ -23,8 +29,17 @@ export default function AiWriteModal({
   onClose,
   onStart,
   t,
+  initialPrompt = '',
+  title,
+  description,
+  placeholder,
+  hint,
 }: AiWriteModalProps) {
   const [promptText, setPromptText] = useState('')
+
+  useEffect(() => {
+    if (open) setPromptText(initialPrompt)
+  }, [initialPrompt, open])
 
   const handleClose = useCallback(() => {
     if (loading) return
@@ -40,87 +55,47 @@ export default function AiWriteModal({
   if (!open) return null
 
   return (
-    <div
-      className="fixed inset-0 glass-overlay flex items-center justify-center z-50 backdrop-blur-sm"
-      onClick={handleClose}
-    >
-      <div
-        className="w-full max-w-lg mx-4 relative"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* 模态框容器 */}
-        <div className="glass-surface-modal rounded-2xl p-6 space-y-5">
-          {/* 头部 */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{ background: 'linear-gradient(135deg, rgba(59,130,246,0.15), rgba(139,92,246,0.15))' }}
-              >
-                <AppIcon name="sparkles" className="w-5 h-5 text-[#7c3aed]" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-[var(--glass-text-primary)]">
-                  {t('modalTitle')}
-                </h3>
-                <p className="text-xs text-[var(--glass-text-tertiary)]">
-                  {t('modalSubtitle')}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={handleClose}
-              className="glass-icon-btn-sm"
-              disabled={loading}
-            >
-              <AppIcon name="close" className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* 输入区域 */}
-          <div>
-            <label className="text-sm font-medium text-[var(--glass-text-secondary)] mb-2 block">
-              {t('inputLabel')}
-            </label>
-            <textarea
-              value={promptText}
-              onChange={(e) => setPromptText(e.target.value)}
-              placeholder={t('placeholder')}
-              className="glass-textarea-base app-scrollbar h-36 px-4 py-3 text-sm resize-none placeholder:text-[var(--glass-text-tertiary)]"
-              disabled={loading}
-              autoFocus
-            />
-          </div>
-
-          {/* 提示文案 */}
-          <div
-            className="px-3 py-2 rounded-lg text-xs text-[var(--glass-text-tertiary)] leading-relaxed"
-            style={{ background: 'linear-gradient(135deg, rgba(59,130,246,0.06), rgba(139,92,246,0.06))' }}
+    <ProductModalShell
+      open={open}
+      onClose={handleClose}
+      size="md"
+      eyebrow="AI 写作"
+      title={title || t('modalTitle')}
+      description={description || t('modalSubtitle')}
+      closeOnBackdrop={!loading}
+      footer={(
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={handleClose} disabled={loading} className="h-9 rounded-md border border-white/10 bg-white/[0.04] px-4 text-xs font-semibold text-stone-200 hover:bg-white/[0.08] disabled:opacity-45">
+            {t('cancel')}
+          </button>
+          <button
+            type="button"
+            onClick={handleStart}
+            disabled={!promptText.trim() || loading}
+            className="inline-flex h-9 items-center gap-2 rounded-md bg-[#f3e9cf] px-4 text-xs font-semibold text-[#161512] hover:bg-[#fff5d9] disabled:cursor-not-allowed disabled:opacity-45"
           >
-            {t('hint')}
-          </div>
-
-          {/* 按钮区域 */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleClose}
-              disabled={loading}
-              className="flex-1 py-2.5 text-sm text-[var(--glass-text-tertiary)] hover:text-[var(--glass-text-secondary)] transition-colors rounded-xl"
-            >
-              {t('cancel')}
-            </button>
-            <button
-              onClick={handleStart}
-              disabled={!promptText.trim() || loading}
-              className="flex-1 py-3 rounded-xl text-white font-semibold text-sm flex items-center justify-center gap-2 transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
-              style={{ background: 'linear-gradient(135deg, #3b82f6, #7c3aed)' }}
-            >
-              <AppIcon name="sparkles" className="w-4 h-4" />
-              <span>{loading ? '...' : t('startAiWrite')}</span>
-            </button>
-          </div>
+            <AppIcon name={loading ? 'loader' : 'sparkles'} className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            {loading ? '生成中' : t('startAiWrite')}
+          </button>
+        </div>
+      )}
+    >
+      <div className="space-y-4">
+        <label className="block text-sm font-medium text-stone-300">
+          {t('inputLabel')}
+          <textarea
+            value={promptText}
+            onChange={(event) => setPromptText(event.target.value)}
+            placeholder={placeholder || t('placeholder')}
+            className="mt-2 h-44 w-full resize-y rounded-md border border-white/10 bg-[#10110f] px-4 py-3 text-sm leading-6 text-stone-100 outline-none placeholder:text-stone-600 focus:border-[#e8d18a]"
+            disabled={loading}
+            autoFocus
+          />
+        </label>
+        <div className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-3 text-xs leading-5 text-stone-500">
+          {hint || t('hint')}
         </div>
       </div>
-    </div>
+    </ProductModalShell>
   )
 }

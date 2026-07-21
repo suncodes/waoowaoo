@@ -348,7 +348,7 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
                 description="按镜头查看图片、视频和配音的生产状态。"
               />
             </div>
-            <div className="max-h-[660px] space-y-3 overflow-y-auto p-3">
+            <div className="space-y-3 p-3">
               {items.map((item) => (
                 <ProduceQueueRow
                   key={item.id}

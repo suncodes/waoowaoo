@@ -3,7 +3,7 @@
 import AssetsStage from './AssetsStage'
 import TaskStatusInline from '@/components/task/TaskStatusInline'
 import type { TaskPresentationState } from '@/lib/task/presentation'
-import { AppIcon } from '@/components/ui/icons'
+import ProductModalShell from '@/components/product/ProductModalShell'
 
 interface WorkspaceAssetLibraryModalProps {
   isOpen: boolean
@@ -37,29 +37,17 @@ export default function WorkspaceAssetLibraryModal({
   if (!isOpen) return null
 
   return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center glass-overlay animate-fadeIn"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
+    <ProductModalShell
+      open={isOpen}
+      onClose={onClose}
+      size="xl"
+      eyebrow="项目资产"
+      title="项目资产库"
+      description="管理当前项目提取和生成的角色、场景、道具及其定稿图片。"
     >
-      <div className="glass-surface-modal w-[95vw] max-w-6xl h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between px-8 py-5 border-b border-[var(--glass-stroke-base)] flex-shrink-0">
-          <h2 className="text-2xl font-bold text-[var(--glass-text-primary)] flex items-center gap-3">
-            <AppIcon name="package" className="h-7 w-7 text-[var(--glass-text-secondary)]" />
-            资产库
-          </h2>
-          <button
-            onClick={onClose}
-            className="glass-btn-base glass-btn-soft rounded-full p-3"
-          >
-            <AppIcon name="close" className="w-6 h-6" />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-6 app-scrollbar" data-asset-scroll-container="1">
+      <div data-asset-scroll-container="1">
           {assetsLoading && !hasCharacters && !hasLocations && (
-            <div className="flex flex-col items-center justify-center h-64 text-[var(--glass-text-tertiary)] animate-pulse">
+            <div className="flex h-64 flex-col items-center justify-center animate-pulse text-stone-500">
               <TaskStatusInline state={assetsLoadingState} className="text-base [&>span]:text-base" />
             </div>
           )}
@@ -71,8 +59,7 @@ export default function WorkspaceAssetLibraryModal({
             triggerGlobalAnalyze={triggerGlobalAnalyze}
             onGlobalAnalyzeComplete={onGlobalAnalyzeComplete}
           />
-        </div>
       </div>
-    </div>
+    </ProductModalShell>
   )
 }

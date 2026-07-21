@@ -20,7 +20,17 @@ interface StudioDraftCanvasProps {
   onNavigate: (route: string) => void
 }
 
-function PlanPreview({ model, onGenerateScript }: { model: StudioWorkspaceModel; onGenerateScript: () => void }) {
+function PlanPreview({
+  model,
+  editableReady,
+  onGenerateScript,
+  onOpenScript,
+}: {
+  model: StudioWorkspaceModel
+  editableReady: boolean
+  onGenerateScript: () => void
+  onOpenScript: () => void
+}) {
   return (
     <div className="divide-y divide-white/10 rounded-lg border border-white/10 bg-[#10110f]">
       <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
@@ -28,8 +38,8 @@ function PlanPreview({ model, onGenerateScript }: { model: StudioWorkspaceModel;
           <h2 className="text-base font-semibold text-stone-50">内容方案已生成</h2>
           <p className="mt-1 text-sm text-stone-500">下一步生成可编辑剧本，之后可以逐段编辑、AI 重写、接受或丢弃候选。</p>
         </div>
-        <StudioButton icon="sparkles" onClick={onGenerateScript}>
-          生成可编辑剧本
+        <StudioButton icon={editableReady ? 'edit' : 'sparkles'} onClick={editableReady ? onOpenScript : onGenerateScript}>
+          {editableReady ? '进入剧本编辑' : '生成可编辑剧本'}
         </StudioButton>
       </div>
       {model.draftSegments.map((segment, index) => (
@@ -57,6 +67,7 @@ export default function StudioDraftCanvas({ model, onNavigate }: StudioDraftCanv
   const runtime = useWorkspaceStageRuntime()
   const [pending, setPending] = useState(false)
   const editableReady = model.workflow.isBookGuide || model.workflow.hasScriptOutput
+  const contentView = model.activeView === 'plan' ? 'plan' : 'script'
   const visualStatus: StudioProductStatus = model.workflow.assetRequirementStatus === 'approved'
     ? 'locked'
     : model.workflow.assetRequirementStatus === 'needs_review'
@@ -123,26 +134,57 @@ export default function StudioDraftCanvas({ model, onNavigate }: StudioDraftCanv
           title={model.draftTitle}
           description="把内容节奏、叙述口径和镜头意图先稳定下来，再进入角色与场景资产设计。"
           actions={(
-            <>
-              <StudioButton variant="secondary" onClick={() => onNavigate('content-plan')}>查看方案</StudioButton>
-              <StudioButton
-                icon="clipboardCheck"
-                loading={pending || runtime.isAssetAnalysisRunning}
-                onClick={() => { void confirmDraft() }}
-                disabled={runtime.contentEditingState.dirty || runtime.contentEditingState.saving}
-              >
-                确认文稿并提取视觉资产
-              </StudioButton>
-            </>
+            <StudioButton
+              icon="clipboardCheck"
+              loading={pending || runtime.isAssetAnalysisRunning}
+              onClick={() => { void confirmDraft() }}
+              disabled={runtime.contentEditingState.dirty || runtime.contentEditingState.saving}
+            >
+              确认文稿并提取视觉资产
+            </StudioButton>
           )}
         />
 
         <div className="border-b border-white/10 px-6 py-4">
           <StudioProcessSteps steps={processSteps} />
         </div>
+        <div className="flex items-center gap-1 border-b border-white/10 px-6 py-3">
+          <button
+            type="button"
+            onClick={() => onNavigate('content-plan')}
+            className={`h-9 rounded-md px-3 text-sm font-semibold transition-colors ${contentView === 'plan' ? 'bg-[#f3e9cf] text-[#161512]' : 'text-stone-400 hover:bg-white/[0.05] hover:text-stone-100'}`}
+          >
+            内容方案
+          </button>
+          <button
+            type="button"
+            onClick={() => onNavigate('script')}
+            className={`h-9 rounded-md px-3 text-sm font-semibold transition-colors ${contentView === 'script' ? 'bg-[#f3e9cf] text-[#161512]' : 'text-stone-400 hover:bg-white/[0.05] hover:text-stone-100'}`}
+          >
+            剧本编辑
+          </button>
+        </div>
       </StudioPanel>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+      {contentView === 'plan' ? (
+        <StudioPanel padding="none" className="overflow-hidden">
+          <div className="border-b border-white/10 px-5 py-4">
+            <StudioSectionHeader
+              title={model.workflow.isBookGuide ? '导读内容方案' : '剧情内容方案'}
+              description="这里展示 AI 生成的内容结构、段落目的、视觉提示和预计时长。确认结构后再进入逐段编辑。"
+            />
+          </div>
+          <div className="p-4">
+            <PlanPreview
+              model={model}
+              editableReady={editableReady}
+              onOpenScript={() => onNavigate('script')}
+              onGenerateScript={() => { void runtime.onRunStoryToScript() }}
+            />
+          </div>
+        </StudioPanel>
+      ) : (
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <StudioPanel padding="none" className="min-w-0 overflow-hidden">
           <div className="border-b border-white/10 px-5 py-4">
             <StudioSectionHeader
@@ -154,7 +196,12 @@ export default function StudioDraftCanvas({ model, onNavigate }: StudioDraftCanv
             {editableReady ? (
               model.workflow.isBookGuide ? <GuideNarrationEditor /> : <ContentScriptEditor />
             ) : (
-              <PlanPreview model={model} onGenerateScript={() => { void runtime.onRunStoryToScript() }} />
+              <PlanPreview
+                model={model}
+                editableReady={false}
+                onOpenScript={() => onNavigate('script')}
+                onGenerateScript={() => { void runtime.onRunStoryToScript() }}
+              />
             )}
           </div>
         </StudioPanel>
@@ -178,7 +225,8 @@ export default function StudioDraftCanvas({ model, onNavigate }: StudioDraftCanv
             </div>
           </StudioPanel>
         </aside>
-      </div>
+        </div>
+      )}
     </div>
   )
 }

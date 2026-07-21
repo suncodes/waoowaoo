@@ -77,6 +77,9 @@ export default function ContentScriptEditor() {
   const lockedClipIds = useMemo(() => new Set(
     Object.entries(meta?.units || {}).flatMap(([unitId, state]) => state.locked ? [unitId] : []),
   ), [meta?.units])
+  const candidateClipIds = useMemo(() => new Set(
+    Object.entries(meta?.units || {}).flatMap(([unitId, state]) => state.candidate ? [unitId] : []),
+  ), [meta?.units])
   const selectedClip = clips.find((clip) => clip.id === selectedClipId) || null
   const selectedState = selectedClipId ? meta?.units[selectedClipId] : undefined
   const candidate = asRecord(selectedState?.candidate?.value)
@@ -146,10 +149,11 @@ export default function ContentScriptEditor() {
           </div>
           <p className="mt-1 text-xs leading-5 text-stone-500">按叙事顺序逐段编辑和确认。</p>
         </div>
-        <div className="max-h-[720px] space-y-1.5 overflow-y-auto p-2 app-scrollbar">
+        <div className="space-y-1.5 p-2">
           {clips.map((clip, index) => {
             const active = clip.id === selectedClipId
             const locked = lockedClipIds.has(clip.id)
+            const hasCandidate = candidateClipIds.has(clip.id)
             return (
               <button
                 key={clip.id}
@@ -165,7 +169,7 @@ export default function ContentScriptEditor() {
                   <span className="block truncate text-sm font-semibold text-stone-200">{clip.summary || `段落 ${index + 1}`}</span>
                   <span className="mt-1 block truncate text-[11px] text-stone-500">{clip.location || clip.characters || '未标注场景与角色'}</span>
                 </span>
-                {locked ? <AppIcon name="lock" className="mt-1 h-3.5 w-3.5 text-emerald-300" /> : null}
+                {hasCandidate ? <AppIcon name="sparkles" className="mt-1 h-3.5 w-3.5 text-cyan-200" /> : locked ? <AppIcon name="lock" className="mt-1 h-3.5 w-3.5 text-emerald-300" /> : null}
               </button>
             )
           })}
@@ -178,7 +182,9 @@ export default function ContentScriptEditor() {
             <div className="min-w-0">
               <p className="text-xs font-semibold text-[#c8a85f]">当前段落</p>
               <h2 className="mt-1 truncate text-base font-semibold text-stone-50">{selectedClip.summary || '未命名段落'}</h2>
-              <p className="mt-1 text-xs text-stone-500">修订 {selectedState?.revision || 0} · {selectedState?.locked ? '已锁定' : scriptDirty ? '有未保存修改' : '已同步'}</p>
+              <p className={`mt-1 text-xs ${candidate ? 'text-cyan-200' : 'text-stone-500'}`}>
+                修订 {selectedState?.revision || 0} · {candidate ? 'AI 候选待确认' : selectedState?.locked ? '已锁定' : scriptDirty ? '有未保存修改' : '已同步'}
+              </p>
             </div>
             <div className="flex items-center gap-2">
               {scriptDirty ? (

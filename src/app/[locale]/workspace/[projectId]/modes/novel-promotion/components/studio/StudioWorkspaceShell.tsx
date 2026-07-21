@@ -9,8 +9,7 @@ import type { WorkspaceRunStreamState } from '../workspace-run-types'
 import type { CreationTaskDescriptor } from '../workspace-v2/CreationTaskDetails'
 import {
   hasRenderableTaskDetails,
-  StudioGenerationQueue,
-  StudioTaskDetailsModal,
+  StudioTaskCenterModal,
 } from './StudioGenerationQueue'
 import { studioStatusDotClass } from './StudioPrimitives'
 import StudioStageCanvas from './StudioStageCanvas'
@@ -83,7 +82,6 @@ function StudioTopBar({
   videoProfile,
   activeItem,
   progressPercent,
-  taskDetailsAvailable,
   onEpisodeSelect,
   onEpisodeCreate,
   onOpenAssetLibrary,
@@ -103,7 +101,6 @@ function StudioTopBar({
 > & {
   activeItem: StudioNavItem
   progressPercent: number
-  taskDetailsAvailable: boolean
   onOpenTaskDetails: (taskId?: string) => void
 }) {
   const [refreshing, setRefreshing] = useState(false)
@@ -157,9 +154,9 @@ function StudioTopBar({
               ))}
             </select>
           ) : null}
-          <IconButton icon="receipt" label="生成日志" onClick={onOpenTaskDetails} disabled={!taskDetailsAvailable} />
+          <IconButton icon="receipt" label="任务中心" onClick={onOpenTaskDetails} />
           <IconButton icon="plus" label="新建剧集" onClick={onEpisodeCreate} />
-          <IconButton icon="folderOpen" label="资产库" onClick={onOpenAssetLibrary} />
+          <IconButton icon="folderOpen" label="项目资产" onClick={onOpenAssetLibrary} />
           <IconButton icon="settingsHexMinor" label="设置" onClick={onOpenSettings} />
           <IconButton icon="refresh" label="刷新" onClick={() => { void refresh() }} spinning={refreshing} />
         </div>
@@ -293,13 +290,9 @@ function StructurePanel({ model, onNavigate }: { model: StudioWorkspaceModel; on
 function AssistantPanel({
   model,
   onNavigate,
-  onOpenTaskDetails,
-  taskDetailsAvailable,
 }: {
   model: StudioWorkspaceModel
   onNavigate: (route: string) => void
-  onOpenTaskDetails: () => void
-  taskDetailsAvailable: boolean
 }) {
   const runtime = useWorkspaceStageRuntime()
   const activeAsset = model.coreVisualAssets.find((asset) => asset.status !== 'locked') || model.coreVisualAssets[0]
@@ -325,7 +318,7 @@ function AssistantPanel({
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#c8a85f]">Operator</p>
         <h2 className="mt-2 text-base font-semibold text-stone-50">{modeTitle}</h2>
       </header>
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+      <div className="space-y-4 p-4">
         <section>
           <h3 className="text-xs font-semibold text-stone-500">当前对象</h3>
           <div className="mt-2 space-y-2">
@@ -338,10 +331,10 @@ function AssistantPanel({
           <h3 className="text-xs font-semibold text-stone-500">上下文动作</h3>
           <div className="mt-2 grid gap-2">
             {model.activeMode === 'draft' ? (
-              <ActionButton icon="sparkles" label="重写当前段落" onClick={() => onNavigate('script')} />
+              <ActionButton icon="edit" label="打开剧本编辑" onClick={() => onNavigate('script')} />
             ) : null}
             {model.activeMode === 'visual-kit' ? (
-              <ActionButton icon="folderOpen" label="打开资产库" onClick={runtime.onOpenAssetLibrary} />
+              <ActionButton icon="folderOpen" label="打开项目资产" onClick={runtime.onOpenAssetLibrary} />
             ) : null}
             {model.activeMode === 'board' ? (
               <ActionButton icon="sparkles" label="重新生成分镜" onClick={() => { void runtime.onRunScriptToStoryboard() }} />
@@ -359,11 +352,6 @@ function AssistantPanel({
           </div>
         </section>
       </div>
-      <StudioGenerationQueue
-        jobs={model.generationJobs}
-        detailsAvailable={taskDetailsAvailable}
-        onOpenDetails={onOpenTaskDetails}
-      />
     </aside>
   )
 }
@@ -428,6 +416,17 @@ export default function StudioWorkspaceShell({
   )
   const activeItem = navItems.find((item) => item.id === model.activeMode) || navItems[0]
   const progressPercent = Math.round((navItems.reduce((sum, item) => sum + progressWeight(item.status), 0) / navItems.length) * 100)
+  const incompleteShotCount = model.shots.filter((shot) => !shot.imageUrl || shot.status === 'generating' || shot.status === 'failed').length
+  const productionReady = model.shots.length > 0 && incompleteShotCount === 0
+  const navigate = (route: string) => {
+    if (route === 'videos' && !productionReady) {
+      window.alert(model.shots.length === 0
+        ? '请先生成并确认分镜。'
+        : `还有 ${incompleteShotCount} 个镜头缺少定稿图片、正在生成或生成失败，暂时不能进入生产台。`)
+      return
+    }
+    onStageChange(route)
+  }
   const taskDescriptors = useMemo<CreationTaskDescriptor[]>(() => [
     { id: 'content-plan', label: '文稿规划', stream: contentPlanStream },
     { id: 'story-script', label: '剧本生成', stream: storyToScriptStream },
@@ -435,22 +434,14 @@ export default function StudioWorkspaceShell({
     { id: 'storyboard', label: '分镜生成', stream: scriptToStoryboardStream },
   ], [contentPlanStream, scriptToStoryboardStream, storyToScriptStream, visualPlanStream])
   const [taskDetailId, setTaskDetailId] = useState<string | null>(null)
+  const [taskCenterOpen, setTaskCenterOpen] = useState(false)
   const renderableTaskDescriptors = useMemo(
     () => taskDescriptors.filter(hasRenderableTaskDetails),
     [taskDescriptors],
   )
-  const orderedTaskDetailDescriptors = useMemo(() => {
-    if (!taskDetailId) return renderableTaskDescriptors
-    const selected = renderableTaskDescriptors.find((descriptor) => descriptor.id === taskDetailId)
-    if (!selected) return renderableTaskDescriptors
-    return [
-      selected,
-      ...renderableTaskDescriptors.filter((descriptor) => descriptor.id !== selected.id),
-    ]
-  }, [renderableTaskDescriptors, taskDetailId])
   const openTaskDetails = (taskId?: string) => {
-    if (renderableTaskDescriptors.length === 0) return
-    setTaskDetailId(taskId || renderableTaskDescriptors[0]?.id || null)
+    setTaskDetailId(taskId || renderableTaskDescriptors[0]?.id || model.generationJobs[0]?.id || null)
+    setTaskCenterOpen(true)
   }
 
   return (
@@ -462,7 +453,6 @@ export default function StudioWorkspaceShell({
         videoProfile={videoProfile}
         activeItem={activeItem}
         progressPercent={progressPercent}
-        taskDetailsAvailable={renderableTaskDescriptors.length > 0}
         onEpisodeSelect={onEpisodeSelect}
         onEpisodeCreate={onEpisodeCreate}
         onOpenAssetLibrary={onOpenAssetLibrary}
@@ -472,23 +462,29 @@ export default function StudioWorkspaceShell({
       />
       <div className="grid min-h-[calc(100vh-12rem)] gap-4 lg:grid-cols-[236px_minmax(0,1fr)_312px]">
         <div className="space-y-4 lg:sticky lg:top-20 lg:self-start">
-          <StudioNav items={navItems} activeMode={model.activeMode} onNavigate={onStageChange} />
-          <StructurePanel model={model} onNavigate={onStageChange} />
+          <StudioNav items={navItems} activeMode={model.activeMode} onNavigate={navigate} />
+          <StructurePanel model={model} onNavigate={navigate} />
         </div>
         <main id="workspace-stage-content" className="min-w-0">
-          <StudioStageCanvas model={model} onNavigate={onStageChange} workflowState={workflowState} />
+          <StudioStageCanvas model={model} onNavigate={navigate} workflowState={workflowState} />
         </main>
-        <div className="min-h-0 lg:sticky lg:top-20 lg:h-[calc(100vh-6rem)]">
+        <div className="lg:sticky lg:top-20 lg:self-start">
           <AssistantPanel
             model={model}
-            onNavigate={onStageChange}
-            onOpenTaskDetails={openTaskDetails}
-            taskDetailsAvailable={renderableTaskDescriptors.length > 0}
+            onNavigate={navigate}
           />
         </div>
       </div>
-      {taskDetailId && orderedTaskDetailDescriptors.length > 0 ? (
-        <StudioTaskDetailsModal descriptors={orderedTaskDetailDescriptors} onClose={() => setTaskDetailId(null)} />
+      {taskCenterOpen ? (
+        <StudioTaskCenterModal
+          jobs={model.generationJobs}
+          descriptors={renderableTaskDescriptors}
+          initialTaskId={taskDetailId}
+          onClose={() => {
+            setTaskCenterOpen(false)
+            setTaskDetailId(null)
+          }}
+        />
       ) : null}
     </section>
   )

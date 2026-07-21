@@ -159,7 +159,7 @@ export default function StudioStartCanvas({ model }: StudioStartCanvasProps) {
           actions={(
             <>
               <StudioButton variant="secondary" icon="sparklesAlt" onClick={() => setAiWriteOpen(true)} disabled={runtime.isTransitioning || saving}>
-                AI 写作
+                {isBookGuide ? 'AI 扩写导读材料' : 'AI 写作'}
               </StudioButton>
               <StudioButton icon="sparkles" loading={runtime.isTransitioning || saving} onClick={() => { void start() }} disabled={!text.trim()}>
                 {isBookGuide ? '生成导读框架' : '生成文稿初稿'}
@@ -314,6 +314,13 @@ export default function StudioStartCanvas({ model }: StudioStartCanvasProps) {
         onClose={() => setAiWriteOpen(false)}
         onStart={(prompt) => { void handleAiWriteStart(prompt) }}
         t={(key: string) => homeT(`aiWrite.${key}`)}
+        initialPrompt={isBookGuide && text.trim()
+          ? `请基于下面的书籍信息扩写一份可编辑的导读策划材料。需要包含：作品背景、核心主题、章节或观点脉络、适合视频讲解的叙事顺序、关键人物或概念、可视化素材建议。不要虚构逐字引文；不确定的细节请明确标注待核对。\n\n${text.trim()}`
+          : ''}
+        title={isBookGuide ? '扩写书籍导读材料' : undefined}
+        description={isBookGuide ? '先把书名、章节范围和解读角度扩写成导读策划稿，再生成内容方案。' : undefined}
+        placeholder={isBookGuide ? '输入书名、作者、章节范围、目标读者和你希望强调的观点。' : undefined}
+        hint={isBookGuide ? '扩写结果会回填到项目简报；你仍可以继续编辑，再点击“生成导读框架”。' : undefined}
       />
     </div>
   )

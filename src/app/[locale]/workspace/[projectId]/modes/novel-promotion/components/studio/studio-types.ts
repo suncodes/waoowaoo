@@ -87,6 +87,7 @@ export interface StudioGenerationJob {
 
 export interface StudioWorkspaceModel {
   activeMode: StudioModeId
+  activeView?: string | null
   novelText: string
   draftTitle: string
   draftSegments: StudioDraftSegment[]

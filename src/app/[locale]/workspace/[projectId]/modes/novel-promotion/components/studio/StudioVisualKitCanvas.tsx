@@ -88,6 +88,10 @@ function isSelectedRender(variant: AssetVariantSummary, render: AssetRenderSumma
   return render.isSelected || render.index === variant.selectionState.selectedRenderIndex
 }
 
+function renderKey(variant: AssetVariantSummary, render: AssetRenderSummary) {
+  return `${variant.id}:${render.index}`
+}
+
 function useVisualKitActions(projectId: string) {
   const characterActions = useAssetActions({ scope: 'project', projectId, kind: 'character' })
   const locationActions = useAssetActions({ scope: 'project', projectId, kind: 'location' })
@@ -238,7 +242,7 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
           actions={(
             <>
               <StudioButton size="sm" variant="secondary" icon="folderOpen" onClick={runtime.onOpenAssetLibrary}>
-              资产库
+              项目资产
               </StudioButton>
               <StudioButton
                 size="sm"
@@ -288,7 +292,7 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
                 description="先处理核心资产，再补充辅助资产。"
               />
             </div>
-            <div className="max-h-[760px] space-y-4 overflow-y-auto p-3">
+            <div className="space-y-4 p-3">
               <AssetRailSection
                 title="核心资产"
                 items={coreItems}
@@ -421,6 +425,14 @@ function VisualAssetInspector({
   const renders = flattenRenders(item.asset)
   const disabled = !!pendingKey
   const primaryVariant = item.asset?.variants[0]
+  const confirmedRender = renders.find(({ variant, render }) => isSelectedRender(variant, render))
+  const confirmedRenderKey = confirmedRender ? renderKey(confirmedRender.variant, confirmedRender.render) : ''
+  const [selectedRenderKey, setSelectedRenderKey] = useState(confirmedRenderKey)
+  const selectedRender = renders.find(({ variant, render }) => renderKey(variant, render) === selectedRenderKey) || confirmedRender || null
+
+  useEffect(() => {
+    setSelectedRenderKey(confirmedRenderKey)
+  }, [confirmedRenderKey])
 
   const save = async () => {
     if (!item.asset || !actions) return
@@ -464,8 +476,8 @@ function VisualAssetInspector({
 
       <div className="grid gap-5 p-5 lg:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]">
         <div className="relative aspect-[4/3] overflow-hidden rounded-md bg-[#0f100e]">
-          {item.imageUrl ? (
-            <Image src={item.imageUrl} alt={item.name} fill sizes="380px" className="object-cover" unoptimized />
+          {selectedRender?.render.imageUrl || item.imageUrl ? (
+            <Image src={selectedRender?.render.imageUrl || item.imageUrl || ''} alt={item.name} fill sizes="380px" className="object-cover" unoptimized />
           ) : (
             <div className="flex h-full items-center justify-center text-stone-600">
               <AppIcon name={item.kind === 'character' ? 'user' : item.kind === 'location' ? 'imageLandscape' : 'package'} className="h-8 w-8" />
@@ -513,26 +525,42 @@ function VisualAssetInspector({
 
       {renders.length > 0 ? (
         <div className="border-t border-white/10 px-5 py-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold text-stone-50">候选图</h3>
-            <span className="text-xs text-stone-500">{renders.length} 张</span>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-stone-50">候选图</h3>
+              <p className="mt-1 text-xs text-stone-500">先切换比较，再确认定稿。</p>
+            </div>
+            <StudioButton
+              size="sm"
+              icon="check"
+              loading={selectedRender ? pendingKey === `select:${item.id}:${selectedRender.render.index}` : false}
+              onClick={() => {
+                if (selectedRender) void select(selectedRender.variant, selectedRender.render)
+              }}
+              disabled={!selectedRender || selectedRenderKey === confirmedRenderKey || disabled}
+            >
+              {selectedRenderKey === confirmedRenderKey ? '当前已定稿' : '设为定稿'}
+            </StudioButton>
           </div>
           <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-4">
           {renders.map(({ variant, render }) => {
-            const selected = isSelectedRender(variant, render)
+            const key = renderKey(variant, render)
+            const selected = key === selectedRenderKey
+            const confirmed = isSelectedRender(variant, render)
             return (
               <button
-                key={`${variant.id}:${render.index}`}
+                key={key}
                 type="button"
-                onClick={() => { void select(variant, render) }}
-                disabled={disabled || selected}
+                onClick={() => setSelectedRenderKey(key)}
+                disabled={disabled}
                 className={`group relative aspect-[4/3] overflow-hidden rounded-md border text-left ${selected ? 'border-emerald-400' : 'border-white/10 hover:border-[#e8d18a]'}`}
-                title={selected ? '当前定稿图' : '设为定稿图'}
+                title={selected ? '当前选择' : '切换到这张候选图'}
               >
                 <Image src={render.imageUrl || ''} alt={`${item.name} 候选图 ${render.index + 1}`} fill sizes="160px" className="object-cover" unoptimized />
-                <span className={`absolute left-2 top-2 rounded px-2 py-1 text-[11px] font-semibold ${selected ? 'bg-emerald-500 text-white' : 'bg-black/60 text-stone-100'}`}>
-                  {selected ? '定稿' : `候选 ${render.index + 1}`}
+                <span className={`absolute left-2 top-2 rounded px-2 py-1 text-[11px] font-semibold ${selected ? 'bg-[#f3e9cf] text-[#161512]' : 'bg-black/60 text-stone-100'}`}>
+                  {selected ? '当前选择' : `候选 ${render.index + 1}`}
                 </span>
+                {confirmed ? <span className="absolute bottom-2 right-2 rounded bg-emerald-500 px-2 py-1 text-[10px] font-semibold text-white">已定稿</span> : null}
               </button>
             )
           })}

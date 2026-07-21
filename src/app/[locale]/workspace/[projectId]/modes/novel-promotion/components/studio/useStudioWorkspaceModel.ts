@@ -251,6 +251,7 @@ export function useStudioWorkspaceModel({
 
     return {
       activeMode: resolveStudioMode(currentStage, stageView),
+      activeView: stageView,
       novelText: episodeData.novelText,
       draftTitle: readPlanningString(asPlanningRecord(episodeData.contentPlan)?.title, episodeData.episodeName || '未命名视频'),
       draftSegments,

@@ -416,6 +416,15 @@ function StudioBoardRuntime({
     [controller.getTextPanels, controller.sortedStoryboards],
   )
   const selectedItem = items.find((item) => item.panel.id === selectedPanelId) || items[0] || null
+  const blockedProductionCount = items.filter((item) => {
+    const candidates = controller.getPanelCandidates(item.sourcePanel)
+    return !item.panel.imageUrl
+      || !!candidates
+      || controller.submittingPanelImageIds.has(item.panel.id)
+      || controller.modifyingPanels.has(item.panel.id)
+      || !!item.sourcePanel.imageTaskRunning
+  }).length
+  const productionReady = blockedProductionCount === 0 && controller.runningCount === 0
 
   const modalRuntime = useStoryboardModalRuntime({
     projectId,
@@ -463,8 +472,8 @@ function StudioBoardRuntime({
               <StudioButton size="sm" variant="secondary" icon="sparkles" loading={controller.isEpisodeBatchSubmitting} onClick={() => { void controller.handleGenerateAllPanels() }}>
               生成缺失图片
               </StudioButton>
-              <StudioButton size="sm" icon="check" onClick={() => onNavigate('videos')}>
-              确认并进入制作
+              <StudioButton size="sm" icon="check" onClick={() => onNavigate('videos')} disabled={!productionReady}>
+              {productionReady ? '确认并进入制作' : `${blockedProductionCount} 个镜头待确认`}
               </StudioButton>
             </>
           )}
@@ -477,6 +486,12 @@ function StudioBoardRuntime({
           <StudioMetric label="待生成" value={controller.pendingPanelCount} />
         </div>
 
+        {!productionReady ? (
+          <div className="border-b border-amber-400/20 bg-amber-400/[0.07] px-6 py-3 text-sm text-amber-100">
+            进入生产台前，需要为每个镜头确认定稿图片，并等待所有图片任务结束。
+          </div>
+        ) : null}
+
         <div className="grid min-h-[620px] gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_420px]">
           <div className="min-h-0 overflow-hidden rounded-lg border border-white/10 bg-[#10110f]">
             <div className="border-b border-white/10 px-4 py-4">
@@ -485,7 +500,7 @@ function StudioBoardRuntime({
                 description="逐个确认画面描述、角色场景绑定和定稿图片。"
               />
             </div>
-            <div className="max-h-[660px] space-y-3 overflow-y-auto p-3">
+            <div className="space-y-3 p-3">
               {items.map((item) => {
                 const candidates = controller.getPanelCandidates(item.sourcePanel)
                 const submitting = controller.submittingPanelImageIds.has(item.panel.id)
