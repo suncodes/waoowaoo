@@ -1,11 +1,20 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import { apiFetch } from '@/lib/api-fetch'
 import { useMergeProjectEpisodeVideo } from '@/lib/query/hooks'
 import { useWorkspaceProvider } from '../../WorkspaceProvider'
-import { AppIcon } from '@/components/ui/icons'
-import { statusLabel, type StudioProductStatus, type StudioWorkspaceModel } from './studio-types'
+import {
+  StudioButton,
+  StudioEmptyState,
+  StudioMetric,
+  StudioPanel,
+  StudioProcessSteps,
+  StudioSectionHeader,
+  StudioStageHeader,
+  StudioStatusBadge,
+} from './StudioPrimitives'
+import { type StudioProductStatus, type StudioWorkspaceModel } from './studio-types'
 
 interface StudioExportCanvasProps {
   model: StudioWorkspaceModel
@@ -17,40 +26,6 @@ interface MergeResult {
   fileName: string
   videoCount: number
   sizeBytes?: number
-}
-
-function statusClass(status: StudioProductStatus) {
-  if (status === 'locked') return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
-  if (status === 'generating') return 'border-cyan-400/30 bg-cyan-400/10 text-cyan-100'
-  if (status === 'failed') return 'border-rose-400/30 bg-rose-400/10 text-rose-100'
-  if (status === 'stale' || status === 'needs_review') return 'border-amber-400/30 bg-amber-400/10 text-amber-100'
-  return 'border-white/10 bg-white/5 text-stone-300'
-}
-
-function Button({
-  children,
-  onClick,
-  disabled,
-  variant = 'primary',
-}: {
-  children: ReactNode
-  onClick?: () => void
-  disabled?: boolean
-  variant?: 'primary' | 'secondary'
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${variant === 'primary'
-        ? 'bg-[#f3e9cf] text-[#161512] hover:bg-[#fff5d9]'
-        : 'border border-white/12 bg-white/[0.04] text-stone-100 hover:bg-white/[0.08]'
-      }`}
-    >
-      {children}
-    </button>
-  )
 }
 
 function formatBytes(value?: number) {
@@ -78,6 +53,26 @@ function downloadBlob(blob: Blob, fileName: string) {
   URL.revokeObjectURL(url)
 }
 
+function DeliveryCheckRow({
+  label,
+  value,
+  status,
+}: {
+  label: string
+  value: string
+  status: StudioProductStatus
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2.5">
+      <div className="min-w-0">
+        <div className="truncate text-sm font-medium text-stone-200">{label}</div>
+        <div className="mt-1 truncate text-xs text-stone-500">{value}</div>
+      </div>
+      <StudioStatusBadge status={status} />
+    </div>
+  )
+}
+
 export default function StudioExportCanvas({ model }: StudioExportCanvasProps) {
   const { projectId, episodeId } = useWorkspaceProvider()
   const mergeMutation = useMergeProjectEpisodeVideo(projectId)
@@ -86,6 +81,35 @@ export default function StudioExportCanvas({ model }: StudioExportCanvasProps) {
   const [error, setError] = useState('')
   const completedVideos = model.summary.completedVideos
   const canExport = completedVideos > 0 && !!episodeId
+  const totalShots = model.shots.length
+  const allVideosReady = totalShots > 0 && completedVideos === totalShots
+  const mergeStatus: StudioProductStatus = mergeMutation.isPending ? 'generating' : mergeResult ? 'locked' : 'empty'
+  const materialStatus: StudioProductStatus = model.summary.failedShots > 0 ? 'failed' : canExport ? 'locked' : 'needs_review'
+  const packageStatus: StudioProductStatus = downloadingZip ? 'generating' : canExport ? 'needs_review' : 'empty'
+  const deliveryStatus: StudioProductStatus = mergeResult ? 'locked' : allVideosReady ? 'needs_review' : 'empty'
+  const incompleteShots = model.shots.filter((shot) => !shot.videoUrl || shot.errorMessage)
+  const processSteps: Array<{ label: string; helper: string; status: StudioProductStatus }> = [
+    {
+      label: '素材检查',
+      helper: `${completedVideos}/${totalShots}`,
+      status: materialStatus,
+    },
+    {
+      label: '镜头包',
+      helper: downloadingZip ? '下载准备中' : canExport ? '可下载' : '等待视频',
+      status: packageStatus,
+    },
+    {
+      label: '合并成片',
+      helper: mergeMutation.isPending ? '合并中' : mergeResult ? `${mergeResult.videoCount} 段` : '未生成',
+      status: mergeStatus,
+    },
+    {
+      label: '交付版本',
+      helper: mergeResult ? '已生成' : allVideosReady ? '待合并' : '需补齐',
+      status: deliveryStatus,
+    },
+  ]
 
   const mergeVideo = async () => {
     if (!episodeId) return
@@ -127,88 +151,105 @@ export default function StudioExportCanvas({ model }: StudioExportCanvasProps) {
 
   return (
     <div className="space-y-4">
-      <section className="rounded-lg border border-white/10 bg-[#151613] px-6 py-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#c8a85f]">Export</p>
-            <h1 className="mt-2 text-2xl font-semibold text-stone-50">导出版本</h1>
-            <p className="mt-2 text-sm text-stone-400">合并成片或下载所有镜头视频，导出结果沿用现有任务和存储能力。</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" onClick={() => { void downloadVideoZip() }} disabled={!canExport || downloadingZip}>
-              <AppIcon name={downloadingZip ? 'loader' : 'download'} className={`h-4 w-4 ${downloadingZip ? 'animate-spin' : ''}`} />
+      <StudioPanel padding="none">
+        <StudioStageHeader
+          eyebrow="交付"
+          title="交付中心"
+          description="合并成片或下载所有镜头视频，导出结果沿用现有任务和存储能力。"
+          actions={(
+            <>
+              <StudioButton variant="secondary" icon="download" loading={downloadingZip} onClick={() => { void downloadVideoZip() }} disabled={!canExport}>
               下载镜头包
-            </Button>
-            <Button onClick={() => { void mergeVideo() }} disabled={!canExport || mergeMutation.isPending}>
-              <AppIcon name={mergeMutation.isPending ? 'loader' : 'film'} className={`h-4 w-4 ${mergeMutation.isPending ? 'animate-spin' : ''}`} />
+              </StudioButton>
+              <StudioButton icon="film" loading={mergeMutation.isPending} onClick={() => { void mergeVideo() }} disabled={!canExport}>
               合并成片
-            </Button>
-          </div>
+              </StudioButton>
+            </>
+          )}
+        />
+        <div className="border-b border-white/10 px-6 py-4">
+          <StudioProcessSteps steps={processSteps} />
         </div>
 
         {error ? (
-          <div className="mt-5 rounded-md border border-rose-400/30 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">{error}</div>
+          <div className="mx-6 mb-5 rounded-md border border-rose-400/30 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">{error}</div>
         ) : null}
 
-        <div className="mt-6 grid gap-4 lg:grid-cols-3">
-          <section className="rounded-md border border-white/10 bg-white/[0.03] p-4">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="font-semibold text-stone-50">导出素材</h2>
-              <span className={`rounded-full border px-2 py-0.5 text-xs ${statusClass(canExport ? 'locked' : 'needs_review')}`}>
-                {canExport ? '可导出' : '待完善'}
-              </span>
-            </div>
-            <p className="mt-3 text-sm leading-6 text-stone-400">已完成视频：{completedVideos}/{model.shots.length}</p>
-          </section>
-
-          <section className="rounded-md border border-white/10 bg-white/[0.03] p-4">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="font-semibold text-stone-50">合并任务</h2>
-              <span className={`rounded-full border px-2 py-0.5 text-xs ${statusClass(mergeMutation.isPending ? 'generating' : mergeResult ? 'locked' : 'empty')}`}>
-                {mergeMutation.isPending ? '合并中' : mergeResult ? '已生成' : '未开始'}
-              </span>
-            </div>
-            <p className="mt-3 text-sm leading-6 text-stone-400">
-              {mergeResult ? `${mergeResult.videoCount} 个片段 · ${formatBytes(mergeResult.sizeBytes)}` : '生成后会得到一个连续 MP4。'}
-            </p>
-          </section>
-
-          <section className="rounded-md border border-white/10 bg-white/[0.03] p-4">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="font-semibold text-stone-50">质量检查</h2>
-              <span className={`rounded-full border px-2 py-0.5 text-xs ${statusClass(model.summary.failedShots > 0 ? 'failed' : canExport ? 'locked' : 'empty')}`}>
-                {model.summary.failedShots > 0 ? statusLabel('failed') : canExport ? statusLabel('locked') : statusLabel('empty')}
-              </span>
-            </div>
-            <p className="mt-3 text-sm leading-6 text-stone-400">失败镜头：{model.summary.failedShots}</p>
-          </section>
+        <div className="grid gap-4 px-6 py-4 lg:grid-cols-4">
+          <StudioMetric label="镜头视频" value={`${completedVideos}/${totalShots}`} />
+          <StudioMetric label="失败镜头" value={model.summary.failedShots} />
+          <StudioMetric label="合并片段" value={mergeResult?.videoCount || '-'} />
+          <StudioMetric label="文件大小" value={formatBytes(mergeResult?.sizeBytes)} />
         </div>
-      </section>
+      </StudioPanel>
 
-      <section className="rounded-lg border border-white/10 bg-[#151613] p-4">
-        {mergeResult?.outputUrl ? (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <StudioPanel padding="none" className="overflow-hidden">
+          <div className="border-b border-white/10 px-5 py-4">
+            <StudioSectionHeader
+              title="交付预览"
+              description={mergeResult ? '当前合并成片可预览和下载。' : '合并完成后会显示连续成片预览。'}
+            />
+          </div>
+          {mergeResult?.outputUrl ? (
             <div className="flex min-h-[360px] items-center justify-center rounded-md bg-black">
               <video src={mergeResult.outputUrl} controls className="max-h-[560px] w-full object-contain" />
             </div>
-            <aside className="space-y-3 rounded-md border border-white/10 bg-white/[0.03] p-4">
-              <h2 className="text-sm font-semibold text-stone-50">{mergeResult.fileName}</h2>
-              <p className="text-sm text-stone-400">片段：{mergeResult.videoCount}</p>
-              <p className="text-sm text-stone-400">大小：{formatBytes(mergeResult.sizeBytes)}</p>
-              <Button onClick={() => window.open(mergeResult.downloadUrl || mergeResult.outputUrl, '_blank')}>
-                <AppIcon name="download" className="h-4 w-4" />
-                下载成片
-              </Button>
-            </aside>
-          </div>
-        ) : (
-          <div className="flex min-h-[320px] flex-col items-center justify-center rounded-md border border-dashed border-white/15 bg-[#10110f] px-6 py-12 text-center">
-            <AppIcon name="film" className="h-8 w-8 text-stone-600" />
-            <h2 className="mt-4 text-base font-semibold text-stone-50">还没有导出成片</h2>
-            <p className="mt-2 max-w-lg text-sm leading-6 text-stone-400">点击“合并成片”后，导出任务会把当前剧集已完成镜头按顺序拼接成 MP4。</p>
-          </div>
-        )}
-      </section>
+          ) : (
+            <StudioEmptyState
+              icon="film"
+              title="还没有导出成片"
+              description="点击“合并成片”后，导出任务会把当前剧集已完成镜头按顺序拼接成 MP4。"
+              action={<StudioButton icon="film" loading={mergeMutation.isPending} onClick={() => { void mergeVideo() }} disabled={!canExport}>合并成片</StudioButton>}
+            />
+          )}
+        </StudioPanel>
+
+        <aside className="space-y-4">
+          <StudioPanel>
+            <StudioSectionHeader title="导出结果" description="成片生成后可直接打开下载地址。" />
+            {mergeResult ? (
+              <div className="mt-4 space-y-3">
+                <div className="rounded-md border border-white/10 bg-white/[0.03] p-3">
+                  <div className="text-xs font-semibold text-stone-500">文件名</div>
+                  <p className="mt-2 break-all text-sm leading-6 text-stone-200">{mergeResult.fileName}</p>
+                </div>
+                <DeliveryCheckRow label="片段数量" value={`${mergeResult.videoCount} 个`} status="locked" />
+                <DeliveryCheckRow label="文件大小" value={formatBytes(mergeResult.sizeBytes)} status="locked" />
+                <StudioButton icon="download" onClick={() => window.open(mergeResult.downloadUrl || mergeResult.outputUrl, '_blank')}>
+                  下载成片
+                </StudioButton>
+              </div>
+            ) : (
+              <div className="mt-4 space-y-2">
+                <DeliveryCheckRow label="合并任务" value="尚未生成连续成片" status={mergeStatus} />
+                <DeliveryCheckRow label="导出素材" value={canExport ? '已有可导出视频' : '没有可导出视频'} status={materialStatus} />
+              </div>
+            )}
+          </StudioPanel>
+
+          <StudioPanel>
+            <StudioSectionHeader title="交付缺口" description="优先补齐失败或缺少视频的镜头。" />
+            <div className="mt-4 space-y-2">
+              {incompleteShots.length > 0 ? (
+                incompleteShots.slice(0, 6).map((shot) => (
+                  <DeliveryCheckRow
+                    key={shot.id}
+                    label={`第 ${shot.number} 镜`}
+                    value={shot.errorMessage || (shot.videoUrl ? '可导出' : '缺少视频')}
+                    status={shot.errorMessage ? 'failed' : shot.videoUrl ? 'locked' : 'needs_review'}
+                  />
+                ))
+              ) : (
+                <DeliveryCheckRow label="镜头视频" value="全部镜头已生成视频" status={completedVideos > 0 ? 'locked' : 'empty'} />
+              )}
+              {incompleteShots.length > 6 ? (
+                <p className="text-xs text-stone-500">还有 {incompleteShots.length - 6} 个镜头待处理。</p>
+              ) : null}
+            </div>
+          </StudioPanel>
+        </aside>
+      </div>
     </div>
   )
 }
