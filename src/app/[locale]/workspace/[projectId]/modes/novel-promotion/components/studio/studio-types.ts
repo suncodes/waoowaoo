@@ -82,6 +82,7 @@ export interface StudioGenerationJob {
   status: StudioProductStatus
   progress: number
   message: string
+  detailsId?: string
 }
 
 export interface StudioWorkspaceModel {

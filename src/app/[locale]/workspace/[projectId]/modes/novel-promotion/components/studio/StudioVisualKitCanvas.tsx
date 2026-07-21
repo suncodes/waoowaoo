@@ -192,6 +192,14 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
   }
 
   const primaryAction = async () => {
+    if (model.workflow.assetRequirementStatus === 'not_started' || model.workflow.assetRequirementStatus === 'stale') {
+      await runtime.onAnalyzeAssets()
+      return
+    }
+    if (model.workflow.assetRequirementStatus === 'needs_review') {
+      await runtime.onApproveAssetRequirements()
+      return
+    }
     if (!model.workflow.hasVisualPlan) {
       await runtime.onRunVisualPlan()
       return
@@ -206,13 +214,19 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
     }
     await runtime.onRunScriptToStoryboard()
   }
-  const primaryLabel = !model.workflow.hasVisualPlan
-    ? '生成视觉资产清单'
-    : model.summary.missingCoreVisualAssets > 0
-      ? '完善核心资产'
-      : model.workflow.visualApproved
-        ? '生成分镜'
-        : '确认视觉资产'
+  const primaryLabel = model.workflow.assetRequirementStatus === 'not_started'
+    ? '提取视觉资产'
+    : model.workflow.assetRequirementStatus === 'stale'
+      ? '重新提取视觉资产'
+      : model.workflow.assetRequirementStatus === 'needs_review'
+        ? '确认资产清单'
+        : !model.workflow.hasVisualPlan
+          ? '生成视觉方案'
+          : model.summary.missingCoreVisualAssets > 0
+            ? '完善核心资产'
+            : model.workflow.visualApproved
+              ? '生成分镜'
+              : '确认视觉资产'
 
   return (
     <div className="space-y-5">
@@ -229,7 +243,7 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
               <StudioButton
                 size="sm"
                 icon="sparkles"
-                loading={pending?.key === 'primary' || runtime.isTransitioning}
+                loading={pending?.key === 'primary' || runtime.isTransitioning || runtime.isAssetAnalysisRunning}
                 onClick={() => { void run('primary', primaryLabel, primaryAction) }}
                 disabled={!!pending}
               >

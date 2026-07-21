@@ -36,6 +36,7 @@ interface UseStudioWorkspaceModelInput {
   storyToScriptStream: WorkspaceRunStreamState
   visualPlanStream: WorkspaceRunStreamState
   scriptToStoryboardStream: WorkspaceRunStreamState
+  isAssetAnalysisRunning: boolean
 }
 
 function isRunActive(stream: WorkspaceRunStreamState) {
@@ -158,8 +159,52 @@ function buildJobs(streams: Array<{ id: string; label: string; stream: Workspace
       status,
       progress: Math.max(0, Math.min(100, Math.round(stream.overallProgress || (status === 'locked' ? 100 : 0)))),
       message: stream.activeMessage || stream.status || '',
+      detailsId: id,
     }]
   })
+}
+
+function buildAssetAnalysisJob(
+  assetRequirementStatus: CreationWorkflowState['facts']['assetRequirementStatus'],
+  isRunning: boolean,
+): StudioGenerationJob[] {
+  if (isRunning) {
+    return [{
+      id: 'asset-analysis',
+      label: '视觉资产提取',
+      status: 'generating',
+      progress: 8,
+      message: '正在从已确认文稿中提取角色、场景和关键道具',
+    }]
+  }
+  if (assetRequirementStatus === 'needs_review') {
+    return [{
+      id: 'asset-analysis',
+      label: '视觉资产提取',
+      status: 'needs_review',
+      progress: 100,
+      message: '提取完成，等待确认资产清单',
+    }]
+  }
+  if (assetRequirementStatus === 'approved') {
+    return [{
+      id: 'asset-analysis',
+      label: '视觉资产提取',
+      status: 'locked',
+      progress: 100,
+      message: '资产清单已确认',
+    }]
+  }
+  if (assetRequirementStatus === 'stale') {
+    return [{
+      id: 'asset-analysis',
+      label: '视觉资产提取',
+      status: 'stale',
+      progress: 100,
+      message: '文稿已变化，需要重新提取',
+    }]
+  }
+  return []
 }
 
 export function useStudioWorkspaceModel({
@@ -170,6 +215,7 @@ export function useStudioWorkspaceModel({
   storyToScriptStream,
   visualPlanStream,
   scriptToStoryboardStream,
+  isAssetAnalysisRunning,
 }: UseStudioWorkspaceModelInput): StudioWorkspaceModel {
   const { projectId } = useWorkspaceProvider()
   const episodeData = useWorkspaceEpisodeStageData()
@@ -213,12 +259,15 @@ export function useStudioWorkspaceModel({
       supportingVisualAssets: visualKitAssets.filter((asset) => asset.importance === 'supporting'),
       shots,
       productionItems,
-      generationJobs: buildJobs([
-        { id: 'content-plan', label: '文稿规划', stream: contentPlanStream },
-        { id: 'story-script', label: '剧本生成', stream: storyToScriptStream },
-        { id: 'visual-plan', label: '视觉方案', stream: visualPlanStream },
-        { id: 'storyboard', label: '分镜生成', stream: scriptToStoryboardStream },
-      ]),
+      generationJobs: [
+        ...buildAssetAnalysisJob(workflowState.facts.assetRequirementStatus, isAssetAnalysisRunning),
+        ...buildJobs([
+          { id: 'content-plan', label: '文稿规划', stream: contentPlanStream },
+          { id: 'story-script', label: '剧本生成', stream: storyToScriptStream },
+          { id: 'visual-plan', label: '视觉方案', stream: visualPlanStream },
+          { id: 'storyboard', label: '分镜生成', stream: scriptToStoryboardStream },
+        ]),
+      ],
       summary: {
         totalDurationSec,
         confirmedVisualAssets: visualKitAssets.filter((asset) => asset.status === 'locked').length,
@@ -247,6 +296,7 @@ export function useStudioWorkspaceModel({
     episodeData.novelText,
     episodeData.productionBible,
     episodeData.storyboards,
+    isAssetAnalysisRunning,
     scriptToStoryboardStream,
     stageView,
     storyToScriptStream,

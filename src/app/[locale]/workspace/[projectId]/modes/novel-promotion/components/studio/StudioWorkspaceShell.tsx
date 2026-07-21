@@ -104,7 +104,7 @@ function StudioTopBar({
   activeItem: StudioNavItem
   progressPercent: number
   taskDetailsAvailable: boolean
-  onOpenTaskDetails: () => void
+  onOpenTaskDetails: (taskId?: string) => void
 }) {
   const [refreshing, setRefreshing] = useState(false)
   const currentEpisode = episodes.find((episode) => episode.id === currentEpisodeId)
@@ -356,15 +356,14 @@ function AssistantPanel({
                 void runtime.onGenerateAllVideos({ videoModel })
               }} />
             ) : null}
-            <ActionButton
-              icon="receipt"
-              label={taskDetailsAvailable ? '查看生成日志' : '暂无生成日志'}
-              onClick={onOpenTaskDetails}
-              disabled={!taskDetailsAvailable}
-            />
           </div>
         </section>
       </div>
+      <StudioGenerationQueue
+        jobs={model.generationJobs}
+        detailsAvailable={taskDetailsAvailable}
+        onOpenDetails={onOpenTaskDetails}
+      />
     </aside>
   )
 }
@@ -412,6 +411,7 @@ export default function StudioWorkspaceShell({
   onOpenSettings,
   onRefresh,
 }: StudioWorkspaceShellProps) {
+  const runtime = useWorkspaceStageRuntime()
   const model = useStudioWorkspaceModel({
     currentStage,
     stageView,
@@ -420,6 +420,7 @@ export default function StudioWorkspaceShell({
     storyToScriptStream,
     visualPlanStream,
     scriptToStoryboardStream,
+    isAssetAnalysisRunning: runtime.isAssetAnalysisRunning,
   })
   const navItems = useMemo<StudioNavItem[]>(
     () => MODE_CONFIG.map((item) => ({ ...item, status: navStatus(item.id, model) })),
@@ -481,16 +482,11 @@ export default function StudioWorkspaceShell({
           <AssistantPanel
             model={model}
             onNavigate={onStageChange}
-            onOpenTaskDetails={() => openTaskDetails()}
+            onOpenTaskDetails={openTaskDetails}
             taskDetailsAvailable={renderableTaskDescriptors.length > 0}
           />
         </div>
       </div>
-      <StudioGenerationQueue
-        jobs={model.generationJobs}
-        detailsAvailable={renderableTaskDescriptors.length > 0}
-        onOpenDetails={openTaskDetails}
-      />
       {taskDetailId && orderedTaskDetailDescriptors.length > 0 ? (
         <StudioTaskDetailsModal descriptors={orderedTaskDetailDescriptors} onClose={() => setTaskDetailId(null)} />
       ) : null}

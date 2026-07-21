@@ -9,6 +9,7 @@ import { MediaImageWithLoading } from '@/components/media/MediaImageWithLoading'
 import ImageEditModalSelectedAssets from './ImageEditModalSelectedAssets'
 import ImageEditModalAssetPicker from './ImageEditModalAssetPicker'
 import { AppIcon } from '@/components/ui/icons'
+import ProductModalShell from '@/components/product/ProductModalShell'
 
 interface ImageEditModalProps {
   projectId: string
@@ -93,24 +94,37 @@ export default function ImageEditModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-[var(--glass-overlay)] z-50 flex items-center justify-center p-4">
-      <div
-        className="bg-[var(--glass-bg-surface)] rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
-        onPaste={handlePaste}
-      >
-        <div className="p-6 border-b shrink-0">
-          <h3 className="text-lg font-bold text-[var(--glass-text-primary)]">{t('imageEdit.title')}</h3>
-          <p className="text-sm text-[var(--glass-text-tertiary)] mt-1">{t('imageEdit.subtitle')}</p>
+    <ProductModalShell
+      open={true}
+      onClose={onClose}
+      title={t('imageEdit.title')}
+      eyebrow="图片编辑"
+      description={t('imageEdit.subtitle')}
+      size="lg"
+      footer={(
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="h-9 rounded-md border border-white/10 bg-white/[0.04] px-3 text-xs font-semibold text-stone-200 hover:bg-white/[0.08]">
+            {t('candidate.cancel')}
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={!editPrompt.trim()}
+            className="h-9 rounded-md bg-[#f3e9cf] px-4 text-xs font-semibold text-[#161512] hover:bg-[#fff5d9] disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            {t('imageEdit.start')}
+          </button>
         </div>
-
-        <div className="p-6 space-y-4 overflow-y-auto app-scrollbar flex-1 min-h-0">
+      )}
+    >
+      <div className="space-y-5" onPaste={handlePaste}>
           <div>
-            <label className="block text-sm font-medium text-[var(--glass-text-secondary)] mb-2">{t('prompts.aiInstruction')}</label>
+            <label className="mb-2 block text-sm font-medium text-stone-300">{t('prompts.aiInstruction')}</label>
             <textarea
               value={editPrompt}
               onChange={(event) => setEditPrompt(event.target.value)}
               placeholder={t('imageEdit.promptPlaceholder')}
-              className="w-full h-24 px-3 py-2 border border-[var(--glass-stroke-strong)] rounded-lg focus:ring-2 focus:ring-[var(--glass-tone-info-fg)] focus:border-[var(--glass-stroke-focus)] resize-none"
+              className="h-28 w-full resize-none rounded-md border border-white/10 bg-[#10110f] px-3 py-2 text-sm leading-6 text-stone-100 outline-none focus:border-[#e8d18a]"
               autoFocus
             />
           </div>
@@ -123,8 +137,8 @@ export default function ImageEditModal({
           />
 
           <div>
-            <label className="block text-sm font-medium text-[var(--glass-text-secondary)] mb-2">
-              {t('imageEdit.referenceImagesLabel')} <span className="text-[var(--glass-text-tertiary)] font-normal">{t('imageEdit.referenceImagesHint')}</span>
+            <label className="mb-2 block text-sm font-medium text-stone-300">
+              {t('imageEdit.referenceImagesLabel')} <span className="font-normal text-stone-500">{t('imageEdit.referenceImagesHint')}</span>
             </label>
             <input
               ref={fileInputRef}
@@ -136,7 +150,7 @@ export default function ImageEditModal({
             />
             <div className="flex flex-wrap gap-2">
               {editImages.map((image, index) => (
-                <div key={index} className="relative w-16 h-16">
+                <div key={index} className="relative h-16 w-16">
                   <MediaImageWithLoading
                     src={image}
                     alt=""
@@ -145,7 +159,7 @@ export default function ImageEditModal({
                   />
                   <button
                     onClick={() => removeImage(index)}
-                    className="absolute -top-1 -right-1 w-5 h-5 bg-[var(--glass-tone-danger-fg)] text-white rounded-full text-xs flex items-center justify-center hover:bg-[var(--glass-tone-danger-fg)]"
+                    className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-xs text-white hover:bg-rose-400"
                   >
                     <AppIcon name="closeSm" className="h-3 w-3" />
                   </button>
@@ -153,29 +167,12 @@ export default function ImageEditModal({
               ))}
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="w-16 h-16 border-2 border-dashed border-[var(--glass-stroke-strong)] rounded-lg flex items-center justify-center text-[var(--glass-text-tertiary)] hover:border-[var(--glass-stroke-focus)] hover:text-[var(--glass-tone-info-fg)] transition-colors"
+                className="flex h-16 w-16 items-center justify-center rounded-md border border-dashed border-white/20 text-stone-500 transition-colors hover:border-[#e8d18a] hover:text-[#e8d18a]"
               >
                 <AppIcon name="plus" className="w-6 h-6" />
               </button>
             </div>
           </div>
-        </div>
-
-        <div className="p-6 border-t flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-[var(--glass-text-secondary)] hover:bg-[var(--glass-bg-muted)] rounded-lg transition-colors"
-          >
-            {t('candidate.cancel')}
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={!editPrompt.trim()}
-            className="px-4 py-2 bg-[var(--glass-accent-from)] text-white rounded-lg hover:bg-[var(--glass-accent-to)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {t('imageEdit.start')}
-          </button>
-        </div>
       </div>
 
       <ImageEditModalAssetPicker
@@ -195,6 +192,6 @@ export default function ImageEditModal({
           onClose={() => setPreviewImage(null)}
         />
       )}
-    </div>
+    </ProductModalShell>
   )
 }

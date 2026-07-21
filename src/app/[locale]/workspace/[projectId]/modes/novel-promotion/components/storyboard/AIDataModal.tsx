@@ -1,15 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { createPortal } from 'react-dom'
 import { AppIcon } from '@/components/ui/icons'
-import GlassButton from '@/components/ui/primitives/GlassButton'
+import ProductModalShell from '@/components/product/ProductModalShell'
 import type { AIDataModalProps } from './AIDataModal.types'
 import { useAIDataModalState } from './hooks/useAIDataModalState'
 import AIDataModalFormPane from './AIDataModalFormPane'
 import AIDataModalPreviewPane from './AIDataModalPreviewPane'
-import { lockModalPageScroll } from './modal-scroll-lock'
 
 export type {
   AIDataModalProps,
@@ -84,47 +82,33 @@ export default function AIDataModal({
     ...(actingNotes.length > 0 ? { acting_notes: actingNotes } : {}),
   }
 
-  useEffect(() => {
-    if (!isOpen || typeof document === 'undefined') return undefined
-    return lockModalPageScroll(document)
-  }, [isOpen])
-
-  if (!isOpen || typeof document === 'undefined') return null
-
-  return createPortal(
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
-      <div className="glass-overlay absolute inset-0" onClick={onClose} />
-
-      <div
-        className="relative z-10 glass-surface-modal w-full max-w-[920px] flex flex-col overflow-hidden"
-        style={{ maxHeight: '92vh' }}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-[var(--glass-stroke-base)] flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-[var(--glass-radius-xs)] bg-[var(--glass-tone-info-bg)] flex-shrink-0">
-              <AppIcon name="clapperboard" className="h-3.5 w-3.5 text-[var(--glass-tone-info-fg)]" />
-            </div>
-            <div>
-              <h2 className="text-sm font-semibold text-[var(--glass-text-primary)] leading-none">
-                {t('aiData.title')}
-              </h2>
-              <p className="text-[11px] text-[var(--glass-text-tertiary)] mt-0.5">
-                {t('aiData.subtitle', { number: panelNumber })} · {videoRatio}
-              </p>
-            </div>
+  return (
+    <ProductModalShell
+      open={isOpen}
+      onClose={onClose}
+      size="xl"
+      eyebrow="镜头数据"
+      title={t('aiData.title')}
+      description={`${t('aiData.subtitle', { number: panelNumber })} · ${videoRatio}`}
+      footer={(
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-stone-500">
+            {characters.map((character) => character.name).join('、')}
+            {location ? ` · ${location}` : ''}
+          </p>
+          <div className="flex gap-2">
+            <button type="button" onClick={onClose} className="h-9 rounded-md border border-white/10 bg-white/[0.04] px-3 text-xs font-semibold text-stone-200 hover:bg-white/[0.08]">
+              {t('common.cancel')}
+            </button>
+            <button type="button" onClick={handleSave} className="inline-flex h-9 items-center gap-2 rounded-md bg-[#f3e9cf] px-3 text-xs font-semibold text-[#161512] hover:bg-[#fff5d9]">
+              <AppIcon name="check" className="h-3.5 w-3.5" />
+              {t('aiData.save')}
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="glass-btn-base glass-btn-ghost h-7 w-7 flex-shrink-0"
-            aria-label={t('common.cancel')}
-          >
-            <AppIcon name="close" className="h-3.5 w-3.5" />
-          </button>
         </div>
-
-        {/* Body */}
-        <div className="flex flex-1 min-h-0 overflow-hidden">
+      )}
+    >
+        <div className="flex min-h-[620px] overflow-hidden rounded-md border border-white/10 bg-[#10110f]">
           <AIDataModalFormPane
             t={t}
             shotType={shotType}
@@ -150,29 +134,6 @@ export default function AIDataModal({
             previewJson={previewJson}
           />
         </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between border-t border-[var(--glass-stroke-base)] px-5 py-3 flex-shrink-0">
-          <p className="text-[11px] text-[var(--glass-text-tertiary)]">
-            {characters.map(c => c.name).join('、')}
-            {location ? ` · ${location}` : ''}
-          </p>
-          <div className="flex gap-2">
-            <GlassButton variant="secondary" size="sm" onClick={onClose}>
-              {t('common.cancel')}
-            </GlassButton>
-            <GlassButton
-              variant="primary"
-              size="sm"
-              onClick={handleSave}
-              iconLeft={<AppIcon name="check" className="h-3.5 w-3.5" />}
-            >
-              {t('aiData.save')}
-            </GlassButton>
-          </div>
-        </div>
-      </div>
-    </div>,
-    document.body
+    </ProductModalShell>
   )
 }
