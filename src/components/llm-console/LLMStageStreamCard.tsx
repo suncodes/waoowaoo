@@ -346,10 +346,10 @@ export default function LLMStageStreamCard({
   if (!activeStage) return null
 
   return (
-    <article className="glass-surface-modal flex h-full w-full flex-col overflow-hidden rounded-2xl text-[var(--glass-text-primary)]">
-      <header className="border-b border-[var(--glass-stroke-base)] px-5 py-5 md:px-6">
+    <article className="glass-surface-modal flex h-full w-full flex-col overflow-hidden rounded-xl text-[var(--glass-text-primary)]">
+      <header className="shrink-0 border-b border-[var(--glass-stroke-base)] px-4 py-4 md:px-5">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-[15rem_minmax(0,1fr)_auto] md:items-center">
-          <div className="glass-surface-soft rounded-xl border border-[var(--glass-stroke-base)] p-3">
+          <div className="glass-surface-soft rounded-lg border border-[var(--glass-stroke-base)] p-2.5">
             <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--glass-text-tertiary)]">
               {t('stageCard.stage')}
             </p>
@@ -393,9 +393,9 @@ export default function LLMStageStreamCard({
         )}
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 p-5 md:grid-cols-[17rem_1fr] md:gap-5 md:p-6">
-        <aside className="glass-surface-soft min-h-0 rounded-xl border border-[var(--glass-stroke-base)] p-3">
-          <ul className="max-h-[40vh] space-y-2 overflow-y-auto pr-1 md:h-full md:max-h-none">
+      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden p-4 md:grid-cols-[14rem_minmax(0,1fr)] md:grid-rows-1 md:gap-4 md:p-5">
+        <aside className="glass-surface-soft flex min-h-0 flex-col overflow-hidden rounded-lg border border-[var(--glass-stroke-base)] p-2.5">
+          <ul className="min-h-0 flex-1 max-h-40 space-y-1.5 overflow-y-auto pr-1 md:max-h-none">
             {stages.map((stage, index) => {
               const isActive = stage.id === outputStageId
               const progress = clampProgress(stage.progress || 0)
@@ -463,7 +463,7 @@ export default function LLMStageStreamCard({
           </ul>
         </aside>
 
-        <section className="glass-surface-soft min-h-[320px] rounded-xl border border-[var(--glass-stroke-base)]">
+        <section className="glass-surface-soft flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border border-[var(--glass-stroke-base)]">
           <div className="border-b border-[var(--glass-stroke-base)] px-4 py-3 text-sm font-medium text-[var(--glass-text-primary)]">
             {t('stageCard.outputTitle', {
               stage: resolveProgressText(outputStage?.title, 'stageCard.currentStage'),
@@ -471,27 +471,30 @@ export default function LLMStageStreamCard({
           </div>
           <div
             ref={outputRef}
-            className="h-[52vh] overflow-y-auto px-4 py-4"
+            className="min-h-0 flex-1 overflow-y-auto px-4 py-3"
           >
             {structuredOutput.hasStructured ? (
               <div className="space-y-4">
                 {structuredOutput.showReasoning ? (
-                  <div className="rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)]">
-                    <div className="border-b border-[var(--glass-stroke-base)] px-3 py-2 text-xs font-semibold text-[var(--glass-text-primary)]">
-                      {REASONING_HEADER}
+                  <details className="group rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)]">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-xs font-semibold text-[var(--glass-text-primary)]">
+                      <span>{REASONING_HEADER}</span>
+                      <AppIcon name="chevronDown" className="h-3.5 w-3.5 text-[var(--glass-text-tertiary)] transition-transform group-open:rotate-180" />
+                    </summary>
+                    <div className="border-t border-[var(--glass-stroke-base)]">
+                      <pre className="min-h-[96px] whitespace-pre-wrap break-words px-3 py-3 font-mono text-[13px] leading-6 text-[var(--glass-text-secondary)]">
+                        {structuredOutput.reasoning || (structuredOutput.finalText ? t('stageCard.reasoningNotProvided') : t('stageCard.waitingModelOutput'))}
+                        {showCursor && !structuredOutput.finalText ? <span className="animate-pulse text-[var(--glass-accent-from)]">▋</span> : null}
+                      </pre>
                     </div>
-                    <pre className="min-h-[110px] whitespace-pre-wrap break-words px-3 py-3 font-mono text-[14px] leading-7 text-[var(--glass-text-secondary)]">
-                      {structuredOutput.reasoning || (structuredOutput.finalText ? t('stageCard.reasoningNotProvided') : t('stageCard.waitingModelOutput'))}
-                      {showCursor && !structuredOutput.finalText ? <span className="animate-pulse text-[var(--glass-accent-from)]">▋</span> : null}
-                    </pre>
-                  </div>
+                  </details>
                 ) : null}
                 {structuredOutput.showFinal ? (
                   <div className="rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)]">
                     <div className="border-b border-[var(--glass-stroke-base)] px-3 py-2 text-xs font-semibold text-[var(--glass-text-primary)]">
                       {FINAL_HEADER}
                     </div>
-                    <pre className="min-h-[110px] whitespace-pre-wrap break-words px-3 py-3 font-mono text-[14px] leading-7 text-[var(--glass-text-secondary)]">
+                    <pre className="min-h-[96px] whitespace-pre-wrap break-words px-3 py-3 font-mono text-[13px] leading-6 text-[var(--glass-text-secondary)]">
                       {structuredOutput.finalText || t('stageCard.waitingModelOutput')}
                       {showCursor && !!structuredOutput.finalText ? <span className="animate-pulse text-[var(--glass-accent-from)]">▋</span> : null}
                     </pre>
@@ -499,7 +502,7 @@ export default function LLMStageStreamCard({
                 ) : null}
               </div>
             ) : (
-              <pre className="whitespace-pre-wrap break-words font-mono text-[14px] leading-7 text-[var(--glass-text-secondary)]">
+              <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-6 text-[var(--glass-text-secondary)]">
                 {renderedOutputText || resolvedPlaceholderText}
                 {showCursor ? <span className="animate-pulse text-[var(--glass-accent-from)]">▋</span> : null}
               </pre>

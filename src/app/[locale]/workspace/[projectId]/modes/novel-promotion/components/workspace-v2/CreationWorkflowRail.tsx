@@ -56,21 +56,42 @@ export default function CreationWorkflowRail({
     return `/workspace/${projectId}?${params.toString()}`
   }
 
-  const renderItem = (item: CreationStageNavItem, compact: boolean) => {
+  const renderItem = (item: CreationStageNavItem, variant: 'full' | 'compact' | 'icon') => {
     const active = item.id === currentStage
     const blockedLabel = item.blockedByLabel
       ? t('v2.navigation.completeStageFirst', { stage: item.blockedByLabel })
       : undefined
-    const className = `group flex items-center gap-3 border transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--glass-stroke-focus)] ${compact
-          ? 'h-14 min-w-36 rounded-lg px-3'
-          : 'min-h-16 w-full rounded-lg px-3 py-2.5 text-left'
+    const isIcon = variant === 'icon'
+    const isCompact = variant === 'compact'
+    const className = `group flex items-center border transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--glass-stroke-focus)] ${isIcon
+          ? 'relative h-12 w-12 justify-center rounded-lg'
+          : isCompact
+            ? 'h-14 min-w-36 gap-3 rounded-lg px-3'
+            : 'min-h-16 w-full gap-3 rounded-lg px-3 py-2.5 text-left'
         } ${item.locked
           ? 'cursor-not-allowed border-transparent bg-[var(--glass-bg-muted)]/50 text-[var(--glass-text-tertiary)] opacity-70'
           : active
           ? 'border-[var(--glass-stroke-focus)] bg-[var(--glass-tone-info-bg)] text-[var(--glass-text-primary)]'
           : 'cursor-pointer border-transparent text-[var(--glass-text-secondary)] hover:border-[var(--glass-stroke-base)] hover:bg-[var(--glass-bg-surface-strong)] hover:text-[var(--glass-text-primary)]'
         }`
-    const content = (
+    const content = isIcon ? (
+      <>
+        <span className={`inline-flex h-9 w-9 items-center justify-center rounded-lg ${active
+          ? 'bg-[var(--glass-tone-info-fg)] text-white'
+          : 'bg-[var(--glass-bg-muted)] text-[var(--glass-text-secondary)]'
+        }`}>
+          <AppIcon name={item.icon} className="h-4 w-4" />
+        </span>
+        <span className={`absolute -right-1 -top-1 inline-flex h-5 w-5 items-center justify-center rounded-full ${statusClass(item.status)}`}>
+          <AppIcon name={item.locked ? 'lock' : statusIcon(item.status)} className={`h-3 w-3 ${item.status === 'running' ? 'animate-spin' : ''}`} />
+          {item.issueCount > 0 ? (
+            <span className="absolute -right-1 -top-1 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-[var(--glass-tone-danger-fg)] px-0.5 text-[9px] font-bold text-white">
+              {item.issueCount}
+            </span>
+          ) : null}
+        </span>
+      </>
+    ) : (
       <>
         <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${active
           ? 'bg-[var(--glass-tone-info-fg)] text-white'
@@ -80,7 +101,7 @@ export default function CreationWorkflowRail({
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-semibold">{item.label}</span>
-          {!compact ? (
+          {!isCompact ? (
             <span className="mt-0.5 block text-xs text-[var(--glass-text-tertiary)]">
               {blockedLabel || statusLabels[item.status]}
             </span>
@@ -99,7 +120,7 @@ export default function CreationWorkflowRail({
 
     if (item.locked) {
       return (
-        <div aria-disabled="true" title={blockedLabel} className={className}>
+        <div aria-disabled="true" aria-label={item.label} title={blockedLabel || item.label} className={className}>
           {content}
         </div>
       )
@@ -109,6 +130,8 @@ export default function CreationWorkflowRail({
       <Link
         href={buildHref(item.id)}
         aria-current={active ? 'step' : undefined}
+        aria-label={isIcon ? item.label : undefined}
+        title={isIcon ? (blockedLabel || item.label) : undefined}
         onClick={(event) => {
           if (event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
             event.preventDefault()
@@ -124,19 +147,25 @@ export default function CreationWorkflowRail({
 
   return (
     <>
-      <nav aria-label={t('v2.flowTitle')} className="glass-surface-elevated hidden self-start rounded-lg p-3 lg:sticky lg:top-36 lg:block">
+      <nav aria-label={t('v2.flowTitle')} className="glass-surface-elevated hidden self-start rounded-lg p-3 xl:sticky xl:top-36 xl:block">
         <div className="border-b border-[var(--glass-stroke-base)] px-2 pb-3 pt-1">
           <h2 className="text-sm font-semibold text-[var(--glass-text-primary)]">{t('v2.flowTitle')}</h2>
           <p className="mt-1 text-xs text-[var(--glass-text-tertiary)]">{t('stageCount', { count: items.length })}</p>
         </div>
         <ol className="mt-2 space-y-1">
-          {items.map((item) => <li key={item.id}>{renderItem(item, false)}</li>)}
+          {items.map((item) => <li key={item.id}>{renderItem(item, 'full')}</li>)}
+        </ol>
+      </nav>
+
+      <nav aria-label={t('v2.flowTitle')} className="glass-surface-elevated hidden self-start rounded-lg p-2 lg:sticky lg:top-36 lg:flex xl:hidden">
+        <ol className="flex flex-col items-center gap-2">
+          {items.map((item) => <li key={item.id}>{renderItem(item, 'icon')}</li>)}
         </ol>
       </nav>
 
       <nav aria-label={t('v2.flowTitle')} className="glass-surface-elevated overflow-x-auto rounded-lg p-2 lg:hidden">
         <ol className="flex min-w-max gap-2">
-          {items.map((item) => <li key={item.id}>{renderItem(item, true)}</li>)}
+          {items.map((item) => <li key={item.id}>{renderItem(item, 'compact')}</li>)}
         </ol>
       </nav>
     </>

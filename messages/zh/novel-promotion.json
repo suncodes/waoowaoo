@@ -28,7 +28,12 @@
     "skipToContent": "跳到当前阶段内容",
     "runCenter": {
       "title": "运行详情",
+      "overview": "运行概览",
       "open": "查看运行详情",
+      "closeOverview": "关闭运行概览",
+      "currentTask": "当前任务",
+      "tasksTitle": "任务列表",
+      "viewFull": "查看完整日志",
       "runningCount": "{count} 项生成中",
       "stop": "停止",
       "minimize": "最小化",

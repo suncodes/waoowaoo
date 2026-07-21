@@ -85,7 +85,7 @@ function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
         {vm.i18n.t('workspaceFlow.skipToContent')}
       </a>
 
-      <div className="relative left-1/2 w-[min(1800px,calc(100vw-2rem))] -translate-x-1/2 pt-28">
+      <div className="relative left-1/2 w-[min(1600px,calc(100vw-2rem))] -translate-x-1/2 pt-28">
         <WorkspaceStageRuntimeProvider value={vm.runtime.stageRuntime}>
           {vm.stageNav.workspaceV2Enabled ? (
             <CreationWorkspaceShell
@@ -99,7 +99,7 @@ function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
               onStageChange={vm.stageNav.handleStageChange}
             />
           ) : (
-            <div className="grid min-w-0 gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+            <div className="grid min-w-0 gap-4 lg:grid-cols-[224px_minmax(0,1fr)]">
               <WorkspaceWorkflowRail
                 items={vm.stageNav.workflowItems}
                 currentStage={vm.stageNav.currentStage}

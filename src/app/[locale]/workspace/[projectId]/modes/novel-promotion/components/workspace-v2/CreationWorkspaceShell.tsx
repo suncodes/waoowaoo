@@ -69,7 +69,7 @@ export default function CreationWorkspaceShell({
         </span>
       </div>
 
-      <div className="grid min-w-0 gap-4 lg:grid-cols-[232px_minmax(0,1fr)]">
+      <div className="grid min-w-0 gap-4 lg:grid-cols-[72px_minmax(0,1fr)] xl:grid-cols-[224px_minmax(0,1fr)]">
         <CreationWorkflowRail
           items={items}
           currentStage={currentStage}

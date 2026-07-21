@@ -28,7 +28,12 @@
     "skipToContent": "Skip to current stage",
     "runCenter": {
       "title": "Run details",
+      "overview": "Run overview",
       "open": "Open run details",
+      "closeOverview": "Close run overview",
+      "currentTask": "Current task",
+      "tasksTitle": "Tasks",
+      "viewFull": "View full log",
       "runningCount": "{count} running",
       "stop": "Stop",
       "minimize": "Minimize",
