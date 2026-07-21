@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { MediaImageWithLoading } from '@/components/media/MediaImageWithLoading'
 import ImagePreviewModal from '@/components/ui/ImagePreviewModal'
 import { AppIcon } from '@/components/ui/icons'
@@ -17,7 +17,16 @@ import { useStoryboardModalRuntime } from '../storyboard/hooks/useStoryboardModa
 import { useStoryboardStageController } from '../storyboard/hooks/useStoryboardStageController'
 import type { StoryboardPanel } from '../storyboard/hooks/useStoryboardState'
 import { getStoryboardPanels } from '../storyboard/hooks/storyboard-state-utils'
-import { statusLabel, type StudioProductStatus, type StudioWorkspaceModel } from './studio-types'
+import {
+  StudioAdvancedPanel,
+  StudioButton,
+  StudioEmptyState,
+  StudioMetric,
+  StudioSectionHeader,
+  StudioStageHeader,
+  StudioStatusBadge,
+} from './StudioPrimitives'
+import { type StudioProductStatus, type StudioWorkspaceModel } from './studio-types'
 
 interface StudioBoardCanvasProps {
   model: StudioWorkspaceModel
@@ -33,57 +42,19 @@ interface BoardItem {
   globalNumber: number
 }
 
-function statusClass(status: StudioProductStatus) {
-  if (status === 'locked') return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
-  if (status === 'generating') return 'border-cyan-400/30 bg-cyan-400/10 text-cyan-100'
-  if (status === 'failed') return 'border-rose-400/30 bg-rose-400/10 text-rose-100'
-  if (status === 'stale' || status === 'needs_review') return 'border-amber-400/30 bg-amber-400/10 text-amber-100'
-  return 'border-white/10 bg-white/5 text-stone-300'
-}
-
-function Button({
-  children,
-  onClick,
-  disabled,
-  variant = 'primary',
-}: {
-  children: ReactNode
-  onClick?: () => void
-  disabled?: boolean
-  variant?: 'primary' | 'secondary' | 'ghost'
-}) {
-  const className = variant === 'primary'
-    ? 'bg-[#f3e9cf] text-[#161512] hover:bg-[#fff5d9]'
-    : variant === 'secondary'
-      ? 'border border-white/12 bg-white/[0.04] text-stone-100 hover:bg-white/[0.08]'
-      : 'text-stone-400 hover:bg-white/[0.06] hover:text-stone-100'
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`inline-flex h-9 items-center justify-center gap-2 rounded-md px-3 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
-    >
-      {children}
-    </button>
-  )
-}
-
 function EmptyBoard({ model }: { model: StudioWorkspaceModel }) {
   const runtime = useWorkspaceStageRuntime()
   return (
-    <div className="flex min-h-[440px] flex-col items-center justify-center rounded-lg border border-dashed border-white/15 bg-[#151613] px-6 py-12 text-center">
-      <AppIcon name="image" className="h-8 w-8 text-[#e8d18a]" />
-      <h2 className="mt-4 text-lg font-semibold text-stone-50">分镜还没有生成</h2>
-      <p className="mt-2 max-w-xl text-sm leading-6 text-stone-400">Visual Kit 确认后再生成分镜，保证核心角色和场景在镜头间保持一致。</p>
-      <div className="mt-5">
-        <Button onClick={() => { void runtime.onRunScriptToStoryboard() }} disabled={!model.workflow.visualApproved || runtime.isTransitioning}>
-          <AppIcon name={runtime.isTransitioning ? 'loader' : 'sparkles'} className={`h-4 w-4 ${runtime.isTransitioning ? 'animate-spin' : ''}`} />
+    <StudioEmptyState
+      icon="image"
+      title="分镜还没有生成"
+      description="视觉库确认后再生成分镜，保证核心角色和场景在镜头间保持一致。"
+      action={(
+        <StudioButton icon="sparkles" loading={runtime.isTransitioning} onClick={() => { void runtime.onRunScriptToStoryboard() }} disabled={!model.workflow.visualApproved}>
           生成分镜
-        </Button>
-      </div>
-    </div>
+        </StudioButton>
+      )}
+    />
   )
 }
 
@@ -164,7 +135,7 @@ function BoardShotCard({
         {imageUrl ? (
           <MediaImageWithLoading
             src={imageUrl}
-            alt={`Shot ${item.globalNumber}`}
+            alt={`镜头 ${item.globalNumber}`}
             containerClassName="h-full w-full"
             className="h-full w-full object-cover"
             sizes="220px"
@@ -187,8 +158,8 @@ function BoardShotCard({
       </div>
       <div className="min-w-0">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold text-stone-50">Shot {String(item.globalNumber).padStart(2, '0')}</h2>
-          <span className={`rounded-full border px-2 py-0.5 text-[11px] ${statusClass(status)}`}>{statusLabel(status)}</span>
+          <h2 className="text-sm font-semibold text-stone-50">镜头 {String(item.globalNumber).padStart(2, '0')}</h2>
+          <StudioStatusBadge status={status} />
         </div>
         <p className="mt-2 line-clamp-3 text-sm leading-6 text-stone-300">{item.panel.description || '待补充画面描述'}</p>
         <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-stone-400">
@@ -204,7 +175,7 @@ function BoardShotCard({
   )
 }
 
-function BoardInspector({
+function BoardDetailPanel({
   item,
   controller,
 }: {
@@ -226,8 +197,8 @@ function BoardInspector({
     <aside className="rounded-lg border border-white/10 bg-[#151613]">
       <header className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#c8a85f]">Shot Inspector</p>
-          <h2 className="mt-1 text-base font-semibold text-stone-50">Shot {String(item.globalNumber).padStart(2, '0')}</h2>
+          <p className="text-xs font-semibold text-[#c8a85f]">镜头详情</p>
+          <h2 className="mt-1 text-base font-semibold text-stone-50">镜头 {String(item.globalNumber).padStart(2, '0')}</h2>
         </div>
         <span className="text-xs text-stone-500">
           {saveState?.status === 'saving' ? '保存中' : saveState?.status === 'error' ? '保存失败' : '自动保存'}
@@ -239,7 +210,7 @@ function BoardInspector({
           {selectedImageUrl ? (
             <MediaImageWithLoading
               src={selectedImageUrl}
-              alt={`Shot ${item.globalNumber}`}
+              alt={`镜头 ${item.globalNumber}`}
               containerClassName="h-full w-full"
               className="h-full w-full object-cover"
               sizes="420px"
@@ -258,33 +229,35 @@ function BoardInspector({
         </div>
 
         <div className="grid grid-cols-2 gap-2">
-          <Button onClick={() => { void controller.regeneratePanelImage(item.panel.id, 3, false) }} disabled={disabled}>
-            <AppIcon name={isSubmitting ? 'loader' : 'sparkles'} className={`h-4 w-4 ${isSubmitting ? 'animate-spin' : ''}`} />
+          <StudioButton size="sm" icon="sparkles" loading={isSubmitting} onClick={() => { void controller.regeneratePanelImage(item.panel.id, 3, false) }} disabled={disabled}>
             生成候选图
-          </Button>
-          <Button
+          </StudioButton>
+          <StudioButton
+            size="sm"
             variant="secondary"
+            icon="imageEdit"
             onClick={() => controller.setEditingPanel({ storyboardId: item.storyboard.id, panelIndex: item.panelOffset })}
             disabled={disabled || !item.panel.imageUrl}
           >
-            <AppIcon name="imageEdit" className="h-4 w-4" />
             改图
-          </Button>
-          <Button
+          </StudioButton>
+          <StudioButton
+            size="sm"
             variant="secondary"
+            icon="clapperboard"
             onClick={() => controller.setAIDataPanel({ storyboardId: item.storyboard.id, panelIndex: item.panelOffset })}
           >
-            <AppIcon name="clapperboard" className="h-4 w-4" />
-            AI 数据
-          </Button>
-          <Button
+            生成参数
+          </StudioButton>
+          <StudioButton
+            size="sm"
             variant="secondary"
+            icon="image"
             onClick={() => selectedImageUrl && controller.setPreviewImage(selectedImageUrl)}
             disabled={!selectedImageUrl}
           >
-            <AppIcon name="image" className="h-4 w-4" />
             预览
-          </Button>
+          </StudioButton>
         </div>
 
         {candidates ? (
@@ -292,7 +265,9 @@ function BoardInspector({
             <div className="flex items-center justify-between gap-3">
               <span className="text-xs font-semibold text-amber-100">候选图待确认</span>
               <div className="flex gap-2">
-                <Button
+                <StudioButton
+                  size="sm"
+                  icon="check"
                   onClick={() => {
                     const imageUrl = candidates.candidates[candidates.selectedIndex]
                     if (imageUrl && !imageUrl.startsWith('PENDING:')) {
@@ -301,10 +276,9 @@ function BoardInspector({
                   }}
                   disabled={disabled}
                 >
-                  <AppIcon name="check" className="h-4 w-4" />
                   设为定稿
-                </Button>
-                <Button variant="ghost" onClick={() => { void controller.cancelPanelCandidate(item.panel.id) }} disabled={disabled}>取消</Button>
+                </StudioButton>
+                <StudioButton size="sm" variant="ghost" onClick={() => { void controller.cancelPanelCandidate(item.panel.id) }} disabled={disabled}>取消</StudioButton>
               </div>
             </div>
             <div className="mt-3 grid grid-cols-3 gap-2">
@@ -385,12 +359,11 @@ function BoardInspector({
             ) : (
               <span className="text-xs text-stone-500">未绑定场景</span>
             )}
-            <Button variant="ghost" onClick={() => controller.setAssetPickerPanel({ panelId: item.panel.id, type: 'location' })}>
-              <AppIcon name="imageLandscape" className="h-4 w-4" />
+            <StudioButton size="sm" variant="ghost" icon="imageLandscape" onClick={() => controller.setAssetPickerPanel({ panelId: item.panel.id, type: 'location' })}>
               选择场景
-            </Button>
+            </StudioButton>
             {panelData.location ? (
-              <Button variant="ghost" onClick={() => controller.handleRemoveLocation(item.panel, item.storyboard.id)}>移除</Button>
+              <StudioButton size="sm" variant="ghost" onClick={() => controller.handleRemoveLocation(item.panel, item.storyboard.id)}>移除</StudioButton>
             ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -402,15 +375,14 @@ function BoardInspector({
                 </button>
               </span>
             ))}
-            <Button variant="ghost" onClick={() => controller.setAssetPickerPanel({ panelId: item.panel.id, type: 'character' })}>
-              <AppIcon name="user" className="h-4 w-4" />
+            <StudioButton size="sm" variant="ghost" icon="user" onClick={() => controller.setAssetPickerPanel({ panelId: item.panel.id, type: 'character' })}>
               添加角色
-            </Button>
+            </StudioButton>
           </div>
           {saveState?.status === 'error' ? (
             <div className="flex items-center justify-between gap-3 rounded-md border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs text-rose-100">
               <span>{saveState.errorMessage || '保存失败'}</span>
-              <Button variant="secondary" onClick={() => controller.retrySave(item.panel.id)}>重试</Button>
+              <StudioButton size="sm" variant="secondary" onClick={() => controller.retrySave(item.panel.id)}>重试</StudioButton>
             </div>
           ) : null}
         </div>
@@ -482,79 +454,79 @@ function StudioBoardRuntime({
   return (
     <div className="space-y-4">
       <section className="rounded-lg border border-white/10 bg-[#151613]">
-        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 px-6 py-5">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#c8a85f]">Board</p>
-            <h1 className="mt-2 text-2xl font-semibold text-stone-50">镜头分镜板</h1>
-            <p className="mt-2 text-sm text-stone-400">在主画布直接编辑镜头、绑定角色场景、生成图片候选，并打开 AI 数据。</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" onClick={() => { void controller.handleGenerateAllPanels() }} disabled={controller.isEpisodeBatchSubmitting}>
-              <AppIcon name={controller.isEpisodeBatchSubmitting ? 'loader' : 'sparkles'} className={`h-4 w-4 ${controller.isEpisodeBatchSubmitting ? 'animate-spin' : ''}`} />
+        <StudioStageHeader
+          eyebrow="分镜板"
+          title="镜头分镜板"
+          description="以镜头为单位确认画面、角色、场景和可生产的视觉结果。"
+          actions={(
+            <>
+              <StudioButton size="sm" variant="secondary" icon="sparkles" loading={controller.isEpisodeBatchSubmitting} onClick={() => { void controller.handleGenerateAllPanels() }}>
               生成缺失图片
-            </Button>
-            <Button onClick={() => onNavigate('videos')}>
-              <AppIcon name="check" className="h-4 w-4" />
+              </StudioButton>
+              <StudioButton size="sm" icon="check" onClick={() => onNavigate('videos')}>
               确认并进入制作
-            </Button>
-          </div>
-        </header>
+              </StudioButton>
+            </>
+          )}
+        />
 
         <div className="grid gap-4 border-b border-white/10 px-6 py-4 sm:grid-cols-4">
-          <Metric label="镜头" value={items.length} />
-          <Metric label="图片完成" value={`${items.filter((item) => item.panel.imageUrl).length}/${items.length}`} />
-          <Metric label="生成中" value={controller.runningCount} />
-          <Metric label="待生成" value={controller.pendingPanelCount} />
+          <StudioMetric label="镜头" value={items.length} />
+          <StudioMetric label="图片完成" value={`${items.filter((item) => item.panel.imageUrl).length}/${items.length}`} />
+          <StudioMetric label="生成中" value={controller.runningCount} />
+          <StudioMetric label="待生成" value={controller.pendingPanelCount} />
         </div>
 
         <div className="grid min-h-[620px] gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-          <div className="min-h-0 space-y-3 overflow-y-auto pr-1">
-            {items.map((item) => {
-              const candidates = controller.getPanelCandidates(item.sourcePanel)
-              const submitting = controller.submittingPanelImageIds.has(item.panel.id)
-              const modifying = controller.modifyingPanels.has(item.panel.id)
-              const status = resolvePanelStatus({
-                panel: item.panel,
-                sourcePanel: item.sourcePanel,
-                hasCandidates: !!candidates,
-                submitting,
-                modifying,
-              })
-              return (
-                <BoardShotCard
-                  key={item.panel.id}
-                  item={item}
-                  selected={selectedItem?.panel.id === item.panel.id}
-                  status={status}
-                  imageUrl={currentImageUrl(item, candidates)}
-                  running={submitting || modifying || !!item.sourcePanel.imageTaskRunning}
-                  onSelect={() => setSelectedPanelId(item.panel.id)}
-                  onPreview={controller.setPreviewImage}
-                />
-              )
-            })}
+          <div className="min-h-0 overflow-hidden rounded-lg border border-white/10 bg-[#10110f]">
+            <div className="border-b border-white/10 px-4 py-4">
+              <StudioSectionHeader
+                title="镜头队列"
+                description="逐个确认画面描述、角色场景绑定和定稿图片。"
+              />
+            </div>
+            <div className="max-h-[660px] space-y-3 overflow-y-auto p-3">
+              {items.map((item) => {
+                const candidates = controller.getPanelCandidates(item.sourcePanel)
+                const submitting = controller.submittingPanelImageIds.has(item.panel.id)
+                const modifying = controller.modifyingPanels.has(item.panel.id)
+                const status = resolvePanelStatus({
+                  panel: item.panel,
+                  sourcePanel: item.sourcePanel,
+                  hasCandidates: !!candidates,
+                  submitting,
+                  modifying,
+                })
+                return (
+                  <BoardShotCard
+                    key={item.panel.id}
+                    item={item}
+                    selected={selectedItem?.panel.id === item.panel.id}
+                    status={status}
+                    imageUrl={currentImageUrl(item, candidates)}
+                    running={submitting || modifying || !!item.sourcePanel.imageTaskRunning}
+                    onSelect={() => setSelectedPanelId(item.panel.id)}
+                    onPreview={controller.setPreviewImage}
+                  />
+                )
+              })}
+            </div>
           </div>
           {selectedItem ? (
-            <BoardInspector item={selectedItem} controller={controller} />
+            <BoardDetailPanel item={selectedItem} controller={controller} />
           ) : null}
         </div>
       </section>
 
-      <section className="rounded-lg border border-white/10 bg-[#151613] p-4">
-        <button
-          type="button"
-          onClick={() => setShowAdvanced((value) => !value)}
-          className="flex w-full items-center justify-between gap-3 text-left text-sm font-semibold text-stone-100"
-        >
-          <span>完整分镜编辑器</span>
-          <AppIcon name="chevronDown" className={`h-4 w-4 text-stone-500 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
-        </button>
+      <StudioAdvancedPanel title="分镜专家面板" description="插入镜头、删除镜头、批量变体等低频操作集中在此面板。">
         {showAdvanced ? (
-          <div className="mt-4 rounded-md bg-white/[0.02] p-4 text-[var(--glass-text-primary)]">
-            <StoryboardStage workspaceLayout workflowState={workflowState} />
-          </div>
-        ) : null}
-      </section>
+          <StoryboardStage workspaceLayout workflowState={workflowState} />
+        ) : (
+          <StudioButton size="sm" variant="secondary" onClick={() => setShowAdvanced(true)}>
+            打开专家工具
+          </StudioButton>
+        )}
+      </StudioAdvancedPanel>
 
       {modalRuntime.editingPanel ? (
         <ImageEditModal
@@ -605,15 +577,6 @@ function StudioBoardRuntime({
           onClose={modalRuntime.closeAssetPicker}
         />
       ) : null}
-    </div>
-  )
-}
-
-function Metric({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2">
-      <div className="text-xs text-stone-500">{label}</div>
-      <div className="mt-1 truncate text-sm font-semibold text-stone-100">{value}</div>
     </div>
   )
 }

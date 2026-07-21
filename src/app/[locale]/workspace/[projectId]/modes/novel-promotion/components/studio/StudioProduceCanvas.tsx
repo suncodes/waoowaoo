@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { MediaImageWithLoading } from '@/components/media/MediaImageWithLoading'
 import { AppIcon } from '@/components/ui/icons'
 import type { NovelPromotionPanel, NovelPromotionStoryboard } from '@/types/project'
@@ -9,6 +9,16 @@ import { useWorkspaceEpisodeStageData } from '../../hooks/useWorkspaceEpisodeSta
 import VideoStageRoute from '../VideoStageRoute'
 import VoiceStageRoute from '../VoiceStageRoute'
 import { getStoryboardPanels } from '../storyboard/hooks/storyboard-state-utils'
+import {
+  StudioAdvancedPanel,
+  StudioButton,
+  StudioEmptyState,
+  StudioMetric,
+  StudioSectionHeader,
+  StudioStageHeader,
+  StudioStatusBadge,
+  studioStatusClass,
+} from './StudioPrimitives'
 import { statusLabel, type StudioProductStatus, type StudioWorkspaceModel } from './studio-types'
 
 interface StudioProduceCanvasProps {
@@ -21,43 +31,6 @@ interface ProduceItem {
   storyboard: NovelPromotionStoryboard
   panel: NovelPromotionPanel
   number: number
-}
-
-function statusClass(status: StudioProductStatus) {
-  if (status === 'locked') return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
-  if (status === 'generating') return 'border-cyan-400/30 bg-cyan-400/10 text-cyan-100'
-  if (status === 'failed') return 'border-rose-400/30 bg-rose-400/10 text-rose-100'
-  if (status === 'stale' || status === 'needs_review') return 'border-amber-400/30 bg-amber-400/10 text-amber-100'
-  return 'border-white/10 bg-white/5 text-stone-300'
-}
-
-function Button({
-  children,
-  onClick,
-  disabled,
-  variant = 'primary',
-}: {
-  children: ReactNode
-  onClick?: () => void
-  disabled?: boolean
-  variant?: 'primary' | 'secondary' | 'ghost'
-}) {
-  const className = variant === 'primary'
-    ? 'bg-[#f3e9cf] text-[#161512] hover:bg-[#fff5d9]'
-    : variant === 'secondary'
-      ? 'border border-white/12 bg-white/[0.04] text-stone-100 hover:bg-white/[0.08]'
-      : 'text-stone-400 hover:bg-white/[0.06] hover:text-stone-100'
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`inline-flex h-9 items-center justify-center gap-2 rounded-md px-3 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
-    >
-      {children}
-    </button>
-  )
 }
 
 function panelVideoUrl(panel: NovelPromotionPanel) {
@@ -113,14 +86,12 @@ function buildItems(storyboards: NovelPromotionStoryboard[]): ProduceItem[] {
 
 function EmptyProduce({ onNavigate }: { onNavigate: (route: string) => void }) {
   return (
-    <div className="flex min-h-[440px] flex-col items-center justify-center rounded-lg border border-dashed border-white/15 bg-[#151613] px-6 py-12 text-center">
-      <AppIcon name="video" className="h-8 w-8 text-[#e8d18a]" />
-      <h2 className="mt-4 text-lg font-semibold text-stone-50">没有可制作的镜头</h2>
-      <p className="mt-2 max-w-xl text-sm leading-6 text-stone-400">先确认分镜，再进入镜头图片、视频和配音制作。</p>
-      <div className="mt-5">
-        <Button onClick={() => onNavigate('storyboard')}>返回 Board</Button>
-      </div>
-    </div>
+    <StudioEmptyState
+      icon="video"
+      title="没有可制作的镜头"
+      description="先确认分镜，再进入镜头图片、视频和配音制作。"
+      action={<StudioButton onClick={() => onNavigate('storyboard')}>返回分镜板</StudioButton>}
+    />
   )
 }
 
@@ -150,7 +121,7 @@ function ProduceQueueRow({
         {item.panel.imageUrl ? (
           <MediaImageWithLoading
             src={item.panel.imageUrl}
-            alt={`Shot ${item.number}`}
+            alt={`镜头 ${item.number}`}
             containerClassName="h-full w-full"
             className="h-full w-full object-cover"
             sizes="120px"
@@ -163,21 +134,21 @@ function ProduceQueueRow({
       </div>
       <div className="min-w-0">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-sm font-semibold text-stone-50">Shot {String(item.number).padStart(2, '0')}</span>
-          <span className={`rounded-full border px-2 py-0.5 text-[11px] ${statusClass(videoStatus)}`}>{statusLabel(videoStatus)}</span>
+          <span className="text-sm font-semibold text-stone-50">镜头 {String(item.number).padStart(2, '0')}</span>
+          <StudioStatusBadge status={videoStatus} />
         </div>
         <p className="mt-2 line-clamp-2 text-xs leading-5 text-stone-400">{item.panel.description || item.panel.videoPrompt || '待补充镜头描述'}</p>
         <div className="mt-3 flex flex-wrap gap-1.5 text-[11px]">
-          <span className={`rounded border px-2 py-0.5 ${statusClass(imageStatus)}`}>图 {statusLabel(imageStatus)}</span>
-          <span className={`rounded border px-2 py-0.5 ${statusClass(videoStatus)}`}>视频 {statusLabel(videoStatus)}</span>
-          <span className={`rounded border px-2 py-0.5 ${statusClass(voiceStatus)}`}>配音 {statusLabel(voiceStatus)}</span>
+          <span className={`rounded border px-2 py-0.5 ${studioStatusClass(imageStatus)}`}>图 {statusLabel(imageStatus)}</span>
+          <span className={`rounded border px-2 py-0.5 ${studioStatusClass(videoStatus)}`}>视频 {statusLabel(videoStatus)}</span>
+          <span className={`rounded border px-2 py-0.5 ${studioStatusClass(voiceStatus)}`}>配音 {statusLabel(voiceStatus)}</span>
         </div>
       </div>
     </button>
   )
 }
 
-function ProduceInspector({ item }: { item: ProduceItem }) {
+function ProductionDetailPanel({ item }: { item: ProduceItem }) {
   const runtime = useWorkspaceStageRuntime()
   const initialModel = panelVideoModel(item.panel) || runtime.videoModel || runtime.userVideoModels[0]?.value || ''
   const [prompt, setPrompt] = useState(item.panel.videoPrompt || '')
@@ -235,10 +206,10 @@ function ProduceInspector({ item }: { item: ProduceItem }) {
     <aside className="rounded-lg border border-white/10 bg-[#151613]">
       <header className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#c8a85f]">Render Inspector</p>
-          <h2 className="mt-1 text-base font-semibold text-stone-50">Shot {String(item.number).padStart(2, '0')}</h2>
+          <p className="text-xs font-semibold text-[#c8a85f]">视频生产</p>
+          <h2 className="mt-1 text-base font-semibold text-stone-50">镜头 {String(item.number).padStart(2, '0')}</h2>
         </div>
-        <span className={`rounded-full border px-2 py-0.5 text-[11px] ${statusClass(videoStatus)}`}>{statusLabel(videoStatus)}</span>
+        <StudioStatusBadge status={videoStatus} />
       </header>
 
       <div className="space-y-4 p-4">
@@ -249,7 +220,7 @@ function ProduceInspector({ item }: { item: ProduceItem }) {
             ) : item.panel.imageUrl ? (
               <MediaImageWithLoading
                 src={item.panel.imageUrl}
-                alt={`Shot ${item.number}`}
+                alt={`镜头 ${item.number}`}
                 containerClassName="h-full w-full"
                 className="h-full w-full object-cover"
                 sizes="420px"
@@ -303,24 +274,14 @@ function ProduceInspector({ item }: { item: ProduceItem }) {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs text-stone-500">{savingPrompt ? '提示词保存中' : prompt === (item.panel.videoPrompt || '') ? '提示词已保存' : '提示词未保存'}</span>
           <div className="flex gap-2">
-            <Button variant="secondary" onClick={() => { void savePrompt() }} disabled={savingPrompt}>保存提示词</Button>
-            <Button onClick={() => { void generate() }} disabled={generating || item.panel.videoTaskRunning || !item.panel.imageUrl}>
-              <AppIcon name={generating || item.panel.videoTaskRunning ? 'loader' : 'video'} className={`h-4 w-4 ${generating || item.panel.videoTaskRunning ? 'animate-spin' : ''}`} />
+            <StudioButton size="sm" variant="secondary" onClick={() => { void savePrompt() }} disabled={savingPrompt}>保存提示词</StudioButton>
+            <StudioButton size="sm" icon="video" loading={generating || !!item.panel.videoTaskRunning} onClick={() => { void generate() }} disabled={!item.panel.imageUrl}>
               {videoUrl ? '重新生成视频' : '生成视频'}
-            </Button>
+            </StudioButton>
           </div>
         </div>
       </div>
     </aside>
-  )
-}
-
-function Metric({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2">
-      <div className="text-xs text-stone-500">{label}</div>
-      <div className="mt-1 truncate text-sm font-semibold text-stone-100">{value}</div>
-    </div>
   )
 }
 
@@ -361,71 +322,66 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
   return (
     <div className="space-y-4">
       <section className="rounded-lg border border-white/10 bg-[#151613]">
-        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 px-6 py-5">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#c8a85f]">Produce</p>
-            <h1 className="mt-2 text-2xl font-semibold text-stone-50">镜头生产控制台</h1>
-            <p className="mt-2 text-sm text-stone-400">在主界面完成视频提示词编辑、模型选择、单镜头生成和结果预览。</p>
-          </div>
-          <Button onClick={() => { void generateAll() }} disabled={generatingAll || runtime.isTransitioning}>
-            <AppIcon name={generatingAll ? 'loader' : 'video'} className={`h-4 w-4 ${generatingAll ? 'animate-spin' : ''}`} />
+        <StudioStageHeader
+          eyebrow="生产台"
+          title="镜头生产控制台"
+          description="按镜头跟进图片、视频和配音状态，生产完成后进入成片检查。"
+          actions={(
+            <StudioButton icon="video" loading={generatingAll} onClick={() => { void generateAll() }} disabled={runtime.isTransitioning}>
             生成缺失镜头
-          </Button>
-        </header>
+            </StudioButton>
+          )}
+        />
 
         <div className="grid gap-4 border-b border-white/10 px-6 py-4 sm:grid-cols-4">
-          <Metric label="镜头" value={items.length} />
-          <Metric label="图片完成" value={items.filter((item) => item.panel.imageUrl).length} />
-          <Metric label="视频完成" value={items.filter((item) => panelVideoUrl(item.panel)).length} />
-          <Metric label="失败" value={items.filter((item) => panelVideoError(item.panel)).length} />
+          <StudioMetric label="镜头" value={items.length} />
+          <StudioMetric label="图片完成" value={items.filter((item) => item.panel.imageUrl).length} />
+          <StudioMetric label="视频完成" value={items.filter((item) => panelVideoUrl(item.panel)).length} />
+          <StudioMetric label="失败" value={items.filter((item) => panelVideoError(item.panel)).length} />
         </div>
 
         <div className="grid min-h-[620px] gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-          <div className="min-h-0 space-y-3 overflow-y-auto pr-1">
-            {items.map((item) => (
-              <ProduceQueueRow
-                key={item.id}
-                item={item}
-                selected={selectedItem?.id === item.id}
-                onSelect={() => setSelectedId(item.id)}
+          <div className="min-h-0 overflow-hidden rounded-lg border border-white/10 bg-[#10110f]">
+            <div className="border-b border-white/10 px-4 py-4">
+              <StudioSectionHeader
+                title="生产队列"
+                description="按镜头查看图片、视频和配音的生产状态。"
               />
-            ))}
+            </div>
+            <div className="max-h-[660px] space-y-3 overflow-y-auto p-3">
+              {items.map((item) => (
+                <ProduceQueueRow
+                  key={item.id}
+                  item={item}
+                  selected={selectedItem?.id === item.id}
+                  onSelect={() => setSelectedId(item.id)}
+                />
+              ))}
+            </div>
           </div>
-          {selectedItem ? <ProduceInspector item={selectedItem} /> : null}
+          {selectedItem ? <ProductionDetailPanel item={selectedItem} /> : null}
         </div>
       </section>
 
-      <section className="rounded-lg border border-white/10 bg-[#151613] p-4">
-        <button
-          type="button"
-          onClick={() => setShowVideoWorkbench((value) => !value)}
-          className="flex w-full items-center justify-between gap-3 text-left text-sm font-semibold text-stone-100"
-        >
-          <span>完整视频工作台</span>
-          <AppIcon name="chevronDown" className={`h-4 w-4 text-stone-500 transition-transform ${showVideoWorkbench ? 'rotate-180' : ''}`} />
-        </button>
+      <StudioAdvancedPanel title="视频专家面板" description="首尾帧、批量参数和更细的视频控制集中在此面板。">
         {showVideoWorkbench ? (
-          <div className="mt-4 rounded-md bg-white/[0.02] p-4 text-[var(--glass-text-primary)]">
-            <VideoStageRoute />
-          </div>
-        ) : null}
-      </section>
+          <VideoStageRoute />
+        ) : (
+          <StudioButton size="sm" variant="secondary" onClick={() => setShowVideoWorkbench(true)}>
+            打开视频专家工具
+          </StudioButton>
+        )}
+      </StudioAdvancedPanel>
 
-      <section className="rounded-lg border border-white/10 bg-[#151613] p-4">
-        <button
-          type="button"
-          onClick={() => setShowVoiceWorkbench((value) => !value)}
-          className="flex w-full items-center justify-between gap-3 text-left text-sm font-semibold text-stone-100"
-        >
-          <span>配音工作台</span>
-          <AppIcon name="chevronDown" className={`h-4 w-4 text-stone-500 transition-transform ${showVoiceWorkbench ? 'rotate-180' : ''}`} />
-        </button>
+      <StudioAdvancedPanel title="配音专家面板" description="声音生成、音频检查和口型同步的细节控制集中在此面板。">
         {showVoiceWorkbench ? (
-          <div className="mt-4 rounded-md bg-white/[0.02] p-4 text-[var(--glass-text-primary)]">
-            <VoiceStageRoute />
-          </div>
-        ) : null}
-      </section>
+          <VoiceStageRoute />
+        ) : (
+          <StudioButton size="sm" variant="secondary" onClick={() => setShowVoiceWorkbench(true)}>
+            打开配音专家工具
+          </StudioButton>
+        )}
+      </StudioAdvancedPanel>
     </div>
   )
 }

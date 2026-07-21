@@ -5,6 +5,7 @@ import { AppIcon, type AppIconName } from '@/components/ui/icons'
 import type { CreationWorkflowRunState, CreationWorkflowState } from '@/lib/creation-workspace/workflow-state'
 import type { VideoProfile } from '@/lib/video-profile'
 import { useWorkspaceStageRuntime } from '../../WorkspaceStageRuntimeContext'
+import { studioStatusDotClass } from './StudioPrimitives'
 import StudioStageCanvas from './StudioStageCanvas'
 import {
   statusFromCreationStage,
@@ -43,13 +44,13 @@ interface StudioWorkspaceShellProps {
 }
 
 const MODE_CONFIG: Array<Omit<StudioNavItem, 'status' | 'disabled'>> = [
-  { id: 'start', route: 'config', label: 'Start', subtitle: '起始', icon: 'fileText' },
-  { id: 'draft', route: 'content', label: 'Draft', subtitle: '草稿', icon: 'bookOpen' },
-  { id: 'visual-kit', route: 'assets', label: 'Visual Kit', subtitle: '视觉资产', icon: 'folderCards' },
-  { id: 'board', route: 'storyboard', label: 'Board', subtitle: '分镜', icon: 'image' },
-  { id: 'produce', route: 'videos', label: 'Produce', subtitle: '制作', icon: 'video' },
-  { id: 'edit', route: 'editor', label: 'Edit', subtitle: '成片', icon: 'film' },
-  { id: 'export', route: 'export', label: 'Export', subtitle: '导出', icon: 'download' },
+  { id: 'start', route: 'config', label: '项目简报', subtitle: '输入', icon: 'fileText' },
+  { id: 'draft', route: 'content', label: '文稿', subtitle: '脚本', icon: 'bookOpen' },
+  { id: 'visual-kit', route: 'assets', label: '视觉库', subtitle: '角色场景', icon: 'folderCards' },
+  { id: 'board', route: 'storyboard', label: '分镜板', subtitle: '镜头', icon: 'image' },
+  { id: 'produce', route: 'videos', label: '生产台', subtitle: '视频配音', icon: 'video' },
+  { id: 'edit', route: 'editor', label: '成片检查', subtitle: '预览', icon: 'film' },
+  { id: 'export', route: 'export', label: '交付', subtitle: '导出', icon: 'download' },
 ]
 
 function navStatus(mode: StudioModeId, model: StudioWorkspaceModel): StudioProductStatus {
@@ -62,19 +63,10 @@ function navStatus(mode: StudioModeId, model: StudioWorkspaceModel): StudioProdu
   return model.workflow.hasVideo ? 'needs_review' : 'empty'
 }
 
-function dotClass(status: StudioProductStatus) {
-  if (status === 'locked') return 'bg-emerald-400'
-  if (status === 'generating') return 'bg-cyan-300'
-  if (status === 'failed') return 'bg-rose-300'
-  if (status === 'stale' || status === 'needs_review') return 'bg-amber-300'
-  if (status === 'drafting') return 'bg-stone-300'
-  return 'bg-stone-700'
-}
-
 function StatusPill({ status }: { status: StudioProductStatus }) {
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[11px] text-stone-300">
-      <span className={`h-1.5 w-1.5 rounded-full ${dotClass(status)}`} />
+      <span className={`h-1.5 w-1.5 rounded-full ${studioStatusDotClass(status)}`} />
       {statusLabel(status)}
     </span>
   )
@@ -171,7 +163,7 @@ function StudioNav({
   onNavigate: (route: string) => void
 }) {
   return (
-    <nav aria-label="Studio workflow" className="rounded-lg border border-white/10 bg-[#131410] p-2">
+    <nav aria-label="制作流程" className="rounded-lg border border-white/10 bg-[#131410] p-2">
       <ol className="flex gap-1 overflow-x-auto lg:grid lg:grid-cols-1 lg:overflow-visible">
         {items.map((item) => {
           const active = item.id === activeMode
@@ -191,7 +183,7 @@ function StudioNav({
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-semibold">{item.label}</span>
                   <span className={`mt-0.5 flex items-center gap-1.5 text-[11px] ${active ? 'text-[#4c4637]' : 'text-stone-500'}`}>
-                    <span className={`h-1.5 w-1.5 rounded-full ${dotClass(item.status)}`} />
+                    <span className={`h-1.5 w-1.5 rounded-full ${studioStatusDotClass(item.status)}`} />
                     {item.subtitle}
                   </span>
                 </span>
@@ -215,7 +207,7 @@ function StructurePanel({ model, onNavigate }: { model: StudioWorkspaceModel; on
     <aside className="space-y-3 rounded-lg border border-white/10 bg-[#131410] p-4">
       <div>
         <h2 className="text-sm font-semibold text-stone-50">素材与结构</h2>
-        <p className="mt-1 text-xs leading-5 text-stone-500">围绕作品对象导航，不展示内部任务阶段。</p>
+        <p className="mt-1 text-xs leading-5 text-stone-500">围绕文稿、资产、镜头和视频组织当前作品。</p>
       </div>
       <div className="space-y-2">
         {rows.map((row) => (
@@ -240,29 +232,29 @@ function StructurePanel({ model, onNavigate }: { model: StudioWorkspaceModel; on
   )
 }
 
-function InspectorPanel({ model, onNavigate }: { model: StudioWorkspaceModel; onNavigate: (route: string) => void }) {
+function AssistantPanel({ model, onNavigate }: { model: StudioWorkspaceModel; onNavigate: (route: string) => void }) {
   const runtime = useWorkspaceStageRuntime()
   const activeAsset = model.coreVisualAssets.find((asset) => asset.status !== 'locked') || model.coreVisualAssets[0]
   const activeShot = model.shots.find((shot) => shot.status === 'failed') || model.shots.find((shot) => !shot.videoUrl) || model.shots[0]
   const modeTitle = {
-    start: '项目起始',
-    draft: '文稿 Inspector',
-    'visual-kit': '资产 Inspector',
-    board: '镜头 Inspector',
-    produce: '生产 Inspector',
-    edit: '成片 Inspector',
-    export: '导出 Inspector',
+    start: '项目简报',
+    draft: '文稿状态',
+    'visual-kit': '视觉资产',
+    board: '镜头状态',
+    produce: '生产状态',
+    edit: '成片检查',
+    export: '交付状态',
   }[model.activeMode]
   const suggestions = model.activeMode === 'visual-kit'
     ? [`核心资产待确认：${model.summary.missingCoreVisualAssets}`, activeAsset ? `当前资产：${activeAsset.name}` : '暂无核心资产']
     : model.activeMode === 'board' || model.activeMode === 'produce'
-      ? [activeShot ? `当前镜头：Shot ${activeShot.number}` : '暂无镜头', `失败镜头：${model.summary.failedShots}`]
+      ? [activeShot ? `当前镜头：第 ${activeShot.number} 镜` : '暂无镜头', `失败镜头：${model.summary.failedShots}`]
       : [`文稿段落：${model.draftSegments.length}`, `预计时长：${model.summary.totalDurationSec || '-'} 秒`]
 
   return (
     <aside className="flex min-h-0 flex-col rounded-lg border border-white/10 bg-[#131410]">
       <header className="border-b border-white/10 px-4 py-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#c8a85f]">AI / Inspector</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#c8a85f]">助手</p>
         <h2 className="mt-2 text-base font-semibold text-stone-50">{modeTitle}</h2>
       </header>
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
@@ -399,7 +391,7 @@ export default function StudioWorkspaceShell({
           <StudioStageCanvas model={model} onNavigate={onStageChange} workflowState={workflowState} />
         </main>
         <div className="min-h-0 lg:sticky lg:top-20 lg:h-[calc(100vh-6rem)]">
-          <InspectorPanel model={model} onNavigate={onStageChange} />
+          <AssistantPanel model={model} onNavigate={onStageChange} />
         </div>
       </div>
       <GenerationQueue model={model} />

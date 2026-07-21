@@ -1,42 +1,23 @@
 'use client'
 
 import { useState } from 'react'
-import type { ReactNode } from 'react'
-import { AppIcon } from '@/components/ui/icons'
 import { useWorkspaceStageRuntime } from '../../WorkspaceStageRuntimeContext'
 import ContentScriptEditor from '../workspace-v2/artifacts/ContentScriptEditor'
 import GuideNarrationEditor from '../workspace-v2/artifacts/GuideNarrationEditor'
-import { statusLabel, type StudioWorkspaceModel } from './studio-types'
+import {
+  StudioButton,
+  StudioEmptyState,
+  StudioMetric,
+  StudioPanel,
+  StudioProcessSteps,
+  StudioSectionHeader,
+  StudioStageHeader,
+} from './StudioPrimitives'
+import { statusLabel, type StudioProductStatus, type StudioWorkspaceModel } from './studio-types'
 
 interface StudioDraftCanvasProps {
   model: StudioWorkspaceModel
   onNavigate: (route: string) => void
-}
-
-function Button({
-  children,
-  onClick,
-  disabled,
-  variant = 'primary',
-}: {
-  children: ReactNode
-  onClick?: () => void
-  disabled?: boolean
-  variant?: 'primary' | 'secondary'
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${variant === 'primary'
-        ? 'bg-[#f3e9cf] text-[#161512] hover:bg-[#fff5d9]'
-        : 'border border-white/12 bg-white/[0.04] text-stone-100 hover:bg-white/[0.08]'
-      }`}
-    >
-      {children}
-    </button>
-  )
 }
 
 function PlanPreview({ model, onGenerateScript }: { model: StudioWorkspaceModel; onGenerateScript: () => void }) {
@@ -47,10 +28,9 @@ function PlanPreview({ model, onGenerateScript }: { model: StudioWorkspaceModel;
           <h2 className="text-base font-semibold text-stone-50">内容方案已生成</h2>
           <p className="mt-1 text-sm text-stone-500">下一步生成可编辑剧本，之后可以逐段编辑、AI 重写、接受或丢弃候选。</p>
         </div>
-        <Button onClick={onGenerateScript}>
-          <AppIcon name="sparkles" className="h-4 w-4" />
+        <StudioButton icon="sparkles" onClick={onGenerateScript}>
           生成可编辑剧本
-        </Button>
+        </StudioButton>
       </div>
       {model.draftSegments.map((segment, index) => (
         <article key={segment.id} className="grid gap-4 px-5 py-4 lg:grid-cols-[48px_minmax(0,1fr)_120px]">
@@ -77,6 +57,33 @@ export default function StudioDraftCanvas({ model, onNavigate }: StudioDraftCanv
   const runtime = useWorkspaceStageRuntime()
   const [pending, setPending] = useState(false)
   const editableReady = model.workflow.isBookGuide || model.workflow.hasScriptOutput
+  const visualStatus: StudioProductStatus = model.workflow.assetRequirementStatus === 'approved'
+    ? 'locked'
+    : model.workflow.assetRequirementStatus === 'needs_review'
+      ? 'needs_review'
+      : 'empty'
+  const processSteps: Array<{ label: string; helper: string; status: StudioProductStatus }> = [
+    {
+      label: '内容方案',
+      helper: `${model.draftSegments.length} 段`,
+      status: model.draftSegments.length > 0 ? 'locked' : 'empty',
+    },
+    {
+      label: '剧本编辑',
+      helper: editableReady ? '支持编辑和 AI 重写' : '等待生成可编辑稿',
+      status: editableReady ? 'drafting' : 'empty',
+    },
+    {
+      label: '文稿确认',
+      helper: model.workflow.contentApproved ? '已锁定口径' : '待人工确认',
+      status: model.workflow.contentApproved ? 'locked' : 'needs_review',
+    },
+    {
+      label: '视觉提取',
+      helper: statusLabel(visualStatus),
+      status: visualStatus,
+    },
+  ]
 
   const confirmDraft = async () => {
     if (model.draftSegments.length === 0) {
@@ -99,57 +106,79 @@ export default function StudioDraftCanvas({ model, onNavigate }: StudioDraftCanv
 
   if (model.draftSegments.length === 0) {
     return (
-      <div className="flex min-h-[440px] flex-col items-center justify-center rounded-lg border border-dashed border-white/15 bg-[#151613] px-6 py-12 text-center">
-        <AppIcon name="fileText" className="h-8 w-8 text-[#e8d18a]" />
-        <h2 className="mt-4 text-lg font-semibold text-stone-50">还没有视频文稿</h2>
-        <p className="mt-2 max-w-xl text-sm leading-6 text-stone-400">先从 Start 生成文稿初稿，或补充原始材料后重新生成。</p>
-        <div className="mt-5">
-          <Button onClick={() => onNavigate('config')}>返回 Start</Button>
-        </div>
-      </div>
+      <StudioEmptyState
+        icon="fileText"
+        title="还没有视频文稿"
+        description="先从项目简报生成文稿初稿，或补充原始材料后重新生成。"
+        action={<StudioButton onClick={() => onNavigate('config')}>返回项目简报</StudioButton>}
+      />
     )
   }
 
   return (
-    <div className="rounded-lg border border-white/10 bg-[#151613]">
-      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-white/10 px-6 py-5">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#c8a85f]">Draft</p>
-          <h1 className="mt-2 text-2xl font-semibold text-stone-50">{model.draftTitle}</h1>
-          <p className="mt-2 text-sm text-stone-400">文稿是视频入口。这里保留编辑、AI 重写、锁定、恢复、候选接受/丢弃。</p>
+    <div className="space-y-4">
+      <StudioPanel padding="none">
+        <StudioStageHeader
+          eyebrow="文稿"
+          title={model.draftTitle}
+          description="把内容节奏、叙述口径和镜头意图先稳定下来，再进入角色与场景资产设计。"
+          actions={(
+            <>
+              <StudioButton variant="secondary" onClick={() => onNavigate('content-plan')}>查看方案</StudioButton>
+              <StudioButton
+                icon="clipboardCheck"
+                loading={pending || runtime.isAssetAnalysisRunning}
+                onClick={() => { void confirmDraft() }}
+                disabled={runtime.contentEditingState.dirty || runtime.contentEditingState.saving}
+              >
+                确认文稿并提取视觉资产
+              </StudioButton>
+            </>
+          )}
+        />
+
+        <div className="border-b border-white/10 px-6 py-4">
+          <StudioProcessSteps steps={processSteps} />
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={() => onNavigate('content-plan')}>查看方案</Button>
-          <Button onClick={() => { void confirmDraft() }} disabled={pending || runtime.isAssetAnalysisRunning || runtime.contentEditingState.dirty || runtime.contentEditingState.saving}>
-            <AppIcon name={pending || runtime.isAssetAnalysisRunning ? 'loader' : 'clipboardCheck'} className={`h-4 w-4 ${pending || runtime.isAssetAnalysisRunning ? 'animate-spin' : ''}`} />
-            确认文稿并提取视觉资产
-          </Button>
-        </div>
-      </header>
+      </StudioPanel>
 
-      <div className="grid gap-4 border-b border-white/10 px-6 py-4 sm:grid-cols-4">
-        <Metric label="段落" value={model.draftSegments.length} />
-        <Metric label="预计时长" value={model.summary.totalDurationSec ? `${model.summary.totalDurationSec} 秒` : '-'} />
-        <Metric label="文稿状态" value={model.workflow.contentApproved ? '已确认' : '可编辑'} />
-        <Metric label="视觉提取" value={statusLabel(model.workflow.assetRequirementStatus === 'approved' ? 'locked' : model.workflow.assetRequirementStatus === 'needs_review' ? 'needs_review' : 'empty')} />
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <StudioPanel padding="none" className="min-w-0 overflow-hidden">
+          <div className="border-b border-white/10 px-5 py-4">
+            <StudioSectionHeader
+              title="文稿编辑台"
+              description={editableReady ? '在文稿编辑台完成逐段编辑、AI 重写、候选接受或丢弃。' : '先把内容方案转为可编辑剧本，再进入逐段打磨。'}
+            />
+          </div>
+          <div className="studio-draft-editor p-4 text-[var(--glass-text-primary)]">
+            {editableReady ? (
+              model.workflow.isBookGuide ? <GuideNarrationEditor /> : <ContentScriptEditor />
+            ) : (
+              <PlanPreview model={model} onGenerateScript={() => { void runtime.onRunStoryToScript() }} />
+            )}
+          </div>
+        </StudioPanel>
+
+        <aside className="space-y-4">
+          <StudioPanel>
+            <StudioSectionHeader title="文稿概览" description="用于进入视觉资产前的质量检查。" />
+            <div className="mt-4 grid gap-3">
+              <StudioMetric label="段落" value={model.draftSegments.length} />
+              <StudioMetric label="预计时长" value={model.summary.totalDurationSec ? `${model.summary.totalDurationSec} 秒` : '-'} />
+              <StudioMetric label="文稿状态" value={model.workflow.contentApproved ? '已确认' : '可编辑'} />
+              <StudioMetric label="视觉提取" value={statusLabel(visualStatus)} />
+            </div>
+          </StudioPanel>
+
+          <StudioPanel>
+            <StudioSectionHeader title="进入视觉库前" description="确认后系统会从文稿提取角色、场景、道具等一致性资产。" />
+            <div className="mt-4 space-y-2 text-sm leading-6 text-stone-400">
+              <p>当前编辑器保留 AI 重写、人工编辑和候选稿处理能力。</p>
+              <p>{runtime.contentEditingState.dirty ? '还有未保存内容，保存后才能确认。' : '文稿内容已可进入确认流程。'}</p>
+            </div>
+          </StudioPanel>
+        </aside>
       </div>
-
-      <div className="studio-draft-editor p-4 text-[var(--glass-text-primary)]">
-        {editableReady ? (
-          model.workflow.isBookGuide ? <GuideNarrationEditor /> : <ContentScriptEditor />
-        ) : (
-          <PlanPreview model={model} onGenerateScript={() => { void runtime.onRunStoryToScript() }} />
-        )}
-      </div>
-    </div>
-  )
-}
-
-function Metric({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2">
-      <div className="text-xs text-stone-500">{label}</div>
-      <div className="mt-1 truncate text-sm font-semibold text-stone-100">{value}</div>
     </div>
   )
 }
