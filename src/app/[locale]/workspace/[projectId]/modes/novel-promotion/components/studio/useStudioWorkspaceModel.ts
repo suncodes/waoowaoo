@@ -3,12 +3,13 @@
 import { useMemo } from 'react'
 import type { VisualAssetSummary } from '@/lib/assets/contracts'
 import { readContentArtifactMeta, readVisualArtifactMeta } from '@/lib/creation-workspace/artifact-state'
-import type { CreationWorkflowRunState, CreationWorkflowState } from '@/lib/creation-workspace/workflow-state'
+import type { CreationWorkflowState } from '@/lib/creation-workspace/workflow-state'
 import { resolveVisualAnchorReadiness, resolveVisualAssetStatus, selectedVisualAssetImage } from '@/lib/creation-workspace/visual-readiness'
 import { useAssets } from '@/lib/query/hooks'
 import type { NovelPromotionPanel } from '@/types/project'
 import { useWorkspaceProvider } from '../../WorkspaceProvider'
 import { useWorkspaceEpisodeStageData } from '../../hooks/useWorkspaceEpisodeStageData'
+import type { WorkspaceRunStreamState } from '../workspace-run-types'
 import {
   asPlanningRecord,
   readPlanningNumber,
@@ -31,17 +32,17 @@ interface UseStudioWorkspaceModelInput {
   currentStage: string
   stageView?: string | null
   workflowState: CreationWorkflowState
-  contentPlanStream: CreationWorkflowRunState
-  storyToScriptStream: CreationWorkflowRunState
-  visualPlanStream: CreationWorkflowRunState
-  scriptToStoryboardStream: CreationWorkflowRunState
+  contentPlanStream: WorkspaceRunStreamState
+  storyToScriptStream: WorkspaceRunStreamState
+  visualPlanStream: WorkspaceRunStreamState
+  scriptToStoryboardStream: WorkspaceRunStreamState
 }
 
-function isRunActive(stream: CreationWorkflowRunState) {
+function isRunActive(stream: WorkspaceRunStreamState) {
   return stream.isRunning || stream.isRecoveredRunning || stream.status === 'running'
 }
 
-function runStatus(stream: CreationWorkflowRunState): StudioProductStatus {
+function runStatus(stream: WorkspaceRunStreamState): StudioProductStatus {
   if (isRunActive(stream)) return 'generating'
   if (stream.status === 'failed') return 'failed'
   if (stream.status === 'completed') return 'locked'
@@ -147,7 +148,7 @@ function buildShots(storyboards: ReturnType<typeof useWorkspaceEpisodeStageData>
   })
 }
 
-function buildJobs(streams: Array<{ id: string; label: string; stream: CreationWorkflowRunState }>): StudioGenerationJob[] {
+function buildJobs(streams: Array<{ id: string; label: string; stream: WorkspaceRunStreamState }>): StudioGenerationJob[] {
   return streams.flatMap(({ id, label, stream }) => {
     const status = runStatus(stream)
     if (status === 'empty' && !stream.activeMessage) return []

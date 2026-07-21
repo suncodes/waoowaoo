@@ -2,14 +2,20 @@
 
 import { useMemo, useState } from 'react'
 import { AppIcon, type AppIconName } from '@/components/ui/icons'
-import type { CreationWorkflowRunState, CreationWorkflowState } from '@/lib/creation-workspace/workflow-state'
-import type { VideoProfile } from '@/lib/video-profile'
+import type { CreationWorkflowState } from '@/lib/creation-workspace/workflow-state'
+import { VIDEO_PROFILE_PRESET, type VideoProfile } from '@/lib/video-profile'
 import { useWorkspaceStageRuntime } from '../../WorkspaceStageRuntimeContext'
+import type { WorkspaceRunStreamState } from '../workspace-run-types'
+import type { CreationTaskDescriptor } from '../workspace-v2/CreationTaskDetails'
+import {
+  hasRenderableTaskDetails,
+  StudioGenerationQueue,
+  StudioTaskDetailsModal,
+} from './StudioGenerationQueue'
 import { studioStatusDotClass } from './StudioPrimitives'
 import StudioStageCanvas from './StudioStageCanvas'
 import {
   statusFromCreationStage,
-  statusLabel,
   type StudioModeId,
   type StudioNavItem,
   type StudioProductStatus,
@@ -31,10 +37,10 @@ interface StudioWorkspaceShellProps {
   stageView?: string | null
   videoProfile: VideoProfile
   workflowState: CreationWorkflowState
-  contentPlanStream: CreationWorkflowRunState
-  storyToScriptStream: CreationWorkflowRunState
-  visualPlanStream: CreationWorkflowRunState
-  scriptToStoryboardStream: CreationWorkflowRunState
+  contentPlanStream: WorkspaceRunStreamState
+  storyToScriptStream: WorkspaceRunStreamState
+  visualPlanStream: WorkspaceRunStreamState
+  scriptToStoryboardStream: WorkspaceRunStreamState
   onStageChange: (stage: string) => void
   onEpisodeSelect?: (episodeId: string) => void
   onEpisodeCreate?: () => void
@@ -63,36 +69,47 @@ function navStatus(mode: StudioModeId, model: StudioWorkspaceModel): StudioProdu
   return model.workflow.hasVideo ? 'needs_review' : 'empty'
 }
 
-function StatusPill({ status }: { status: StudioProductStatus }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[11px] text-stone-300">
-      <span className={`h-1.5 w-1.5 rounded-full ${studioStatusDotClass(status)}`} />
-      {statusLabel(status)}
-    </span>
-  )
+function progressWeight(status: StudioProductStatus) {
+  if (status === 'locked') return 1
+  if (status === 'generating') return 0.7
+  if (status === 'drafting' || status === 'needs_review' || status === 'stale') return 0.45
+  return 0
 }
 
 function StudioTopBar({
   projectName,
   episodes,
   currentEpisodeId,
+  videoProfile,
+  activeItem,
+  progressPercent,
+  taskDetailsAvailable,
   onEpisodeSelect,
   onEpisodeCreate,
   onOpenAssetLibrary,
   onOpenSettings,
   onRefresh,
+  onOpenTaskDetails,
 }: Pick<StudioWorkspaceShellProps,
   | 'projectName'
   | 'episodes'
   | 'currentEpisodeId'
+  | 'videoProfile'
   | 'onEpisodeSelect'
   | 'onEpisodeCreate'
   | 'onOpenAssetLibrary'
   | 'onOpenSettings'
   | 'onRefresh'
->) {
+> & {
+  activeItem: StudioNavItem
+  progressPercent: number
+  taskDetailsAvailable: boolean
+  onOpenTaskDetails: () => void
+}) {
   const [refreshing, setRefreshing] = useState(false)
   const currentEpisode = episodes.find((episode) => episode.id === currentEpisodeId)
+  const profileLabel = videoProfile.preset === VIDEO_PROFILE_PRESET.BOOK_GUIDE ? '书籍导读' : 'AI 漫剧'
+  const durationText = videoProfile.targetDurationSec > 0 ? `${Math.round(videoProfile.targetDurationSec / 60)} 分钟` : '未限定'
   const refresh = async () => {
     setRefreshing(true)
     try {
@@ -103,27 +120,58 @@ function StudioTopBar({
   }
 
   return (
-    <header className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-[#131410]/95 px-4 py-3 shadow-[0_16px_50px_rgba(0,0,0,0.25)]">
-      <div className="min-w-0">
-        <div className="truncate text-base font-semibold text-stone-50">{projectName}</div>
-        <div className="mt-0.5 text-xs text-stone-500">{currentEpisode?.name || '未选择剧集'}</div>
+    <header className="overflow-hidden rounded-lg border border-white/10 bg-[#0b0c0a]/95 shadow-[0_24px_80px_rgba(0,0,0,0.32)]">
+      <div className="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:px-5">
+        <div className="flex min-w-0 items-center gap-4">
+          <div className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-[#e8d18a]/25 bg-[#e8d18a]/10 text-[#f3e9cf] sm:flex">
+            <AppIcon name="clapperboard" className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+              <h1 className="truncate text-lg font-semibold text-stone-50">{projectName}</h1>
+              <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] text-stone-400">
+                {profileLabel} · {durationText}
+              </span>
+            </div>
+            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone-500">
+              <span className="truncate">{currentEpisode?.name || '未选择剧集'}</span>
+              <span className="hidden text-stone-700 sm:inline">/</span>
+              <span className="inline-flex items-center gap-1.5 text-stone-300">
+                <span className={`h-1.5 w-1.5 rounded-full ${studioStatusDotClass(activeItem.status)}`} />
+                {activeItem.label}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex min-w-0 flex-wrap items-center justify-start gap-2 lg:justify-end">
+          {episodes.length > 0 ? (
+            <select
+              value={currentEpisodeId || ''}
+              onChange={(event) => onEpisodeSelect?.(event.target.value)}
+              className="h-9 max-w-[240px] rounded-md border border-white/10 bg-[#12130f] px-3 text-sm text-stone-100 outline-none focus:border-[#e8d18a]"
+              aria-label="选择剧集"
+            >
+              {episodes.map((episode) => (
+                <option key={episode.id} value={episode.id}>{episode.name}</option>
+              ))}
+            </select>
+          ) : null}
+          <IconButton icon="receipt" label="生成日志" onClick={onOpenTaskDetails} disabled={!taskDetailsAvailable} />
+          <IconButton icon="plus" label="新建剧集" onClick={onEpisodeCreate} />
+          <IconButton icon="folderOpen" label="资产库" onClick={onOpenAssetLibrary} />
+          <IconButton icon="settingsHexMinor" label="设置" onClick={onOpenSettings} />
+          <IconButton icon="refresh" label="刷新" onClick={() => { void refresh() }} spinning={refreshing} />
+        </div>
       </div>
-      <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
-        {episodes.length > 0 ? (
-          <select
-            value={currentEpisodeId || ''}
-            onChange={(event) => onEpisodeSelect?.(event.target.value)}
-            className="h-9 max-w-[220px] rounded-md border border-white/10 bg-[#0f100e] px-3 text-sm text-stone-100 outline-none focus:border-[#e8d18a]"
-          >
-            {episodes.map((episode) => (
-              <option key={episode.id} value={episode.id}>{episode.name}</option>
-            ))}
-          </select>
-        ) : null}
-        <IconButton icon="plus" label="新建剧集" onClick={onEpisodeCreate} />
-        <IconButton icon="folderOpen" label="资产库" onClick={onOpenAssetLibrary} />
-        <IconButton icon="settingsHexMinor" label="设置" onClick={onOpenSettings} />
-        <IconButton icon="refresh" label="刷新" onClick={() => { void refresh() }} spinning={refreshing} />
+      <div className="border-t border-white/10 px-4 py-3 lg:px-5">
+        <div className="flex items-center justify-between gap-4 text-xs text-stone-500">
+          <span>制作进度</span>
+          <span>{progressPercent}%</span>
+        </div>
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+          <div className="h-full rounded-full bg-[#e8d18a] transition-[width] duration-300" style={{ width: `${progressPercent}%` }} />
+        </div>
       </div>
     </header>
   )
@@ -134,19 +182,22 @@ function IconButton({
   label,
   onClick,
   spinning,
+  disabled,
 }: {
   icon: AppIconName
   label: string
   onClick?: () => void
   spinning?: boolean
+  disabled?: boolean
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       title={label}
       aria-label={label}
-      className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] text-stone-200 transition-colors hover:bg-white/[0.08]"
+      className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] text-stone-200 transition-colors hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white/[0.04]"
     >
       <AppIcon name={icon} className={`h-4 w-4 ${spinning ? 'animate-spin' : ''}`} />
     </button>
@@ -163,30 +214,37 @@ function StudioNav({
   onNavigate: (route: string) => void
 }) {
   return (
-    <nav aria-label="制作流程" className="rounded-lg border border-white/10 bg-[#131410] p-2">
-      <ol className="flex gap-1 overflow-x-auto lg:grid lg:grid-cols-1 lg:overflow-visible">
-        {items.map((item) => {
+    <nav aria-label="制作流程" className="overflow-hidden rounded-lg border border-white/10 bg-[#0b0c0a]">
+      <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+        <span className="text-xs font-semibold text-stone-500">流程导航</span>
+        <AppIcon name="barChart" className="h-4 w-4 text-stone-600" />
+      </div>
+      <ol className="flex gap-1 overflow-x-auto p-2 lg:grid lg:grid-cols-1 lg:gap-1.5 lg:overflow-visible">
+        {items.map((item, index) => {
           const active = item.id === activeMode
           return (
-            <li key={item.id} className="min-w-[132px] lg:min-w-0">
+            <li key={item.id} className="min-w-[154px] lg:min-w-0">
               <button
                 type="button"
                 onClick={() => onNavigate(item.route)}
-                className={`grid w-full grid-cols-[28px_minmax(0,1fr)] items-center gap-3 rounded-md px-3 py-3 text-left transition-colors ${active
-                  ? 'bg-[#f3e9cf] text-[#15130f]'
-                  : 'text-stone-300 hover:bg-white/[0.06]'
+                className={`grid w-full grid-cols-[34px_minmax(0,1fr)_16px] items-center gap-3 rounded-lg border px-2.5 py-2.5 text-left transition-colors ${active
+                  ? 'border-[#e8d18a]/45 bg-[#e8d18a]/10 text-stone-50'
+                  : 'border-transparent text-stone-300 hover:border-white/10 hover:bg-white/[0.05]'
                 }`}
               >
-                <span className={`flex h-7 w-7 items-center justify-center rounded ${active ? 'bg-black/10' : 'bg-white/[0.06]'}`}>
+                <span className={`relative flex h-8 w-8 items-center justify-center rounded-md ${active ? 'bg-[#f3e9cf] text-[#15130f]' : 'bg-white/[0.06] text-stone-400'}`}>
                   <AppIcon name={item.icon} className="h-4 w-4" />
+                  <span className="absolute -right-1 -top-1 rounded bg-[#0b0c0a] px-1 text-[9px] leading-4 text-stone-500">
+                    {String(index + 1).padStart(2, '0')}
+                  </span>
                 </span>
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-semibold">{item.label}</span>
-                  <span className={`mt-0.5 flex items-center gap-1.5 text-[11px] ${active ? 'text-[#4c4637]' : 'text-stone-500'}`}>
-                    <span className={`h-1.5 w-1.5 rounded-full ${studioStatusDotClass(item.status)}`} />
+                  <span className="mt-0.5 block truncate text-[11px] text-stone-500">
                     {item.subtitle}
                   </span>
                 </span>
+                <span className={`h-2 w-2 rounded-full ${studioStatusDotClass(item.status)}`} />
               </button>
             </li>
           )
@@ -204,10 +262,10 @@ function StructurePanel({ model, onNavigate }: { model: StudioWorkspaceModel; on
     { label: '已完成视频', value: model.summary.completedVideos, route: 'videos' },
   ]
   return (
-    <aside className="space-y-3 rounded-lg border border-white/10 bg-[#131410] p-4">
+    <aside className="space-y-3 rounded-lg border border-white/10 bg-[#0f100d] p-4">
       <div>
-        <h2 className="text-sm font-semibold text-stone-50">素材与结构</h2>
-        <p className="mt-1 text-xs leading-5 text-stone-500">围绕文稿、资产、镜头和视频组织当前作品。</p>
+        <h2 className="text-sm font-semibold text-stone-50">作品账本</h2>
+        <p className="mt-1 text-xs leading-5 text-stone-500">文稿、资产、镜头和视频的当前数量。</p>
       </div>
       <div className="space-y-2">
         {rows.map((row) => (
@@ -223,7 +281,7 @@ function StructurePanel({ model, onNavigate }: { model: StudioWorkspaceModel; on
         ))}
       </div>
       {model.novelText ? (
-        <div className="rounded-md bg-white/[0.03] p-3">
+        <div className="rounded-md border border-white/10 bg-white/[0.03] p-3">
           <div className="text-xs font-semibold text-stone-400">原始材料</div>
           <p className="mt-2 line-clamp-5 text-xs leading-5 text-stone-500">{model.novelText}</p>
         </div>
@@ -232,7 +290,17 @@ function StructurePanel({ model, onNavigate }: { model: StudioWorkspaceModel; on
   )
 }
 
-function AssistantPanel({ model, onNavigate }: { model: StudioWorkspaceModel; onNavigate: (route: string) => void }) {
+function AssistantPanel({
+  model,
+  onNavigate,
+  onOpenTaskDetails,
+  taskDetailsAvailable,
+}: {
+  model: StudioWorkspaceModel
+  onNavigate: (route: string) => void
+  onOpenTaskDetails: () => void
+  taskDetailsAvailable: boolean
+}) {
   const runtime = useWorkspaceStageRuntime()
   const activeAsset = model.coreVisualAssets.find((asset) => asset.status !== 'locked') || model.coreVisualAssets[0]
   const activeShot = model.shots.find((shot) => shot.status === 'failed') || model.shots.find((shot) => !shot.videoUrl) || model.shots[0]
@@ -252,9 +320,9 @@ function AssistantPanel({ model, onNavigate }: { model: StudioWorkspaceModel; on
       : [`文稿段落：${model.draftSegments.length}`, `预计时长：${model.summary.totalDurationSec || '-'} 秒`]
 
   return (
-    <aside className="flex min-h-0 flex-col rounded-lg border border-white/10 bg-[#131410]">
+    <aside className="flex min-h-0 flex-col rounded-lg border border-white/10 bg-[#0b0c0a]">
       <header className="border-b border-white/10 px-4 py-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#c8a85f]">助手</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#c8a85f]">Operator</p>
         <h2 className="mt-2 text-base font-semibold text-stone-50">{modeTitle}</h2>
       </header>
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
@@ -288,7 +356,12 @@ function AssistantPanel({ model, onNavigate }: { model: StudioWorkspaceModel; on
                 void runtime.onGenerateAllVideos({ videoModel })
               }} />
             ) : null}
-            <ActionButton icon="receipt" label="查看生成日志" onClick={() => onNavigate(model.generationJobs.length ? model.activeMode === 'visual-kit' ? 'visual-plan' : 'content' : 'config')} />
+            <ActionButton
+              icon="receipt"
+              label={taskDetailsAvailable ? '查看生成日志' : '暂无生成日志'}
+              onClick={onOpenTaskDetails}
+              disabled={!taskDetailsAvailable}
+            />
           </div>
         </section>
       </div>
@@ -296,45 +369,27 @@ function AssistantPanel({ model, onNavigate }: { model: StudioWorkspaceModel; on
   )
 }
 
-function ActionButton({ icon, label, onClick }: { icon: AppIconName; label: string; onClick: () => void }) {
+function ActionButton({
+  icon,
+  label,
+  onClick,
+  disabled,
+}: {
+  icon: AppIconName
+  label: string
+  onClick: () => void
+  disabled?: boolean
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm font-medium text-stone-200 transition-colors hover:bg-white/[0.07]"
+      disabled={disabled}
+      className="inline-flex min-h-10 items-center gap-2 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-left text-sm font-medium text-stone-200 transition-colors hover:bg-white/[0.07] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-white/[0.03]"
     >
       <AppIcon name={icon} className="h-4 w-4 text-[#e8d18a]" />
       {label}
     </button>
-  )
-}
-
-function GenerationQueue({ model }: { model: StudioWorkspaceModel }) {
-  const jobs = model.generationJobs
-  if (jobs.length === 0) {
-    return (
-      <footer className="rounded-lg border border-white/10 bg-[#131410] px-4 py-3 text-sm text-stone-500">
-        生成队列空闲
-      </footer>
-    )
-  }
-  return (
-    <footer className="rounded-lg border border-white/10 bg-[#131410] px-4 py-3">
-      <div className="flex gap-3 overflow-x-auto">
-        {jobs.map((job) => (
-          <div key={job.id} className="min-w-[240px] rounded-md border border-white/10 bg-white/[0.03] p-3">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-sm font-semibold text-stone-100">{job.label}</span>
-              <StatusPill status={job.status} />
-            </div>
-            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
-              <div className="h-full rounded-full bg-[#e8d18a]" style={{ width: `${Math.max(job.progress, job.status === 'generating' ? 8 : 0)}%` }} />
-            </div>
-            <p className="mt-2 truncate text-xs text-stone-500">{job.message || `${job.progress}%`}</p>
-          </div>
-        ))}
-      </div>
-    </footer>
   )
 }
 
@@ -344,6 +399,7 @@ export default function StudioWorkspaceShell({
   currentEpisodeId,
   currentStage,
   stageView,
+  videoProfile,
   workflowState,
   contentPlanStream,
   storyToScriptStream,
@@ -369,6 +425,32 @@ export default function StudioWorkspaceShell({
     () => MODE_CONFIG.map((item) => ({ ...item, status: navStatus(item.id, model) })),
     [model],
   )
+  const activeItem = navItems.find((item) => item.id === model.activeMode) || navItems[0]
+  const progressPercent = Math.round((navItems.reduce((sum, item) => sum + progressWeight(item.status), 0) / navItems.length) * 100)
+  const taskDescriptors = useMemo<CreationTaskDescriptor[]>(() => [
+    { id: 'content-plan', label: '文稿规划', stream: contentPlanStream },
+    { id: 'story-script', label: '剧本生成', stream: storyToScriptStream },
+    { id: 'visual-plan', label: '视觉方案', stream: visualPlanStream },
+    { id: 'storyboard', label: '分镜生成', stream: scriptToStoryboardStream },
+  ], [contentPlanStream, scriptToStoryboardStream, storyToScriptStream, visualPlanStream])
+  const [taskDetailId, setTaskDetailId] = useState<string | null>(null)
+  const renderableTaskDescriptors = useMemo(
+    () => taskDescriptors.filter(hasRenderableTaskDetails),
+    [taskDescriptors],
+  )
+  const orderedTaskDetailDescriptors = useMemo(() => {
+    if (!taskDetailId) return renderableTaskDescriptors
+    const selected = renderableTaskDescriptors.find((descriptor) => descriptor.id === taskDetailId)
+    if (!selected) return renderableTaskDescriptors
+    return [
+      selected,
+      ...renderableTaskDescriptors.filter((descriptor) => descriptor.id !== selected.id),
+    ]
+  }, [renderableTaskDescriptors, taskDetailId])
+  const openTaskDetails = (taskId?: string) => {
+    if (renderableTaskDescriptors.length === 0) return
+    setTaskDetailId(taskId || renderableTaskDescriptors[0]?.id || null)
+  }
 
   return (
     <section className="mx-auto flex w-full max-w-[1840px] flex-col gap-4 text-stone-100">
@@ -376,13 +458,18 @@ export default function StudioWorkspaceShell({
         projectName={projectName}
         episodes={episodes}
         currentEpisodeId={currentEpisodeId}
+        videoProfile={videoProfile}
+        activeItem={activeItem}
+        progressPercent={progressPercent}
+        taskDetailsAvailable={renderableTaskDescriptors.length > 0}
         onEpisodeSelect={onEpisodeSelect}
         onEpisodeCreate={onEpisodeCreate}
         onOpenAssetLibrary={onOpenAssetLibrary}
         onOpenSettings={onOpenSettings}
         onRefresh={onRefresh}
+        onOpenTaskDetails={() => openTaskDetails()}
       />
-      <div className="grid min-h-[calc(100vh-11rem)] gap-4 lg:grid-cols-[220px_minmax(0,1fr)_300px]">
+      <div className="grid min-h-[calc(100vh-12rem)] gap-4 lg:grid-cols-[236px_minmax(0,1fr)_312px]">
         <div className="space-y-4 lg:sticky lg:top-20 lg:self-start">
           <StudioNav items={navItems} activeMode={model.activeMode} onNavigate={onStageChange} />
           <StructurePanel model={model} onNavigate={onStageChange} />
@@ -391,10 +478,22 @@ export default function StudioWorkspaceShell({
           <StudioStageCanvas model={model} onNavigate={onStageChange} workflowState={workflowState} />
         </main>
         <div className="min-h-0 lg:sticky lg:top-20 lg:h-[calc(100vh-6rem)]">
-          <AssistantPanel model={model} onNavigate={onStageChange} />
+          <AssistantPanel
+            model={model}
+            onNavigate={onStageChange}
+            onOpenTaskDetails={() => openTaskDetails()}
+            taskDetailsAvailable={renderableTaskDescriptors.length > 0}
+          />
         </div>
       </div>
-      <GenerationQueue model={model} />
+      <StudioGenerationQueue
+        jobs={model.generationJobs}
+        detailsAvailable={renderableTaskDescriptors.length > 0}
+        onOpenDetails={openTaskDetails}
+      />
+      {taskDetailId && orderedTaskDetailDescriptors.length > 0 ? (
+        <StudioTaskDetailsModal descriptors={orderedTaskDetailDescriptors} onClose={() => setTaskDetailId(null)} />
+      ) : null}
     </section>
   )
 }
