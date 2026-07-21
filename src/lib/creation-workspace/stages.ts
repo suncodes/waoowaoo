@@ -125,6 +125,7 @@ const LEGACY_STAGE_ROUTES: Record<string, Omit<CreationStageRoute, 'isAlias'>> =
   videos: { stageId: 'production', view: 'shots' },
   voice: { stageId: 'production', view: 'voice' },
   editor: { stageId: 'edit' },
+  export: { stageId: 'edit', view: 'export' },
 }
 
 export const CREATION_WORKSPACE_ROUTE_IDS = [

@@ -71,6 +71,7 @@ interface WorkspaceHeaderShellProps {
   assetLibraryLabel: string
   settingsLabel: string
   refreshTitle: string
+  showFloatingControls?: boolean
 }
 
 export default function WorkspaceHeaderShell({
@@ -111,6 +112,7 @@ export default function WorkspaceHeaderShell({
   assetLibraryLabel,
   settingsLabel,
   refreshTitle,
+  showFloatingControls = true,
 }: WorkspaceHeaderShellProps) {
   return (
     <>
@@ -158,7 +160,7 @@ export default function WorkspaceHeaderShell({
         text={globalAssetText}
         onChange={(value) => { onUpdateConfig('globalAssetText', value) }}
       />
-      {episodes.length > 0 && currentEpisodeId && (() => {
+      {showFloatingControls && episodes.length > 0 && currentEpisodeId && (() => {
         const getNum = (name: string) => { const m = name.match(/\d+/); return m ? parseInt(m[0], 10) : Infinity }
         const sorted = [...episodes].sort((a, b) => {
           const d = getNum(a.name) - getNum(b.name)
@@ -192,14 +194,16 @@ export default function WorkspaceHeaderShell({
           />
         )
       })()}
-      <WorkspaceTopActions
-        onOpenAssetLibrary={onOpenAssetLibrary}
-        onOpenSettings={onOpenSettingsModal}
-        onRefresh={onRefresh}
-        assetLibraryLabel={assetLibraryLabel}
-        settingsLabel={settingsLabel}
-        refreshTitle={refreshTitle}
-      />
+      {showFloatingControls ? (
+        <WorkspaceTopActions
+          onOpenAssetLibrary={onOpenAssetLibrary}
+          onOpenSettings={onOpenSettingsModal}
+          onRefresh={onRefresh}
+          assetLibraryLabel={assetLibraryLabel}
+          settingsLabel={settingsLabel}
+          refreshTitle={refreshTitle}
+        />
+      ) : null}
     </>
   )
 }
