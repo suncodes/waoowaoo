@@ -1,14 +1,52 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
-import { getSignedUrl } from '@/lib/storage'
+import { getSignedObjectUrl, toFetchableUrl } from '@/lib/storage'
 import { getTaskById } from '@/lib/task/service'
 import { TASK_TYPE } from '@/lib/task/types'
 
 export const runtime = 'nodejs'
 
+function sanitizeDownloadFileName(value: string): string {
+  const normalized = value.trim().replace(/[\r\n\\/:*?"<>|]/g, '_')
+  return normalized || 'diagnostic.zip'
+}
+
+async function streamDiagnosticArchive(
+  request: NextRequest,
+  storageKey: string,
+  fileName: string,
+): Promise<Response> {
+  const signedUrl = await getSignedObjectUrl(storageKey, 300)
+  const range = request.headers.get('range')
+  const upstream = await fetch(toFetchableUrl(signedUrl), {
+    headers: range ? { Range: range } : undefined,
+    cache: 'no-store',
+    signal: request.signal,
+  })
+  if (!upstream.ok && upstream.status !== 416) {
+    throw new Error(`Failed to fetch diagnostic archive: ${upstream.status} ${upstream.statusText}`)
+  }
+
+  const headers = new Headers()
+  headers.set('Content-Type', upstream.headers.get('content-type') || 'application/zip')
+  headers.set('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(sanitizeDownloadFileName(fileName))}`)
+  headers.set('Cache-Control', 'private, no-store')
+  headers.set('Accept-Ranges', upstream.headers.get('accept-ranges') || 'bytes')
+  headers.set('Vary', 'Range')
+  for (const headerName of ['content-length', 'content-range', 'etag', 'last-modified']) {
+    const headerValue = upstream.headers.get(headerName)
+    if (headerValue) headers.set(headerName, headerValue)
+  }
+
+  return new Response(upstream.body, {
+    status: upstream.status,
+    headers,
+  })
+}
+
 export const GET = apiHandler(async (
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: Promise<{ projectId: string; taskId: string }> },
 ) => {
   const { projectId, taskId } = await context.params
@@ -32,10 +70,14 @@ export const GET = apiHandler(async (
       errorMessage: task.errorMessage || null,
     }, { status: task.status === 'failed' ? 200 : 202 })
   }
+  const fileName = typeof resultRecord.fileName === 'string' ? resultRecord.fileName : 'diagnostic.zip'
+  if (new URL(request.url).searchParams.get('download') === '1') {
+    return streamDiagnosticArchive(request, storageKey, fileName)
+  }
   return NextResponse.json({
     ready: true,
     taskId: task.id,
-    fileName: typeof resultRecord.fileName === 'string' ? resultRecord.fileName : 'diagnostic.zip',
-    downloadUrl: getSignedUrl(storageKey, 3600),
+    fileName,
+    downloadUrl: `/api/novel-promotion/${encodeURIComponent(projectId)}/diagnostic-export/${encodeURIComponent(taskId)}?download=1`,
   })
 })
