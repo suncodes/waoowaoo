@@ -53,32 +53,32 @@ export default function VoiceToolbar({
         : null
 
     return (
-        <div className="glass-surface-elevated p-6">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
+        <div className="rounded-lg border border-white/10 bg-[#151613] p-5">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="flex flex-wrap items-center gap-2">
                     <button
                         onClick={onBack}
-                        className="flex items-center gap-2 px-5 py-2.5 bg-[var(--glass-bg-surface)] text-[var(--glass-text-secondary)] font-medium rounded-xl border border-[var(--glass-stroke-base)] hover:bg-[var(--glass-bg-muted)] hover:text-[var(--glass-tone-info-fg)] transition-all"
+                        className="inline-flex h-10 items-center gap-2 rounded-md border border-white/10 bg-white/[0.04] px-4 text-sm font-semibold text-stone-200 hover:bg-white/[0.08]"
                     >
                         {t("toolbar.back")}
                     </button>
                     <button
                         onClick={onAnalyze}
                         disabled={analyzing}
-                        className="glass-btn-base glass-btn-primary flex items-center gap-2 px-5 py-2.5 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="inline-flex h-10 items-center gap-2 rounded-md bg-[#f3e9cf] px-4 text-sm font-semibold text-[#161512] hover:bg-[#fff5d9] disabled:cursor-not-allowed disabled:opacity-45"
                     >
                         {analyzing ? t("assets.stage.analyzing") : t("toolbar.analyzeLines")}
                     </button>
                     <button
                         onClick={onAddLine}
-                        className="glass-btn-base glass-btn-secondary flex items-center gap-2 px-5 py-2.5 font-medium border border-[var(--glass-stroke-base)]"
+                        className="inline-flex h-10 items-center gap-2 rounded-md border border-white/10 bg-white/[0.04] px-4 text-sm font-semibold text-stone-200 hover:bg-white/[0.08]"
                     >
                         {t("toolbar.addLine")}
                     </button>
                     <button
                         onClick={onGenerateAll}
                         disabled={isBatchSubmitting || !allSpeakersHaveVoice || totalLines === 0}
-                        className="glass-btn-base glass-btn-tone-success flex items-center gap-2 px-5 py-2.5 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="inline-flex h-10 items-center gap-2 rounded-md border border-emerald-400/25 bg-emerald-400/10 px-4 text-sm font-semibold text-emerald-100 hover:bg-emerald-400/15 disabled:cursor-not-allowed disabled:opacity-45"
                         title={!allSpeakersHaveVoice ? t("toolbar.uploadReferenceHint") : ''}
                     >
                         {isBatchSubmitting ? (
@@ -91,7 +91,7 @@ export default function VoiceToolbar({
                     <button
                         onClick={onDownloadAll}
                         disabled={linesWithAudio === 0 || isDownloading}
-                        className="glass-btn-base glass-btn-tone-info flex items-center gap-2 px-5 py-2.5 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="inline-flex h-10 items-center gap-2 rounded-md border border-cyan-400/25 bg-cyan-400/10 px-4 text-sm font-semibold text-cyan-100 hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-45"
                         title={linesWithAudio === 0 ? t("toolbar.noDownload") : t("toolbar.downloadCount", { count: linesWithAudio })}
                     >
                         {isDownloading ? (
@@ -99,7 +99,7 @@ export default function VoiceToolbar({
                         ) : t("toolbar.downloadAll")}
                     </button>
                 </div>
-                <div className="text-sm text-[var(--glass-text-tertiary)]">
+                <div className="text-sm text-stone-500">
                     {t("toolbar.stats", { total: totalLines, withVoice: linesWithVoice, withAudio: linesWithAudio })}
                 </div>
             </div>

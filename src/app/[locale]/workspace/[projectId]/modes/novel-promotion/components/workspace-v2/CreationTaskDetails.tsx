@@ -28,11 +28,11 @@ function taskStatus(stream: WorkspaceRunStreamState) {
 }
 
 function stepStatusClass(status: LLMStageViewStatus) {
-  if (status === 'completed') return 'bg-[var(--glass-tone-success-bg)] text-[var(--glass-tone-success-fg)]'
-  if (status === 'processing') return 'bg-[var(--glass-tone-info-bg)] text-[var(--glass-tone-info-fg)]'
-  if (status === 'failed') return 'bg-[var(--glass-tone-danger-bg)] text-[var(--glass-tone-danger-fg)]'
-  if (status === 'blocked' || status === 'stale') return 'bg-[var(--glass-tone-warning-bg)] text-[var(--glass-tone-warning-fg)]'
-  return 'bg-[var(--glass-bg-muted)] text-[var(--glass-text-tertiary)]'
+  if (status === 'completed') return 'bg-emerald-400/10 text-emerald-200'
+  if (status === 'processing') return 'bg-cyan-400/10 text-cyan-100'
+  if (status === 'failed') return 'bg-rose-400/10 text-rose-100'
+  if (status === 'blocked' || status === 'stale') return 'bg-amber-400/10 text-amber-100'
+  return 'bg-white/[0.06] text-stone-500'
 }
 
 function stepStatusIcon(status: LLMStageViewStatus) {
@@ -75,7 +75,7 @@ export default function CreationTaskDetails({ descriptors }: CreationTaskDetails
   }, [tProgress])
 
   if (!selected) {
-    return <p className="py-4 text-sm text-[var(--glass-text-tertiary)]">{t('noGeneration')}</p>
+    return <p className="py-4 text-sm text-stone-500">{t('noGeneration')}</p>
   }
 
   const stream = selected.stream
@@ -89,7 +89,7 @@ export default function CreationTaskDetails({ descriptors }: CreationTaskDetails
   return (
     <div className="min-w-0">
       {descriptors.length > 1 ? (
-        <div className="border-b border-[var(--glass-stroke-base)]">
+        <div className="mb-3 grid gap-2 border-b border-white/10 pb-3 sm:grid-cols-2">
           {descriptors.map((descriptor) => {
             const status = taskStatus(descriptor.stream)
             const active = descriptor.id === selected.id
@@ -98,19 +98,19 @@ export default function CreationTaskDetails({ descriptors }: CreationTaskDetails
                 key={descriptor.id}
                 type="button"
                 onClick={() => setSelectedId(descriptor.id)}
-                className={`flex w-full cursor-pointer items-center justify-between gap-3 border-l-2 px-1 py-2.5 text-left transition-colors ${active
-                  ? 'border-[var(--glass-stroke-focus)] text-[var(--glass-text-primary)]'
-                  : 'border-transparent text-[var(--glass-text-secondary)] hover:text-[var(--glass-text-primary)]'
+                className={`flex w-full cursor-pointer items-center justify-between gap-3 rounded-md border px-3 py-2.5 text-left transition-colors ${active
+                  ? 'border-[#e8d18a]/50 bg-[#e8d18a]/10 text-stone-50'
+                  : 'border-white/10 bg-white/[0.02] text-stone-400 hover:bg-white/[0.05] hover:text-stone-100'
                 }`}
               >
                 <span className="min-w-0 truncate text-xs font-semibold">{descriptor.label}</span>
                 <span className={`h-2 w-2 shrink-0 rounded-full ${status === 'running'
-                  ? 'animate-pulse bg-[var(--glass-tone-info-fg)]'
+                  ? 'animate-pulse bg-cyan-300'
                   : status === 'failed'
-                    ? 'bg-[var(--glass-tone-danger-fg)]'
+                    ? 'bg-rose-300'
                     : status === 'completed'
-                      ? 'bg-[var(--glass-tone-success-fg)]'
-                      : 'bg-[var(--glass-stroke-strong)]'
+                      ? 'bg-emerald-300'
+                      : 'bg-stone-700'
                 }`} />
               </button>
             )
@@ -120,42 +120,42 @@ export default function CreationTaskDetails({ descriptors }: CreationTaskDetails
 
       <div className="py-3">
         <div className="flex items-center justify-between gap-3 text-xs">
-          <span className="truncate font-medium text-[var(--glass-text-secondary)]">{selected.label}</span>
-          <span className="shrink-0 text-[var(--glass-text-tertiary)]">
+          <span className="truncate font-medium text-stone-300">{selected.label}</span>
+          <span className="shrink-0 text-stone-500">
             {t('stepCount', { current: completedSteps, total: stream.stages.length })}
           </span>
         </div>
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--glass-bg-muted)]">
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
           <div
-            className="h-full rounded-full bg-[var(--glass-accent-from)] transition-[width] duration-300"
+            className="h-full rounded-full bg-[#e8d18a] transition-[width] duration-300"
             style={{ width: `${Math.max(0, Math.min(100, stream.overallProgress))}%` }}
           />
         </div>
-        <p className="mt-2 break-words text-xs leading-5 text-[var(--glass-text-tertiary)]">
+        <p className="mt-2 break-words text-xs leading-5 text-stone-500">
           {resolveProgressText(stream.activeMessage, isCreationTaskActive(stream) ? t('waitingSteps') : t('waiting'))}
         </p>
       </div>
 
       {stream.stages.length > 0 ? (
-        <ol className="border-t border-[var(--glass-stroke-base)]">
+        <ol className="space-y-1 border-t border-white/10 pt-3">
           {stream.stages.map((stage) => {
             const active = stage.id === selectedStepId
             return (
-              <li key={stage.id} className="border-b border-[var(--glass-stroke-soft)] last:border-b-0">
+              <li key={stage.id}>
                 <button
                   type="button"
                   onClick={() => stream.selectStep(stage.id)}
-                  className={`flex w-full cursor-pointer items-start gap-3 px-1 py-2.5 text-left transition-colors ${active ? 'bg-[var(--glass-tone-info-bg)]' : 'hover:bg-[var(--glass-bg-surface-strong)]'}`}
+                  className={`flex w-full cursor-pointer items-start gap-3 rounded-md px-2 py-2.5 text-left transition-colors ${active ? 'bg-cyan-400/10' : 'hover:bg-white/[0.04]'}`}
                 >
                   <span className={`mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${stepStatusClass(stage.status)}`}>
                     <AppIcon name={stepStatusIcon(stage.status)} className={`h-3.5 w-3.5 ${stage.status === 'processing' ? 'animate-spin' : ''}`} />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block break-words text-xs font-semibold text-[var(--glass-text-primary)]">
+                    <span className="block break-words text-xs font-semibold text-stone-100">
                       {resolveProgressText(stage.title, stage.title)}
                     </span>
                     {stage.subtitle ? (
-                      <span className="mt-1 block break-words text-[11px] leading-4 text-[var(--glass-text-tertiary)]">
+                      <span className="mt-1 block break-words text-[11px] leading-4 text-stone-500">
                         {resolveProgressText(stage.subtitle, stage.subtitle)}
                       </span>
                     ) : null}
@@ -166,28 +166,28 @@ export default function CreationTaskDetails({ descriptors }: CreationTaskDetails
           })}
         </ol>
       ) : (
-        <div className="border-t border-[var(--glass-stroke-base)] py-5 text-center text-xs text-[var(--glass-text-tertiary)]">
+        <div className="border-t border-white/10 py-5 text-center text-xs text-stone-500">
           {isCreationTaskActive(stream) ? t('waitingSteps') : t('noRun')}
         </div>
       )}
 
       {stream.errorMessage ? (
-        <div className="border-t border-[var(--glass-stroke-base)] py-3 text-xs leading-5 text-[var(--glass-tone-danger-fg)]">
+        <div className="mt-3 rounded-md border border-rose-400/30 bg-rose-400/10 px-3 py-3 text-xs leading-5 text-rose-100">
           {stream.errorMessage}
         </div>
       ) : null}
 
       {finalOutput ? (
-        <details className="border-t border-[var(--glass-stroke-base)] py-3">
-          <summary className="cursor-pointer text-xs font-semibold text-[var(--glass-text-primary)]">{t('outputTitle')}</summary>
-          <pre className="mt-3 max-h-56 overflow-y-auto whitespace-pre-wrap break-words bg-[var(--glass-bg-muted)] p-3 font-sans text-xs leading-5 text-[var(--glass-text-secondary)] app-scrollbar">{finalOutput}</pre>
+        <details className="mt-3 border-t border-white/10 py-3">
+          <summary className="cursor-pointer text-xs font-semibold text-stone-100">{t('outputTitle')}</summary>
+          <pre className="mt-3 max-h-56 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-black/30 p-3 font-sans text-xs leading-5 text-stone-300">{finalOutput}</pre>
         </details>
       ) : null}
 
       {isCreationTaskActive(stream) || canRetry ? (
-        <div className="flex justify-end gap-2 border-t border-[var(--glass-stroke-base)] pt-3">
+        <div className="mt-3 flex justify-end gap-2 border-t border-white/10 pt-3">
           {isCreationTaskActive(stream) ? (
-            <button type="button" onClick={stream.stop} className="glass-btn-base glass-btn-secondary h-9 px-3 text-xs">
+            <button type="button" onClick={stream.stop} className="inline-flex h-9 items-center gap-2 rounded-md border border-white/10 bg-white/[0.04] px-3 text-xs font-semibold text-stone-200 hover:bg-white/[0.08]">
               <AppIcon name="pause" className="h-3.5 w-3.5" />
               {t('stop')}
             </button>
@@ -196,7 +196,7 @@ export default function CreationTaskDetails({ descriptors }: CreationTaskDetails
             <button
               type="button"
               onClick={() => { void stream.retryStep({ stepId: selectedStep.id, reason: 'user_retry_from_creation_workspace' }) }}
-              className="glass-btn-base glass-btn-primary h-9 px-3 text-xs"
+              className="inline-flex h-9 items-center gap-2 rounded-md bg-[#f3e9cf] px-3 text-xs font-semibold text-[#161512] hover:bg-[#fff5d9]"
             >
               <AppIcon name="refresh" className="h-3.5 w-3.5" />
               {t('retry')}

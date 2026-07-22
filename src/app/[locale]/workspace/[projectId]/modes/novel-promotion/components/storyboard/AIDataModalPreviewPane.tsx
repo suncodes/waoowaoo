@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import type { useTranslations } from 'next-intl'
 import { AppIcon } from '@/components/ui/icons'
-import GlassButton from '@/components/ui/primitives/GlassButton'
 
 interface AIDataModalPreviewPaneProps {
   t: ReturnType<typeof useTranslations<'storyboard'>>
@@ -61,26 +60,26 @@ export default function AIDataModalPreviewPane({
   const copyIconName = copyState === 'success' ? 'clipboardCheck' : copyState === 'error' ? 'alert' : 'copy'
 
   return (
-    <div className="w-[45%] flex flex-col overflow-hidden bg-[var(--glass-bg-muted)]">
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface)] flex-shrink-0">
+    <div className="flex w-[45%] flex-col overflow-hidden bg-[#0f100e]">
+      <div className="flex shrink-0 items-center justify-between border-b border-white/10 bg-[#151613] px-4 py-2.5">
         <div className="flex items-center gap-2">
-          <AppIcon name="fileText" className="h-3.5 w-3.5 text-[var(--glass-tone-info-fg)]" />
-          <span className="text-xs font-medium text-[var(--glass-text-tertiary)]">
+          <AppIcon name="fileText" className="h-3.5 w-3.5 text-[#e8d18a]" />
+          <span className="text-xs font-medium text-stone-500">
             {t('aiData.jsonCheck')}
           </span>
         </div>
-        <GlassButton
-          size="sm"
-          variant="ghost"
+        <button
+          type="button"
           onClick={handleCopy}
-          iconLeft={<AppIcon name={copyIconName} className="h-3 w-3" />}
+          className="inline-flex h-8 items-center gap-2 rounded-md border border-white/10 bg-white/[0.04] px-2.5 text-xs font-semibold text-stone-300 hover:bg-white/[0.08]"
         >
+          <AppIcon name={copyIconName} className="h-3 w-3" />
           {copyLabel}
-        </GlassButton>
+        </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
-        <pre className="text-[11px] font-mono leading-relaxed text-[var(--glass-text-secondary)] whitespace-pre-wrap break-all">
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <pre className="whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed text-stone-300">
           {JSON.stringify(previewJson, null, 2)}
         </pre>
       </div>

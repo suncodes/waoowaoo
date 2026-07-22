@@ -1,11 +1,11 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { useTranslations } from 'next-intl'
 import { resolveTaskPresentationState } from '@/lib/task/presentation'
 import { AppIcon } from '@/components/ui/icons'
 import VoiceDesignGeneratorSection from './VoiceDesignGeneratorSection'
+import ProductModalShell from '@/components/product/ProductModalShell'
 import {
   DEFAULT_VOICE_SCHEME_COUNT,
   generateVoiceDesignOptions,
@@ -144,29 +144,18 @@ export default function VoiceDesignDialogBase({
   }
 
   if (!isOpen) return null
-  if (typeof document === 'undefined') return null
 
-  const dialogContent = (
+  return (
     <>
-      <div className="fixed inset-0 z-[9999] glass-overlay" onClick={handleClose} />
-      <div
-        className="fixed z-[10000] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 glass-surface-modal w-full max-w-xl overflow-hidden"
-        onClick={(event) => event.stopPropagation()}
+      <ProductModalShell
+        open={isOpen}
+        onClose={handleClose}
+        size="md"
+        eyebrow="Voice Lab"
+        title={tv('designVoiceFor', { speaker })}
+        description={hasExistingVoice ? tv('hasExistingVoice') : '生成多个可试听方案，确认后绑定到当前角色。'}
       >
-        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface-strong)]">
-          <div className="flex items-center gap-2">
-            <AppIcon name="mic" className="w-5 h-5 text-[var(--glass-tone-info-fg)]" />
-            <h2 className="font-semibold text-[var(--glass-text-primary)]">{tv('designVoiceFor', { speaker })}</h2>
-            {hasExistingVoice && (
-              <span className="glass-chip glass-chip-warning text-xs px-1.5 py-0.5">{tv('hasExistingVoice')}</span>
-            )}
-          </div>
-          <button onClick={handleClose} className="glass-btn-base glass-btn-soft p-1 text-[var(--glass-text-tertiary)]">
-            <AppIcon name="close" className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="p-5 space-y-4">
+        <div className="space-y-4">
           <VoiceDesignGeneratorSection
             voicePrompt={voicePrompt}
             onVoicePromptChange={setVoicePrompt}
@@ -192,14 +181,14 @@ export default function VoiceDesignDialogBase({
                     void handleGenerate()
                   }}
                   disabled={isDesignSubmitting}
-                  className="glass-btn-base glass-btn-secondary flex-1 py-2 rounded-lg text-sm"
+                  className="inline-flex h-10 flex-1 items-center justify-center border border-white/10 bg-white/[0.04] px-4 text-sm font-medium text-stone-100 hover:bg-white/[0.08]"
                 >
                   {tv('regenerate')}
                 </button>
                 <button
                   onClick={handleConfirmSelection}
                   disabled={selectedIndex === null}
-                  className="glass-btn-base glass-btn-tone-success flex-1 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                  className="inline-flex h-10 flex-1 items-center justify-center bg-[#e8d18a] px-4 text-sm font-semibold text-[#171810] hover:bg-[#f3e9cf] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {tv('confirmUse')}
                 </button>
@@ -207,38 +196,27 @@ export default function VoiceDesignDialogBase({
             )}
           />
         </div>
-      </div>
+      </ProductModalShell>
 
-      {showConfirmDialog && (
-        <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4 glass-overlay">
-          <div className="glass-surface-modal w-full max-w-sm p-5 text-center">
-            <div className="w-12 h-12 mx-auto glass-chip glass-chip-warning rounded-full flex items-center justify-center mb-3 p-0">
-              <AppIcon name="alert" className="w-6 h-6 text-[var(--glass-tone-warning-fg)]" />
-            </div>
-            <h3 className="font-semibold text-[var(--glass-text-primary)] mb-1">{tv('confirmReplace')}</h3>
-            <p className="text-sm text-[var(--glass-text-secondary)] mb-4">
-              {tv('replaceWarning')}
-              <span className="font-medium text-[var(--glass-text-primary)]">「{speaker}」</span>
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowConfirmDialog(false)}
-                className="glass-btn-base glass-btn-secondary flex-1 py-2 rounded-lg text-sm"
-              >
-                {t('cancel')}
-              </button>
-              <button
-                onClick={doSave}
-                className="glass-btn-base glass-btn-danger flex-1 py-2 rounded-lg text-sm"
-              >
-                {tv('confirmReplaceBtn')}
-              </button>
-            </div>
+      <ProductModalShell
+        open={showConfirmDialog}
+        onClose={() => setShowConfirmDialog(false)}
+        size="md"
+        eyebrow="确认替换"
+        title={tv('confirmReplace')}
+        description={tv('replaceWarning')}
+        footer={(
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setShowConfirmDialog(false)} className="inline-flex h-10 items-center border border-white/10 bg-white/[0.04] px-4 text-sm font-medium text-stone-100 hover:bg-white/[0.08]">{t('cancel')}</button>
+            <button onClick={doSave} className="inline-flex h-10 items-center bg-rose-300 px-4 text-sm font-semibold text-[#251316] hover:bg-rose-200">{tv('confirmReplaceBtn')}</button>
           </div>
+        )}
+      >
+        <div className="flex items-start gap-4 border border-amber-300/20 bg-amber-300/10 p-4">
+          <AppIcon name="alert" className="mt-0.5 h-5 w-5 shrink-0 text-amber-200" />
+          <p className="text-sm leading-6 text-stone-300">当前操作会替换角色 <span className="font-semibold text-stone-50">「{speaker}」</span> 已绑定的音色。</p>
         </div>
-      )}
+      </ProductModalShell>
     </>
   )
-
-  return createPortal(dialogContent, document.body)
 }

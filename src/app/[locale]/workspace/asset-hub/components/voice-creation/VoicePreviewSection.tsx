@@ -73,7 +73,7 @@ export default function VoicePreviewSection({ runtime }: VoicePreviewSectionProp
                   void handleGenerate()
                 }}
                 disabled={isVoiceCreationSubmitting}
-                className="glass-btn-base glass-btn-secondary flex-1 py-2 rounded-lg text-sm"
+                className="h-9 flex-1 rounded-md border border-white/10 bg-white/[0.04] px-3 text-xs font-semibold text-stone-200 hover:bg-white/[0.08]"
               >
                 {tHub('regenerate')}
               </button>
@@ -82,7 +82,7 @@ export default function VoicePreviewSection({ runtime }: VoicePreviewSectionProp
                   void handleSaveDesigned()
                 }}
                 disabled={selectedIndex === null || isSaving || !voiceName.trim()}
-                className="glass-btn-base glass-btn-tone-success flex-1 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                className="h-9 flex-1 rounded-md bg-[#f3e9cf] px-3 text-xs font-semibold text-[#161512] hover:bg-[#fff5d9] disabled:cursor-not-allowed disabled:opacity-45"
               >
                 {isSaving ? tHub('modal.adding') : tHub('save')}
               </button>
@@ -99,13 +99,13 @@ export default function VoicePreviewSection({ runtime }: VoicePreviewSectionProp
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
-              className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${isDragging
-                ? 'border-[var(--glass-stroke-focus)] bg-[var(--glass-tone-info-bg)]'
-                : 'border-[var(--glass-stroke-base)] hover:border-[var(--glass-stroke-focus)] hover:bg-[var(--glass-bg-muted)]'
+              className={`cursor-pointer rounded-md border border-dashed p-8 text-center transition-colors ${isDragging
+                ? 'border-[#e8d18a] bg-[#e8d18a]/10'
+                : 'border-white/15 bg-white/[0.02] hover:border-white/30 hover:bg-white/[0.05]'
                 }`}
             >
-              <div className="text-sm text-[var(--glass-text-secondary)] mb-2">{tvCreate('dropOrClick')}</div>
-              <div className="text-xs text-[var(--glass-text-tertiary)]">{tvCreate('supportedFormats')}</div>
+              <div className="mb-2 text-sm text-stone-300">{tvCreate('dropOrClick')}</div>
+              <div className="text-xs text-stone-500">{tvCreate('supportedFormats')}</div>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -118,22 +118,22 @@ export default function VoicePreviewSection({ runtime }: VoicePreviewSectionProp
               />
             </div>
           ) : (
-            <div className="glass-surface-soft border border-[var(--glass-stroke-base)] rounded-xl p-4">
-              <div className="text-sm font-medium text-[var(--glass-text-primary)] truncate">{uploadFile.name}</div>
+            <div className="rounded-md border border-white/10 bg-white/[0.03] p-4">
+              <div className="truncate text-sm font-medium text-stone-100">{uploadFile.name}</div>
               <button
                 onClick={() => {
                   setUploadFile(null)
                   if (uploadPreviewUrl) URL.revokeObjectURL(uploadPreviewUrl)
                   setUploadPreviewUrl(null)
                 }}
-                className="glass-btn-base glass-btn-soft p-1 mt-2"
+                className="mt-2 inline-flex h-8 items-center rounded-md border border-white/10 bg-white/[0.04] px-3 text-xs text-stone-300 hover:bg-white/[0.08]"
               >
                 ×
               </button>
               {uploadPreviewUrl && (
                 <button
                   onClick={handlePlayUpload}
-                  className="glass-btn-base glass-btn-tone-info w-full py-2 rounded-lg text-sm font-medium mt-2"
+                  className="mt-2 h-9 w-full rounded-md border border-cyan-400/25 bg-cyan-400/10 text-xs font-semibold text-cyan-100 hover:bg-cyan-400/15"
                 >
                   {tvCreate('previewAudio')}
                 </button>
@@ -145,7 +145,7 @@ export default function VoicePreviewSection({ runtime }: VoicePreviewSectionProp
             <button
               onClick={handleSaveUploaded}
               disabled={isUploading || !voiceName.trim()}
-              className="glass-btn-base glass-btn-tone-success w-full py-2.5 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium flex items-center justify-center gap-2"
+              className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[#f3e9cf] px-4 text-sm font-semibold text-[#161512] hover:bg-[#fff5d9] disabled:cursor-not-allowed disabled:opacity-45"
             >
               {isUploading ? (
                 <TaskStatusInline
@@ -161,7 +161,7 @@ export default function VoicePreviewSection({ runtime }: VoicePreviewSectionProp
       )}
 
       {mode === 'upload' && error && (
-        <div className="text-sm text-[var(--glass-tone-danger-fg)] bg-[var(--glass-tone-danger-bg)] px-3 py-2 rounded-lg">
+        <div className="rounded-md border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-sm text-rose-100">
           {error}
         </div>
       )}

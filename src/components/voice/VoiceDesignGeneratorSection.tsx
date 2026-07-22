@@ -66,7 +66,7 @@ export default function VoiceDesignGeneratorSection({
   return (
     <>
       <div>
-        <div className="text-sm text-[var(--glass-text-secondary)] mb-2">{tv('selectStyle')}</div>
+        <div className="mb-2 text-sm text-stone-300">{tv('selectStyle')}</div>
         <div className="flex flex-wrap gap-1.5">
           {VOICE_PRESET_KEYS.map((presetKey) => {
             const prompt = tv(`presetsPrompts.${presetKey}` as `presetsPrompts.${VoicePresetKey}`)
@@ -74,10 +74,10 @@ export default function VoiceDesignGeneratorSection({
               <button
                 key={presetKey}
                 onClick={() => onVoicePromptChange(prompt)}
-                className={`glass-btn-base px-2.5 py-1 text-xs rounded-md border transition-all ${
+                className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${
                   voicePrompt === prompt
-                    ? 'glass-btn-tone-info border-[var(--glass-stroke-focus)]'
-                    : 'glass-btn-soft text-[var(--glass-text-secondary)] border-[var(--glass-stroke-base)] hover:border-[var(--glass-stroke-focus)]'
+                    ? 'border-[#e8d18a]/60 bg-[#e8d18a]/10 text-[#f3e9cf]'
+                    : 'border-white/10 bg-white/[0.03] text-stone-400 hover:border-white/25 hover:bg-white/[0.06]'
                 }`}
               >
                 {tv(`presets.${presetKey}` as `presets.${VoicePresetKey}`)}
@@ -88,18 +88,18 @@ export default function VoiceDesignGeneratorSection({
       </div>
 
       <div>
-        <div className="text-sm text-[var(--glass-text-secondary)] mb-1">{tv('orCustomDescription')}</div>
+        <div className="mb-1 text-sm text-stone-300">{tv('orCustomDescription')}</div>
         <textarea
           value={voicePrompt}
           onChange={(event) => onVoicePromptChange(event.target.value)}
           placeholder={tv('describePlaceholder')}
-          className="glass-textarea-base w-full px-3 py-2 text-sm resize-none"
+          className="w-full resize-y rounded-md border border-white/10 bg-[#10110f] px-3 py-2 text-sm leading-6 text-stone-100 outline-none focus:border-[#e8d18a]"
           rows={2}
         />
       </div>
 
       <details className="text-sm">
-        <summary className="text-[var(--glass-text-secondary)] cursor-pointer hover:text-[var(--glass-text-primary)]">
+        <summary className="cursor-pointer text-stone-400 hover:text-stone-100">
           {tv('editPreviewText')}
         </summary>
         <input
@@ -107,7 +107,7 @@ export default function VoiceDesignGeneratorSection({
           value={previewText}
           onChange={(event) => onPreviewTextChange(event.target.value)}
           placeholder={tv('defaultPreviewText')}
-          className="glass-input-base w-full mt-2 px-3 py-2 text-sm"
+          className="mt-2 h-10 w-full rounded-md border border-white/10 bg-[#10110f] px-3 text-sm text-stone-100 outline-none focus:border-[#e8d18a]"
         />
       </details>
 
@@ -127,7 +127,7 @@ export default function VoiceDesignGeneratorSection({
               onGenerate()
             }
           }}
-          className={`glass-btn-base glass-btn-primary w-full py-2.5 rounded-lg text-sm font-medium transition-opacity ${
+          className={`w-full rounded-md bg-[#f3e9cf] py-2.5 text-sm font-semibold text-[#161512] transition-opacity hover:bg-[#fff5d9] ${
             !voicePrompt.trim() ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
           }`}
         >
@@ -142,7 +142,7 @@ export default function VoiceDesignGeneratorSection({
                 value={String(normalizedSchemeCount)}
                 onChange={(event) => onSchemeCountChange(event.target.value)}
                 aria-label={tv('schemeCountAriaLabel')}
-                className="appearance-none bg-transparent border-0 pl-0 pr-3 text-sm font-semibold text-white/96 outline-none cursor-pointer leading-none transition-colors group-hover:text-white focus:text-white"
+                className="cursor-pointer appearance-none border-0 bg-transparent pl-0 pr-3 text-sm font-semibold leading-none text-[#161512] outline-none"
               >
                 {Array.from({ length: MAX_VOICE_SCHEME_COUNT - MIN_VOICE_SCHEME_COUNT + 1 }, (_, index) => {
                   const value = String(index + MIN_VOICE_SCHEME_COUNT)
@@ -153,7 +153,7 @@ export default function VoiceDesignGeneratorSection({
                   )
                 })}
               </select>
-              <div className="pointer-events-none absolute inset-y-0 right-1 flex items-center text-white/82 transition-colors group-hover:text-white group-focus-within:text-white">
+              <div className="pointer-events-none absolute inset-y-0 right-1 flex items-center text-[#161512]">
                 <AppIcon name="chevronDown" className="h-3 w-3" />
               </div>
             </div>
@@ -166,40 +166,40 @@ export default function VoiceDesignGeneratorSection({
         <div className="py-6">
           <TaskStatusInline
             state={submittingState}
-            className="justify-center text-[var(--glass-text-secondary)] [&>span]:text-[var(--glass-text-secondary)]"
+            className="justify-center text-stone-400 [&>span]:text-stone-400"
           />
         </div>
       )}
 
       {generatedVoices.length > 0 && (
         <div className="space-y-3">
-          <div className="text-sm text-[var(--glass-text-secondary)]">{tv('selectScheme')}</div>
+          <div className="text-sm text-stone-300">{tv('selectScheme')}</div>
           <div className="grid grid-cols-3 gap-2">
             {generatedVoices.map((voice, index) => (
               <div
                 key={voice.voiceId}
                 onClick={() => onSelectIndex(index)}
-                className={`relative p-3 rounded-lg border-2 cursor-pointer transition-all text-center ${
+                className={`relative cursor-pointer rounded-md border p-3 text-center transition-colors ${
                   selectedIndex === index
-                    ? 'border-[var(--glass-stroke-focus)] bg-[var(--glass-tone-info-bg)]'
-                    : 'border-[var(--glass-stroke-base)] hover:border-[var(--glass-stroke-focus)]'
+                    ? 'border-[#e8d18a]/60 bg-[#e8d18a]/10'
+                    : 'border-white/10 bg-white/[0.03] hover:border-white/25'
                 }`}
               >
                 {selectedIndex === index && (
-                  <div className="absolute -top-1.5 -right-1.5 w-5 h-5 glass-chip glass-chip-info rounded-full flex items-center justify-center p-0">
+                  <div className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-[#e8d18a] p-0">
                     <AppIcon name="checkSolid" className="w-3 h-3 text-white" />
                   </div>
                 )}
-                <div className="text-sm font-medium text-[var(--glass-text-primary)] mb-2">{tv('schemeN', { n: index + 1 })}</div>
+                <div className="mb-2 text-sm font-medium text-stone-100">{tv('schemeN', { n: index + 1 })}</div>
                 <button
                   onClick={(event) => {
                     event.stopPropagation()
                     onPlayVoice(index)
                   }}
-                  className={`w-10 h-10 mx-auto rounded-full glass-btn-base flex items-center justify-center transition-all ${
+                  className={`mx-auto flex h-10 w-10 items-center justify-center rounded-full border transition-colors ${
                     playingIndex === index
-                      ? 'glass-btn-tone-info animate-pulse'
-                      : 'glass-btn-secondary text-[var(--glass-text-secondary)]'
+                      ? 'animate-pulse border-cyan-400/30 bg-cyan-400/10 text-cyan-100'
+                      : 'border-white/10 bg-white/[0.04] text-stone-300 hover:bg-white/[0.08]'
                   }`}
                 >
                   {playingIndex === index ? (
@@ -216,7 +216,7 @@ export default function VoiceDesignGeneratorSection({
       )}
 
       {error && (
-        <div className="text-sm text-[var(--glass-tone-danger-fg)] bg-[var(--glass-tone-danger-bg)] px-3 py-2 rounded-lg">
+        <div className="rounded-md border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-sm text-rose-100">
           {error}
         </div>
       )}

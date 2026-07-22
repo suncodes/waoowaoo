@@ -5,28 +5,24 @@ import { MediaImageWithLoading } from '@/components/media/MediaImageWithLoading'
 import ImagePreviewModal from '@/components/ui/ImagePreviewModal'
 import { AppIcon } from '@/components/ui/icons'
 import type { CreationWorkflowState } from '@/lib/creation-workspace/workflow-state'
-import type { NovelPromotionPanel, NovelPromotionStoryboard } from '@/types/project'
 import { useWorkspaceProvider } from '../../WorkspaceProvider'
 import { useWorkspaceStageRuntime } from '../../WorkspaceStageRuntimeContext'
 import { useWorkspaceEpisodeStageData } from '../../hooks/useWorkspaceEpisodeStageData'
 import { CharacterPickerModal, LocationPickerModal, type PanelEditData } from '../PanelEditForm'
-import StoryboardStage from '../StoryboardStage'
 import AIDataModal from '../storyboard/AIDataModal'
 import ImageEditModal from '../storyboard/ImageEditModal'
 import { useStoryboardModalRuntime } from '../storyboard/hooks/useStoryboardModalRuntime'
 import { useStoryboardStageController } from '../storyboard/hooks/useStoryboardStageController'
-import type { StoryboardPanel } from '../storyboard/hooks/useStoryboardState'
-import { getStoryboardPanels } from '../storyboard/hooks/storyboard-state-utils'
 import {
-  StudioAdvancedPanel,
   StudioButton,
-  StudioEmptyState,
   StudioMetric,
   StudioSectionHeader,
   StudioStageHeader,
-  StudioStatusBadge,
 } from './StudioPrimitives'
-import { type StudioProductStatus, type StudioWorkspaceModel } from './studio-types'
+import { type StudioWorkspaceModel } from './studio-types'
+import StudioBoardEmpty from './StudioBoardEmpty'
+import StudioBoardShotCard from './StudioBoardShotCard'
+import { currentImageUrl, flattenBoardItems, resolvePanelStatus, type BoardItem } from './studio-board-model'
 
 interface StudioBoardCanvasProps {
   model: StudioWorkspaceModel
@@ -34,146 +30,6 @@ interface StudioBoardCanvasProps {
   workflowState: CreationWorkflowState
 }
 
-interface BoardItem {
-  storyboard: NovelPromotionStoryboard
-  panel: StoryboardPanel
-  panelOffset: number
-  sourcePanel: NovelPromotionPanel
-  globalNumber: number
-}
-
-function EmptyBoard({ model }: { model: StudioWorkspaceModel }) {
-  const runtime = useWorkspaceStageRuntime()
-  return (
-    <StudioEmptyState
-      icon="image"
-      title="分镜还没有生成"
-      description="视觉库确认后再生成分镜，保证核心角色和场景在镜头间保持一致。"
-      action={(
-        <StudioButton icon="sparkles" loading={runtime.isTransitioning} onClick={() => { void runtime.onRunScriptToStoryboard() }} disabled={!model.workflow.visualApproved}>
-          生成分镜
-        </StudioButton>
-      )}
-    />
-  )
-}
-
-function flattenBoardItems(
-  storyboards: NovelPromotionStoryboard[],
-  getTextPanels: ReturnType<typeof useStoryboardStageController>['getTextPanels'],
-): BoardItem[] {
-  return storyboards.flatMap((storyboard, storyboardIndex) => {
-    const sourcePanels = getStoryboardPanels(storyboard)
-    return getTextPanels(storyboard).flatMap((panel, panelOffset) => {
-      const sourcePanel = sourcePanels.find((item) => item.id === panel.id)
-      if (!sourcePanel) return []
-      return [{
-        storyboard,
-        panel,
-        panelOffset,
-        sourcePanel,
-        globalNumber: panel.panel_number || storyboardIndex * 100 + panelOffset + 1,
-      }]
-    })
-  })
-}
-
-function resolvePanelStatus({
-  panel,
-  sourcePanel,
-  hasCandidates,
-  submitting,
-  modifying,
-}: {
-  panel: BoardItem['panel']
-  sourcePanel: NovelPromotionPanel
-  hasCandidates: boolean
-  submitting: boolean
-  modifying: boolean
-}): StudioProductStatus {
-  if (submitting || modifying || sourcePanel.imageTaskRunning) return 'generating'
-  if (sourcePanel.imageErrorMessage) return 'failed'
-  if (hasCandidates) return 'needs_review'
-  if (panel.imageUrl) return 'locked'
-  if (panel.description) return 'drafting'
-  return 'empty'
-}
-
-function currentImageUrl(item: BoardItem, candidates: { candidates: string[]; selectedIndex: number } | null) {
-  const candidate = candidates?.candidates[candidates.selectedIndex]
-  if (candidate && !candidate.startsWith('PENDING:')) return candidate
-  return item.panel.imageUrl || null
-}
-
-function BoardShotCard({
-  item,
-  selected,
-  status,
-  imageUrl,
-  running,
-  onSelect,
-  onPreview,
-}: {
-  item: BoardItem
-  selected: boolean
-  status: StudioProductStatus
-  imageUrl: string | null
-  running: boolean
-  onSelect: () => void
-  onPreview: (url: string) => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={`grid min-h-[180px] gap-3 rounded-lg border p-3 text-left transition-colors sm:grid-cols-[160px_minmax(0,1fr)] ${selected
-        ? 'border-[#e8d18a]/70 bg-[#1b1a14]'
-        : 'border-white/10 bg-[#10110f] hover:border-white/20 hover:bg-white/[0.04]'
-      }`}
-    >
-      <div className="relative aspect-video overflow-hidden rounded-md bg-[#0b0c0a]">
-        {imageUrl ? (
-          <MediaImageWithLoading
-            src={imageUrl}
-            alt={`镜头 ${item.globalNumber}`}
-            containerClassName="h-full w-full"
-            className="h-full w-full object-cover"
-            sizes="220px"
-            onDoubleClick={(event) => {
-              event.stopPropagation()
-              onPreview(imageUrl)
-            }}
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center text-stone-600">
-            <AppIcon name="image" className="h-7 w-7" />
-          </div>
-        )}
-        {running ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-xs font-semibold text-cyan-100">
-            <AppIcon name="loader" className="mr-2 h-4 w-4 animate-spin" />
-            生成中
-          </div>
-        ) : null}
-      </div>
-      <div className="min-w-0">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold text-stone-50">镜头 {String(item.globalNumber).padStart(2, '0')}</h2>
-          <StudioStatusBadge status={status} />
-        </div>
-        <p className="mt-2 line-clamp-3 text-sm leading-6 text-stone-300">{item.panel.description || '待补充画面描述'}</p>
-        <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-stone-400">
-          {item.panel.location ? <span className="rounded bg-white/[0.05] px-2 py-1">{item.panel.location}</span> : null}
-          {item.panel.characters.slice(0, 3).map((character) => (
-            <span key={`${item.panel.id}:${character.name}:${character.appearance}`} className="rounded bg-white/[0.05] px-2 py-1">
-              {character.name}
-            </span>
-          ))}
-        </div>
-      </div>
-    </button>
-  )
-}
 
 function BoardDetailPanel({
   item,
@@ -386,6 +242,40 @@ function BoardDetailPanel({
             </div>
           ) : null}
         </div>
+        <div className="rounded-md border border-white/10 bg-white/[0.03] p-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-xs font-semibold text-stone-300">镜头结构</h3>
+              <p className="mt-1 text-[11px] leading-5 text-stone-500">新增、插入和删除直接作用于当前分镜序列。</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <StudioButton size="sm" variant="secondary" icon="plus" onClick={() => { void controller.addPanel(item.storyboard.id) }}>
+                末尾新增
+              </StudioButton>
+              <StudioButton
+                size="sm"
+                variant="secondary"
+                icon="sparkles"
+                loading={controller.insertingAfterPanelId === item.panel.id}
+                onClick={() => {
+                  const instruction = window.prompt('描述要插入的新镜头内容、动作或转场。')
+                  if (instruction?.trim()) void controller.insertPanel(item.storyboard.id, item.panel.id, instruction.trim())
+                }}
+              >
+                AI 插入镜头
+              </StudioButton>
+              <StudioButton
+                size="sm"
+                variant="ghost"
+                icon="trash"
+                loading={controller.deletingPanelIds.has(item.panel.id)}
+                onClick={() => { void controller.deletePanel(item.panel.id, item.storyboard.id, controller.setLocalStoryboards) }}
+              >
+                删除镜头
+              </StudioButton>
+            </div>
+          </div>
+        </div>
       </div>
 
     </aside>
@@ -395,14 +285,12 @@ function BoardDetailPanel({
 function StudioBoardRuntime({
   model,
   onNavigate,
-  workflowState,
   projectId,
   episodeId,
 }: StudioBoardCanvasProps & { projectId: string; episodeId: string }) {
   const runtime = useWorkspaceStageRuntime()
   const { clips, storyboards } = useWorkspaceEpisodeStageData()
   const [selectedPanelId, setSelectedPanelId] = useState('')
-  const [showAdvanced, setShowAdvanced] = useState(false)
   const controller = useStoryboardStageController({
     projectId,
     episodeId,
@@ -457,7 +345,7 @@ function StudioBoardRuntime({
   }, [selectedItem, selectedPanelId])
 
   if (items.length === 0) {
-    return <EmptyBoard model={model} />
+    return <StudioBoardEmpty model={model} />
   }
 
   return (
@@ -513,7 +401,7 @@ function StudioBoardRuntime({
                   modifying,
                 })
                 return (
-                  <BoardShotCard
+                  <StudioBoardShotCard
                     key={item.panel.id}
                     item={item}
                     selected={selectedItem?.panel.id === item.panel.id}
@@ -532,16 +420,6 @@ function StudioBoardRuntime({
           ) : null}
         </div>
       </section>
-
-      <StudioAdvancedPanel title="分镜专家面板" description="插入镜头、删除镜头、批量变体等低频操作集中在此面板。">
-        {showAdvanced ? (
-          <StoryboardStage workspaceLayout workflowState={workflowState} />
-        ) : (
-          <StudioButton size="sm" variant="secondary" onClick={() => setShowAdvanced(true)}>
-            打开专家工具
-          </StudioButton>
-        )}
-      </StudioAdvancedPanel>
 
       {modalRuntime.editingPanel ? (
         <ImageEditModal
@@ -600,7 +478,7 @@ export default function StudioBoardCanvas({ model, onNavigate, workflowState }: 
   const { projectId, episodeId } = useWorkspaceProvider()
 
   if (!episodeId || model.shots.length === 0) {
-    return <EmptyBoard model={model} />
+    return <StudioBoardEmpty model={model} />
   }
 
   return (

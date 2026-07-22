@@ -1,4 +1,6 @@
 export function isCreationWorkspaceV2Enabled(): boolean {
-  const value = process.env.NEXT_PUBLIC_CREATION_WORKSPACE_V2?.trim().toLowerCase()
-  return value !== '0' && value !== 'false' && value !== 'off'
+  // Studio is now the only supported product workspace. Keeping the helper
+  // avoids churn at call sites while preventing users from falling back to
+  // the retired glass-based workspace through an environment toggle.
+  return true
 }

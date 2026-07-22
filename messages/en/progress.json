@@ -87,7 +87,8 @@
     "assetHubAiModifyCharacter": "Asset hub character modify",
     "assetHubAiModifyLocation": "Asset hub location modify",
     "assetHubAiModifyProp": "Asset hub prop modify",
-    "assetHubReferenceToCharacter": "Asset hub reference to character"
+    "assetHubReferenceToCharacter": "Asset hub reference to character",
+    "diagnosticExport": "Project diagnostic export"
   },
   "stage": {
     "received": "Task received",

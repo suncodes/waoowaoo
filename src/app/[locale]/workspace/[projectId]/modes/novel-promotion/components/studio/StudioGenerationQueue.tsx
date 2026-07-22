@@ -3,6 +3,8 @@
 import ProductModalShell from '@/components/product/ProductModalShell'
 import { useMemo, useState } from 'react'
 import { AppIcon } from '@/components/ui/icons'
+import { apiFetch } from '@/lib/api-fetch'
+import { useWorkspaceProvider } from '../../WorkspaceProvider'
 import CreationTaskDetails, { type CreationTaskDescriptor } from '../workspace-v2/CreationTaskDetails'
 import { studioStatusDotClass } from './StudioPrimitives'
 import { statusLabel, type StudioGenerationJob, type StudioProductStatus } from './studio-types'
@@ -40,15 +42,31 @@ export function StudioTaskCenterModal({
   initialTaskId?: string | null
   onClose: () => void
 }) {
+  const { projectId } = useWorkspaceProvider()
   const orderedJobs = useMemo(() => [...jobs].sort((left, right) => {
     const leftIndex = TASK_ORDER.indexOf(left.id)
     const rightIndex = TASK_ORDER.indexOf(right.id)
     return (leftIndex < 0 ? TASK_ORDER.length : leftIndex) - (rightIndex < 0 ? TASK_ORDER.length : rightIndex)
   }), [jobs])
   const [selectedId, setSelectedId] = useState(initialTaskId || orderedJobs[0]?.id || '')
+  const [downloadError, setDownloadError] = useState('')
   const selectedJob = orderedJobs.find((job) => job.id === selectedId) || orderedJobs[0]
   const selectedDescriptor = descriptors.find((descriptor) => descriptor.id === selectedJob?.detailsId)
   const runningCount = orderedJobs.filter((job) => job.status === 'generating').length
+
+  const downloadDiagnostic = async (taskId: string) => {
+    setDownloadError('')
+    try {
+      const response = await apiFetch(`/api/novel-promotion/${projectId}/diagnostic-export/${taskId}`)
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.ready || typeof payload.downloadUrl !== 'string') {
+        throw new Error('诊断包尚未准备完成')
+      }
+      window.location.assign(payload.downloadUrl)
+    } catch (cause) {
+      setDownloadError(cause instanceof Error ? cause.message : '诊断包下载失败')
+    }
+  }
 
   return (
     <ProductModalShell
@@ -92,7 +110,7 @@ export function StudioTaskCenterModal({
           })}
         </aside>
 
-        <section className="min-w-0 rounded-md border border-white/10 bg-[#10110f] p-5 text-[var(--glass-text-primary)]">
+        <section className="min-w-0 rounded-md border border-white/10 bg-[#10110f] p-5 text-stone-100">
           {selectedJob ? (
             <>
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
@@ -102,6 +120,16 @@ export function StudioTaskCenterModal({
                 </div>
                 <StatusPill status={selectedJob.status} />
               </div>
+              {selectedJob.taskId && selectedJob.id.startsWith('diagnostic:') && selectedJob.status === 'locked' ? (
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-emerald-400/20 bg-emerald-400/10 px-4 py-3">
+                  <p className="text-sm text-emerald-100">诊断包包含整个项目的流程快照、任务输入输出和媒体索引。</p>
+                  <button type="button" onClick={() => { void downloadDiagnostic(selectedJob.taskId!) }} className="inline-flex h-9 items-center gap-2 rounded-md bg-[#f3e9cf] px-3 text-xs font-semibold text-[#161512] hover:bg-[#fff5d9]">
+                    <AppIcon name="download" className="h-3.5 w-3.5" />
+                    下载诊断包
+                  </button>
+                </div>
+              ) : null}
+              {downloadError ? <p className="mb-4 rounded-md border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs text-rose-100">{downloadError}</p> : null}
               {selectedDescriptor ? (
                 <CreationTaskDetails descriptors={[selectedDescriptor]} />
               ) : (

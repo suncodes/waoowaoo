@@ -67,6 +67,8 @@ const ROUTE_FILES = [
   'src/app/api/auth/[...nextauth]/route.ts',
   'src/app/api/auth/register/route.ts',
   'src/app/api/cos/image/route.ts',
+  'src/app/api/dev/art-style-ab/generate/route.ts',
+  'src/app/api/dev/art-style-ab/page/route.ts',
   'src/app/api/files/[...path]/route.ts',
   'src/app/api/storage/sign/route.ts',
   'src/app/api/novel-promotion/[projectId]/ai-create-character/route.ts',
@@ -90,6 +92,8 @@ const ROUTE_FILES = [
   'src/app/api/novel-promotion/[projectId]/clips/route.ts',
   'src/app/api/novel-promotion/[projectId]/content-plan/route.ts',
   'src/app/api/novel-promotion/[projectId]/copy-from-global/route.ts',
+  'src/app/api/novel-promotion/[projectId]/diagnostic-export/[taskId]/route.ts',
+  'src/app/api/novel-promotion/[projectId]/diagnostic-export/route.ts',
   'src/app/api/novel-promotion/[projectId]/download-images/route.ts',
   'src/app/api/novel-promotion/[projectId]/download-videos/route.ts',
   'src/app/api/novel-promotion/[projectId]/download-voices/route.ts',
@@ -106,6 +110,7 @@ const ROUTE_FILES = [
   'src/app/api/novel-promotion/[projectId]/lip-sync/route.ts',
   'src/app/api/novel-promotion/[projectId]/location/confirm-selection/route.ts',
   'src/app/api/novel-promotion/[projectId]/location/route.ts',
+  'src/app/api/novel-promotion/[projectId]/merge-videos/route.ts',
   'src/app/api/novel-promotion/[projectId]/modify-asset-image/route.ts',
   'src/app/api/novel-promotion/[projectId]/modify-storyboard-image/route.ts',
   'src/app/api/novel-promotion/[projectId]/panel-link/route.ts',
@@ -218,6 +223,7 @@ function resolveContractGroup(routeFile: string): RouteContractGroup {
     || routeFile.endsWith('/voice-design/route.ts')
     || routeFile.endsWith('/insert-panel/route.ts')
     || routeFile.endsWith('/lip-sync/route.ts')
+    || routeFile.endsWith('/merge-videos/route.ts')
     || routeFile.endsWith('/modify-asset-image/route.ts')
     || routeFile.endsWith('/modify-storyboard-image/route.ts')
     || routeFile.endsWith('/panel-variant/route.ts')
@@ -226,6 +232,7 @@ function resolveContractGroup(routeFile: string): RouteContractGroup {
     || routeFile.endsWith('/regenerate-single-image/route.ts')
     || routeFile.endsWith('/regenerate-storyboard-text/route.ts')
     || routeFile.endsWith('/voice-generate/route.ts')
+    || routeFile.includes('/diagnostic-export')
   ) {
     return 'direct-submit-routes'
   }

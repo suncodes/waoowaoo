@@ -23,21 +23,21 @@ export default function ImageEditModalSelectedAssets({
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
-        <label className="block text-sm font-medium text-[var(--glass-text-secondary)]">
-          {t('imageEdit.selectedAssetsLabel')} <span className="text-[var(--glass-text-tertiary)] font-normal">({t('imageEdit.selectedAssetsCount', { count: selectedAssets.length })})</span>
+        <label className="block text-sm font-semibold text-stone-300">
+          {t('imageEdit.selectedAssetsLabel')} <span className="font-normal text-stone-500">({t('imageEdit.selectedAssetsCount', { count: selectedAssets.length })})</span>
         </label>
         <button
           onClick={onOpenAssetPicker}
-          className="text-sm text-[var(--glass-tone-info-fg)] hover:text-[var(--glass-tone-info-fg)] flex items-center gap-1"
+          className="inline-flex items-center gap-1 text-xs font-semibold text-[#e8d18a] hover:text-[#fff5d9]"
         >
           <AppIcon name="plus" className="w-4 h-4" />
           {t('imageEdit.addAsset')}
         </button>
       </div>
 
-      <div className="flex flex-wrap gap-2 min-h-[64px] p-2 bg-[var(--glass-bg-muted)] rounded-lg">
+      <div className="flex min-h-[72px] flex-wrap gap-2 rounded-md border border-white/10 bg-white/[0.03] p-2">
         {selectedAssets.length === 0 ? (
-          <p className="text-sm text-[var(--glass-text-tertiary)] w-full text-center py-4">{t('imageEdit.noAssets')}</p>
+          <p className="w-full py-4 text-center text-sm text-stone-500">{t('imageEdit.noAssets')}</p>
         ) : (
           selectedAssets.map((asset) => {
             const displayImageUrl = toDisplayImageUrl(asset.imageUrl)
@@ -52,7 +52,7 @@ export default function ImageEditModalSelectedAssets({
                     onClick={() => onPreviewImage(asset.imageUrl || null)}
                   />
                 ) : (
-                  <div className="w-full h-full bg-[var(--glass-bg-muted)] rounded-lg flex items-center justify-center text-[var(--glass-text-tertiary)] text-xs">
+                  <div className="flex h-full w-full items-center justify-center rounded-md bg-white/[0.04] text-xs text-stone-600">
                     {asset.type === 'character' ? (
                       <AppIcon name="user" className="h-4 w-4" />
                     ) : (
@@ -65,11 +65,11 @@ export default function ImageEditModalSelectedAssets({
                     event.stopPropagation()
                     onRemoveAsset(asset.id, asset.type)
                   }}
-                  className="absolute -top-1 -right-1 w-5 h-5 bg-[var(--glass-tone-danger-fg)] text-white rounded-full text-xs flex items-center justify-center hover:bg-[var(--glass-tone-danger-fg)] opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-rose-400"
                 >
                   <AppIcon name="closeSm" className="h-3 w-3" />
                 </button>
-                <div className="absolute bottom-0 left-0 right-0 bg-[var(--glass-overlay)] text-white text-xs px-1 py-0.5 rounded-b-lg truncate">
+                <div className="absolute inset-x-0 bottom-0 truncate rounded-b-md bg-black/70 px-1 py-0.5 text-xs text-white">
                   {asset.name}
                 </div>
               </div>

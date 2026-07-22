@@ -1,6 +1,6 @@
 'use client'
 
-import { createPortal } from 'react-dom'
+import ProductModalShell from '@/components/product/ProductModalShell'
 import VoiceCreationForm from './VoiceCreationForm'
 import VoicePreviewSection from './VoicePreviewSection'
 import { useVoiceCreation, type VoiceCreationModalShellProps } from './hooks/useVoiceCreation'
@@ -11,15 +11,18 @@ export default function VoiceCreationModalLayout(props: VoiceCreationModalShellP
   const runtime = useVoiceCreation(props)
 
   if (!runtime.isOpen) return null
-  if (typeof document === 'undefined') return null
-
-  return createPortal(
-    <>
-      <div className="fixed inset-0 z-[9999] glass-overlay" onClick={runtime.handleClose} />
+  return (
+    <ProductModalShell
+      open
+      onClose={runtime.handleClose}
+      size="md"
+      eyebrow="音色资产"
+      title={runtime.tHub('addVoice')}
+      description={runtime.mode === 'design' ? runtime.tvCreate('aiDesignMode') : runtime.tvCreate('uploadMode')}
+    >
       <VoiceCreationForm runtime={runtime}>
         <VoicePreviewSection runtime={runtime} />
       </VoiceCreationForm>
-    </>,
-    document.body
+    </ProductModalShell>
   )
 }

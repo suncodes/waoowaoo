@@ -1,9 +1,9 @@
 'use client'
 
-import AssetsStage from './AssetsStage'
 import TaskStatusInline from '@/components/task/TaskStatusInline'
 import type { TaskPresentationState } from '@/lib/task/presentation'
 import ProductModalShell from '@/components/product/ProductModalShell'
+import StudioProjectAssetLibrary from './studio/StudioProjectAssetLibrary'
 
 interface WorkspaceAssetLibraryModalProps {
   isOpen: boolean
@@ -18,6 +18,7 @@ interface WorkspaceAssetLibraryModalProps {
   focusCharacterRequestId: number
   triggerGlobalAnalyze: boolean
   onGlobalAnalyzeComplete: () => void
+  onAnalyzeAssets?: () => Promise<unknown>
 }
 
 export default function WorkspaceAssetLibraryModal({
@@ -33,6 +34,7 @@ export default function WorkspaceAssetLibraryModal({
   focusCharacterRequestId,
   triggerGlobalAnalyze,
   onGlobalAnalyzeComplete,
+  onAnalyzeAssets,
 }: WorkspaceAssetLibraryModalProps) {
   if (!isOpen) return null
 
@@ -51,12 +53,13 @@ export default function WorkspaceAssetLibraryModal({
               <TaskStatusInline state={assetsLoadingState} className="text-base [&>span]:text-base" />
             </div>
           )}
-          <AssetsStage
+          <StudioProjectAssetLibrary
             projectId={projectId}
             isAnalyzingAssets={isAnalyzingAssets}
             focusCharacterId={focusCharacterId}
             focusCharacterRequestId={focusCharacterRequestId}
             triggerGlobalAnalyze={triggerGlobalAnalyze}
+            onAnalyzeAssets={onAnalyzeAssets}
             onGlobalAnalyzeComplete={onGlobalAnalyzeComplete}
           />
       </div>

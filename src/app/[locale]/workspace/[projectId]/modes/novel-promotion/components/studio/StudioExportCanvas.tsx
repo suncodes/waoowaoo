@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { apiFetch } from '@/lib/api-fetch'
 import { useMergeProjectEpisodeVideo } from '@/lib/query/hooks'
 import { useWorkspaceProvider } from '../../WorkspaceProvider'
@@ -78,6 +78,13 @@ export default function StudioExportCanvas({ model }: StudioExportCanvasProps) {
   const mergeMutation = useMergeProjectEpisodeVideo(projectId)
   const [mergeResult, setMergeResult] = useState<MergeResult | null>(null)
   const [downloadingZip, setDownloadingZip] = useState(false)
+  const [diagnosticTaskId, setDiagnosticTaskId] = useState<string | null>(null)
+  const [diagnosticStatus, setDiagnosticStatus] = useState<'idle' | 'queued' | 'processing' | 'completed' | 'failed'>('idle')
+  const [diagnosticScope, setDiagnosticScope] = useState<'project' | 'episode'>('project')
+  const [includeCandidates, setIncludeCandidates] = useState(true)
+  const [includeVideos, setIncludeVideos] = useState(true)
+  const [includeAllVideos, setIncludeAllVideos] = useState(false)
+  const [includeReasoning, setIncludeReasoning] = useState(false)
   const [error, setError] = useState('')
   const completedVideos = model.summary.completedVideos
   const canExport = completedVideos > 0 && !!episodeId
@@ -88,6 +95,36 @@ export default function StudioExportCanvas({ model }: StudioExportCanvasProps) {
   const packageStatus: StudioProductStatus = downloadingZip ? 'generating' : canExport ? 'needs_review' : 'empty'
   const deliveryStatus: StudioProductStatus = mergeResult ? 'locked' : allVideosReady ? 'needs_review' : 'empty'
   const incompleteShots = model.shots.filter((shot) => !shot.videoUrl || shot.errorMessage)
+
+  useEffect(() => {
+    if (diagnosticTaskId) return
+    const existing = model.generationJobs.find((job) => job.id.startsWith('diagnostic:') && job.taskId)
+    if (!existing?.taskId) return
+    setDiagnosticTaskId(existing.taskId)
+    setDiagnosticStatus(existing.status === 'locked' ? 'completed' : existing.status === 'failed' ? 'failed' : existing.status === 'generating' ? 'processing' : 'queued')
+  }, [diagnosticTaskId, model.generationJobs])
+
+  useEffect(() => {
+    if (!diagnosticTaskId || diagnosticStatus === 'completed' || diagnosticStatus === 'failed') return
+    let disposed = false
+    const poll = async () => {
+      const response = await apiFetch(`/api/tasks/${diagnosticTaskId}`)
+      if (!response.ok || disposed) return
+      const payload = await response.json().catch(() => null)
+      const status = payload?.task?.status
+      if (status === 'completed' || status === 'failed') {
+        setDiagnosticStatus(status)
+        return
+      }
+      setDiagnosticStatus(status === 'processing' ? 'processing' : 'queued')
+    }
+    void poll()
+    const timer = window.setInterval(() => { void poll() }, 2500)
+    return () => {
+      disposed = true
+      window.clearInterval(timer)
+    }
+  }, [diagnosticStatus, diagnosticTaskId])
   const processSteps: Array<{ label: string; helper: string; status: StudioProductStatus }> = [
     {
       label: '素材检查',
@@ -149,6 +186,44 @@ export default function StudioExportCanvas({ model }: StudioExportCanvasProps) {
     }
   }
 
+  const createDiagnosticExport = async () => {
+    setError('')
+    try {
+      const response = await apiFetch(`/api/novel-promotion/${projectId}/diagnostic-export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          episodeId: diagnosticScope === 'episode' ? episodeId : null,
+          includeCandidates,
+          includeVideos,
+          includeAllVideos: includeVideos && includeAllVideos,
+          includeReasoning,
+        }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.taskId) throw new Error(payload?.message || '诊断包任务提交失败')
+      setDiagnosticTaskId(payload.taskId)
+      setDiagnosticStatus('queued')
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '诊断包任务提交失败')
+    }
+  }
+
+  const downloadDiagnosticExport = async () => {
+    if (!diagnosticTaskId) return
+    setError('')
+    try {
+      const response = await apiFetch(`/api/novel-promotion/${projectId}/diagnostic-export/${diagnosticTaskId}`)
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.ready || typeof payload.downloadUrl !== 'string') {
+        throw new Error('诊断包尚未准备完成')
+      }
+      window.location.assign(payload.downloadUrl)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '诊断包下载失败')
+    }
+  }
+
   return (
     <div className="space-y-4">
       <StudioPanel padding="none">
@@ -158,6 +233,14 @@ export default function StudioExportCanvas({ model }: StudioExportCanvasProps) {
           description="合并成片或下载所有镜头视频，导出结果沿用现有任务和存储能力。"
           actions={(
             <>
+              <StudioButton variant="ghost" icon="package" loading={diagnosticStatus === 'processing'} onClick={() => { void createDiagnosticExport() }} disabled={diagnosticStatus === 'queued' || diagnosticStatus === 'processing'}>
+              导出项目诊断包
+              </StudioButton>
+              {diagnosticStatus === 'completed' ? (
+                <StudioButton variant="secondary" icon="download" onClick={() => { void downloadDiagnosticExport() }}>
+                下载诊断包
+                </StudioButton>
+              ) : null}
               <StudioButton variant="secondary" icon="download" loading={downloadingZip} onClick={() => { void downloadVideoZip() }} disabled={!canExport}>
               下载镜头包
               </StudioButton>
@@ -169,6 +252,45 @@ export default function StudioExportCanvas({ model }: StudioExportCanvasProps) {
         />
         <div className="border-b border-white/10 px-6 py-4">
           <StudioProcessSteps steps={processSteps} />
+        </div>
+
+        <div className="border-b border-white/10 px-6 py-4">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <section>
+              <div className="text-sm font-semibold text-stone-100">导出范围</div>
+              <p className="mt-1 text-xs leading-5 text-stone-500">默认导出整个项目，便于还原跨剧集的完整流程。</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <label className={`inline-flex cursor-pointer items-center gap-2 border px-3 py-2 text-xs ${diagnosticScope === 'project' ? 'border-[#e8d18a]/50 bg-[#e8d18a]/10 text-[#f3e9cf]' : 'border-white/10 bg-white/[0.03] text-stone-400'}`}>
+                  <input type="radio" name="diagnostic-scope" checked={diagnosticScope === 'project'} onChange={() => setDiagnosticScope('project')} />全项目
+                </label>
+                <label className={`inline-flex cursor-pointer items-center gap-2 border px-3 py-2 text-xs ${diagnosticScope === 'episode' ? 'border-[#e8d18a]/50 bg-[#e8d18a]/10 text-[#f3e9cf]' : 'border-white/10 bg-white/[0.03] text-stone-400'}`}>
+                  <input type="radio" name="diagnostic-scope" checked={diagnosticScope === 'episode'} onChange={() => setDiagnosticScope('episode')} disabled={!episodeId} />当前剧集
+                </label>
+              </div>
+            </section>
+            <section>
+              <div className="text-sm font-semibold text-stone-100">内容选项</div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <label className="inline-flex items-center gap-2 text-xs text-stone-400"><input type="checkbox" checked={includeCandidates} onChange={(event) => setIncludeCandidates(event.target.checked)} />候选图片和历史版本</label>
+                <label className="inline-flex items-center gap-2 text-xs text-stone-400"><input type="checkbox" checked={includeVideos} onChange={(event) => setIncludeVideos(event.target.checked)} />视频和音频媒体</label>
+                <label className="inline-flex items-center gap-2 text-xs text-stone-400"><input type="checkbox" checked={includeAllVideos} onChange={(event) => setIncludeAllVideos(event.target.checked)} disabled={!includeVideos} />包含所有视频候选</label>
+                <label className="inline-flex items-center gap-2 text-xs text-stone-400"><input type="checkbox" checked={includeReasoning} onChange={(event) => setIncludeReasoning(event.target.checked)} />包含模型推理字段</label>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <div className="border-b border-white/10 px-6 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-white/10 bg-white/[0.03] px-4 py-3">
+            <div>
+              <div className="text-sm font-semibold text-stone-100">流程诊断包</div>
+              <div className="mt-1 text-xs text-stone-500">包含整个项目的输入、任务事件、模型输出、资产引用和可下载媒体。</div>
+            </div>
+            <StudioStatusBadge
+              status={diagnosticStatus === 'completed' ? 'locked' : diagnosticStatus === 'failed' ? 'failed' : diagnosticStatus === 'processing' || diagnosticStatus === 'queued' ? 'generating' : 'empty'}
+              label={diagnosticStatus === 'completed' ? '已完成' : diagnosticStatus === 'failed' ? '失败' : diagnosticStatus === 'processing' ? '生成中' : diagnosticStatus === 'queued' ? '排队中' : '未导出'}
+            />
+          </div>
         </div>
 
         {error ? (

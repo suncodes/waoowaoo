@@ -2,7 +2,7 @@
 
 import { useTranslations } from 'next-intl'
 import PanelEditFormV2 from '@/components/ui/patterns/PanelEditFormV2'
-import { GlassButton, GlassModalShell, GlassSurface } from '@/components/ui/primitives'
+import ProductModalShell from '@/components/product/ProductModalShell'
 import { Character, Location } from '@/types/project'
 import { useProjectAssets } from '@/lib/query/hooks/useProjectAssets'
 import { AppIcon } from '@/components/ui/icons'
@@ -91,16 +91,16 @@ export function CharacterPickerModal({
   const characters: Character[] = assets?.characters ?? []
 
   return (
-    <GlassModalShell open onClose={onClose} size="md" title={ts('panel.selectCharacter')}>
-      <div className="max-h-[60vh] space-y-4 overflow-y-auto">
+    <ProductModalShell open onClose={onClose} size="md" eyebrow="资产选择" title={ts('panel.selectCharacter')} description="选择要绑定到当前镜头的角色形象。">
+      <div className="space-y-3">
         {characters.length === 0 ? (
-          <p className="py-8 text-center text-[var(--glass-text-secondary)]">{ts('panel.noCharacterAssets')}</p>
+          <p className="rounded-md border border-dashed border-white/15 px-4 py-8 text-center text-sm text-stone-500">{ts('panel.noCharacterAssets')}</p>
         ) : (
           characters.map(char => {
             const appearances = char.appearances || []
             return (
-              <GlassSurface key={char.id} variant="panel" className="space-y-2 p-3">
-                <h5 className="text-sm font-medium text-[var(--glass-text-primary)]">{char.name}</h5>
+              <section key={char.id} className="space-y-3 rounded-md border border-white/10 bg-white/[0.03] p-3">
+                <h5 className="text-sm font-semibold text-stone-100">{char.name}</h5>
                 <div className="flex flex-wrap gap-2">
                   {appearances.map((app: CharacterAppearance) => {
                     const appearanceName = app.changeReason || ts('panel.defaultAppearance')
@@ -108,29 +108,29 @@ export function CharacterPickerModal({
                       c => c.name === char.name && c.appearance === appearanceName
                     )
                     return (
-                      <GlassButton
+                      <button
                         key={app.id || app.appearanceIndex}
-                        size="sm"
-                        variant={isSelected ? 'secondary' : 'ghost'}
+                        type="button"
                         disabled={isSelected}
                         onClick={() => {
                           if (!isSelected) onSelect(char.name, appearanceName)
                         }}
+                        className={`inline-flex h-9 items-center gap-2 rounded-md border px-3 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${isSelected ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-100' : 'border-white/10 bg-white/[0.04] text-stone-200 hover:bg-white/[0.08]'}`}
                       >
                         {appearanceName}
                         {isSelected && (
                           <AppIcon name="checkTiny" className="h-3 w-3" />
                         )}
-                      </GlassButton>
+                      </button>
                     )
                   })}
                 </div>
-              </GlassSurface>
+              </section>
             )
           })
         )}
       </div>
-    </GlassModalShell>
+    </ProductModalShell>
   )
 }
 
@@ -152,10 +152,10 @@ export function LocationPickerModal({
   const locations: Location[] = assets?.locations ?? []
 
   return (
-    <GlassModalShell open onClose={onClose} size="md" title={ts('panel.selectLocation')}>
-      <div className="max-h-[60vh] overflow-y-auto">
+    <ProductModalShell open onClose={onClose} size="md" eyebrow="资产选择" title={ts('panel.selectLocation')} description="选择要绑定到当前镜头的场景。">
+      <div>
         {locations.length === 0 ? (
-          <p className="py-8 text-center text-[var(--glass-text-secondary)]">{ts('panel.noLocationAssets')}</p>
+          <p className="rounded-md border border-dashed border-white/15 px-4 py-8 text-center text-sm text-stone-500">{ts('panel.noLocationAssets')}</p>
         ) : (
           <div className="grid grid-cols-2 gap-3">
             {locations.map(loc => {
@@ -165,18 +165,18 @@ export function LocationPickerModal({
                   key={loc.id}
                   type="button"
                   onClick={() => onSelect(loc.name)}
-                  className={`rounded-[var(--glass-radius-md)] border px-3 py-3 text-left transition-colors ${
+                  className={`rounded-md border px-3 py-3 text-left transition-colors ${
                     isSelected
-                      ? 'bg-[var(--glass-tone-success-bg)] text-[var(--glass-tone-success-fg)]'
-                      : 'bg-[var(--glass-bg-muted)] text-[var(--glass-text-secondary)]'
+                      ? 'border-emerald-400/40 bg-emerald-400/10 text-emerald-100'
+                      : 'border-white/10 bg-white/[0.03] text-stone-300 hover:bg-white/[0.06]'
                   }`}
                 >
-                  <div className="font-medium text-[var(--glass-text-primary)] flex items-center gap-1.5">
-                    <AppIcon name="imageAlt" className="h-3.5 w-3.5 text-[var(--glass-text-tertiary)]" />
+                  <div className="flex items-center gap-1.5 font-semibold text-stone-100">
+                    <AppIcon name="imageAlt" className="h-3.5 w-3.5 text-stone-500" />
                     <span>{loc.name}</span>
                   </div>
                   {isSelected ? (
-                    <span className="text-xs text-[var(--glass-tone-success-fg)]">{ts('panel.selected')}</span>
+                    <span className="text-xs text-emerald-200">{ts('panel.selected')}</span>
                   ) : null}
                 </button>
               )
@@ -184,6 +184,6 @@ export function LocationPickerModal({
           </div>
         )}
       </div>
-    </GlassModalShell>
+    </ProductModalShell>
   )
 }

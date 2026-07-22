@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { AppIcon } from '@/components/ui/icons'
+import ProductModalShell from '@/components/product/ProductModalShell'
 
 interface WorldContextModalProps {
   isOpen: boolean
@@ -29,15 +30,6 @@ export function WorldContextModal({ isOpen, onClose, text, onChange }: WorldCont
   }
 
   useEffect(() => {
-    if (!isOpen) return
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, onClose])
-
-  useEffect(() => {
     return () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current)
@@ -48,60 +40,23 @@ export function WorldContextModal({ isOpen, onClose, text, onChange }: WorldCont
   if (!isOpen) return null
 
   return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center glass-overlay animate-fadeIn"
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose()
-      }}
+    <ProductModalShell
+      open={isOpen}
+      onClose={onClose}
+      size="lg"
+      eyebrow="Project Context"
+      title={t('title')}
+      description={t('description')}
+      footer={<div className="flex items-center justify-between gap-3 text-xs text-stone-500"><span>{t('hint')}</span><span className={`inline-flex items-center gap-2 border px-3 py-1.5 ${saveStatus === 'saved' ? 'border-emerald-300/25 bg-emerald-300/10 text-emerald-200' : 'border-white/10 bg-white/[0.04]'}`}>{saveStatus === 'saved' ? <AppIcon name="check" className="h-3.5 w-3.5" /> : <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />}{saveStatus === 'saved' ? tc('saved') : tc('autoSave')}</span></div>}
     >
-      <div className="glass-surface-modal p-7 w-full max-w-3xl transform transition-all scale-100 h-[80vh] flex flex-col">
-        <div className="flex justify-between items-center mb-6 flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <div>
-              <h2 className="text-2xl font-bold text-[var(--glass-text-primary)]">{t('title')}</h2>
-              <p className="text-[var(--glass-text-tertiary)] text-sm">{t('description')}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <div
-              className={`glass-chip text-xs transition-all duration-300 ${
-                saveStatus === 'saved' ? 'glass-chip-success' : 'glass-chip-neutral'
-              }`}
-            >
-              {saveStatus === 'saved' ? (
-                <>
-                  <AppIcon name="check" className="w-3.5 h-3.5" />
-                  {tc('saved')}
-                </>
-              ) : (
-                <>
-                  <span className="w-1.5 h-1.5 bg-[var(--glass-tone-success-fg)] rounded-full"></span>
-                  {tc('autoSave')}
-                </>
-              )}
-            </div>
-            <button
-              onClick={onClose}
-              className="glass-btn-base glass-btn-soft rounded-full p-2 text-[var(--glass-text-tertiary)] hover:text-[var(--glass-text-secondary)]"
-            >
-              <AppIcon name="close" className="w-6 h-6" />
-            </button>
-          </div>
-        </div>
-
-        <div className="flex-1 glass-surface-soft p-4 overflow-hidden flex flex-col">
+      <div className="flex min-h-[55vh] flex-col border border-white/10 bg-[#10110f] p-4">
           <textarea
             value={text}
             onChange={(event) => handleTextChange(event.target.value)}
             placeholder={t('placeholder')}
-            className="glass-textarea-base app-scrollbar flex-1 text-base resize-none leading-relaxed placeholder:text-[var(--glass-text-tertiary)]/70 p-4"
+            className="app-scrollbar min-h-[55vh] flex-1 resize-none bg-[#0b0c0a] p-4 text-base leading-7 text-stone-100 outline-none placeholder:text-stone-600 focus:ring-1 focus:ring-[#e8d18a]/60"
           />
-        </div>
-
-        <div className="mt-6 pt-0 flex justify-start items-center flex-shrink-0">
-          <span className="text-xs text-[var(--glass-text-tertiary)]">{t('hint')}</span>
-        </div>
       </div>
-    </div>
+    </ProductModalShell>
   )
 }

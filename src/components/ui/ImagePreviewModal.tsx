@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect } from 'react'
 import { useTranslations } from 'next-intl'
+import ProductModalShell from '@/components/product/ProductModalShell'
 import { resolveOriginalImageUrl, toDisplayImageUrl } from '@/lib/media/image-url'
 import { MediaImageWithLoading } from '@/components/media/MediaImageWithLoading'
 import { AppIcon } from '@/components/ui/icons'
@@ -13,65 +13,29 @@ interface ImagePreviewModalProps {
 
 export default function ImagePreviewModal({ imageUrl, onClose }: ImagePreviewModalProps) {
   const t = useTranslations('common')
-
-  useEffect(() => {
-    // 禁用body滚动
-    document.body.style.overflow = 'hidden'
-
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose()
-      }
-    }
-
-    document.addEventListener('keydown', handleEscape)
-
-    return () => {
-      document.body.style.overflow = 'unset'
-      document.removeEventListener('keydown', handleEscape)
-    }
-  }, [onClose])
-
-  if (!imageUrl) return null
-  const displayImageUrl = toDisplayImageUrl(imageUrl)
-  const originalImageUrl = resolveOriginalImageUrl(imageUrl) || displayImageUrl
+  const displayImageUrl = imageUrl ? toDisplayImageUrl(imageUrl) : null
+  const originalImageUrl = imageUrl ? resolveOriginalImageUrl(imageUrl) || displayImageUrl : null
   if (!displayImageUrl) return null
 
   return (
-    <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-[var(--glass-overlay)] backdrop-blur-sm"
-      onClick={onClose}
-      style={{ margin: 0, padding: 0 }}
-    >
-      <div className="relative max-w-7xl max-h-[90vh] p-4">
-        {/* 关闭按钮 */}
-        <button
-          onClick={onClose}
-          className="absolute top-6 right-6 z-10 w-10 h-10 flex items-center justify-center rounded-full bg-[var(--glass-overlay)] hover:bg-[var(--glass-overlay)] text-white transition-colors"
-        >
-          <AppIcon name="close" className="w-6 h-6" />
-        </button>
-        {originalImageUrl && (
-          <a
-            href={originalImageUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="absolute top-6 right-20 z-10 px-3 h-10 inline-flex items-center rounded-full bg-[var(--glass-overlay)] hover:bg-[var(--glass-overlay)] text-white text-sm transition-colors"
-          >
+    <ProductModalShell
+      open
+      onClose={onClose}
+      size="xl"
+      eyebrow="图片预览"
+      title={t('preview')}
+      footer={originalImageUrl ? (
+        <div className="flex justify-end">
+          <a href={originalImageUrl} target="_blank" rel="noopener noreferrer" className="inline-flex h-9 items-center gap-2 rounded-md border border-white/10 bg-white/[0.04] px-3 text-xs font-semibold text-stone-200 hover:bg-white/[0.08]">
+            <AppIcon name="externalLink" className="h-3.5 w-3.5" />
             {t('viewOriginal')}
           </a>
-        )}
-
-        {/* 图片 */}
-        <MediaImageWithLoading
-          src={displayImageUrl}
-          alt={t('preview')}
-          containerClassName="max-w-full max-h-[90vh]"
-          className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
-          onClick={(e) => e.stopPropagation()}
-        />
+        </div>
+      ) : null}
+    >
+      <div className="flex min-h-[320px] items-center justify-center rounded-md bg-black p-2 sm:min-h-[520px]">
+        <MediaImageWithLoading src={displayImageUrl} alt={t('preview')} containerClassName="flex max-h-[72dvh] w-full items-center justify-center" className="max-h-[72dvh] max-w-full rounded-md object-contain" />
       </div>
-    </div>
+    </ProductModalShell>
   )
 }

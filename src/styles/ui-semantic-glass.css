@@ -7,8 +7,6 @@
   background: var(--glass-bg-surface);
   border: 1px solid var(--glass-stroke-soft);
   box-shadow: var(--glass-shadow-sm);
-  backdrop-filter: blur(var(--glass-blur-md));
-  -webkit-backdrop-filter: blur(var(--glass-blur-md));
   border-radius: var(--glass-radius-lg);
 }
 
@@ -16,8 +14,6 @@
   background: var(--glass-bg-surface-strong);
   border: 1px solid var(--glass-stroke-soft);
   box-shadow: var(--glass-shadow-lg);
-  backdrop-filter: blur(var(--glass-blur-lg));
-  -webkit-backdrop-filter: blur(var(--glass-blur-lg));
   border-radius: var(--glass-radius-lg);
 }
 
@@ -25,8 +21,6 @@
   background: var(--glass-bg-surface-modal);
   border: 1px solid var(--glass-stroke-soft);
   box-shadow: var(--glass-shadow-modal);
-  backdrop-filter: blur(var(--glass-blur-lg));
-  -webkit-backdrop-filter: blur(var(--glass-blur-lg));
   border-radius: var(--glass-radius-xl);
 }
 
@@ -36,14 +30,12 @@
   box-shadow: var(--glass-shadow-nav);
   backdrop-filter: blur(var(--glass-blur-nav));
   -webkit-backdrop-filter: blur(var(--glass-blur-nav));
-  border-radius: 999px;
+  border-radius: var(--glass-radius-sm);
 }
 
 .glass-surface-soft {
   background: var(--glass-bg-surface-strong);
   box-shadow: var(--glass-shadow-sm);
-  backdrop-filter: blur(var(--glass-blur-md));
-  -webkit-backdrop-filter: blur(var(--glass-blur-md));
   border-radius: var(--glass-radius-lg);
 }
 
@@ -135,15 +127,15 @@
 }
 
 .glass-btn-primary {
-  background: linear-gradient(140deg, var(--glass-accent-from) 0%, var(--glass-accent-to) 100%);
+  background: var(--glass-accent-to);
   border: none;
   color: var(--glass-text-on-accent);
   box-shadow: 0 8px 20px var(--glass-accent-shadow-soft);
 }
 
 .glass-btn-primary:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 12px 24px var(--glass-accent-shadow-strong);
+  background: var(--glass-accent-from);
+  box-shadow: 0 8px 24px var(--glass-accent-shadow-strong);
 }
 
 .glass-btn-secondary {
@@ -272,20 +264,14 @@
 
 .glass-overlay {
   background: var(--glass-overlay);
-  backdrop-filter: blur(var(--glass-blur-sm));
-  -webkit-backdrop-filter: blur(var(--glass-blur-sm));
 }
 
 .glass-overlay-soft {
   background: var(--glass-overlay-soft);
-  backdrop-filter: blur(var(--glass-blur-sm));
-  -webkit-backdrop-filter: blur(var(--glass-blur-sm));
 }
 
 .glass-overlay-strong {
   background: var(--glass-overlay-strong);
-  backdrop-filter: blur(var(--glass-blur-sm));
-  -webkit-backdrop-filter: blur(var(--glass-blur-sm));
 }
 
 .glass-icon-btn-sm {

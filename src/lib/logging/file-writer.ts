@@ -142,11 +142,11 @@ function buildLogFilePath(modules: NodeModules, prefix: string, projectName: str
 
 // ─── 24h cleanup helpers ─────────────────────────────────────────────
 
-const PROJECT_LOG_MAX_BYTES = 2 * 1024 * 1024 // 2 MB 触发清理
-const LOG_RETENTION_MS = 24 * 60 * 60 * 1000   // 保留 24 小时
+const PROJECT_LOG_MAX_BYTES = 32 * 1024 * 1024 // 32 MB 触发清理
+const LOG_RETENTION_MS = 30 * 24 * 60 * 60 * 1000   // 保留 30 天，覆盖项目离线诊断周期
 
 /**
- * 从日志内容中过滤掉 24 小时前的行。
+ * 从日志内容中过滤掉保留窗口之外的行。
  * 每行是 JSON，通过 "ts" 字段判断时间。
  */
 function filterRecentLines(content: string): string {
@@ -168,7 +168,7 @@ function filterRecentLines(content: string): string {
 }
 
 /**
- * 若项目日志文件超过阈值，清理 24 小时前的内容。
+ * 若项目日志文件超过阈值，清理保留窗口之外的内容。
  */
 async function maybeCleanupProjectLog(filePath: string): Promise<void> {
     const modules = await getNodeModules()
@@ -364,8 +364,41 @@ export async function readAllLogs(): Promise<string> {
         return ''
     }
 }
+
+/** Read only the two project-scoped log files used by a diagnostic export. */
+export async function readProjectLogs(projectName: string, projectId?: string): Promise<string> {
+    if (isEdgeOrBrowser()) return ''
+    const modules = await getNodeModules()
+    if (!modules) return ''
+
+    const logsDir = modules.path.join(modules.cwd, 'logs')
+    const safeName = sanitizeProjectName(projectName)
+    try {
+        const files = modules.fs.readdirSync(logsDir)
+            .filter((file: string) => file === `admin_${safeName}.log` || file === `Internal_${safeName}.log`)
+            .sort()
+        return files
+            .map((file: string) => {
+                const content = modules.fs.readFileSync(modules.path.join(logsDir, file), 'utf-8')
+                if (!projectId) return `\n========== ${file} ==========\n${content}`
+                const lines = content.split('\n')
+                const matching = lines.filter((line) => {
+                    try {
+                        const parsed = JSON.parse(line) as { projectId?: unknown; context?: { projectId?: unknown } }
+                        return parsed.projectId === projectId || parsed.context?.projectId === projectId
+                    } catch {
+                        return false
+                    }
+                })
+                return `\n========== ${file} (${matching.length ? 'filtered by projectId' : 'no projectId match'}) ==========\n${matching.join('\n')}`
+            })
+            .join('\n')
+    } catch {
+        return ''
+    }
+}
 /**
- * 清理所有项目日志文件中 24 小时前的内容。
+ * 清理所有项目日志文件中超出保留窗口的内容。
  * 供 watchdog 定期调用（建议每小时一次）。
  */
 export async function cleanupAllProjectLogs(): Promise<void> {

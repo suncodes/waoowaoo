@@ -29,6 +29,8 @@ interface AssetGridProps {
     onLocationEdit?: (location: unknown, imageIndex: number) => void
     onPropEdit?: (prop: unknown, imageIndex: number) => void
     onVoiceSelect?: (characterId: string) => void
+    onAssetSelect?: (assetId: string) => void
+    selectedAssetId?: string | null
 }
 
 // ─── 新建资产下拉菜单 ──────────────────────────────────
@@ -142,7 +144,9 @@ export function AssetGrid({
     onCharacterEdit,
     onLocationEdit,
     onPropEdit,
-    onVoiceSelect
+    onVoiceSelect,
+    onAssetSelect,
+    selectedAssetId,
 }: AssetGridProps) {
     const t = useTranslations('assetHub')
     const loadingState = loading
@@ -375,15 +379,16 @@ export function AssetGrid({
                             </h2>
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                                 {charactersPage.items.map((character) => (
-                                    <CharacterCard
-                                        key={character.id}
-                                        character={character}
-                                        onImageClick={onImageClick}
-                                        onImageEdit={onImageEdit}
-                                        onVoiceDesign={onVoiceDesign}
-                                        onEdit={onCharacterEdit}
-                                        onVoiceSelect={onVoiceSelect}
-                                    />
+                                    <div key={character.id} onClick={() => onAssetSelect?.(character.id)} className={`min-w-0 cursor-pointer border transition-colors ${selectedAssetId === character.id ? 'border-[#e8d18a]/60' : 'border-transparent'}`}>
+                                        <CharacterCard
+                                            character={character}
+                                            onImageClick={onImageClick}
+                                            onImageEdit={onImageEdit}
+                                            onVoiceDesign={onVoiceDesign}
+                                            onEdit={onCharacterEdit}
+                                            onVoiceSelect={onVoiceSelect}
+                                        />
+                                    </div>
                                 ))}
                             </div>
                             {renderPagination('character', charactersPage.page, charactersPage.totalPages)}
@@ -399,13 +404,14 @@ export function AssetGrid({
                             </h2>
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                                 {locationsPage.items.map((location) => (
-                                    <LocationCard
-                                        key={location.id}
-                                        location={location}
-                                        onImageClick={onImageClick}
-                                        onImageEdit={onImageEdit}
-                                        onEdit={onLocationEdit}
-                                    />
+                                    <div key={location.id} onClick={() => onAssetSelect?.(location.id)} className={`min-w-0 cursor-pointer border transition-colors ${selectedAssetId === location.id ? 'border-[#e8d18a]/60' : 'border-transparent'}`}>
+                                        <LocationCard
+                                            location={location}
+                                            onImageClick={onImageClick}
+                                            onImageEdit={onImageEdit}
+                                            onEdit={onLocationEdit}
+                                        />
+                                    </div>
                                 ))}
                             </div>
                             {renderPagination('location', locationsPage.page, locationsPage.totalPages)}
@@ -420,14 +426,15 @@ export function AssetGrid({
                             </h2>
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                                 {propsPage.items.map((prop) => (
-                                    <LocationCard
-                                        key={prop.id}
-                                        location={prop}
-                                        assetType="prop"
-                                        onImageClick={onImageClick}
-                                        onImageEdit={onImageEdit}
-                                        onEdit={onPropEdit}
-                                    />
+                                    <div key={prop.id} onClick={() => onAssetSelect?.(prop.id)} className={`min-w-0 cursor-pointer border transition-colors ${selectedAssetId === prop.id ? 'border-[#e8d18a]/60' : 'border-transparent'}`}>
+                                        <LocationCard
+                                            location={prop}
+                                            assetType="prop"
+                                            onImageClick={onImageClick}
+                                            onImageEdit={onImageEdit}
+                                            onEdit={onPropEdit}
+                                        />
+                                    </div>
                                 ))}
                             </div>
                             {renderPagination('prop', propsPage.page, propsPage.totalPages)}
@@ -443,10 +450,9 @@ export function AssetGrid({
                             </h2>
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                                 {voicesPage.items.map((voice) => (
-                                    <VoiceCard
-                                        key={voice.id}
-                                        voice={voice}
-                                    />
+                                    <div key={voice.id} onClick={() => onAssetSelect?.(voice.id)} className={`min-w-0 cursor-pointer border transition-colors ${selectedAssetId === voice.id ? 'border-[#e8d18a]/60' : 'border-transparent'}`}>
+                                        <VoiceCard voice={voice} />
+                                    </div>
                                 ))}
                             </div>
                             {renderPagination('voice', voicesPage.page, voicesPage.totalPages)}

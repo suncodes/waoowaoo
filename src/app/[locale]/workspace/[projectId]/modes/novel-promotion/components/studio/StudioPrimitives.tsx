@@ -168,33 +168,6 @@ export function StudioEmptyState({
   )
 }
 
-export function StudioAdvancedPanel({
-  title,
-  description,
-  children,
-  defaultOpen = false,
-}: {
-  title: string
-  description?: string
-  children: ReactNode
-  defaultOpen?: boolean
-}) {
-  return (
-    <details className="group rounded-lg border border-white/10 bg-[#12130f] p-4" open={defaultOpen}>
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
-        <span>
-          <span className="block text-sm font-semibold text-stone-100">{title}</span>
-          {description ? <span className="mt-1 block text-xs font-normal text-stone-500">{description}</span> : null}
-        </span>
-        <AppIcon name="chevronDown" className="h-4 w-4 text-stone-500 transition-transform group-open:rotate-180" />
-      </summary>
-      <div className="mt-4 rounded-md bg-white/[0.02] p-4 text-[var(--glass-text-primary)]">
-        {children}
-      </div>
-    </details>
-  )
-}
-
 export function StudioStageHeader({
   eyebrow,
   title,

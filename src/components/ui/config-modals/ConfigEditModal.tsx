@@ -15,6 +15,7 @@ import { filterNormalVideoModelOptions } from '@/lib/model-capabilities/video-mo
 import { RatioSelector, StyleSelector } from './config-modal-selectors'
 import { ModelCapabilityDropdown } from './ModelCapabilityDropdown'
 import { AppIcon } from '@/components/ui/icons'
+import ProductModalShell from '@/components/product/ProductModalShell'
 
 interface ModelOption {
     value: string
@@ -438,19 +439,19 @@ export function SettingsModal({
     if (!isOpen) return null
 
     return (
-        <div
-            className="fixed inset-0 z-[100] flex items-center justify-center glass-overlay animate-fadeIn"
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose()
-            }}
+        <ProductModalShell
+            open={isOpen}
+            onClose={onClose}
+            size="xl"
+            eyebrow="Project Settings"
+            title={t('title')}
+            description={t('subtitle')}
         >
-            <div className="glass-surface-modal p-7 w-full max-w-3xl transform transition-all scale-100 max-h-[90vh] flex flex-col">
-                <div className="flex justify-between items-center mb-2">
-                    <h2 className="text-2xl font-bold text-[var(--glass-text-primary)]">{t('title')}</h2>
-                    <div className="flex items-center gap-3">
-                        <div className={`glass-chip text-xs transition-all duration-300 ${saveStatus === 'saved'
-                            ? 'glass-chip-success'
-                            : 'glass-chip-neutral'
+            <div className="space-y-5">
+                <div className="flex justify-end">
+                        <div className={`inline-flex items-center gap-2 border px-3 py-1.5 text-xs transition-colors ${saveStatus === 'saved'
+                            ? 'border-emerald-300/25 bg-emerald-300/10 text-emerald-200'
+                            : 'border-white/10 bg-white/[0.04] text-stone-400'
                             }`}>
                             {saveStatus === 'saved' ? (
                                 <>
@@ -459,22 +460,14 @@ export function SettingsModal({
                                 </>
                             ) : (
                                 <>
-                                    <span className="w-1.5 h-1.5 bg-[var(--glass-tone-success-fg)] rounded-full"></span>
+                                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-300"></span>
                                     {t('autoSave')}
                                 </>
                             )}
                         </div>
-                        <button
-                            onClick={onClose}
-                            className="glass-btn-base glass-btn-soft rounded-full p-2 text-[var(--glass-text-tertiary)] hover:text-[var(--glass-text-secondary)]"
-                        >
-                            <AppIcon name="close" className="w-6 h-6" />
-                        </button>
-                    </div>
                 </div>
-                <p className="text-[12px] text-[var(--glass-text-tertiary)] mb-6">{t('subtitle')}</p>
-                <div className="space-y-5 flex-1 min-h-0 overflow-y-auto app-scrollbar">
-                    <div className="glass-surface-soft p-5 sm:p-6 space-y-4">
+                <div className="space-y-5">
+                    <div className="space-y-4 border border-white/10 bg-[#10110f] p-5 sm:p-6">
                         <h3 className="text-sm font-semibold text-[var(--glass-text-tertiary)]">{t('visualSettings')}</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2">
@@ -604,7 +597,7 @@ export function SettingsModal({
                         </label>
                     </div>
 
-                    <div className="glass-surface-soft p-5 sm:p-6 space-y-4">
+                    <div className="space-y-4 border border-white/10 bg-[#10110f] p-5 sm:p-6">
                         <h3 className="text-sm font-semibold text-[var(--glass-text-tertiary)]">{t('modelParams')}</h3>
                         {!modelsLoaded && (
                             <div className="text-xs text-[var(--glass-text-tertiary)]">{t('loadingModels')}</div>
@@ -722,7 +715,7 @@ export function SettingsModal({
 
                 </div>
             </div>
-        </div>
+        </ProductModalShell>
     )
 }
 

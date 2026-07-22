@@ -28,7 +28,9 @@ import {
 } from './stream-helpers'
 import {
   completionUsageSummary,
+  createLlmInvocationId,
   llmLogger,
+  logLlmRawError,
   logLlmRawInput,
   logLlmRawOutput,
   recordCompletionUsage,
@@ -91,6 +93,7 @@ export async function chatCompletionStream(
     typeof options.projectId === 'string' && options.projectId.trim().length > 0
       ? options.projectId.trim()
       : undefined
+  const invocationId = createLlmInvocationId()
   logLlmRawInput({
     userId,
     projectId,
@@ -102,6 +105,8 @@ export async function chatCompletionStream(
     reasoningEffort,
     temperature,
     action: options.action,
+    invocationId,
+    step: streamStep,
     messages,
   })
 
@@ -155,6 +160,8 @@ export async function chatCompletionStream(
       }
       logLlmRawOutput({
         userId,
+        invocationId,
+        attempt: streamStep?.attempt ?? 1,
         projectId,
         provider: compatEngine,
         modelId: resolvedModelId,
@@ -263,6 +270,8 @@ export async function chatCompletionStream(
       )
       logLlmRawOutput({
         userId,
+        invocationId,
+        attempt: streamStep?.attempt ?? 1,
         projectId,
         provider: providerKey,
         modelId: resolvedModelId,
@@ -309,6 +318,8 @@ export async function chatCompletionStream(
       }
       logLlmRawOutput({
         userId,
+        invocationId,
+        attempt: streamStep?.attempt ?? 1,
         projectId,
         provider: providerKey,
         modelId: resolvedModelId,
@@ -355,6 +366,8 @@ export async function chatCompletionStream(
       }
       logLlmRawOutput({
         userId,
+        invocationId,
+        attempt: streamStep?.attempt ?? 1,
         projectId,
         provider: providerKey,
         modelId: resolvedModelId,
@@ -417,6 +430,8 @@ export async function chatCompletionStream(
       )
       logLlmRawOutput({
         userId,
+        invocationId,
+        attempt: streamStep?.attempt ?? 1,
         projectId,
         provider,
         modelId: resolvedModelId,
@@ -723,6 +738,8 @@ export async function chatCompletionStream(
         )
         logLlmRawOutput({
           userId,
+          invocationId,
+          attempt: streamStep?.attempt ?? 1,
           projectId,
           provider: providerName,
           modelId: resolvedModelId,
@@ -843,6 +860,8 @@ export async function chatCompletionStream(
       )
       logLlmRawOutput({
         userId,
+        invocationId,
+        attempt: streamStep?.attempt ?? 1,
         projectId,
         provider: providerName,
         modelId: resolvedModelId,
@@ -860,6 +879,20 @@ export async function chatCompletionStream(
     }
     throw new Error(`UNSUPPORTED_STREAM_PROVIDER: ${providerKey}`)
   } catch (error) {
+    logLlmRawError({
+      userId,
+      projectId,
+      provider: providerKey,
+      modelId: resolvedModelId,
+      modelKey: selection.modelKey,
+      stream: true,
+      action: options.action,
+      invocationId,
+      attempt: streamStep?.attempt ?? 1,
+      retryable: false,
+      step: streamStep,
+      error,
+    })
     // Detect PROHIBITED_CONTENT from Gemini and normalize to SENSITIVE_CONTENT
     // (consistent with chat-completion.ts)
     const errMsg = error instanceof Error ? error.message : String(error)

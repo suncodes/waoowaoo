@@ -2,6 +2,8 @@
 
 import { useMemo } from 'react'
 import type { VisualAssetSummary } from '@/lib/assets/contracts'
+import { useTaskList, type TaskItem } from '@/lib/query/hooks/useTaskStatus'
+import { TASK_TYPE } from '@/lib/task/types'
 import { readContentArtifactMeta, readVisualArtifactMeta } from '@/lib/creation-workspace/artifact-state'
 import type { CreationWorkflowState } from '@/lib/creation-workspace/workflow-state'
 import { resolveVisualAnchorReadiness, resolveVisualAssetStatus, selectedVisualAssetImage } from '@/lib/creation-workspace/visual-readiness'
@@ -207,6 +209,27 @@ function buildAssetAnalysisJob(
   return []
 }
 
+function buildDiagnosticJobs(tasks: TaskItem[]): StudioGenerationJob[] {
+  return tasks.slice(0, 3).map((task) => ({
+    id: `diagnostic:${task.id}`,
+    taskId: task.id,
+    label: '项目诊断包',
+    status: task.status === 'completed'
+      ? 'locked'
+      : task.status === 'failed'
+        ? 'failed'
+        : 'generating',
+    progress: task.status === 'completed' ? 100 : Math.max(5, task.progress || 0),
+    message: task.status === 'completed'
+      ? '诊断包已生成，可直接下载'
+      : task.status === 'failed'
+        ? task.errorMessage || '诊断包生成失败'
+        : task.status === 'processing'
+          ? '正在收集流程数据和媒体文件'
+          : '诊断包任务排队中',
+  }))
+}
+
 export function useStudioWorkspaceModel({
   currentStage,
   stageView,
@@ -220,6 +243,11 @@ export function useStudioWorkspaceModel({
   const { projectId } = useWorkspaceProvider()
   const episodeData = useWorkspaceEpisodeStageData()
   const assetsQuery = useAssets({ scope: 'project', projectId })
+  const diagnosticTasksQuery = useTaskList({
+    projectId,
+    type: [TASK_TYPE.DIAGNOSTIC_EXPORT],
+    limit: 3,
+  })
 
   return useMemo(() => {
     const contentMeta = readContentArtifactMeta(episodeData.contentPlan)
@@ -261,6 +289,7 @@ export function useStudioWorkspaceModel({
       shots,
       productionItems,
       generationJobs: [
+        ...buildDiagnosticJobs(diagnosticTasksQuery.data || []),
         ...buildAssetAnalysisJob(workflowState.facts.assetRequirementStatus, isAssetAnalysisRunning),
         ...buildJobs([
           { id: 'content-plan', label: '文稿规划', stream: contentPlanStream },
@@ -292,6 +321,7 @@ export function useStudioWorkspaceModel({
     assetsQuery.data,
     contentPlanStream,
     currentStage,
+    diagnosticTasksQuery.data,
     episodeData.contentPlan,
     episodeData.episodeName,
     episodeData.novelText,

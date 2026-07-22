@@ -1,9 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { forwardRef, useEffect, useRef, useState, type ChangeEvent, type InputHTMLAttributes, type TextareaHTMLAttributes } from 'react'
 import type { useTranslations } from 'next-intl'
-import GlassInput from '@/components/ui/primitives/GlassInput'
-import GlassTextarea from '@/components/ui/primitives/GlassTextarea'
 import { AppIcon } from '@/components/ui/icons'
 import type {
   ActingCharacter,
@@ -34,8 +32,16 @@ interface AIDataModalFormPaneProps {
 }
 
 function FL({ children }: { children: string }) {
-  return <p className="mb-1 text-[10.5px] font-semibold text-[var(--glass-text-tertiary)]">{children}</p>
+  return <p className="mb-1 text-[10.5px] font-semibold text-stone-500">{children}</p>
 }
+
+function StudioInput({ className = '', ...props }: InputHTMLAttributes<HTMLInputElement> & { density?: 'compact' | 'default' }) {
+  return <input {...props} className={`h-9 w-full rounded-md border border-white/10 bg-[#0f100e] px-3 text-sm text-stone-100 outline-none focus:border-[#e8d18a] ${className}`} />
+}
+
+const StudioTextarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement> & { density?: 'compact' | 'default' }>(function StudioTextarea({ className = '', ...props }, ref) {
+  return <textarea ref={ref} {...props} className={`w-full resize-y rounded-md border border-white/10 bg-[#0f100e] px-3 py-2 text-sm leading-6 text-stone-100 outline-none focus:border-[#e8d18a] ${className}`} />
+})
 
 function AutoGrowTextarea({
   value,
@@ -62,7 +68,7 @@ function AutoGrowTextarea({
   }, [value])
 
   return (
-    <GlassTextarea
+    <StudioTextarea
       ref={ref}
       rows={rows}
       value={value}
@@ -82,8 +88,8 @@ function AutoGrowTextarea({
 function SectionLabel({ children }: { children: string }) {
   return (
     <div className="flex items-center gap-2 mb-2.5">
-      <AppIcon name="sparkles" className="h-3.5 w-3.5 text-[var(--glass-tone-info-fg)] flex-shrink-0" />
-      <span className="text-[11px] font-semibold text-[var(--glass-text-primary)]">{children}</span>
+      <AppIcon name="sparkles" className="h-3.5 w-3.5 shrink-0 text-[#e8d18a]" />
+      <span className="text-[11px] font-semibold text-stone-100">{children}</span>
     </div>
   )
 }
@@ -99,28 +105,28 @@ function CollapseSection({
 }) {
   const [open, setOpen] = useState(false)
   return (
-    <div className="border border-[var(--glass-stroke-base)] rounded-[var(--glass-radius-xs)] overflow-hidden">
+    <div className="overflow-hidden rounded-md border border-white/10">
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center justify-between px-3.5 py-2.5 bg-[var(--glass-bg-muted)] hover:bg-[var(--glass-bg-surface)] transition-colors"
+        className="flex w-full items-center justify-between bg-white/[0.04] px-3.5 py-2.5 transition-colors hover:bg-white/[0.08]"
       >
         <div className="flex items-center gap-2">
           {iconName ? (
             <AppIcon
               name={iconName}
-              className="h-3.5 w-3.5 text-[var(--glass-tone-info-fg)] flex-shrink-0"
+              className="h-3.5 w-3.5 shrink-0 text-[#e8d18a]"
             />
           ) : null}
-          <span className="text-[11px] font-semibold text-[var(--glass-text-secondary)]">{label}</span>
+          <span className="text-[11px] font-semibold text-stone-300">{label}</span>
         </div>
         <AppIcon
           name={open ? 'chevronUp' : 'chevronDown'}
-          className="h-3.5 w-3.5 text-[var(--glass-text-tertiary)] flex-shrink-0"
+          className="h-3.5 w-3.5 shrink-0 text-stone-500"
         />
       </button>
       {open && (
-        <div className="px-3.5 py-3 space-y-3 bg-[var(--glass-bg-surface)]">
+        <div className="space-y-3 bg-[#151613] px-3.5 py-3">
           {children}
         </div>
       )}
@@ -154,13 +160,13 @@ export default function AIDataModalFormPane({
   const actingChar = actingCharIdx >= 0 ? actingNotes[actingCharIdx] : null
 
   return (
-    <div className="w-[55%] border-r border-[var(--glass-stroke-base)] overflow-y-auto p-5 space-y-5">
+    <div className="w-[55%] space-y-5 overflow-y-auto border-r border-white/10 bg-[#151613] p-5">
 
       {/* ① 视觉描述 — 最高优先 */}
       <section>
         <div className="flex items-center gap-2 mb-2.5">
-          <AppIcon name="fileText" className="h-3.5 w-3.5 text-[var(--glass-tone-info-fg)] flex-shrink-0" />
-          <span className="text-[11px] font-semibold text-[var(--glass-text-primary)]">
+          <AppIcon name="fileText" className="h-3.5 w-3.5 shrink-0 text-[#e8d18a]" />
+          <span className="text-[11px] font-semibold text-stone-100">
             {t('aiData.visualDescription')}
           </span>
         </div>
@@ -179,8 +185,8 @@ export default function AIDataModalFormPane({
           <div>
             <FL>{t('aiData.shotType')}</FL>
             <div className="relative">
-              <AppIcon name="clapperboard" className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--glass-text-tertiary)]" />
-              <GlassInput
+              <AppIcon name="clapperboard" className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-stone-500" />
+              <StudioInput
                 density="compact"
                 value={shotType}
                 onChange={e => onShotTypeChange(e.target.value)}
@@ -192,8 +198,8 @@ export default function AIDataModalFormPane({
           <div>
             <FL>{t('aiData.cameraMove')}</FL>
             <div className="relative">
-              <AppIcon name="video" className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--glass-text-tertiary)]" />
-              <GlassInput
+              <AppIcon name="video" className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-stone-500" />
+              <StudioInput
                 density="compact"
                 value={cameraMove}
                 onChange={e => onCameraMoveChange(e.target.value)}
@@ -205,10 +211,10 @@ export default function AIDataModalFormPane({
         </div>
         {/* 场景 + 比例 — 只读文字，不用 input 避免视觉干扰 */}
         {location && (
-          <div className="flex items-center gap-2 text-[11.5px] text-[var(--glass-text-tertiary)]">
-            <AppIcon name="imageAlt" className="h-3.5 w-3.5 text-[var(--glass-tone-info-fg)] flex-shrink-0" />
+          <div className="flex items-center gap-2 text-[11.5px] text-stone-500">
+            <AppIcon name="imageAlt" className="h-3.5 w-3.5 shrink-0 text-[#e8d18a]" />
             <span>
-              {t('aiData.scene').replace('（只读）', '')}：<span className="text-[var(--glass-text-secondary)] font-medium">{location}</span>
+              {t('aiData.scene').replace('（只读）', '')}：<span className="font-medium text-stone-300">{location}</span>
             </span>
           </div>
         )}
@@ -227,21 +233,21 @@ export default function AIDataModalFormPane({
                 type="button"
                 onClick={() => onActiveCharIdxChange(i)}
                 className={[
-                  'flex items-center gap-2 px-3 py-1.5 rounded-[var(--glass-radius-xs)] border text-xs font-semibold transition-all',
+                  'flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs font-semibold transition-all',
                   activeCharIdx === i
-                    ? 'border-[var(--glass-stroke-focus)] bg-[var(--glass-tone-info-bg)] text-[var(--glass-tone-info-fg)]'
-                    : 'border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)] text-[var(--glass-text-tertiary)] hover:text-[var(--glass-text-secondary)]',
+                    ? 'border-[#e8d18a]/60 bg-[#e8d18a]/10 text-[#f3e9cf]'
+                    : 'border-white/10 bg-white/[0.04] text-stone-500 hover:text-stone-200',
                 ].join(' ')}
               >
                 <div className={[
                   'h-5 w-5 rounded-full flex items-center justify-center flex-shrink-0',
-                  activeCharIdx === i ? 'bg-[var(--glass-tone-info-bg)] text-[var(--glass-tone-info-fg)]' : 'bg-[var(--glass-bg-surface)] text-[var(--glass-text-tertiary)]',
+                  activeCharIdx === i ? 'bg-[#e8d18a]/10 text-[#e8d18a]' : 'bg-white/[0.06] text-stone-500',
                 ].join(' ')}>
                   <AppIcon name="user" className="h-3 w-3" />
                 </div>
                 {char.name}
                 {char.slot && (
-                  <span className="glass-chip glass-chip-neutral text-[9.5px] inline-flex items-center gap-1">
+                  <span className="inline-flex items-center gap-1 rounded bg-white/[0.06] px-1.5 py-0.5 text-[9.5px] text-stone-400">
                     <AppIcon name="badgeCheck" className="h-3 w-3" />
                     {char.slot}
                   </span>
@@ -252,26 +258,26 @@ export default function AIDataModalFormPane({
 
           {/* 当前角色详情卡 */}
           {activeChar && (
-            <div className="rounded-[var(--glass-radius-sm)] border border-[var(--glass-stroke-focus)] overflow-hidden">
+            <div className="overflow-hidden rounded-md border border-[#e8d18a]/30">
               {/* slot 行 */}
-              <div className="flex items-center gap-2 px-3.5 py-2 bg-[var(--glass-bg-muted)] border-b border-[var(--glass-stroke-base)] flex-wrap">
-                <AppIcon name="badgeCheck" className="h-3.5 w-3.5 text-[var(--glass-tone-info-fg)] flex-shrink-0" />
-                <span className="text-[10.5px] font-semibold text-[var(--glass-text-tertiary)]">
+              <div className="flex flex-wrap items-center gap-2 border-b border-white/10 bg-white/[0.04] px-3.5 py-2">
+                <AppIcon name="badgeCheck" className="h-3.5 w-3.5 shrink-0 text-[#e8d18a]" />
+                <span className="text-[10.5px] font-semibold text-stone-500">
                   {t('aiData.slot')}：
                 </span>
-                <span className="glass-chip glass-chip-info text-[10.5px]">
+                <span className="rounded bg-cyan-400/10 px-2 py-0.5 text-[10.5px] text-cyan-100">
                   {activeChar.slot ?? t('aiData.slotUnset')}
                 </span>
               </div>
 
-              <div className="px-3.5 py-3 space-y-3 bg-[var(--glass-bg-surface)]">
+              <div className="space-y-3 bg-[#151613] px-3.5 py-3">
                 {/* 外貌 — 只读 */}
                 {activeChar.appearance && (
                   <div>
                     <FL>{t('aiData.appearanceReadonly')}</FL>
-                    <div className="flex items-start gap-2 rounded-[var(--glass-radius-xs)] bg-[var(--glass-bg-muted)] px-3 py-2">
-                      <AppIcon name="sparkles" className="mt-0.5 h-3.5 w-3.5 text-[var(--glass-tone-warning-fg)] flex-shrink-0" />
-                      <p className="text-[12px] text-[var(--glass-text-secondary)] leading-relaxed">
+                    <div className="flex items-start gap-2 rounded-md bg-white/[0.04] px-3 py-2">
+                      <AppIcon name="sparkles" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-200" />
+                      <p className="text-[12px] leading-relaxed text-stone-300">
                         {activeChar.appearance}
                       </p>
                     </div>
@@ -284,8 +290,8 @@ export default function AIDataModalFormPane({
                     <FL>{t('aiData.framePosition')}</FL>
                     <div className="space-y-2">
                       <div>
-                        <p className="text-[10px] text-[var(--glass-text-tertiary)] mb-1">{t('aiData.screenPosition')}</p>
-                        <GlassInput
+                        <p className="mb-1 text-[10px] text-stone-500">{t('aiData.screenPosition')}</p>
+                        <StudioInput
                           density="compact"
                           value={photoChar.screen_position}
                           onChange={e => {
@@ -296,8 +302,8 @@ export default function AIDataModalFormPane({
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <p className="text-[10px] text-[var(--glass-text-tertiary)] mb-1">{t('aiData.posture')}</p>
-                          <GlassInput
+                          <p className="mb-1 text-[10px] text-stone-500">{t('aiData.posture')}</p>
+                          <StudioInput
                             density="compact"
                             value={photoChar.posture}
                             onChange={e => {
@@ -307,8 +313,8 @@ export default function AIDataModalFormPane({
                           />
                         </div>
                         <div>
-                          <p className="text-[10px] text-[var(--glass-text-tertiary)] mb-1">{t('aiData.facing')}</p>
-                          <GlassInput
+                          <p className="mb-1 text-[10px] text-stone-500">{t('aiData.facing')}</p>
+                          <StudioInput
                             density="compact"
                             value={photoChar.facing}
                             onChange={e => {
@@ -347,7 +353,7 @@ export default function AIDataModalFormPane({
           value={videoPrompt}
           onChange={e => onVideoPromptChange(e.target.value)}
           placeholder={t('panel.videoPromptPlaceholder')}
-          className="bg-[var(--glass-tone-warning-bg)]"
+          className="bg-amber-400/10"
         />
       </CollapseSection>
 
@@ -356,7 +362,7 @@ export default function AIDataModalFormPane({
         <CollapseSection label={t('aiData.photoEnv')} iconName="film">
           <div>
             <FL>{t('aiData.summary')}</FL>
-            <GlassInput
+            <StudioInput
               density="compact"
               value={photographyRules.scene_summary}
               onChange={e => onPhotographyFieldChange('scene_summary', e.target.value)}
@@ -365,7 +371,7 @@ export default function AIDataModalFormPane({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <FL>{t('aiData.lightingDirection')}</FL>
-              <GlassInput
+              <StudioInput
                 density="compact"
                 value={photographyRules.lighting?.direction ?? ''}
                 onChange={e => onPhotographyFieldChange('lighting.direction', e.target.value)}
@@ -373,7 +379,7 @@ export default function AIDataModalFormPane({
             </div>
             <div>
               <FL>{t('aiData.lightingQuality')}</FL>
-              <GlassInput
+              <StudioInput
                 density="compact"
                 value={photographyRules.lighting?.quality ?? ''}
                 onChange={e => onPhotographyFieldChange('lighting.quality', e.target.value)}
@@ -383,7 +389,7 @@ export default function AIDataModalFormPane({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <FL>{t('aiData.depthOfField')}</FL>
-              <GlassInput
+              <StudioInput
                 density="compact"
                 value={photographyRules.depth_of_field}
                 onChange={e => onPhotographyFieldChange('depth_of_field', e.target.value)}
@@ -391,7 +397,7 @@ export default function AIDataModalFormPane({
             </div>
             <div>
               <FL>{t('aiData.colorTone')}</FL>
-              <GlassInput
+              <StudioInput
                 density="compact"
                 value={photographyRules.color_tone}
                 onChange={e => onPhotographyFieldChange('color_tone', e.target.value)}

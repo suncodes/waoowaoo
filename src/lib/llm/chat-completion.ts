@@ -27,8 +27,10 @@ import {
   _ulogError,
   _ulogWarn,
   completionUsageSummary,
+  createLlmInvocationId,
   isRetryableError,
   llmLogger,
+  logLlmRawError,
   logLlmRawInput,
   logLlmRawOutput,
   recordCompletionUsage,
@@ -36,6 +38,7 @@ import {
 } from './runtime-shared'
 import { completeBailianLlm } from '@/lib/providers/bailian'
 import { completeSiliconFlowLlm } from '@/lib/providers/siliconflow'
+import { resolveStreamStepMeta } from './stream-helpers'
 
 const OFFICIAL_ONLY_PROVIDER_KEYS = new Set(['bailian', 'siliconflow'])
 
@@ -94,6 +97,8 @@ export async function chatCompletion(
     typeof options.projectId === 'string' && options.projectId.trim().length > 0
       ? options.projectId.trim()
       : undefined
+  const streamStep = resolveStreamStepMeta(options)
+  const invocationId = createLlmInvocationId()
   logLlmRawInput({
     userId,
     projectId,
@@ -105,6 +110,8 @@ export async function chatCompletion(
     reasoningEffort,
     temperature,
     action: options.action,
+    invocationId,
+    step: streamStep,
     messages,
   })
 
@@ -144,6 +151,8 @@ export async function chatCompletion(
           : 'openai_compat_chat_completions'
         logLlmRawOutput({
           userId,
+          invocationId,
+          attempt,
           projectId,
           provider: compatEngine,
           modelId: resolvedModelId,
@@ -217,6 +226,8 @@ export async function chatCompletion(
         )
         logLlmRawOutput({
           userId,
+          invocationId,
+          attempt,
           projectId,
           provider: providerKey,
           modelId: resolvedModelId,
@@ -253,6 +264,8 @@ export async function chatCompletion(
         const completionParts = getCompletionParts(completion)
         logLlmRawOutput({
           userId,
+          invocationId,
+          attempt,
           projectId,
           provider: providerKey,
           modelId: resolvedModelId,
@@ -289,6 +302,8 @@ export async function chatCompletion(
         const completionParts = getCompletionParts(completion)
         logLlmRawOutput({
           userId,
+          invocationId,
+          attempt,
           projectId,
           provider: providerKey,
           modelId: resolvedModelId,
@@ -333,6 +348,8 @@ export async function chatCompletion(
         )
         logLlmRawOutput({
           userId,
+          invocationId,
+          attempt,
           projectId,
           provider: 'ark',
           modelId: resolvedModelId,
@@ -408,6 +425,8 @@ export async function chatCompletion(
         )
         logLlmRawOutput({
           userId,
+          invocationId,
+          attempt,
           projectId,
           provider: providerName,
           modelId: resolvedModelId,
@@ -457,6 +476,8 @@ export async function chatCompletion(
       const completionParts = getCompletionParts(normalizedCompletion)
       logLlmRawOutput({
         userId,
+        invocationId,
+        attempt,
         projectId,
         provider: providerName,
         modelId: resolvedModelId,
@@ -484,6 +505,22 @@ export async function chatCompletion(
     } catch (error: unknown) {
       const normalizedError = error instanceof Error ? error : new Error(errorMessage(error))
       lastError = normalizedError
+      const retryable = isRetryableError(error) && attempt <= maxRetries
+      logLlmRawError({
+        userId,
+        projectId,
+        provider,
+        modelId: resolvedModelId,
+        modelKey: selection.modelKey,
+        stream: false,
+        action: options.action,
+        invocationId,
+        attempt,
+        retryable,
+        durationMs: Date.now() - attemptStartedAt,
+        step: streamStep,
+        error: normalizedError,
+      })
       llmLogger.warn({
         action: 'llm.call.attempt_failed',
         message: errorMessage(error) || 'llm call attempt failed',

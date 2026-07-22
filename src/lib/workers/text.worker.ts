@@ -39,6 +39,7 @@ import { handleCharacterProfileTask } from './handlers/character-profile'
 import { handleContentPlanTask } from './handlers/content-plan'
 import { handleVisualPlanTask } from './handlers/visual-plan'
 import { handleVisualQualityReviewTask } from './handlers/visual-quality-review'
+import { buildDiagnosticExport } from '@/lib/diagnostics/exporter'
 
 function readAssetKind(value: Record<string, unknown>): string {
   return typeof value.assetKind === 'string' ? value.assetKind : 'location'
@@ -657,6 +658,8 @@ async function processTextTask(job: Job<TaskJobData>) {
   await reportTaskProgress(job, 5, { stage: 'received' })
 
   switch (job.data.type) {
+    case TASK_TYPE.DIAGNOSTIC_EXPORT:
+      return await buildDiagnosticExport(job)
     case TASK_TYPE.STORY_TO_SCRIPT_RUN:
       return await handleStoryToScriptTask(job)
     case TASK_TYPE.SCRIPT_TO_STORYBOARD_RUN:

@@ -122,8 +122,6 @@ body {
 
 .glass-nav {
   background: var(--glass-bg-nav);
-  backdrop-filter: blur(var(--glass-blur-nav)) saturate(1.12);
-  -webkit-backdrop-filter: blur(var(--glass-blur-nav)) saturate(1.12);
   box-shadow: var(--glass-shadow-nav);
   border-bottom: 1px solid var(--glass-stroke-soft);
 }

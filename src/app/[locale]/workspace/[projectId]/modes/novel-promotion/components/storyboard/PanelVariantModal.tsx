@@ -1,7 +1,8 @@
 'use client'
+
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { createPortal } from 'react-dom'
+import ProductModalShell from '@/components/product/ProductModalShell'
 import TaskStatusInline from '@/components/task/TaskStatusInline'
 import { resolveTaskPresentationState } from '@/lib/task/presentation'
 import { useAnalyzeProjectShotVariants } from '@/lib/query/hooks'
@@ -9,30 +10,18 @@ import { MediaImageWithLoading } from '@/components/media/MediaImageWithLoading'
 import type { PanelInfo, ShotVariantSuggestion } from './PanelVariantModal.types'
 import PanelVariantModalSuggestionList from './PanelVariantModalSuggestionList'
 import PanelVariantModalCustomOptions from './PanelVariantModalCustomOptions'
-import { AppIcon } from '@/components/ui/icons'
 
 interface PanelVariantModalProps {
   isOpen: boolean
   onClose: () => void
   panel: PanelInfo
   projectId: string
-  onVariant: (
-    variant: Omit<ShotVariantSuggestion, 'id' | 'creative_score'>,
-    options: { includeCharacterAssets: boolean; includeLocationAsset: boolean },
-  ) => Promise<void>
+  onVariant: (variant: Omit<ShotVariantSuggestion, 'id' | 'creative_score'>, options: { includeCharacterAssets: boolean; includeLocationAsset: boolean }) => Promise<void>
   isSubmittingVariantTask: boolean
 }
 
-export default function PanelVariantModal({
-  isOpen,
-  onClose,
-  panel,
-  projectId,
-  onVariant,
-  isSubmittingVariantTask,
-}: PanelVariantModalProps) {
+export default function PanelVariantModal({ isOpen, onClose, panel, projectId, onVariant, isSubmittingVariantTask }: PanelVariantModalProps) {
   const t = useTranslations('storyboard')
-  const [mounted, setMounted] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [suggestions, setSuggestions] = useState<ShotVariantSuggestion[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -44,22 +33,17 @@ export default function PanelVariantModal({
   const analyzingRef = useRef(false)
   const analyzeShotVariantsMutation = useAnalyzeProjectShotVariants(projectId)
 
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
   const analyzeShotVariants = useCallback(async () => {
     if (analyzingRef.current) return
     analyzingRef.current = true
     setIsAnalyzing(true)
     setError(null)
     setSuggestions([])
-
     try {
       const data = await analyzeShotVariantsMutation.mutateAsync({ panelId: panel.id })
       setSuggestions(data.suggestions || [])
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : t('variant.analyzeFailed'))
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t('variant.analyzeFailed'))
     } finally {
       setIsAnalyzing(false)
       analyzingRef.current = false
@@ -68,9 +52,9 @@ export default function PanelVariantModal({
 
   useEffect(() => {
     if (!isOpen || !panel.imageUrl) return
-    const autoAnalyzeKey = `${panel.id}:${panel.imageUrl}`
-    if (autoAnalyzeKeyRef.current === autoAnalyzeKey) return
-    autoAnalyzeKeyRef.current = autoAnalyzeKey
+    const key = `${panel.id}:${panel.imageUrl}`
+    if (autoAnalyzeKeyRef.current === key) return
+    autoAnalyzeKeyRef.current = key
     void analyzeShotVariants()
   }, [analyzeShotVariants, isOpen, panel.id, panel.imageUrl])
 
@@ -80,172 +64,45 @@ export default function PanelVariantModal({
     analyzingRef.current = false
   }, [isOpen])
 
-  const handleSelectVariant = async (suggestion: ShotVariantSuggestion) => {
+  const close = () => {
+    if (isSubmittingVariantTask || isAnalyzing) return
+    setSuggestions([])
+    setError(null)
+    setCustomInput('')
+    setSelectedVariantId(null)
+    onClose()
+  }
+  const selectVariant = async (suggestion: ShotVariantSuggestion) => {
     setSelectedVariantId(suggestion.id)
-    await onVariant(
-      {
-        title: suggestion.title,
-        description: suggestion.description,
-        shot_type: suggestion.shot_type,
-        camera_move: suggestion.camera_move,
-        video_prompt: suggestion.video_prompt,
-      },
-      { includeCharacterAssets, includeLocationAsset },
-    )
+    await onVariant({ title: suggestion.title, description: suggestion.description, shot_type: suggestion.shot_type, camera_move: suggestion.camera_move, video_prompt: suggestion.video_prompt }, { includeCharacterAssets, includeLocationAsset })
   }
-
-  const handleCustomVariant = async () => {
+  const customVariant = async () => {
     if (!customInput.trim()) return
-
-    await onVariant(
-      {
-        title: t('variant.customVariant'),
-        description: customInput,
-        shot_type: t('variant.defaultShotType'),
-        camera_move: t('variant.defaultCameraMove'),
-        video_prompt: customInput,
-      },
-      { includeCharacterAssets, includeLocationAsset },
-    )
+    await onVariant({ title: t('variant.customVariant'), description: customInput, shot_type: t('variant.defaultShotType'), camera_move: t('variant.defaultCameraMove'), video_prompt: customInput }, { includeCharacterAssets, includeLocationAsset })
   }
+  const variantTaskState = isSubmittingVariantTask ? resolveTaskPresentationState({ phase: 'processing', intent: 'generate', resource: 'image', hasOutput: !!panel.imageUrl }) : null
+  const analyzeTaskState = isAnalyzing ? resolveTaskPresentationState({ phase: 'processing', intent: 'analyze', resource: 'image', hasOutput: false }) : null
 
-  const handleClose = () => {
-    if (!isSubmittingVariantTask && !isAnalyzing) {
-      setSuggestions([])
-      setError(null)
-      setCustomInput('')
-      setSelectedVariantId(null)
-      autoAnalyzeKeyRef.current = null
-      analyzingRef.current = false
-      onClose()
-    }
-  }
-
-  const variantTaskRunningState = isSubmittingVariantTask
-    ? resolveTaskPresentationState({
-      phase: 'processing',
-      intent: 'generate',
-      resource: 'image',
-      hasOutput: !!panel.imageUrl,
-    })
-    : null
-
-  const analyzeTaskRunningState = isAnalyzing
-    ? resolveTaskPresentationState({
-      phase: 'processing',
-      intent: 'analyze',
-      resource: 'image',
-      hasOutput: false,
-    })
-    : null
-
-  if (!isOpen || !mounted) return null
-
-  const modalContent = (
-    <div
-      className="fixed inset-0 glass-overlay flex items-center justify-center p-4"
-      style={{ zIndex: 9999 }}
-      onClick={handleClose}
-    >
-      <div
-        className="glass-surface-modal w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="px-5 py-3 border-b border-[var(--glass-stroke-base)] flex items-center justify-between">
-          <h2 className="text-base font-bold text-[var(--glass-text-primary)] flex items-center gap-2">
-            <AppIcon name="videoWide" className="h-4 w-4 text-[var(--glass-text-secondary)]" />
-            {t('variant.shotTitle', { number: panel.panelNumber ?? '' })}
-          </h2>
-          <button
-            onClick={handleClose}
-            disabled={isSubmittingVariantTask || isAnalyzing}
-            className="glass-btn-base glass-btn-soft p-1.5 disabled:opacity-50"
-          >
-            <AppIcon name="close" className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
-          <div className="flex gap-4 items-start">
-            <div className="w-32 flex-shrink-0">
-              {panel.imageUrl ? (
-                <MediaImageWithLoading
-                  src={panel.imageUrl}
-                  alt={t('variant.shotNum', { number: panel.panelNumber ?? '' })}
-                  containerClassName="w-full aspect-[9/16] rounded-lg shadow-[var(--glass-shadow-sm)]"
-                  className="w-full aspect-[9/16] object-cover rounded-lg shadow-[var(--glass-shadow-sm)]"
-                  width={256}
-                  height={456}
-                  sizes="128px"
-                />
-              ) : (
-                <div className="w-full aspect-[9/16] bg-[var(--glass-bg-muted)] rounded-lg flex items-center justify-center text-[var(--glass-text-tertiary)] text-xs">
-                  {t('variant.noImage')}
-                </div>
-              )}
-              <div className="text-xs text-[var(--glass-text-tertiary)] mt-1 text-center">#{panel.panelNumber}</div>
-            </div>
-            <div className="flex-1">
-              <h3 className="text-sm font-medium text-[var(--glass-text-primary)] mb-1">{t('variant.originalDescription')}</h3>
-              <p className="text-sm text-[var(--glass-text-secondary)]">{panel.description || t('variant.noDescription')}</p>
-            </div>
-          </div>
-
-          <div className="glass-divider" />
-
-          <PanelVariantModalSuggestionList
-            isAnalyzing={isAnalyzing}
-            suggestions={suggestions}
-            error={error}
-            selectedVariantId={selectedVariantId}
-            isSubmittingVariantTask={isSubmittingVariantTask}
-            analyzeTaskRunningState={analyzeTaskRunningState}
-            variantTaskRunningState={variantTaskRunningState}
-            onReanalyze={analyzeShotVariants}
-            onSelectVariant={(suggestion) => {
-              void handleSelectVariant(suggestion)
-            }}
-          />
-
-          <div className="glass-divider" />
-
-          <PanelVariantModalCustomOptions
-            customInput={customInput}
-            includeCharacterAssets={includeCharacterAssets}
-            includeLocationAsset={includeLocationAsset}
-            isSubmittingVariantTask={isSubmittingVariantTask}
-            onCustomInputChange={setCustomInput}
-            onIncludeCharacterAssetsChange={setIncludeCharacterAssets}
-            onIncludeLocationAssetChange={setIncludeLocationAsset}
-          />
-        </div>
-
-        <div className="px-5 py-3 border-t border-[var(--glass-stroke-base)] flex justify-end gap-3">
-          <button
-            onClick={handleClose}
-            disabled={isSubmittingVariantTask || isAnalyzing}
-            className="glass-btn-base glass-btn-secondary px-4 py-2 text-sm disabled:opacity-50"
-          >
-            {t('candidate.cancel')}
-          </button>
-          <button
-            onClick={() => {
-              void handleCustomVariant()
-            }}
-            disabled={isSubmittingVariantTask || !customInput.trim()}
-            className={`glass-btn-base px-4 py-2 text-sm rounded-lg ${isSubmittingVariantTask || !customInput.trim() ? 'glass-btn-soft text-[var(--glass-text-tertiary)] cursor-not-allowed' : 'glass-btn-primary text-white'}`}
-          >
-            {isSubmittingVariantTask ? (
-              <TaskStatusInline
-                state={variantTaskRunningState}
-                className="text-[var(--glass-text-tertiary)] [&>span]:text-[var(--glass-text-tertiary)] [&_svg]:text-[var(--glass-text-tertiary)]"
-              />
-            ) : t('variant.useCustomGenerate')}
-          </button>
-        </div>
+  return (
+    <ProductModalShell open={isOpen} onClose={close} closeOnBackdrop={!isSubmittingVariantTask && !isAnalyzing} size="lg" eyebrow="镜头变体" title={t('variant.shotTitle', { number: panel.panelNumber ?? '' })} description="先比较 AI 推荐方案，再生成一个新的镜头版本。" footer={(
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <button type="button" onClick={close} disabled={isSubmittingVariantTask || isAnalyzing} className="h-9 rounded-md border border-white/10 bg-white/[0.04] px-3 text-xs font-semibold text-stone-200 hover:bg-white/[0.08] disabled:opacity-50">{t('candidate.cancel')}</button>
+        <button type="button" onClick={() => { void customVariant() }} disabled={isSubmittingVariantTask || !customInput.trim()} className="inline-flex h-9 items-center gap-2 rounded-md bg-[#f3e9cf] px-4 text-xs font-semibold text-[#161512] hover:bg-[#fff5d9] disabled:cursor-not-allowed disabled:opacity-45">
+          {isSubmittingVariantTask ? <TaskStatusInline state={variantTaskState} /> : t('variant.useCustomGenerate')}
+        </button>
       </div>
-    </div>
+    )}>
+      <div className="space-y-5">
+        <div className="grid gap-4 sm:grid-cols-[128px_minmax(0,1fr)]">
+          <div>
+            {panel.imageUrl ? <MediaImageWithLoading src={panel.imageUrl} alt={t('variant.shotNum', { number: panel.panelNumber ?? '' })} containerClassName="aspect-[9/16] w-full rounded-md" className="h-full w-full rounded-md object-cover" sizes="128px" /> : <div className="flex aspect-[9/16] items-center justify-center rounded-md bg-[#10110f] text-xs text-stone-600">{t('variant.noImage')}</div>}
+            <div className="mt-2 text-center text-xs text-stone-500">#{panel.panelNumber}</div>
+          </div>
+          <div><h3 className="text-sm font-semibold text-stone-200">{t('variant.originalDescription')}</h3><p className="mt-2 text-sm leading-6 text-stone-400">{panel.description || t('variant.noDescription')}</p></div>
+        </div>
+        <PanelVariantModalSuggestionList isAnalyzing={isAnalyzing} suggestions={suggestions} error={error} selectedVariantId={selectedVariantId} isSubmittingVariantTask={isSubmittingVariantTask} analyzeTaskRunningState={analyzeTaskState} variantTaskRunningState={variantTaskState} onReanalyze={analyzeShotVariants} onSelectVariant={(suggestion) => { void selectVariant(suggestion) }} />
+        <PanelVariantModalCustomOptions customInput={customInput} includeCharacterAssets={includeCharacterAssets} includeLocationAsset={includeLocationAsset} isSubmittingVariantTask={isSubmittingVariantTask} onCustomInputChange={setCustomInput} onIncludeCharacterAssetsChange={setIncludeCharacterAssets} onIncludeLocationAssetChange={setIncludeLocationAsset} />
+      </div>
+    </ProductModalShell>
   )
-
-  return createPortal(modalContent, document.body)
 }

@@ -9,6 +9,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import ProductShell from '@/components/product/ProductShell'
 import { FolderSidebar } from './components/FolderSidebar'
 import { AssetGrid } from './components/AssetGrid'
+import AssetInspector from './components/AssetInspector'
 import { CharacterCreationModal, LocationCreationModal, PropCreationModal, CharacterEditModal, LocationEditModal, PropEditModal } from '@/components/shared/assets'
 import { FolderModal } from './components/FolderModal'
 import ImagePreviewModal from '@/components/ui/ImagePreviewModal'
@@ -27,6 +28,7 @@ import { queryKeys } from '@/lib/query/keys'
 import { AppIcon } from '@/components/ui/icons'
 import { Link } from '@/i18n/navigation'
 import { useImageGenerationCount } from '@/lib/image-generation/use-image-generation-count'
+import type { AssetSummary } from '@/lib/assets/contracts'
 
 export default function AssetHubPage() {
     const t = useTranslations('assetHub')
@@ -36,6 +38,7 @@ export default function AssetHubPage() {
 
     // 文件夹选择状态
     const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null)
+    const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
 
     // 使用 React Query 获取数据
     const { data: folders = [], isLoading: foldersLoading } = useGlobalFolders()
@@ -49,6 +52,7 @@ export default function AssetHubPage() {
     const refreshAssets = useRefreshAssets({ scope: 'global' })
 
     const loading = foldersLoading || assetsLoading
+    const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) || assets[0] || null
     useSSE({ projectId: 'global-asset-hub', enabled: true })
 
     // 弹窗状态
@@ -450,6 +454,21 @@ export default function AssetHubPage() {
         }
     }
 
+    const handleInspectorEdit = (asset: AssetSummary) => {
+        if (asset.kind === 'character') {
+            const variant = asset.variants[0]
+            if (variant) handleOpenCharacterEdit(asset, variant)
+            return
+        }
+        if (asset.kind === 'location') {
+            handleOpenLocationEdit(asset, asset.variants[0]?.index || 0)
+            return
+        }
+        if (asset.kind === 'prop') {
+            handleOpenPropEdit(asset, asset.variants[0]?.index || 0)
+        }
+    }
+
     return (
         <ProductShell maxWidth="wide">
             <div className="space-y-5">
@@ -471,7 +490,7 @@ export default function AssetHubPage() {
                     </div>
                 </section>
 
-                <section className="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
+                <section className="grid items-start gap-4 lg:grid-cols-[230px_minmax(0,1fr)_320px]">
                     <FolderSidebar
                         folders={folders}
                         selectedFolderId={selectedFolderId}
@@ -487,7 +506,7 @@ export default function AssetHubPage() {
                         onDeleteFolder={handleDeleteFolder}
                     />
 
-                    <div className="min-w-0 rounded-lg border border-white/10 bg-[#10110e] p-5">
+                    <div className="min-w-0 border border-[#2a2f25] bg-[#121510] p-5">
                         <AssetGrid
                             assets={assets}
                             loading={loading}
@@ -505,8 +524,11 @@ export default function AssetHubPage() {
                             onLocationEdit={handleOpenLocationEdit}
                             onPropEdit={handleOpenPropEdit}
                             onVoiceSelect={(characterId) => setVoicePickerCharacterId(characterId)}
+                            onAssetSelect={setSelectedAssetId}
+                            selectedAssetId={selectedAsset?.id || null}
                         />
                     </div>
+                    <AssetInspector asset={selectedAsset} onPreview={setPreviewImage} onEdit={handleInspectorEdit} />
                 </section>
             </div>
 

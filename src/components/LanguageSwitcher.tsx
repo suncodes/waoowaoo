@@ -96,15 +96,15 @@ export default function LanguageSwitcher() {
                     onClick={() => setIsMenuOpen((prev) => !prev)}
                     aria-label={SWITCH_CONFIRM_COPY[targetLocale].triggerLabel}
                     aria-expanded={isMenuOpen}
-                    className="glass-btn-base glass-btn-secondary inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
+                    className="inline-flex items-center gap-2 border border-[#2a2f25] bg-[#151813] px-3 py-2 text-sm text-[#9ca294] transition-colors hover:bg-[#20241d] hover:text-[#eff1e8]"
                 >
                     <AppIcon name="globe" className="h-4 w-4" />
                     <span>{LANGUAGE_LABELS[currentLocale]}</span>
-                    <AppIcon name="chevronDown" className="h-4 w-4 text-[var(--glass-text-tertiary)]" />
+                    <AppIcon name="chevronDown" className="h-4 w-4 text-[#777d70]" />
                 </button>
 
                 {isMenuOpen ? (
-                    <div className="glass-surface-modal absolute right-0 z-50 mt-2 w-44 rounded-xl p-2">
+                    <div className="absolute right-0 z-50 mt-2 w-44 border border-[#2a2f25] bg-[#151813] p-2 shadow-[0_18px_60px_rgba(0,0,0,0.42)]">
                         {(Object.entries(LANGUAGE_LABELS) as Array<[Locale, string]>).map(([locale, label]) => {
                             const isActive = locale === currentLocale
                             return (
@@ -112,9 +112,9 @@ export default function LanguageSwitcher() {
                                     key={locale}
                                     type="button"
                                     onClick={() => requestLanguageSwitch(locale)}
-                                    className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${isActive
-                                        ? 'bg-[var(--glass-fill-active)] text-[var(--glass-text-primary)]'
-                                        : 'text-[var(--glass-text-secondary)] hover:bg-[var(--glass-fill-hover)] hover:text-[var(--glass-text-primary)]'
+                                    className={`w-full px-3 py-2 text-left text-sm transition-colors ${isActive
+                                        ? 'bg-[#e8d18a]/15 text-[#f3e9cf]'
+                                        : 'text-[#9ca294] hover:bg-[#20241d] hover:text-[#eff1e8]'
                                         }`}
                                 >
                                     {label}

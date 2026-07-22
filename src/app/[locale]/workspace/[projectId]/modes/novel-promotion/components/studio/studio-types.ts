@@ -78,6 +78,7 @@ export interface StudioProductionItem {
 
 export interface StudioGenerationJob {
   id: string
+  taskId?: string
   label: string
   status: StudioProductStatus
   progress: number

@@ -6,14 +6,13 @@ import { AppIcon } from '@/components/ui/icons'
 import type { NovelPromotionPanel, NovelPromotionStoryboard } from '@/types/project'
 import { useWorkspaceStageRuntime } from '../../WorkspaceStageRuntimeContext'
 import { useWorkspaceEpisodeStageData } from '../../hooks/useWorkspaceEpisodeStageData'
-import VideoStageRoute from '../VideoStageRoute'
 import VoiceStageRoute from '../VoiceStageRoute'
 import { getStoryboardPanels } from '../storyboard/hooks/storyboard-state-utils'
 import {
-  StudioAdvancedPanel,
   StudioButton,
   StudioEmptyState,
   StudioMetric,
+  StudioPanel,
   StudioSectionHeader,
   StudioStageHeader,
   StudioStatusBadge,
@@ -289,7 +288,6 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
   const runtime = useWorkspaceStageRuntime()
   const { storyboards } = useWorkspaceEpisodeStageData()
   const [selectedId, setSelectedId] = useState('')
-  const [showVideoWorkbench, setShowVideoWorkbench] = useState(false)
   const [showVoiceWorkbench, setShowVoiceWorkbench] = useState(false)
   const [generatingAll, setGeneratingAll] = useState(false)
   const items = useMemo(() => buildItems(storyboards), [storyboards])
@@ -363,25 +361,28 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
         </div>
       </section>
 
-      <StudioAdvancedPanel title="视频专家面板" description="首尾帧、批量参数和更细的视频控制集中在此面板。">
-        {showVideoWorkbench ? (
-          <VideoStageRoute />
-        ) : (
-          <StudioButton size="sm" variant="secondary" onClick={() => setShowVideoWorkbench(true)}>
-            打开视频专家工具
+      <StudioPanel padding="none">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
+          <StudioSectionHeader
+            title="配音与口型"
+            description="在独立工作台中处理说话人音色、台词音频和口型同步。"
+          />
+          <StudioButton size="sm" variant="secondary" icon={showVoiceWorkbench ? 'chevronUp' : 'mic'} onClick={() => setShowVoiceWorkbench((value) => !value)}>
+            {showVoiceWorkbench ? '收起配音工作台' : '打开配音工作台'}
           </StudioButton>
-        )}
-      </StudioAdvancedPanel>
-
-      <StudioAdvancedPanel title="配音专家面板" description="声音生成、音频检查和口型同步的细节控制集中在此面板。">
+        </div>
         {showVoiceWorkbench ? (
-          <VoiceStageRoute />
+          <div className="bg-[#10110f] p-4 text-stone-100">
+            <VoiceStageRoute embedded />
+          </div>
         ) : (
-          <StudioButton size="sm" variant="secondary" onClick={() => setShowVoiceWorkbench(true)}>
-            打开配音专家工具
-          </StudioButton>
+          <div className="grid gap-3 px-5 py-5 md:grid-cols-3">
+            <StudioMetric label="工作范围" value="音色、台词、口型" />
+            <StudioMetric label="进入方式" value="按需打开" helper="不与视频队列重复展示" />
+            <StudioMetric label="输出" value="音频与口型视频" />
+          </div>
         )}
-      </StudioAdvancedPanel>
+      </StudioPanel>
     </div>
   )
 }

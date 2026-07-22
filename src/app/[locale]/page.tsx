@@ -4,98 +4,63 @@ import { useEffect } from 'react'
 import Image from 'next/image'
 import { useTranslations } from 'next-intl'
 import { useSession } from 'next-auth/react'
-import { useRouter } from '@/i18n/navigation'
+import { useRouter, Link } from '@/i18n/navigation'
 import Navbar from '@/components/Navbar'
-import { Link } from '@/i18n/navigation'
+import { AppIcon } from '@/components/ui/icons'
 import { buildAuthenticatedHomeTarget } from '@/lib/home/default-route'
 
 export default function Home() {
   const t = useTranslations('landing')
-  const { data: session, status } = useSession()
+  const { status } = useSession()
   const router = useRouter()
 
-  // 已登录用户自动跳转到 home
   useEffect(() => {
-    if (status === 'authenticated') {
-      router.replace(buildAuthenticatedHomeTarget())
-    }
-  }, [status, router])
+    if (status === 'authenticated') router.replace(buildAuthenticatedHomeTarget())
+  }, [router, status])
 
-  // session 加载中或已登录（即将跳转），不渲染落地页，避免闪烁
   if (status !== 'unauthenticated') {
     return (
-      <div className="glass-page min-h-screen flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <Image
-            src="/logo-small.png?v=1"
-            alt="waoowaoo"
-            width={80}
-            height={80}
-            className="animate-pulse"
-          />
-        </div>
+      <div className="flex min-h-screen items-center justify-center bg-[#0b0d0a]">
+        <div className="flex items-center gap-3 text-sm text-[#777d70]"><AppIcon name="loader" className="h-4 w-4 animate-spin" />正在进入创作台</div>
       </div>
     )
   }
 
+  const workflow = [
+    ['项目简报', '确定 AI 漫剧或书籍导读的内容目标。'],
+    ['文稿与资产', '编辑文稿，生成并确认角色、场景和道具。'],
+    ['分镜与生产', '组织镜头、生成画面、视频与配音。'],
+    ['交付与诊断', '导出成片以及完整流程诊断包。'],
+  ]
+
   return (
-    <div className="glass-page min-h-screen overflow-hidden font-sans selection:bg-[var(--glass-tone-info-bg)]">
-      {/* Navbar */}
-      <div className="relative z-50">
-        <Navbar />
-      </div>
-
-      {/* Background */}
-      <div className="fixed inset-0 z-0 pointer-events-none">
-        <div className="absolute inset-0 bg-[radial-gradient(1200px_600px_at_80%_-10%,rgba(138,170,255,0.12),transparent),radial-gradient(900px_500px_at_0%_100%,rgba(148,163,184,0.16),transparent)]"></div>
-      </div>
-
-      <main className="relative z-10">
-        <section className="relative min-h-screen flex items-center justify-center -mt-16 px-4">
-          <div className="container mx-auto grid lg:grid-cols-2 gap-16 items-center">
-            <div className="text-left space-y-8 animate-slide-up" style={{ animationDuration: '0.8s' }}>
-              <h1 className="text-5xl md:text-7xl font-bold tracking-tight leading-[1.1] animate-fade-in" style={{ animationDelay: '0.2s' }}>
-                <span className="block text-[var(--glass-text-primary)]">
-                  {t('title')}
-                </span>
-                <span className="text-[var(--glass-tone-info-fg)]">
-                  {t('subtitle')}
-                </span>
-              </h1>
-
-              <div className="flex flex-wrap gap-4 pt-4 animate-fade-in" style={{ animationDelay: '0.6s' }}>
-                <Link
-                  href={{ pathname: '/auth/signup' }}
-                  className="glass-btn-base glass-btn-primary px-8 py-4 rounded-xl font-semibold transition-all duration-300"
-                >
-                  {t('getStarted')}
-                </Link>
+    <div className="min-h-screen bg-[#0b0d0a] text-[#eff1e8]">
+      <div className="sticky top-0 z-50"><Navbar /></div>
+      <main>
+        <section className="relative min-h-[calc(100dvh-72px)] overflow-hidden border-b border-[#252820]">
+          <Image src="/banner.png" alt="Waoo Studio 创作工作台" fill priority sizes="100vw" className="object-cover object-center" />
+          <div className="absolute inset-0 bg-black/58" />
+          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(11,13,10,0.96)_0%,rgba(11,13,10,0.76)_48%,rgba(11,13,10,0.18)_100%)]" />
+          <div className="relative mx-auto flex min-h-[calc(100dvh-72px)] max-w-[1440px] items-center px-5 pb-28 pt-16 sm:px-8 lg:px-12">
+            <div className="max-w-3xl">
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#d4b86f]">AI STORY PRODUCTION</p>
+              <h1 className="mt-5 text-4xl font-semibold leading-tight tracking-normal text-white sm:text-6xl">Waoo Studio</h1>
+              <p className="mt-5 max-w-2xl text-lg leading-8 text-[#d3d7cc]">{t('title')}。{t('subtitle')}</p>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <Link href={{ pathname: '/auth/signup' }} className="inline-flex h-11 items-center gap-2 bg-[#e8d18a] px-5 text-sm font-semibold text-[#171810] hover:bg-[#f3e9cf]"><AppIcon name="clapperboard" className="h-4 w-4" />{t('getStarted')}</Link>
+                <Link href={{ pathname: '/auth/signin' }} className="inline-flex h-11 items-center border border-white/25 bg-black/25 px-5 text-sm font-semibold text-white hover:bg-black/45">登录工作区</Link>
               </div>
             </div>
-
-            <div className="relative h-[600px] hidden lg:flex items-center justify-center animate-scale-in" style={{ animationDuration: '1s' }}>
-              <div className="relative w-full max-w-md aspect-square">
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[120%] bg-[radial-gradient(circle,rgba(148,163,184,0.2),transparent_65%)] rounded-full blur-3xl opacity-70"></div>
-                <div className="absolute top-0 right-10 w-64 h-80 glass-surface rounded-3xl transform rotate-6 animate-float-delayed"></div>
-                <div className="absolute bottom-10 left-10 w-72 h-80 glass-surface-soft rounded-3xl transform -rotate-3 animate-float-slow"></div>
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-96 glass-surface-modal rounded-3xl overflow-hidden animate-float">
-                  <div className="p-6 h-full flex flex-col">
-                    <div className="w-full h-48 bg-[var(--glass-bg-muted)] rounded-2xl mb-6 relative overflow-hidden group">
-                      <div className="absolute inset-0 bg-[var(--glass-tone-info-bg)]/20 group-hover:bg-[var(--glass-tone-info-bg)]/35 transition-colors"></div>
-                      <div className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[var(--glass-bg-surface)]"></div>
-                      <div className="absolute bottom-4 left-4 w-12 h-12 rounded-lg bg-[var(--glass-bg-surface-strong)] rotate-12"></div>
-                    </div>
-                    <div className="space-y-3">
-                      <div className="h-3 w-3/4 bg-[var(--glass-bg-muted)] rounded-full"></div>
-                      <div className="h-3 w-1/2 bg-[var(--glass-bg-muted)] rounded-full"></div>
-                      <div className="pt-4 flex gap-2">
-                        <div className="h-10 w-10 rounded-full bg-[var(--glass-bg-surface)] border border-[var(--glass-stroke-soft)]"></div>
-                        <div className="h-10 flex-1 rounded-full bg-[var(--glass-tone-info-bg)]/40 border border-[var(--glass-stroke-base)]"></div>
-                      </div>
-                    </div>
-                  </div>
+          </div>
+          <div className="absolute inset-x-0 bottom-0 border-t border-white/10 bg-[#0b0d0a]/88 backdrop-blur-md">
+            <div className="mx-auto grid max-w-[1440px] grid-cols-2 gap-px bg-white/10 sm:grid-cols-4">
+              {workflow.map(([title, description], index) => (
+                <div key={title} className="bg-[#11140f]/96 px-4 py-4 sm:px-5">
+                  <div className="text-[10px] font-bold text-[#b99b58]">0{index + 1}</div>
+                  <div className="mt-1 text-sm font-semibold text-white">{title}</div>
+                  <div className="mt-1 hidden text-xs leading-5 text-[#777d70] lg:block">{description}</div>
                 </div>
-              </div>
+              ))}
             </div>
           </div>
         </section>

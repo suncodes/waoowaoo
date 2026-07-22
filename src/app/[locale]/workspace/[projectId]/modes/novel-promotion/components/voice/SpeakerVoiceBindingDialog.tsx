@@ -1,12 +1,12 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { createPortal } from 'react-dom'
 import { useTranslations } from 'next-intl'
 import VoicePickerDialog from '@/app/[locale]/workspace/asset-hub/components/VoicePickerDialog'
 import VoiceCreationModal from '@/app/[locale]/workspace/asset-hub/components/VoiceCreationModal'
 import { AppIcon } from '@/components/ui/icons'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
+import ProductModalShell from '@/components/product/ProductModalShell'
 import type { InlineSpeakerVoiceBinding } from '@/lib/novel-promotion/stages/voice-stage-runtime/types'
 
 type BindingTab = 'select' | 'upload' | 'design'
@@ -88,7 +88,6 @@ export default function SpeakerVoiceBindingDialog({
     }, [confirmUploadVoice])
 
     if (!isOpen) return null
-    if (typeof document === 'undefined') return null
 
     // 音色库选择 — 直接渲染 VoicePickerDialog
     if (activeTab === 'select' && subDialogOpen) {
@@ -115,34 +114,9 @@ export default function SpeakerVoiceBindingDialog({
     }
 
     // 主弹窗：Tab 切换
-    return createPortal(
-        <>
-            <div className="fixed inset-0 z-[9999] glass-overlay" onClick={handleClose} />
-            <div
-                className="fixed z-[10000] left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 glass-surface-modal w-full max-w-md overflow-hidden"
-                onClick={(e) => e.stopPropagation()}
-            >
-                {/* 头部 */}
-                <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--glass-stroke-base)] bg-[var(--glass-bg-surface-strong)]">
-                    <div className="flex items-center gap-2 min-w-0">
-                        <AppIcon name="mic" className="w-5 h-5 text-[var(--glass-tone-info-fg)] shrink-0" />
-                        <h2 className="font-semibold text-[var(--glass-text-primary)] truncate">
-                            {t('title', { speaker })}
-                        </h2>
-                    </div>
-                    <button onClick={handleClose} className="glass-btn-base glass-btn-soft p-1 text-[var(--glass-text-tertiary)] shrink-0">
-                        <AppIcon name="close" className="w-5 h-5" />
-                    </button>
-                </div>
-
-                {/* 描述 */}
-                <div className="px-5 pt-4 pb-2">
-                    <p className="text-sm text-[var(--glass-text-secondary)]">
-                        {t('description')}
-                    </p>
-                </div>
-
-                <div className="px-5 py-3">
+    return (
+        <ProductModalShell open onClose={handleClose} size="md" eyebrow="音色绑定" title={t('title', { speaker })} description={t('description')}>
+                <div className="py-1">
                     <SegmentedControl
                         options={[
                             { value: 'select' as const, label: t('selectFromLibrary') },
@@ -155,21 +129,21 @@ export default function SpeakerVoiceBindingDialog({
                 </div>
 
                 {/* Tab 内容区 — 显示描述和进入按钮 */}
-                <div className="p-5">
-                    <div className="text-center py-6">
-                        <div className={`w-14 h-14 mx-auto rounded-full flex items-center justify-center mb-3 ${activeTab === 'select' ? 'bg-[var(--glass-tone-info-bg)]'
-                            : activeTab === 'upload' ? 'bg-[var(--glass-tone-success-bg)]'
-                                : 'bg-[var(--glass-accent-bg,var(--glass-tone-info-bg))]'
+                <div className="pt-5">
+                    <div className="rounded-md border border-white/10 bg-white/[0.03] px-5 py-8 text-center">
+                        <div className={`mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-md ${activeTab === 'select' ? 'bg-cyan-400/10'
+                            : activeTab === 'upload' ? 'bg-emerald-400/10'
+                                : 'bg-amber-400/10'
                             }`}>
                             <AppIcon
                                 name={activeTab === 'select' ? 'mic' : activeTab === 'upload' ? 'cloudUpload' : 'idea'}
-                                className={`w-6 h-6 ${activeTab === 'select' ? 'text-[var(--glass-tone-info-fg)]'
-                                    : activeTab === 'upload' ? 'text-[var(--glass-tone-success-fg)]'
-                                        : 'text-[var(--glass-accent-from,var(--glass-tone-info-fg))]'
+                                className={`h-6 w-6 ${activeTab === 'select' ? 'text-cyan-100'
+                                    : activeTab === 'upload' ? 'text-emerald-200'
+                                        : 'text-amber-200'
                                     }`}
                             />
                         </div>
-                        <p className="text-sm text-[var(--glass-text-secondary)] mb-4">
+                        <p className="mb-4 text-sm text-stone-400">
                             {activeTab === 'select' && t('selectFromLibraryDesc')}
                             {activeTab === 'upload' && t('uploadAudioDesc')}
                             {activeTab === 'design' && t('aiDesignDesc')}
@@ -179,7 +153,7 @@ export default function SpeakerVoiceBindingDialog({
                                 if (activeTab === 'upload' && !confirmUploadVoice()) return
                                 setSubDialogOpen(true)
                             }}
-                            className="glass-btn-base glass-btn-primary px-8 py-2.5 rounded-lg text-sm font-medium"
+                            className="inline-flex h-10 items-center rounded-md bg-[#f3e9cf] px-6 text-sm font-semibold text-[#161512] hover:bg-[#fff5d9]"
                         >
                             {activeTab === 'select' && t('selectFromLibrary')}
                             {activeTab === 'upload' && t('uploadAudio')}
@@ -187,8 +161,6 @@ export default function SpeakerVoiceBindingDialog({
                         </button>
                     </div>
                 </div>
-            </div>
-        </>,
-        document.body,
+        </ProductModalShell>
     )
 }

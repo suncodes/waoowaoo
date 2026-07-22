@@ -47,24 +47,24 @@ export default function EmotionSettingsPanel({
     }
 
     return (
-        <div className="px-4 py-3 bg-[var(--glass-tone-info-bg)] space-y-3">
+        <div className="space-y-3 border-t border-white/10 bg-cyan-400/[0.06] px-4 py-3">
             {/* 情绪提示词 */}
             <div>
-                <label className="block text-xs text-[var(--glass-tone-info-fg)] mb-1.5 font-medium">
-                    {t("emotionPrompt")} <span className="text-[var(--glass-text-tertiary)] font-normal">{t("emotionPromptTip")}</span>
+                <label className="mb-1.5 block text-xs font-semibold text-cyan-100">
+                    {t("emotionPrompt")} <span className="font-normal text-stone-500">{t("emotionPromptTip")}</span>
                 </label>
                 <input
                     type="text"
                     value={prompt}
                     onChange={(e) => handlePromptChange(e.target.value)}
                     placeholder={t("emotionPlaceholder")}
-                    className="w-full px-3 py-2 text-sm border border-[var(--glass-stroke-focus)]/60 rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--glass-tone-info-fg)]/50 focus:border-[var(--glass-stroke-focus)] bg-[var(--glass-bg-surface)]"
+                    className="h-9 w-full rounded-md border border-white/10 bg-[#10110f] px-3 text-sm text-stone-100 outline-none focus:border-[#e8d18a]"
                 />
             </div>
 
             {/* 情绪强度滑块 */}
             <div>
-                <label className="block text-xs text-[var(--glass-tone-info-fg)] mb-1.5 font-medium">
+                <label className="mb-1.5 block text-xs font-semibold text-cyan-100">
                     {t("emotionStrength")}: <span className="font-bold">{strength.toFixed(1)}</span>
                 </label>
                 <input
@@ -74,9 +74,9 @@ export default function EmotionSettingsPanel({
                     step="0.1"
                     value={strength}
                     onChange={(e) => handleStrengthChange(parseFloat(e.target.value))}
-                    className="w-full h-2 bg-[var(--glass-tone-info-bg)] rounded-lg appearance-none cursor-pointer accent-[var(--glass-accent-from)]"
+                    className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-white/10 accent-[#e8d18a]"
                 />
-                <div className="flex justify-between text-[10px] text-[var(--glass-text-tertiary)] mt-1">
+                <div className="mt-1 flex justify-between text-[10px] text-stone-500">
                     <span>{t("flat")}</span>
                     <span>{t("intense")}</span>
                 </div>
@@ -86,7 +86,7 @@ export default function EmotionSettingsPanel({
             <button
                 onClick={handleGenerate}
                 disabled={isVoiceGenerationRunning}
-                className="w-full py-2 text-sm bg-[var(--glass-tone-success-fg)] text-white rounded-xl hover:bg-[var(--glass-tone-success-fg)] font-medium transition-all shadow-[var(--glass-shadow-sm)] disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full rounded-md bg-emerald-500 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
             >
                 {isVoiceGenerationRunning ? (
                     <TaskStatusInline state={voiceGenerationState} className="justify-center text-white [&>span]:text-white [&_svg]:text-white" />

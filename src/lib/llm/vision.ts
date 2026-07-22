@@ -10,7 +10,7 @@ import type { ChatCompletionOptions, ChatCompletionStreamCallbacks } from './typ
 import { arkResponsesCompletion } from './providers/ark'
 import { extractGoogleText, extractGoogleUsage } from './providers/google'
 import { buildOpenAIChatCompletion } from './providers/openai-compat'
-import { emitChunkedText } from './stream-helpers'
+import { emitChunkedText, resolveStreamStepMeta } from './stream-helpers'
 import { getCompletionParts } from './completion-parts'
 import {
   _ulogError,
@@ -18,6 +18,11 @@ import {
   _ulogWarn,
   isRetryableError,
   llmLogger,
+  completionUsageSummary,
+  createLlmInvocationId,
+  logLlmRawError,
+  logLlmRawInput,
+  logLlmRawOutput,
   recordCompletionUsage,
   resolveLlmRuntimeModel,
 } from './runtime-shared'
@@ -76,6 +81,46 @@ export async function chatCompletionWithVision(
   const providerKey = getProviderKey(provider).toLowerCase()
 
   const { temperature = 0.7, maxRetries = 2, reasoning = true } = options
+  const projectId = typeof options.projectId === 'string' && options.projectId.trim()
+    ? options.projectId.trim()
+    : undefined
+  const streamStep = resolveStreamStepMeta(options)
+  const invocationId = createLlmInvocationId()
+  logLlmRawInput({
+    userId,
+    projectId,
+    provider: providerKey,
+    modelId: resolvedModelId,
+    modelKey: selection.modelKey,
+    stream: false,
+    reasoning,
+    reasoningEffort: options.reasoningEffort || 'high',
+    temperature,
+    action: options.action,
+    invocationId,
+    step: streamStep,
+    messages: [{ role: 'user', content: textPrompt }],
+    imageCount: imageUrls.length,
+  })
+
+  const logVisionOutput = (completion: OpenAI.Chat.Completions.ChatCompletion, outputProvider: string, attempt: number) => {
+    const parts = getCompletionParts(completion)
+    logLlmRawOutput({
+      userId,
+      invocationId,
+      attempt,
+      projectId,
+      provider: outputProvider,
+      modelId: resolvedModelId,
+      modelKey: selection.modelKey,
+      stream: false,
+      action: options.action,
+      step: streamStep,
+      text: parts.text,
+      reasoning: parts.reasoning,
+      usage: completionUsageSummary(completion),
+    })
+  }
 
   let lastError: Error | null = null
 
@@ -124,6 +169,7 @@ export async function chatCompletionWithVision(
           },
         })
         const completion = buildOpenAIChatCompletion(resolvedModelId, text, usage)
+        logVisionOutput(completion, providerKey, attempt)
         recordCompletionUsage(resolvedModelId, completion)
         return completion
       }
@@ -171,6 +217,7 @@ export async function chatCompletionWithVision(
           },
         })
         const completion = buildOpenAIChatCompletion(resolvedModelId, text, usage)
+        logVisionOutput(completion, providerKey, attempt)
         recordCompletionUsage(resolvedModelId, completion)
         return completion
       }
@@ -184,6 +231,7 @@ export async function chatCompletionWithVision(
           messages: [{ role: 'user', content: prompt }],
           temperature,
         })
+        logVisionOutput(completion, providerKey, attempt)
         recordCompletionUsage(resolvedModelId, completion)
         llmLogger.info({
           action: 'llm.vision.success',
@@ -209,6 +257,7 @@ export async function chatCompletionWithVision(
           messages: [{ role: 'user', content: prompt }],
           temperature,
         })
+        logVisionOutput(completion, providerKey, attempt)
         recordCompletionUsage(resolvedModelId, completion)
         llmLogger.info({
           action: 'llm.vision.success',
@@ -259,6 +308,7 @@ export async function chatCompletionWithVision(
         messages: [{ role: 'user', content }],
         temperature,
       })
+      logVisionOutput(completion as OpenAI.Chat.Completions.ChatCompletion, providerKey, attempt)
       recordCompletionUsage(resolvedModelId, completion as OpenAI.Chat.Completions.ChatCompletion)
       llmLogger.info({
         action: 'llm.vision.success',
@@ -276,6 +326,21 @@ export async function chatCompletionWithVision(
     } catch (error: unknown) {
       lastError = error instanceof Error ? error : new Error(getErrorMessage(error))
       const errorMessage = getErrorMessage(error)
+      logLlmRawError({
+        userId,
+        projectId,
+        provider,
+        modelId: resolvedModelId,
+        modelKey: selection.modelKey,
+        stream: false,
+        action: options.action,
+        invocationId,
+        attempt,
+        retryable: isRetryableError(error) && attempt <= maxRetries,
+        durationMs: Date.now() - attemptStartedAt,
+        step: streamStep,
+        error: lastError,
+      })
       llmLogger.warn({
         action: 'llm.vision.attempt_failed',
         message: errorMessage || 'llm vision attempt failed',

@@ -5,7 +5,7 @@ import TaskStatusInline from '@/components/task/TaskStatusInline'
 import VoiceToolbar from '../voice/VoiceToolbar'
 import EmbeddedVoiceToolbar from '../voice/EmbeddedVoiceToolbar'
 import SpeakerVoiceStatus from '../voice/SpeakerVoiceStatus'
-import { AppIcon } from '@/components/ui/icons'
+import ProductModalShell from '@/components/product/ProductModalShell'
 
 interface BindablePanelOption {
   id: string
@@ -140,39 +140,41 @@ export default function VoiceControlPanel({
       {children}
 
       {isLineEditorOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--glass-overlay)] p-4" onClick={onCancelEdit}>
-          <div className="w-full max-w-xl bg-[var(--glass-bg-surface)] rounded-2xl shadow-2xl border border-[var(--glass-stroke-base)] p-5" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-[var(--glass-text-primary)]">
-                {editingLineId ? t('lineEditor.editTitle') : t('lineEditor.addTitle')}
-              </h3>
-              <button
-                onClick={onCancelEdit}
-                className="p-1 text-[var(--glass-text-tertiary)] hover:text-[var(--glass-text-secondary)] transition-colors"
-                title={t('common.cancel')}
-              >
-                <AppIcon name="close" className="w-5 h-5" />
+        <ProductModalShell
+          open
+          onClose={onCancelEdit}
+          size="md"
+          eyebrow="配音台词"
+          title={editingLineId ? t('lineEditor.editTitle') : t('lineEditor.addTitle')}
+          description="编辑台词、说话人和关联镜头。"
+          footer={(
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={onCancelEdit} disabled={isSavingLineEditor} className="inline-flex h-9 items-center rounded-md border border-white/10 bg-white/[0.04] px-3 text-xs font-semibold text-stone-200 hover:bg-white/[0.08] disabled:opacity-60">{t('common.cancel')}</button>
+              <button type="button" onClick={onSaveEdit} disabled={isSavingLineEditor} className="inline-flex h-9 items-center gap-2 rounded-md bg-[#f3e9cf] px-3 text-xs font-semibold text-[#161512] hover:bg-[#fff5d9] disabled:opacity-60">
+                {isSavingLineEditor ? <TaskStatusInline state={savingLineEditorState} className="text-[#161512] [&>span]:text-[#161512] [&_svg]:text-[#161512]" /> : null}
+                <span>{editingLineId ? t('lineEditor.saveEdit') : t('lineEditor.saveAdd')}</span>
               </button>
             </div>
-
+          )}
+        >
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-[var(--glass-text-secondary)] mb-1.5">{t('lineEditor.contentLabel')}</label>
+                <label className="mb-1.5 block text-sm font-semibold text-stone-300">{t('lineEditor.contentLabel')}</label>
                 <textarea
                   value={editingContent}
                   onChange={(event) => onEditingContentChange(event.target.value)}
                   placeholder={t('lineEditor.contentPlaceholder')}
                   rows={4}
-                  className="w-full rounded-xl border border-[var(--glass-stroke-strong)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--glass-tone-info-fg)] resize-y"
+                  className="w-full resize-y rounded-md border border-white/10 bg-[#10110f] px-3 py-2 text-sm leading-6 text-stone-100 outline-none focus:border-[#e8d18a]"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[var(--glass-text-secondary)] mb-1.5">{t('lineEditor.speakerLabel')}</label>
+                <label className="mb-1.5 block text-sm font-semibold text-stone-300">{t('lineEditor.speakerLabel')}</label>
                 <select
                   value={editingSpeaker}
                   onChange={(event) => onEditingSpeakerChange(event.target.value)}
-                  className="w-full rounded-xl border border-[var(--glass-stroke-strong)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--glass-tone-info-fg)]"
+                  className="h-10 w-full rounded-md border border-white/10 bg-[#10110f] px-3 text-sm text-stone-100 outline-none focus:border-[#e8d18a]"
                 >
                   <option value="" disabled>{t('lineEditor.selectSpeaker')}</option>
                   {speakerOptions.map((speaker) => (
@@ -182,16 +184,16 @@ export default function VoiceControlPanel({
                   ))}
                 </select>
                 {speakerOptions.length === 0 && (
-                  <p className="mt-1 text-xs text-[var(--glass-tone-warning-fg)]">{t('lineEditor.noSpeakerOptions')}</p>
+                  <p className="mt-1 text-xs text-amber-200">{t('lineEditor.noSpeakerOptions')}</p>
                 )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[var(--glass-text-secondary)] mb-1.5">{t('lineEditor.bindPanelLabel')}</label>
+                <label className="mb-1.5 block text-sm font-semibold text-stone-300">{t('lineEditor.bindPanelLabel')}</label>
                 <select
                   value={editingMatchedPanelId}
                   onChange={(event) => onEditingMatchedPanelIdChange(event.target.value)}
-                  className="w-full rounded-xl border border-[var(--glass-stroke-strong)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--glass-tone-info-fg)]"
+                  className="h-10 w-full rounded-md border border-white/10 bg-[#10110f] px-3 text-sm text-stone-100 outline-none focus:border-[#e8d18a]"
                 >
                   <option value="">{t('lineEditor.unboundPanel')}</option>
                   {bindablePanelOptions.map((panel) => (
@@ -202,28 +204,7 @@ export default function VoiceControlPanel({
                 </select>
               </div>
             </div>
-
-            <div className="flex items-center justify-end gap-2 mt-6">
-              <button
-                onClick={onCancelEdit}
-                disabled={isSavingLineEditor}
-                className="px-4 py-2 text-sm rounded-lg border border-[var(--glass-stroke-base)] text-[var(--glass-text-secondary)] hover:bg-[var(--glass-bg-muted)] disabled:opacity-60"
-              >
-                {t('common.cancel')}
-              </button>
-              <button
-                onClick={onSaveEdit}
-                disabled={isSavingLineEditor}
-                className="px-4 py-2 text-sm rounded-lg bg-[var(--glass-accent-from)] text-white hover:bg-[var(--glass-accent-to)] disabled:opacity-60 flex items-center gap-2"
-              >
-                {isSavingLineEditor && (
-                  <TaskStatusInline state={savingLineEditorState} className="text-white [&>span]:text-white [&_svg]:text-white" />
-                )}
-                <span>{editingLineId ? t('lineEditor.saveEdit') : t('lineEditor.saveAdd')}</span>
-              </button>
-            </div>
-          </div>
-        </div>
+        </ProductModalShell>
       )}
     </div>
   )

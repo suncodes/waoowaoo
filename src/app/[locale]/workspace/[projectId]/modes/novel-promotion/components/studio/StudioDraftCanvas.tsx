@@ -192,7 +192,7 @@ export default function StudioDraftCanvas({ model, onNavigate }: StudioDraftCanv
               description={editableReady ? '在文稿编辑台完成逐段编辑、AI 重写、候选接受或丢弃。' : '先把内容方案转为可编辑剧本，再进入逐段打磨。'}
             />
           </div>
-          <div className="studio-draft-editor p-4 text-[var(--glass-text-primary)]">
+          <div className="p-4 text-stone-100">
             {editableReady ? (
               model.workflow.isBookGuide ? <GuideNarrationEditor /> : <ContentScriptEditor />
             ) : (

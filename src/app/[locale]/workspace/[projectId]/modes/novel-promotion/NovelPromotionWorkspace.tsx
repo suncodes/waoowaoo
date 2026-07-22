@@ -1,13 +1,9 @@
 'use client'
 
 import ConfirmDialog from '@/components/ConfirmDialog'
-import { AnimatedBackground } from '@/components/ui/SharedComponents'
 import { WorkspaceProvider } from './WorkspaceProvider'
-import WorkspaceStageContent from './components/WorkspaceStageContent'
 import WorkspaceAssetLibraryModal from './components/WorkspaceAssetLibraryModal'
 import WorkspaceHeaderShell from './components/WorkspaceHeaderShell'
-import WorkspaceRunStreamConsoles from './components/WorkspaceRunStreamConsoles'
-import WorkspaceWorkflowRail from './components/WorkspaceWorkflowRail'
 import StudioWorkspaceShell from './components/studio/StudioWorkspaceShell'
 import { WorkspaceStageRuntimeProvider } from './WorkspaceStageRuntimeContext'
 import { useNovelPromotionWorkspaceController } from './hooks/useNovelPromotionWorkspaceController'
@@ -32,12 +28,8 @@ function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
     return <div className="text-center text-stone-500">{vm.i18n.tc('loading')}</div>
   }
 
-  const studioEnabled = vm.stageNav.workspaceV2Enabled
-
   return (
     <div>
-      {studioEnabled ? null : <AnimatedBackground />}
-
       <WorkspaceHeaderShell
         isSettingsModalOpen={vm.ui.isSettingsModalOpen}
         isWorldContextModalOpen={vm.ui.isWorldContextModalOpen}
@@ -76,53 +68,37 @@ function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
         assetLibraryLabel={vm.i18n.t('buttons.assetLibrary')}
         settingsLabel={vm.i18n.t('buttons.settings')}
         refreshTitle={vm.i18n.t('buttons.refreshData')}
-        showFloatingControls={!studioEnabled}
+        showFloatingControls={false}
       />
 
       <a
         href="#workspace-stage-content"
-        className="sr-only fixed left-4 top-4 z-[200] rounded-md bg-[var(--glass-bg-surface)] px-3 py-2 text-sm text-[var(--glass-text-primary)] focus:not-sr-only"
+        className="sr-only fixed left-4 top-4 z-[200] bg-[#e8d18a] px-3 py-2 text-sm font-semibold text-[#171810] focus:not-sr-only"
       >
         {vm.i18n.t('workspaceFlow.skipToContent')}
       </a>
 
-      <div className={`relative left-1/2 -translate-x-1/2 ${studioEnabled ? 'w-[min(1840px,calc(100vw-1rem))]' : 'w-[min(1600px,calc(100vw-2rem))] pt-28'}`}>
+      <div className="relative left-1/2 w-[min(1840px,calc(100vw-1rem))] -translate-x-1/2">
         <WorkspaceStageRuntimeProvider value={vm.runtime.stageRuntime}>
-          {studioEnabled ? (
-            <StudioWorkspaceShell
-              projectName={project.name}
-              episodes={episodes}
-              currentEpisodeId={episodeId}
-              currentStage={vm.stageNav.currentStage}
-              stageView={vm.stageNav.stageView}
-              videoProfile={vm.project.videoProfile}
-              workflowState={vm.stageNav.workflowState}
-              contentPlanStream={vm.execution.contentPlanStream}
-              storyToScriptStream={vm.execution.storyToScriptStream}
-              visualPlanStream={vm.execution.visualPlanStream}
-              scriptToStoryboardStream={vm.execution.scriptToStoryboardStream}
-              onStageChange={vm.stageNav.handleStageChange}
-              onEpisodeSelect={onEpisodeSelect}
-              onEpisodeCreate={onEpisodeCreate}
-              onOpenAssetLibrary={() => vm.ui.openAssetLibrary()}
-              onOpenSettings={() => vm.ui.setIsSettingsModalOpen(true)}
-              onRefresh={() => vm.ui.onRefresh({ mode: 'full' })}
-            />
-          ) : (
-            <div className="grid min-w-0 gap-4 lg:grid-cols-[224px_minmax(0,1fr)]">
-              <WorkspaceWorkflowRail
-                items={vm.stageNav.workflowItems}
-                currentStage={vm.stageNav.currentStage}
-                projectId={projectId}
-                episodeId={episodeId}
-                onStageChange={vm.stageNav.handleStageChange}
-              />
-
-              <main id="workspace-stage-content" className="min-w-0 scroll-mt-32">
-                <WorkspaceStageContent currentStage={vm.stageNav.currentStage} />
-              </main>
-            </div>
-          )}
+          <StudioWorkspaceShell
+            projectName={project.name}
+            episodes={episodes}
+            currentEpisodeId={episodeId}
+            currentStage={vm.stageNav.currentStage}
+            stageView={vm.stageNav.stageView}
+            videoProfile={vm.project.videoProfile}
+            workflowState={vm.stageNav.workflowState}
+            contentPlanStream={vm.execution.contentPlanStream}
+            storyToScriptStream={vm.execution.storyToScriptStream}
+            visualPlanStream={vm.execution.visualPlanStream}
+            scriptToStoryboardStream={vm.execution.scriptToStoryboardStream}
+            onStageChange={vm.stageNav.handleStageChange}
+            onEpisodeSelect={onEpisodeSelect}
+            onEpisodeCreate={onEpisodeCreate}
+            onOpenAssetLibrary={() => vm.ui.openAssetLibrary()}
+            onOpenSettings={() => vm.ui.setIsSettingsModalOpen(true)}
+            onRefresh={() => vm.ui.onRefresh({ mode: 'full' })}
+          />
         </WorkspaceStageRuntimeProvider>
 
         <WorkspaceAssetLibraryModal
@@ -138,6 +114,7 @@ function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
           focusCharacterRequestId={vm.ui.assetLibraryFocusRequestId}
           triggerGlobalAnalyze={vm.ui.triggerGlobalAnalyzeOnOpen}
           onGlobalAnalyzeComplete={() => vm.ui.setTriggerGlobalAnalyzeOnOpen(false)}
+          onAnalyzeAssets={vm.execution.handleAnalyzeAssets}
         />
 
         <ConfirmDialog
@@ -151,16 +128,6 @@ function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
           onCancel={vm.rebuild.handleCancelRebuildConfirm}
         />
 
-        {!studioEnabled ? (
-          <WorkspaceRunStreamConsoles
-            currentStage={vm.stageNav.currentStage}
-            videoProfile={vm.project.videoProfile}
-            contentPlanStream={vm.execution.contentPlanStream}
-            storyToScriptStream={vm.execution.storyToScriptStream}
-            visualPlanStream={vm.execution.visualPlanStream}
-            scriptToStoryboardStream={vm.execution.scriptToStoryboardStream}
-          />
-        ) : null}
       </div>
     </div>
   )
