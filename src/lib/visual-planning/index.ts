@@ -6,6 +6,7 @@ import type {
   RenderMode,
   ShotSpec,
   VisualPlanResult,
+  VisualAssetRef,
   VisualType,
   VisualUnit,
 } from './types'
@@ -116,7 +117,54 @@ function parseRenderMode(value: unknown): RenderMode {
   return value === 'text_card' || value === 'composite' ? value : 'generated_image'
 }
 
-function parseVisualUnits(value: unknown, allowedClipIds: ReadonlySet<string>): VisualUnit[] {
+function parseAssetRefs(
+  value: unknown,
+  unitIndex: number,
+  availableAssets: ReadonlyMap<string, VisualAssetRef>,
+): VisualAssetRef[] {
+  if (!Array.isArray(value)) return []
+  const seen = new Set<string>()
+  return value.flatMap((item, refIndex) => {
+    if (!isRecord(item)) {
+      throw new Error(`VISUAL_PLAN_INVALID: visualUnits.${unitIndex}.assetRefs.${refIndex} must be object`)
+    }
+    const id = requiredString(item.id, `visualUnits.${unitIndex}.assetRefs.${refIndex}.id`)
+    if (seen.has(id)) return []
+    seen.add(id)
+    const available = availableAssets.get(id)
+    if (!available && availableAssets.size > 0) {
+      throw new Error(`VISUAL_PLAN_INVALID: visualUnits.${unitIndex}.assetRefs.${refIndex}.id does not exist`)
+    }
+    const kind = requiredString(item.kind, `visualUnits.${unitIndex}.assetRefs.${refIndex}.kind`)
+    const name = requiredString(item.name, `visualUnits.${unitIndex}.assetRefs.${refIndex}.name`)
+    if (!available) {
+      if (kind !== 'character' && kind !== 'location' && kind !== 'prop') {
+        throw new Error(`VISUAL_PLAN_INVALID: visualUnits.${unitIndex}.assetRefs.${refIndex}.kind is invalid`)
+      }
+      return [{ id, kind, name }]
+    }
+    if (kind !== available.kind || name !== available.name) {
+      throw new Error(`VISUAL_PLAN_INVALID: visualUnits.${unitIndex}.assetRefs.${refIndex} must exactly match available assets`)
+    }
+    return [available]
+  })
+}
+
+function mentionsAsset(unit: VisualUnit, asset: VisualAssetRef): boolean {
+  const text = JSON.stringify({
+    description: unit.description,
+    imagePrompt: unit.imagePrompt,
+    videoPrompt: unit.videoPrompt,
+    subjectIdentity: unit.shotSpec.subjectIdentity,
+  }).toLowerCase()
+  return text.includes(asset.name.toLowerCase())
+}
+
+function parseVisualUnits(
+  value: unknown,
+  allowedClipIds: ReadonlySet<string>,
+  availableAssets: ReadonlyMap<string, VisualAssetRef>,
+): VisualUnit[] {
   if (!Array.isArray(value)) return []
   return value.map((item, index) => {
     if (!isRecord(item)) throw new Error(`VISUAL_PLAN_INVALID: visualUnits.${index} must be object`)
@@ -126,7 +174,7 @@ function parseVisualUnits(value: unknown, allowedClipIds: ReadonlySet<string>): 
     }
     const onScreenText = optionalString(item.onScreenText)
     const sourceAnchor = parseSourceAnchor(item.sourceAnchor)
-    return {
+    const unit: VisualUnit = {
       id: optionalString(item.id) || `visual_${index + 1}`,
       clipId,
       panelNumber: Math.round(numberInRange(item.panelNumber, index + 1, 1, 999)),
@@ -141,7 +189,15 @@ function parseVisualUnits(value: unknown, allowedClipIds: ReadonlySet<string>): 
       ...(onScreenText ? { onScreenText } : {}),
       ...(sourceAnchor ? { sourceAnchor } : {}),
       shotSpec: parseShotSpec(item.shotSpec, item),
+      assetRefs: parseAssetRefs(item.assetRefs, index, availableAssets),
     }
+    const referencedAssetIds = new Set(unit.assetRefs?.map((asset) => asset.id) || [])
+    for (const asset of availableAssets.values()) {
+      if (mentionsAsset(unit, asset) && !referencedAssetIds.has(asset.id)) {
+        throw new Error(`VISUAL_PLAN_INVALID: visualUnits.${index}.assetRefs missing referenced asset ${asset.id}`)
+      }
+    }
+    return unit
   })
 }
 
@@ -149,10 +205,12 @@ export function parseVisualPlanResult(
   value: unknown,
   profile: VideoProfile,
   clipIds: string[],
+  assets: VisualAssetRef[] = [],
 ): VisualPlanResult {
   if (!isRecord(value)) throw new Error('VISUAL_PLAN_INVALID: response must be object')
   const shotPlan = isRecord(value.shotPlan) ? value.shotPlan : {}
-  const visualUnits = parseVisualUnits(value.visualUnits, new Set(clipIds))
+  const assetMap = new Map(assets.map((asset) => [asset.id, asset]))
+  const visualUnits = parseVisualUnits(value.visualUnits, new Set(clipIds), assetMap)
   if (profile.contentDomain === 'book' && visualUnits.length === 0) {
     throw new Error('VISUAL_PLAN_INVALID: book guide requires visualUnits')
   }

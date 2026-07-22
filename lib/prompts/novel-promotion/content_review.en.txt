@@ -27,6 +27,15 @@ Return JSON only:
   "revisionInstructions": ["directly actionable revision"]
 }
 
-For guides, focus on source anchors, factual support, spoiler policy, and visual purpose. For fiction, focus on the throughline, beat progression, repetition, and target duration. Do not award a high sourceSupportScore without evidence.
+For guides, focus on source anchors, factual support, spoiler policy, spoken naturalness, and visual purpose. For fiction, focus on the throughline, beat progression, repetition, and target duration. Do not award a high sourceSupportScore without evidence.
+
+Mandatory checks:
+- If planned duration exceeds 92% of targetDurationSec, flag DURATION_OVERFLOW. A plan that fills the target exactly must not be approved.
+- If narration clearly exceeds a natural spoken capacity for estimatedDurationSec, flag DURATION_OVERFLOW.
+- If a segment answers several unrelated questions, repeats previous conclusions, or lacks a clear viewer takeaway, flag STRUCTURE_WEAK or REPETITION.
+- If visualHints ask one still image to perform a montage, multi-location collage, sequential actions, or exact text rendering, flag VISUAL_PURPOSE_MISSING and require one time, one place, and one primary visual event.
+- In model-knowledge mode, precise rankings, quantities, verbatim quotations, absolute claims, or named attribution claims must be flagged SOURCE_UNSUPPORTED.
+- If light-spoiler content reveals an ending, identity answer, or decisive twist outcome, flag SPOILER_POLICY_VIOLATION.
+- Approve only when structure, evidence boundaries, timing, and visual responsibilities are all executable.
 
 If book_seed_json.sourceMode is model_knowledge, the current result is a draft based only on model knowledge: sourceSupportScore must not exceed 70; if the plan contains verbatim quotes, flag SOURCE_UNSUPPORTED; unless the structure is severely wrong, prefer warning over blocking so the user can confirm or edit.

@@ -35,6 +35,7 @@ type VisualUnitInput = {
   imagePrompt?: string
   videoPrompt?: string
   shotSpec?: unknown
+  assetRefs?: VisualUnitAssetRef[]
 }
 
 export type VisualUnitAssetRef = {
@@ -45,7 +46,7 @@ export type VisualUnitAssetRef = {
 
 function resolveUnitAssetRefs(unit: VisualUnitInput, anchors: VisualAnchor[]): VisualUnitAssetRef[] {
   const unitText = normalizeText(unit)
-  return anchors
+  const inferred = anchors
     .filter((anchor) => (
       anchor.sourceUnitIds.includes(unit.clipId)
       || textMentionsAsset(unitText, anchor.name)
@@ -55,6 +56,9 @@ function resolveUnitAssetRefs(unit: VisualUnitInput, anchors: VisualAnchor[]): V
       kind: anchor.assetKind,
       name: anchor.name,
     }))
+  const byId = new Map<string, VisualUnitAssetRef>()
+  for (const ref of [...(unit.assetRefs || []), ...inferred]) byId.set(ref.id, ref)
+  return Array.from(byId.values())
 }
 
 type UnitText = {
@@ -70,6 +74,20 @@ function normalizeText(value: unknown): string {
   } catch {
     return ''
   }
+}
+
+function readStoredAssetRefs(value: unknown): VisualUnitAssetRef[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item) => {
+    const record = asWorkspaceRecord(item)
+    if (!record) return []
+    const id = typeof record.id === 'string' ? record.id.trim() : ''
+    const name = typeof record.name === 'string' ? record.name.trim() : ''
+    const kind = record.kind === 'character' || record.kind === 'location' || record.kind === 'prop'
+      ? record.kind
+      : null
+    return id && name && kind ? [{ id, name, kind }] : []
+  })
 }
 
 function assetAliases(name: string): string[] {
@@ -225,6 +243,7 @@ export function bindStoredVisualUnitsToAnchors(
         imagePrompt: typeof unit.imagePrompt === 'string' ? unit.imagePrompt : undefined,
         videoPrompt: typeof unit.videoPrompt === 'string' ? unit.videoPrompt : undefined,
         shotSpec: unit.shotSpec,
+        assetRefs: readStoredAssetRefs(unit.assetRefs),
       }, anchors),
     }
   })

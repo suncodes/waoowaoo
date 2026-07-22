@@ -23,3 +23,6 @@ VideoProfile：
 5. 即使 renderMode 为 text_card，imagePrompt 也必须描述可生成的背景、版式、主体、留白和文字安全区；准确文字放在 onScreenText。
 6. 保留候选输出中已经有效的导演策略、视觉风格和画面内容，只补全、纠正或续写不合格部分。
 7. 输出结构和字段命名必须与候选输出中的既有结构一致，使用 camelCase。
+8. assetRefs 中的 id、kind、name 必须逐字来自可用资产；画面提到已有资产时不得遗漏 assetRefs。
+9. 每个 imagePrompt 只能描述一个时空和一个主要视觉事件；删除混剪、拼接、多场景同框和准确文字生成要求。
+10. 按 renderMode 修复职责：text_card 为无字底图，composite 为单一干净底图或前景素材，generated_image 为完整单镜头。

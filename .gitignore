@@ -90,3 +90,4 @@ docs/
 !.github/workflows/
 
 .codex/
+.tmp/

@@ -157,11 +157,12 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
   for (let i = 0; i < indexes.length; i++) {
     const index = indexes[i]
     const raw = baseDescriptions[index] || baseDescriptions[0]
-    const prompt = appendPromptSegments(
-      addCharacterPromptSuffix(raw),
+    const styledPrompt = appendPromptSegments(
+      raw,
       [resolvedArtStyle.prompt, resolvedArtStyle.referenceInstruction],
       job.data.locale,
     )
+    const prompt = addCharacterPromptSuffix(styledPrompt)
 
     await reportTaskProgress(job, 15 + Math.floor((i / Math.max(indexes.length, 1)) * 55), {
       stage: 'generate_character_image',

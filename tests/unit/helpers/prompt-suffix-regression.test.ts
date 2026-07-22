@@ -4,6 +4,7 @@ import {
   addPropPromptSuffix,
   CHARACTER_PROMPT_SUFFIX,
   PROP_PROMPT_SUFFIX,
+  getArtStylePrompt,
   removeCharacterPromptSuffix,
   removePropPromptSuffix,
 } from '@/lib/constants'
@@ -51,5 +52,13 @@ describe('character prompt suffix regression', () => {
 
     expect(removed).not.toContain(PROP_PROMPT_SUFFIX)
     expect(removed).toContain(basePrompt)
+  })
+
+  it('keeps the bikini-bottom preset content-neutral so it cannot inject characters into assets', () => {
+    const stylePrompt = getArtStylePrompt('bikini-bottom-cartoon', 'zh')
+
+    expect(stylePrompt).toContain('只控制线条、形状、配色和渲染质感')
+    expect(stylePrompt).toContain('不自动添加任何已有角色')
+    expect(stylePrompt).not.toContain('海底小镇、沙地、珊瑚、海草')
   })
 })

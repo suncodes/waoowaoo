@@ -266,8 +266,8 @@ export const ART_STYLES = [
     value: 'bikini-bottom-cartoon',
     label: '比奇堡',
     preview: '堡',
-    promptZh: '海底荒诞美式手绘电视卡通截图风格，明亮高饱和的青蓝、黄色、粉色和珊瑚色水下配色，海底小镇、沙地、珊瑚、海草、气泡和海洋符号作为背景元素，粗黑外轮廓，简单几何造型，扁平色块，极少渐变和复杂阴影，夸张喜剧表情，弹性变形，轻松怪诞的 90 年代到 2000 年代儿童电视动画质感；避免普通儿童绘本、精致厚涂插画、超级英雄美漫、写实电影、3D CG 和日系动漫。',
-    promptEn: 'Absurd undersea American hand-drawn TV cartoon screenshot style, bright high-saturation cyan-blue, yellow, pink, and coral underwater palette, underwater town, sandy ground, coral, seaweed, bubbles, and marine symbols as background elements, thick black outer outlines, simple geometric shapes, flat color blocks, very little gradient or complex shading, exaggerated comedic expressions, elastic squash-and-stretch deformation, playful weird 1990s-2000s children TV animation feel; avoid ordinary children picture-book illustration, polished painterly illustration, superhero comics, live-action realism, 3D CG, and Japanese anime.',
+    promptZh: '荒诞美式手绘电视卡通截图风格，明亮高饱和的青蓝、黄色、粉色和珊瑚色配色，粗黑外轮廓，简单几何造型，扁平色块，极少渐变和复杂阴影，保留主体身份的弹性形状语言，轻松怪诞的 90 年代到 2000 年代儿童电视动画质感。此风格只控制线条、形状、配色和渲染质感，不自动添加任何已有角色、脸部、建筑、海底小镇、徽标或其他 IP 标志物；避免普通儿童绘本、精致厚涂插画、超级英雄美漫、写实电影、3D CG 和日系动漫。',
+    promptEn: 'Absurd American hand-drawn TV cartoon screenshot style with a bright high-saturation cyan-blue, yellow, pink, and coral palette, thick black outer outlines, simple geometric shapes, flat color blocks, very little gradient or complex shading, identity-preserving elastic shape language, and a playful weird 1990s-2000s children TV animation feel. Apply the style only to linework, shape language, color, and rendering; do not automatically add any existing character, face, building, underwater town, logo, or other IP-associated motif. Avoid ordinary children picture-book illustration, polished painterly illustration, superhero comics, live-action realism, 3D CG, and Japanese anime.',
     previewImage: '/art-styles/bikini-bottom-cartoon.jpg',
     referenceImage: '/art-styles/bikini-bottom-cartoon.jpg',
   },
@@ -380,10 +380,10 @@ export function getArtStylePrompt(
 }
 
 // 角色形象生成的系统后缀（始终添加到提示词末尾，不显示给用户）- 左侧面部特写+右侧三视图
-export const CHARACTER_PROMPT_SUFFIX = '角色设定图，画面分为左右两个区域：【左侧区域】占约1/3宽度，是角色的正面特写（如果是人类则展示完整正脸，如果是动物/生物则展示最具辨识度的正面形态）；【右侧区域】占约2/3宽度，是角色三视图横向排列（从左到右依次为：正面全身、侧面全身、背面全身），三视图高度一致。纯白色背景，无其他元素。'
+export const CHARACTER_PROMPT_SUFFIX = '角色设定图，唯一主体只能是前述同一个角色。画面分为左右两个区域：【左侧区域】占约1/3宽度，是该角色的正面特写（如果是人类则展示完整正脸，如果是动物/生物则展示最具辨识度的正面形态）；【右侧区域】占约2/3宽度，是同一角色、同一年龄、同一服装、同一配色的三视图横向排列（从左到右依次为：正面全身、侧面全身、背面全身），三视图身体比例和身份特征必须严格一致、高度一致。纯白色背景。风格仅作用于线条、形状语言和配色，不得引入任何风格关联作品中的额外角色。禁止第二个角色、群像、环境背景、建筑、道具陈设、文字、数字、水印、徽标、已有IP角色和其他元素；禁止把不同角色分别放入不同视图区。'
 
 // 道具图片生成的系统后缀（固定白底三视图资产图）
-export const PROP_PROMPT_SUFFIX = '道具设定图，画面分为左右两个区域：【左侧区域】占约1/3宽度，是道具主体的主视图特写；【右侧区域】占约2/3宽度，是同一道具的三视图横向排列（从左到右依次为：正面、侧面、背面），三视图高度一致。纯白色背景，主体居中完整展示，无人物、无手部、无桌面陈设、无环境背景、无其他元素。'
+export const PROP_PROMPT_SUFFIX = '道具设定图，唯一主体只能是前述同一个道具。画面分为左右两个区域：【左侧区域】占约1/3宽度，是道具主体的主视图特写；【右侧区域】占约2/3宽度，是同一道具、同一设计、同一配色、同一材质的三视图横向排列（从左到右依次为：正面、侧面、背面），各视图结构和部件必须严格对应、高度一致。纯白色背景，主体居中完整展示。风格仅作用于线条、形状语言和配色，不得引入任何风格关联作品的内容。绝对禁止人物、角色、脸、五官、眼睛、嘴、表情、手部、身体、动物、建筑、环境、桌面陈设、文字、数字、水印、徽标、已有IP角色和其他元素；禁止把不同对象分别放入不同视图区。'
 
 // 场景图片生成的系统后缀（已禁用四视图，直接生成单张场景图）
 export const LOCATION_PROMPT_SUFFIX = ''

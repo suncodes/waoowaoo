@@ -14,6 +14,11 @@ Clips：{clips_json}
 3. 即使 renderMode 是 text_card，imagePrompt 也必须描述背景、版式、主体、留白和文字安全区；实际文字只放在 onScreenText，避免要求图片模型直接生成长文字。
 4. imagePrompt 必须是可直接用于图片生成的完整提示词，videoPrompt 必须描述首帧之后的主体动作和运镜，不能只写字段说明。
 5. 只允许使用 Clips 中真实存在的 clipId。输出必须是完整闭合、可解析的 JSON，不要输出解释或 Markdown。
+6. 一张图片只能对应一个时空、一个构图和一个主要视觉事件。禁止在 imagePrompt 中使用“混剪、拼接、依次展示、快速切换、多个场景同框”等要求。
+7. `generated_image` 生成完整单镜头画面；`text_card` 只生成无字背景、装饰和留白，准确文字只放在 onScreenText；`composite` 只生成一个可供后续合成的干净底图或单个前景素材，不得在底图中伪造新闻混剪、多个海域、多个封面或多张画面。
+8. 可用资产中的已有角色、场景或道具一旦出现在画面中，必须在 assetRefs 中使用资产库给出的精确 id、kind、name。不得自造 ID，不得只写名称而省略引用。
+9. 艺术风格只控制线条、形状语言、材质、配色和光影，不得自动加入该风格关联作品中的角色、建筑、徽标或标志物。未在 assetRefs 或镜头主体中指定的角色一律禁止出现。
+10. imagePrompt 不得要求生成准确书名、年份、新闻标题或长文字；必须明确“无文字、无水印、无标志”。
 
 只输出 JSON：
 {
@@ -51,6 +56,7 @@ Clips：{clips_json}
     "durationSec": 5,
     "onScreenText": "可选短文字",
     "sourceAnchor": {"label": "可选来源", "quote": "可选原文"},
+    "assetRefs": [{"id": "必须来自可用资产", "kind": "character|location|prop", "name": "资产库中的精确名称"}],
     "shotSpec": {
       "narrativeIntent": "镜头目的",
       "subjectIdentity": ["身份锚点"],
@@ -68,4 +74,4 @@ Clips：{clips_json}
   }]
 }
 
-导读必须覆盖每个 clip，并在书封、引用卡、图表、插画、动态文字之间按信息功能选择，不要全部生成人物插画。剧情也必须覆盖每个 clip，可以为每个 clip 提供少量全局建议，后续细分镜仍必须服从 Treatment 和 Bible。
+导读必须覆盖每个 clip，并在书封、引用卡、图表、插画、动态文字之间按信息功能选择，不要全部生成人物插画。需要表达多个素材或多个地点时，拆成多个 visualUnit，不得塞进一张 imagePrompt。剧情也必须覆盖每个 clip，可以为每个 clip 提供少量全局建议，后续细分镜仍必须服从 Treatment 和 Bible。

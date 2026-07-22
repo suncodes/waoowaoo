@@ -10,6 +10,9 @@ Clip content:
 Location library:
 {locations_lib_name}
 
+Prop library:
+{props_lib_name}
+
 Character library:
 {characters_lib_name}
 

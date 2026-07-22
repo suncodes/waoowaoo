@@ -74,6 +74,9 @@ function buildPanelPromptContext(params: {
     srtSegment: string | null
     photographyRules: string | null
     actingNotes: string | null
+    visualType: string | null
+    renderMode: string | null
+    onScreenText: string | null
   }
   projectData: Awaited<ReturnType<typeof resolveNovelData>>
 }) {
@@ -131,6 +134,10 @@ function buildPanelPromptContext(params: {
       source_text: params.panel.srtSegment || '',
       photography_rules: parseJsonUnknown(params.panel.photographyRules),
       acting_notes: parseJsonUnknown(params.panel.actingNotes),
+      visual_type: params.panel.visualType || 'illustration',
+      render_mode: params.panel.renderMode || 'generated_image',
+      on_screen_text_for_downstream_composition: params.panel.onScreenText || '',
+      image_text_policy: 'The generated image must contain no text. Exact copy is rendered downstream.',
     },
     context: {
       character_appearances: characterContexts,
@@ -240,6 +247,9 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
       srtSegment: panel.srtSegment,
       photographyRules: panel.photographyRules,
       actingNotes: panel.actingNotes,
+      visualType: panel.visualType,
+      renderMode: panel.renderMode,
+      onScreenText: panel.onScreenText,
     },
     projectData,
   })

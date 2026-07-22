@@ -160,6 +160,7 @@ describe('worker visual-quality-review behavior', () => {
         action: 'regenerate',
         attempt: 1,
         versionHash: 'version-1',
+        candidateCount: 3,
       }),
     }))
   })

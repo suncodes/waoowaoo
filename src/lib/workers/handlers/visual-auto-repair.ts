@@ -55,6 +55,9 @@ export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
     ? Math.max(1, Math.floor(payload.attempt))
     : state.attempt + 1
   const imageModel = typeof payload.imageModel === 'string' ? payload.imageModel.trim() : ''
+  const candidateCount = typeof payload.candidateCount === 'number' && Number.isFinite(payload.candidateCount)
+    ? Math.min(4, Math.max(1, Math.floor(payload.candidateCount)))
+    : action === 'regenerate' ? 3 : 2
   if (!targetSpec.targetId || !imageModel) throw new Error('VISUAL_REPAIR_PAYLOAD_INVALID')
 
   const projectData = await resolveNovelData(job.data.projectId)
@@ -74,23 +77,31 @@ export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
     ? [sourceCandidateUrl, ...assetReferences]
     : assetReferences
 
-  await reportTaskProgress(job, 24, { stage: 'visual_auto_repair_generate', displayMode: 'detail' })
-  await assertTaskActive(job, 'visual_auto_repair_generate')
-  const source = await resolveImageSourceFromGeneration(job, {
-    userId: job.data.userId,
-    modelId: imageModel,
-    prompt,
-    options: {
-      referenceImages,
-      aspectRatio: targetSpec.aspectRatio || projectData.videoRatio || undefined,
-    },
-  })
-  const candidateUrl = await uploadImageSourceToCos(
-    source,
-    'visual-repair-candidate',
-    `${panel.id}-${attempt}`,
-  )
-  const candidateUrls = [candidateUrl]
+  const candidateUrls: string[] = []
+  for (let candidateIndex = 0; candidateIndex < candidateCount; candidateIndex += 1) {
+    await reportTaskProgress(job, 20 + Math.floor((candidateIndex / candidateCount) * 58), {
+      stage: 'visual_auto_repair_generate',
+      displayMode: 'detail',
+      candidateIndex,
+      candidateCount,
+    })
+    await assertTaskActive(job, 'visual_auto_repair_generate')
+    const source = await resolveImageSourceFromGeneration(job, {
+      userId: job.data.userId,
+      modelId: imageModel,
+      prompt,
+      options: {
+        referenceImages,
+        aspectRatio: targetSpec.aspectRatio || projectData.videoRatio || undefined,
+      },
+      allowTaskExternalIdResume: candidateCount === 1,
+    })
+    candidateUrls.push(await uploadImageSourceToCos(
+      source,
+      'visual-repair-candidate',
+      `${panel.id}-${attempt}-${candidateIndex}`,
+    ))
+  }
   const versionHash = createVisualVersionHash({ targetSpec, candidateUrls })
 
   await reportTaskProgress(job, 84, { stage: 'visual_auto_repair_persist', displayMode: 'detail' })
@@ -119,7 +130,7 @@ export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
     versionHash,
     payload: toJsonRecord({
       previousVersionHash: expectedVersionHash,
-      candidateUrl,
+      candidateUrls,
       attempt,
       action,
       imageModel,
@@ -144,5 +155,5 @@ export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
     },
     dedupeKey: `visual_quality_review:${panel.id}:${versionHash}`,
   })
-  return { panelId: panel.id, candidateUrl, versionHash, attempt }
+  return { panelId: panel.id, candidateUrls, versionHash, attempt }
 }

@@ -23,3 +23,6 @@ Hard requirements:
 5. Even when renderMode is text_card, imagePrompt must describe a generatable background, layout, subject, negative space, and text-safe area. Put exact copy in onScreenText.
 6. Preserve every valid director decision, visual style, and visual unit from the candidate. Only complete, correct, or continue invalid portions.
 7. Keep the existing output structure and camelCase field names.
+8. Every assetRefs id, kind, and name must exactly match Available assets. Do not omit assetRefs when the shot mentions an existing asset.
+9. Every imagePrompt describes one time, one place, and one primary visual event. Remove montage, collage, multi-scene, and exact-text generation requests.
+10. Repair render responsibilities: text_card is a text-free plate, composite is one clean plate or foreground element, and generated_image is one complete shot.

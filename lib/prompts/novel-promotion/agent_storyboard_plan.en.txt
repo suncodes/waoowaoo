@@ -59,3 +59,10 @@ Planning rules:
 10. Do not shorten, rewrite, summarize, or replace a provided slot phrase with a short token such as `slot_1`, `left`, or `throne_front`.
 11. Return strict JSON only.
 12. ⚠️ JSON SAFETY: All quotation marks in text (""''「」 etc.) MUST be converted to corner brackets「」in JSON string values. NEVER use raw ASCII double quotes " inside string values.
+13. Determine panel count from clip duration, narrative events, and action complexity, never from character count. Default to 4-8 seconds per panel and avoid panels shorter than 3 seconds unless a deliberate rapid cut is required.
+14. Use roughly duration/6 panels as a planning baseline. Do not repeat the same content merely to create more shots.
+15. One panel represents one time, one place, one composition, and one primary visual event. No montage, collage, multi-location frame, sequential display, or several storyboard frames inside one image.
+16. Do not put exact titles, dates, headlines, subtitles, or long copy into the visual description; downstream composition renders exact text.
+17. A speaker must be visible for dialogue. Add a separate listener reaction only when it materially advances emotion or story.
+18. For narrated guides, use visuals that carry the stated information. Never invent a host, reader, or character associated only with the art style.
+19. Characters absent from the character library must not appear in `characters` or description. Art style controls visual language only and is not a source of characters, buildings, logos, or motifs.

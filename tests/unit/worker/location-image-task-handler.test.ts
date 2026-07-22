@@ -1,6 +1,6 @@
 import type { Job } from 'bullmq'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { LOCATION_IMAGE_RATIO, PROP_IMAGE_RATIO, getArtStylePrompt } from '@/lib/constants'
+import { LOCATION_IMAGE_RATIO, PROP_IMAGE_RATIO, PROP_PROMPT_SUFFIX, getArtStylePrompt } from '@/lib/constants'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 
 const utilsMock = vi.hoisted(() => ({
@@ -184,6 +184,12 @@ describe('worker location-image-task-handler behavior', () => {
       expect.objectContaining({
         options: expect.objectContaining({ aspectRatio: PROP_IMAGE_RATIO }),
       }),
+    )
+    const generationCall = sharedMock.generateProjectLabeledImageToStorage.mock.calls[0] as unknown as [{ prompt: string }] | undefined
+    expect(generationCall?.[0].prompt.endsWith(PROP_PROMPT_SUFFIX)).toBe(true)
+    expect(generationCall?.[0].prompt).toContain('绝对禁止人物、角色、脸、五官')
+    expect(generationCall?.[0].prompt.indexOf(getArtStylePrompt('japanese-anime', 'zh'))).toBeLessThan(
+      generationCall?.[0].prompt.indexOf(PROP_PROMPT_SUFFIX) ?? -1,
     )
   })
 })

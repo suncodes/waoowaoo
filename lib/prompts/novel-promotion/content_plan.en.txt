@@ -62,10 +62,19 @@ For contentDomain=book and communicationGoal=explain, contentPlan must be:
   }]
 }
 
-Keep total duration close to targetDurationSec. Never invent book evidence. Every guide segment requires a sourceAnchor. Keep on-screen text concise. Do not reduce a guide to plot retelling.
+Execution requirements:
+- Do not fill the entire target duration with narration. Estimate a natural spoken pace and keep the summed segment/beat duration within 85%-92% of targetDurationSec, leaving at least 8% for pauses, transitions, opening/closing, and editorial adjustment.
+- Each segment or beat must carry one primary question, claim, or story progression. Do not pack several parallel claims into one unit.
+- The first 5-12 seconds must establish one clear question, contrast, or promise without stacking unsupported hooks.
+- Narration must be voice-ready, conversational, and concise. Avoid unsupported absolutes such as "the best ever", "all came true", "guaranteed", or global rankings.
+- visualPurpose describes the information job of the visual. visualHints must describe a concrete image in one time and place; never ask one still image to perform a news montage, multi-location collage, or several sequential actions.
+- Put exact copy only in onScreenText. Do not ask the image model to render book titles, dates, newspaper headlines, or long text.
+- Never invent book evidence. Every guide segment requires a sourceAnchor. Do not reduce a guide to plot retelling.
 
 Book guide source rules:
 - If book_seed_json is not null and the source material is only a book title, generate an editable guide-outline draft from model knowledge.
 - In model-knowledge mode, sourceAnchor.sourceType must be "model_knowledge", confidence must not exceed 0.7, and quote must be omitted.
 - Only include quote when the source material contains a verifiable excerpt or explicit user-provided reference, using "verified_source" or "user_source".
 - If the author, chapter, or detail is uncertain, use conservative labels and narration instead of inventing exact source evidence.
+- In model-knowledge mode, do not invent precise rankings, sales/translation counts, verbatim quotations, or attribution claims that a named person explicitly credited the work. Use conservative, verifiable summaries instead.
+- A light-spoiler guide may describe premises, attractions, and themes, but must not reveal endings, identity answers, decisive twists, or what is ultimately disclosed.

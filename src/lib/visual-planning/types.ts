@@ -45,6 +45,12 @@ export interface ShotSpec {
   durationIntent: string
 }
 
+export interface VisualAssetRef {
+  id: string
+  kind: 'character' | 'location' | 'prop'
+  name: string
+}
+
 export interface VisualUnit {
   id: string
   clipId: string
@@ -60,11 +66,7 @@ export interface VisualUnit {
   onScreenText?: string
   sourceAnchor?: SourceAnchor
   shotSpec: ShotSpec
-  assetRefs?: Array<{
-    id: string
-    kind: 'character' | 'location' | 'prop'
-    name: string
-  }>
+  assetRefs?: VisualAssetRef[]
 }
 
 export interface VisualPlanResult {

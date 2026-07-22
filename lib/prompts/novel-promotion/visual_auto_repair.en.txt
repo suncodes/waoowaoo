@@ -1,4 +1,4 @@
-Generate one repaired candidate image. Preserve the target specification and every correct element listed in preserve. Repair only the failed dimensions identified by PromptPatch.
+Generate one independent repaired candidate image. The system may call this prompt repeatedly to create several candidates; every candidate must independently satisfy the target specification. Preserve every correct element listed in preserve and repair only the failed dimensions identified by PromptPatch.
 
 Base prompt:
 {base_prompt}
@@ -9,4 +9,10 @@ Target specification:
 PromptPatch:
 {prompt_patch_json}
 
-Do not add unrequested subjects, text, props, or styles. Apply add, avoid remove and negative, and keep every already-correct composition, identity, scene, lighting, and color element stable.
+Requirements:
+- Do not add unrequested subjects, text, props, scenes, or styles. Apply add and avoid remove and negative.
+- Keep every already-correct composition, character identity, prop identity, scene, lighting, and color element stable.
+- One image contains one time, one place, and one primary visual event. No collage, grid, asset wall, or sequential storyboard frames.
+- Style controls visual language only. Never introduce a character, face, body, building, logo, or motif associated with the style source.
+- For subject or continuity failures, rebuild the correct subject and do not preserve the wrong character. For localized edits, do not redraw unrelated correct regions.
+- No text, watermark, or logo in the image. Exact copy belongs to downstream composition.

@@ -255,6 +255,75 @@ describe('worker visual-plan behavior', () => {
     }))
   })
 
+  it('preserves exact model-selected asset refs and binds them into the persisted visual units', async () => {
+    prismaMock.novelPromotionProject.findUnique.mockResolvedValueOnce({
+      id: 'novel-project-1',
+      analysisModel: 'google::gemini-3-flash-preview',
+      videoProfile: { preset: 'book_guide' },
+      videoRatio: '16:9',
+      artStyle: 'editorial',
+      artStylePrompt: null,
+      characters: [],
+      locations: [{
+        id: 'prop-nautilus',
+        name: '鹦鹉螺号潜水艇',
+        summary: '核心潜水艇道具',
+        assetKind: 'prop',
+      }],
+    })
+    const payload = visualPlanPayload()
+    payload.visualUnits[0] = {
+      ...payload.visualUnits[0],
+      description: '展示鹦鹉螺号潜水艇的外形',
+      imagePrompt: '鹦鹉螺号潜水艇在纯净深海中航行，无文字',
+      assetRefs: [{ id: 'prop-nautilus', kind: 'prop', name: '鹦鹉螺号潜水艇' }],
+    } as typeof payload.visualUnits[number] & { assetRefs: Array<{ id: string; kind: 'prop'; name: string }> }
+    planningMock.executePlanningJsonStep.mockResolvedValueOnce(payload)
+
+    await handleVisualPlanTask(buildJob())
+
+    expect(persistenceMock.persistVisualPlan).toHaveBeenCalledWith(expect.objectContaining({
+      result: expect.objectContaining({
+        visualUnits: [expect.objectContaining({
+          assetRefs: [{ id: 'prop-nautilus', kind: 'prop', name: '鹦鹉螺号潜水艇' }],
+        })],
+      }),
+    }))
+  })
+
+  it('repairs visual plans that reference unknown asset ids', async () => {
+    prismaMock.novelPromotionProject.findUnique.mockResolvedValueOnce({
+      id: 'novel-project-1',
+      analysisModel: 'google::gemini-3-flash-preview',
+      videoProfile: { preset: 'book_guide' },
+      videoRatio: '16:9',
+      artStyle: 'editorial',
+      artStylePrompt: null,
+      characters: [],
+      locations: [{
+        id: 'prop-nautilus',
+        name: '鹦鹉螺号潜水艇',
+        summary: '核心潜水艇道具',
+        assetKind: 'prop',
+      }],
+    })
+    const invalid = visualPlanPayload()
+    invalid.visualUnits[0] = {
+      ...invalid.visualUnits[0],
+      assetRefs: [{ id: 'missing-prop', kind: 'prop', name: '不存在的道具' }],
+    } as typeof invalid.visualUnits[number] & { assetRefs: Array<{ id: string; kind: 'prop'; name: string }> }
+    planningMock.executePlanningJsonStep
+      .mockResolvedValueOnce(invalid)
+      .mockResolvedValueOnce(visualPlanPayload())
+
+    await handleVisualPlanTask(buildJob())
+
+    expect(planningMock.executePlanningJsonStep).toHaveBeenCalledTimes(2)
+    expect(planningMock.executePlanningJsonStep).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      action: 'visual_plan_repair',
+    }))
+  })
+
   it('rejects deleted approved assets before generating or persisting a partial plan', async () => {
     prismaMock.novelPromotionEpisode.findUnique.mockResolvedValueOnce({
       id: 'episode-1',

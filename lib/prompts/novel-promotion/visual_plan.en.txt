@@ -14,6 +14,11 @@ Before returning the result, verify every hard requirement below:
 3. Even when renderMode is text_card, imagePrompt must describe the background, layout, subject, negative space, and text-safe area. Put the exact copy only in onScreenText and do not ask the image model to render long text.
 4. imagePrompt must be a complete prompt ready for image generation. videoPrompt must describe subject motion and camera behavior after the first frame, not merely repeat a field label.
 5. Use only clipId values that exist in Clips. Return complete, closed, parseable JSON without explanations or Markdown.
+6. One image represents one time, one place, one composition, and one primary visual event. Never use instructions such as montage, collage, sequential display, rapid switching, or multiple scenes in one imagePrompt.
+7. `generated_image` creates one complete shot. `text_card` creates only a text-free background, decoration, and negative space; exact copy belongs in onScreenText. `composite` creates one clean plate or one foreground element for downstream composition and must not fake a news montage, multiple oceans, multiple covers, or multiple frames in one generated image.
+8. When an available character, location, or prop appears, assetRefs must use the exact id, kind, and name from Available assets. Never invent an ID or mention an existing asset without its reference.
+9. Art style controls line, shape language, material, palette, and lighting only. It must not introduce characters, buildings, logos, or motifs from an associated franchise. Any character not explicitly named by the shot or assetRefs is forbidden.
+10. imagePrompt must not request exact book titles, dates, newspaper headlines, or long text. Explicitly require no text, watermark, or logo.
 
 Return JSON only:
 {
@@ -51,6 +56,7 @@ Return JSON only:
     "durationSec": 5,
     "onScreenText": "optional short text",
     "sourceAnchor": {"label": "optional source", "quote": "optional quote"},
+    "assetRefs": [{"id": "exact available asset id", "kind": "character|location|prop", "name": "exact asset name"}],
     "shotSpec": {
       "narrativeIntent": "shot purpose",
       "subjectIdentity": ["identity anchor"],
@@ -68,4 +74,4 @@ Return JSON only:
   }]
 }
 
-A guide must cover every clip and choose among book cover, quote card, diagram, illustration, and kinetic text according to information purpose. Do not make every unit a character illustration. Fiction must also cover every clip and may provide compact global recommendations per clip; detailed storyboard generation must still obey the Treatment and Bible.
+A guide must cover every clip and choose among book cover, quote card, diagram, illustration, and kinetic text according to information purpose. Do not make every unit a character illustration. When several sources or locations are needed, split them into several visualUnits instead of packing them into one imagePrompt. Fiction must also cover every clip and may provide compact global recommendations per clip; detailed storyboard generation must still obey the Treatment and Bible.

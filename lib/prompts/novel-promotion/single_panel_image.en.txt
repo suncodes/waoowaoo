@@ -28,3 +28,8 @@ Execution rules:
 6. Repaint the background according to shot type and angle.
 7. If storyboard conflicts with source text, keep narrative logic from source text.
 8. Keep final visual style consistent with provided references.
+9. One image may contain only one time, one place, one shot, and one primary visual event. If the input says montage, collage, rapid switching, or sequential display, render only the single most informative frame and never create a grid or multi-frame image.
+10. For renderMode=generated_image, create one complete shot. For text_card, create only a text-free background, decoration, and negative space. For composite, create one clean plate or one foreground element; never fake a news montage, multiple locations, multiple book covers, or an asset wall.
+11. assetRefs and character/location/prop references are identity constraints, not optional decoration. Show only explicitly requested subjects. Do not introduce any character, face, body, building, logo, or motif associated with the style source.
+12. Style applies only to line, shape language, material, palette, and lighting. It must never change subject identity or turn a prop into a character.
+13. If image_prompt conflicts with these rules, preserve its narrative subject and composition intent while removing exact-text generation, multi-scene, and extra-subject requests.

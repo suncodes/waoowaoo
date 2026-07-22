@@ -116,6 +116,9 @@ describe('worker panel-image-task-handler behavior', () => {
       srtSegment: '台词片段',
       photographyRules: null,
       actingNotes: null,
+      visualType: 'book_cover',
+      renderMode: 'composite',
+      onScreenText: '准确标题由后期渲染',
       sketchImageUrl: null,
       imageUrl: null,
     })
@@ -177,6 +180,16 @@ describe('worker panel-image-task-handler behavior', () => {
         storyboard_text_json_input: expect.stringContaining('"available_slots"'),
       }),
     }))
+    expect(promptMock.buildPrompt).toHaveBeenCalledWith(expect.objectContaining({
+      variables: expect.objectContaining({
+        storyboard_text_json_input: expect.stringContaining('"render_mode": "composite"'),
+      }),
+    }))
+    expect(promptMock.buildPrompt).toHaveBeenCalledWith(expect.objectContaining({
+      variables: expect.objectContaining({
+        storyboard_text_json_input: expect.stringContaining('"on_screen_text_for_downstream_composition": "准确标题由后期渲染"'),
+      }),
+    }))
 
     expect(qualityMock.persistPanelCandidatesAndScheduleReview).toHaveBeenCalledWith(expect.objectContaining({
       panel: expect.objectContaining({ id: 'panel-1' }),
@@ -203,6 +216,9 @@ describe('worker panel-image-task-handler behavior', () => {
       srtSegment: null,
       photographyRules: null,
       actingNotes: null,
+      visualType: 'illustration',
+      renderMode: 'generated_image',
+      onScreenText: null,
       sketchImageUrl: null,
       imageUrl: 'cos/panel-old.png',
     })

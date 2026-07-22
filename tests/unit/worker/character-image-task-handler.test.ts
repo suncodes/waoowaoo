@@ -5,7 +5,11 @@ import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 
 const utilsMock = vi.hoisted(() => ({
   assertTaskActive: vi.fn(async () => undefined),
-  getProjectModels: vi.fn(async () => ({ characterModel: 'image-model-1', artStyle: 'realistic' })),
+  getProjectModels: vi.fn(async () => ({
+    characterModel: 'image-model-1',
+    artStyle: 'realistic',
+    artStyleReferenceEnabled: false,
+  })),
   toSignedUrlIfCos: vi.fn((url: string | null | undefined) => (url ? `https://signed.example/${url}` : null)),
 }))
 
@@ -83,7 +87,11 @@ describe('worker character-image-task-handler behavior', () => {
   })
 
   it('characterModel not configured -> explicit error', async () => {
-    utilsMock.getProjectModels.mockResolvedValueOnce({ characterModel: '', artStyle: 'realistic' })
+    utilsMock.getProjectModels.mockResolvedValueOnce({
+      characterModel: '',
+      artStyle: 'realistic',
+      artStyleReferenceEnabled: false,
+    })
     await expect(handleCharacterImageTask(buildJob({}))).rejects.toThrow('Character model not configured')
   })
 
@@ -108,9 +116,13 @@ describe('worker character-image-task-handler behavior', () => {
     expect(generationInput.prompt).toContain(realisticStylePrompt)
     expect(generationInput.prompt.split(CHARACTER_PROMPT_SUFFIX).length - 1).toBe(1)
     expect(generationInput.prompt.split(realisticStylePrompt).length - 1).toBe(1)
+    expect(generationInput.prompt.endsWith(CHARACTER_PROMPT_SUFFIX)).toBe(true)
+    expect(generationInput.prompt.indexOf(realisticStylePrompt)).toBeLessThan(
+      generationInput.prompt.indexOf(CHARACTER_PROMPT_SUFFIX),
+    )
     expect(generationInput.label).toBe('Hero - 战斗形态')
     expect(generationInput.options).toEqual(expect.objectContaining({
-      referenceImages: ['https://signed.example/cos/primary.png', '/art-styles/realistic.jpg'],
+      referenceImages: ['https://signed.example/cos/primary.png'],
       aspectRatio: '3:2',
     }))
 
@@ -123,7 +135,7 @@ describe('worker character-image-task-handler behavior', () => {
     })
   })
 
-  it('payload artStyle overrides project artStyle in prompt', async () => {
+  it('payload artStyle overrides project artStyle in prompt without enabling style references implicitly', async () => {
     const job = buildJob({ imageIndex: 0, artStyle: 'japanese-anime' })
     await handleCharacterImageTask(job)
 
@@ -133,7 +145,25 @@ describe('worker character-image-task-handler behavior', () => {
     }
     expect(generationInput.prompt).toContain(getArtStylePrompt('japanese-anime', 'zh'))
     expect(generationInput.prompt).not.toContain(getArtStylePrompt('realistic', 'zh'))
-    expect(generationInput.options?.referenceImages).toContain('/art-styles/japanese-anime.jpg')
+    expect(generationInput.options?.referenceImages).toEqual(['https://signed.example/cos/primary.png'])
+  })
+
+  it('prepends the selected style reference only when the project enables it', async () => {
+    utilsMock.getProjectModels.mockResolvedValueOnce({
+      characterModel: 'image-model-1',
+      artStyle: 'realistic',
+      artStyleReferenceEnabled: true,
+    })
+
+    await handleCharacterImageTask(buildJob({ imageIndex: 0, artStyle: 'japanese-anime' }))
+
+    const generationInput = sharedMock.generateProjectLabeledImageToStorage.mock.calls[0]?.[0] as {
+      options?: { referenceImages?: string[] }
+    }
+    expect(generationInput.options?.referenceImages).toEqual([
+      '/art-styles/japanese-anime.jpg',
+      'https://signed.example/cos/primary.png',
+    ])
   })
 
   it('invalid payload artStyle -> explicit error', async () => {

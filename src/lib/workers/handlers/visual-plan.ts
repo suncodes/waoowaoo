@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { createArtifact } from '@/lib/run-runtime/service'
 import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
 import { isBookGuideProfile, resolveVideoProfile } from '@/lib/video-profile'
-import { parseVisualPlanResult, type VisualPlanResult } from '@/lib/visual-planning'
+import { parseVisualPlanResult, type VisualAssetRef, type VisualPlanResult } from '@/lib/visual-planning'
 import type { TaskJobData } from '@/lib/task/types'
 import { reportTaskProgress } from '@/lib/workers/shared'
 import { assertTaskActive } from '@/lib/workers/utils'
@@ -64,6 +64,7 @@ async function generateValidatedVisualPlan(params: {
   clipIds: string[]
   clipsJson: string
   assetsJson: string
+  assets: VisualAssetRef[]
 }): Promise<VisualPlanResult> {
   let prompt = params.initialPrompt
 
@@ -82,7 +83,7 @@ async function generateValidatedVisualPlan(params: {
         stepAttempt: attempt,
         temperature: attempt === 1 ? 0.4 : 0.2,
       })
-      return parseVisualPlanResult(candidate, params.profile, params.clipIds)
+      return parseVisualPlanResult(candidate, params.profile, params.clipIds, params.assets)
     } catch (error) {
       if (!isRepairableVisualPlanOutputError(error) || attempt === MAX_VISUAL_PLAN_OUTPUT_ATTEMPTS) {
         throw error
@@ -148,6 +149,14 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     locations: novelData.locations.filter((item) => item.assetKind !== 'prop'),
     props: novelData.locations.filter((item) => item.assetKind === 'prop'),
   }
+  const visualAssets: VisualAssetRef[] = [
+    ...novelData.characters.map((item) => ({ id: item.id, kind: 'character' as const, name: item.name })),
+    ...novelData.locations.map((item) => ({
+      id: item.id,
+      kind: item.assetKind === 'prop' ? 'prop' as const : 'location' as const,
+      name: item.name,
+    })),
+  ]
   const contentMeta = readContentArtifactMeta(episode.contentPlan)
   const requiredAssetIds = contentMeta?.assetRequirements.status === 'approved'
     ? contentMeta.assetRequirements.assetIds
@@ -186,13 +195,17 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     clipIds: clips.map((clip) => clip.id),
     clipsJson,
     assetsJson,
+    assets: visualAssets,
   })
+  const explicitlyReferencedAssetIds = parsedResult.visualUnits.flatMap(
+    (unit) => unit.assetRefs?.map((asset) => asset.id) || [],
+  )
   const anchors = buildVisualAnchors({
     contentPlan: episode.contentPlan,
     clips,
     characters: novelData.characters,
     locations: novelData.locations,
-    includeAssetIds: requiredAssetIds,
+    includeAssetIds: [...requiredAssetIds, ...explicitlyReferencedAssetIds],
   })
   const anchorAssetIds = new Set(anchors.map((anchor) => anchor.assetId))
   const missingAnchorIds = requiredAssetIds.filter((assetId) => !anchorAssetIds.has(assetId))

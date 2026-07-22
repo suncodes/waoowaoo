@@ -10,7 +10,7 @@ const utilsMock = vi.hoisted(() => ({
   assertTaskActive: vi.fn(async () => undefined),
   getProjectModels: vi.fn(async () => ({ analysisModel: 'google::gemini-3-flash-preview' })),
   resolveImageSourceFromGeneration: vi.fn(async () => 'generated-image-source'),
-  uploadImageSourceToCos: vi.fn(async () => 'candidate-repaired.png'),
+  uploadImageSourceToCos: vi.fn(async (_source: string, _prefix: string, key: string) => `${key}.png`),
 }))
 const sharedMock = vi.hoisted(() => ({
   collectPanelReferenceImages: vi.fn(async () => ['asset-reference.png']),
@@ -57,6 +57,7 @@ function buildJob(versionHash = 'version-1'): Job<TaskJobData> {
         imageModel: 'image::edit',
         targetSpec: { targetId: 'panel-1', aspectRatio: '16:9', intent: 'hero close-up' },
         promptPatch: { preserve: ['hero identity'], add: ['correct anatomy'] },
+        candidateCount: 2,
       },
       userId: 'user-1',
     },
@@ -92,10 +93,11 @@ describe('worker visual-auto-repair behavior', () => {
 
     expect(result).toEqual({
       panelId: 'panel-1',
-      candidateUrl: 'candidate-repaired.png',
+      candidateUrls: ['panel-1-1-0.png', 'panel-1-1-1.png'],
       versionHash: 'version-2',
       attempt: 1,
     })
+    expect(utilsMock.resolveImageSourceFromGeneration).toHaveBeenCalledTimes(2)
     expect(utilsMock.resolveImageSourceFromGeneration).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -104,12 +106,13 @@ describe('worker visual-auto-repair behavior', () => {
           referenceImages: ['candidate-original.png', 'asset-reference.png'],
           aspectRatio: '16:9',
         }),
+        allowTaskExternalIdResume: false,
       }),
     )
     expect(prismaMock.novelPromotionPanel.update).toHaveBeenCalledWith({
       where: { id: 'panel-1' },
       data: expect.objectContaining({
-        candidateImages: JSON.stringify(['candidate-repaired.png']),
+        candidateImages: JSON.stringify(['panel-1-1-0.png', 'panel-1-1-1.png']),
         visualQualityState: expect.objectContaining({
           status: 'reviewing',
           versionHash: 'version-2',
@@ -121,7 +124,7 @@ describe('worker visual-auto-repair behavior', () => {
     expect(taskMock.submitTask).toHaveBeenCalledWith(expect.objectContaining({
       type: TASK_TYPE.VISUAL_QUALITY_REVIEW,
       payload: expect.objectContaining({
-        candidateUrls: ['candidate-repaired.png'],
+        candidateUrls: ['panel-1-1-0.png', 'panel-1-1-1.png'],
         versionHash: 'version-2',
       }),
     }))

@@ -204,7 +204,7 @@ export async function handleVisualQualityReviewTask(job: Job<TaskJobData>) {
         targetSpec,
         attempt: attempt + 1,
         imageModel,
-        candidateCount: 1,
+        candidateCount: decision.action === 'regenerate' ? 3 : 2,
       },
       dedupeKey: `visual_auto_repair:${panel.id}:${versionHash}:${attempt + 1}`,
     })

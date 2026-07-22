@@ -27,6 +27,15 @@ VideoProfile：
   "revisionInstructions": ["可直接执行的修改要求"]
 }
 
-导读重点检查来源锚点、事实支持、剧透策略和视觉功能；剧情重点检查主线、节拍推进、重复和目标时长。没有证据时不得给高 sourceSupportScore。
+导读重点检查来源锚点、事实支持、剧透策略、口播自然度和视觉功能；剧情重点检查主线、节拍推进、重复和目标时长。没有证据时不得给高 sourceSupportScore。
+
+必须执行以下检查：
+- 预计总时长超过 targetDurationSec 的 92%，标记 DURATION_OVERFLOW；完全卡满目标时长不得批准。
+- narration 明显超过对应 estimatedDurationSec 的自然口播容量，标记 DURATION_OVERFLOW。
+- 单个段落同时回答多个无主次的问题、重复前文结论或缺少明确观众收获，标记 STRUCTURE_WEAK 或 REPETITION。
+- visualHints 要求单张图完成混剪、多地点拼贴、多个连续动作或准确文字渲染，标记 VISUAL_PURPOSE_MISSING，并要求拆成单一时空、单一视觉事件。
+- 模型常识模式出现精确排名、数量、直接引语、绝对化判断或具体归因性断言，标记 SOURCE_UNSUPPORTED。
+- 轻剧透内容揭示结局、身份答案、关键反转结果，标记 SPOILER_POLICY_VIOLATION。
+- 只有结构、来源边界、时长和视觉职责均可执行时才允许 approved。
 
 如果 book_seed_json 的 sourceMode 为 model_knowledge，代表当前只基于模型常识生成草稿：sourceSupportScore 不得高于 70；如果计划包含逐字 quote，应标记 SOURCE_UNSUPPORTED；除非结构严重错误，不要阻塞，可用 warning 提醒用户确认。
