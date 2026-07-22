@@ -89,6 +89,16 @@ export const POST = apiHandler(async (
   // 验证选择的图片是否在候选列表中
   const storedCandidateImages = parseUnknownArray(panel.candidateImages)
   const currentQualityState = parseVisualQualityState(panel.visualQualityState)
+  if (
+    currentQualityState?.mode === 'auto'
+    && (
+      currentQualityState.status === 'pending'
+      || currentQualityState.status === 'reviewing'
+      || currentQualityState.status === 'repairing'
+    )
+  ) {
+    throw new ApiError('CONFLICT', { message: '自动检查或修复尚未完成，暂时不能确认候选图片。' })
+  }
   const candidateImages = storedCandidateImages.length > 0
     ? storedCandidateImages
     : currentQualityState
@@ -127,16 +137,17 @@ export const POST = apiHandler(async (
     finalImageKey = await downloadAndUploadImage(sourceUrl, cosKey)
   }
 
+  const retainedCandidates = candidateImages.filter((candidate): candidate is string => typeof candidate === 'string' && !!candidate)
   const signedUrl = getSignedUrl(finalImageKey, 7 * 24 * 3600)
-  const visualQualityState = approveSelectedVisualCandidate(panel.visualQualityState, finalImageKey)
+  const visualQualityState = approveSelectedVisualCandidate(panel.visualQualityState, finalImageKey, retainedCandidates)
 
-  // 更新 Panel：设置新图片，清空候选列表
+  // 更新 Panel：设置定稿图片，同时保留候选列表，便于之后切换。
   await prisma.novelPromotionPanel.update({
     where: { id: panelId },
     data: {
       imageUrl: finalImageKey,
       imageHistory: JSON.stringify(currentHistory),
-      candidateImages: null,
+      candidateImages: JSON.stringify(retainedCandidates),
       ...(visualQualityState ? { visualQualityState: asInputJson(visualQualityState) } : {}),
     }
   })
@@ -146,6 +157,7 @@ export const POST = apiHandler(async (
     imageUrl: signedUrl,
     cosKey: finalImageKey,
     visualQualityState,
+    candidateImages: retainedCandidates,
     message: '已选择图片'
   })
 })

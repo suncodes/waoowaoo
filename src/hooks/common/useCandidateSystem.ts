@@ -31,14 +31,15 @@ export function useCandidateSystem<TId extends string = string>() {
         id: TId,
         originalUrl: string | null,
         candidates: string[],
-        previousUrl: string | null = null
+        previousUrl: string | null = null,
+        selectedIndex = 0,
     ) => {
         setStates(prev => {
             const next = new Map(prev)
             next.set(id, {
                 originalUrl,
                 candidates: candidates.filter(c => c && !c.startsWith('PENDING:')), // 过滤 PENDING 任务
-                selectedIndex: 0, // 默认选中第一张候选
+                selectedIndex: Math.max(0, Math.min(candidates.length - 1, selectedIndex)),
                 previousUrl
             })
             return next

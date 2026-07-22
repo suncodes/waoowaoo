@@ -54,6 +54,7 @@ type VideoGenerationOptions = Record<string, VideoGenerationOptionValue>
 
 interface BatchVideoGenerationParams {
     videoModel: string
+    mode?: 'normal' | 'firstlastframe'
     generationOptions?: VideoGenerationOptions
 }
 
@@ -250,11 +251,13 @@ export function useBatchGenerateVideos(projectId: string | null, episodeId: stri
                 all: boolean
                 episodeId: string
                 videoModel: string
+                batchMode: 'normal' | 'firstlastframe'
                 generationOptions?: VideoGenerationOptions
             } = {
                 all: true,
                 episodeId,
                 videoModel: params.videoModel,
+                batchMode: params.mode || 'normal',
             }
             if (params.generationOptions && typeof params.generationOptions === 'object') {
                 requestBody.generationOptions = params.generationOptions

@@ -54,6 +54,14 @@ export async function handleVisualQualityReviewTask(job: Job<TaskJobData>) {
   if (!novelData) throw new Error('Novel promotion data not found')
 
   const currentState = parseVisualQualityState(panel.visualQualityState)
+  if (currentState?.humanConfirmedAt) {
+    return {
+      panelId: panel.id,
+      mode: currentState.mode,
+      status: currentState.status,
+      superseded: true,
+    }
+  }
   const payloadCandidates = Array.isArray(payload.candidateUrls)
     ? payload.candidateUrls.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
     : []
@@ -86,13 +94,33 @@ export async function handleVisualQualityReviewTask(job: Job<TaskJobData>) {
     attempt,
     maxAttempts,
   })
-  const reviewingPanel = await prisma.novelPromotionPanel.update({
-    where: { id: panel.id },
-    data: {
-      visualQualityState: asInputJson(reviewingState),
-    },
-    select: { updatedAt: true },
-  })
+  let reviewingPanel: { updatedAt: Date }
+  try {
+    reviewingPanel = await prisma.novelPromotionPanel.update({
+      where: panel.updatedAt
+        ? { id: panel.id, updatedAt: panel.updatedAt }
+        : { id: panel.id },
+      data: {
+        visualQualityState: asInputJson(reviewingState),
+      },
+      select: { updatedAt: true },
+    })
+  } catch {
+    const latestPanel = await prisma.novelPromotionPanel.findUnique({
+      where: { id: panel.id },
+      select: { visualQualityState: true },
+    })
+    const latestState = parseVisualQualityState(latestPanel?.visualQualityState)
+    if (latestState?.humanConfirmedAt) {
+      return {
+        panelId: panel.id,
+        mode: latestState.mode,
+        status: latestState.status,
+        superseded: true,
+      }
+    }
+    throw new Error('VISUAL_VERSION_STALE')
+  }
 
   await reportTaskProgress(job, 18, { stage: 'visual_quality_prepare', displayMode: 'detail' })
   await assertTaskActive(job, 'visual_quality_prepare')
@@ -195,7 +223,7 @@ export async function handleVisualQualityReviewTask(job: Job<TaskJobData>) {
       select: { visualQualityState: true },
     })
     const latestState = parseVisualQualityState(latestPanel?.visualQualityState)
-    if (latestState?.status === 'approved') {
+    if (latestState?.humanConfirmedAt || latestState?.status === 'approved') {
       return {
         panelId: panel.id,
         mode: latestState.mode,

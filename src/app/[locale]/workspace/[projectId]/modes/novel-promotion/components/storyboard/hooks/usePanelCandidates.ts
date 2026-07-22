@@ -22,12 +22,18 @@ import { usePanelEpisodeCachePatch } from './usePanelEpisodeCachePatch'
 interface UsePanelCandidatesProps {
   projectId: string
   episodeId?: string
-  onConfirmed?: (panelId: string, imageUrl: string | null, visualQualityState?: unknown) => void
+  onConfirmed?: (
+    panelId: string,
+    imageUrl: string | null,
+    visualQualityState?: unknown,
+    candidateImages?: string[],
+  ) => void
 }
 
 interface SelectPanelCandidateResult {
   imageUrl?: string
   visualQualityState?: unknown
+  candidateImages?: string[]
 }
 
 export function usePanelCandidates({
@@ -72,14 +78,11 @@ export function usePanelCandidates({
       })
       const result = (data || {}) as SelectPanelCandidateResult
 
-      candidateSystem.clearCandidates(panelId)
-      _ulogInfo('[confirmPanelCandidate] ✅ 已清除本地候选状态')
-
       const confirmedImageUrl = result.imageUrl || imageUrl
-      onConfirmed?.(panelId, confirmedImageUrl, result.visualQualityState)
+      onConfirmed?.(panelId, confirmedImageUrl, result.visualQualityState, result.candidateImages)
       patchPanelInEpisodeCache(panelId, {
         imageUrl: confirmedImageUrl,
-        candidateImages: null,
+        ...(result.candidateImages ? { candidateImages: JSON.stringify(result.candidateImages) } : {}),
         imageTaskRunning: false,
         imageErrorMessage: null,
         ...(result.visualQualityState !== undefined
@@ -100,9 +103,9 @@ export function usePanelCandidates({
           error: getErrorMessage(error, t('common.unknownError')),
         }),
       )
+      throw error
     }
   }, [
-    candidateSystem,
     onConfirmed,
     onSilentRefresh,
     patchPanelInEpisodeCache,

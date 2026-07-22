@@ -187,10 +187,14 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
       art_style: novelData.artStylePrompt || novelData.artStyle,
     },
   })
+  const rewriteInstruction = readText(payload.instruction)
+  const planningPrompt = rewriteInstruction
+    ? `${initialPrompt}\n\n${job.data.locale === 'en' ? 'Rewrite instruction' : '本次重写要求'}：${rewriteInstruction}`
+    : initialPrompt
   const parsedResult = await generateValidatedVisualPlan({
     job,
     model,
-    initialPrompt,
+    initialPrompt: planningPrompt,
     profile,
     clipIds: clips.map((clip) => clip.id),
     clipsJson,

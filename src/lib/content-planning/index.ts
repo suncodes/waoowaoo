@@ -30,6 +30,21 @@ function optionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
+export function normalizeGuideUserFacingTitle(value: unknown, field = 'guide.title'): string {
+  const title = requiredString(value, field)
+  return title
+    .replace(/开头钩子/gi, '开场问题')
+    .replace(/基础设定科普/gi, '背景与基本设定')
+    .replace(/\bCTA\b/gi, '结尾提示')
+    .replace(/钩子/g, '开场引导')
+    .replace(/冷启动/g, '开场说明')
+    .replace(/信息增益/g, '核心信息')
+    .replace(/转化引导/g, '结尾提示')
+    .replace(/\bhook\b/gi, 'opening question')
+    .replace(/\bcold open\b/gi, 'opening context')
+    .replace(/\bconversion\b/gi, 'closing guidance')
+}
+
 function stringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return []
   return value.flatMap((item) => typeof item === 'string' && item.trim() ? [item.trim()] : [])
@@ -126,7 +141,7 @@ function parseGuidePlan(value: JsonRecord): GuideContentPlan {
     if (!isRecord(item)) throw new Error(`CONTENT_PLAN_INVALID: outline.${index} must be object`)
     return {
       id: optionalString(item.id) || `outline_${index + 1}`,
-      title: requiredString(item.title, `outline.${index}.title`),
+      title: normalizeGuideUserFacingTitle(item.title, `outline.${index}.title`),
       question: requiredString(item.question, `outline.${index}.question`),
       takeaway: requiredString(item.takeaway, `outline.${index}.takeaway`),
     }
@@ -146,7 +161,7 @@ function parseGuidePlan(value: JsonRecord): GuideContentPlan {
     return {
       id: optionalString(item.id) || `segment_${index + 1}`,
       outlineId,
-      title: requiredString(item.title, `segments.${index}.title`),
+      title: normalizeGuideUserFacingTitle(item.title, `segments.${index}.title`),
       narration: requiredString(item.narration, `segments.${index}.narration`),
       visualPurpose: requiredString(item.visualPurpose, `segments.${index}.visualPurpose`),
       visualHints: stringArray(item.visualHints),
@@ -162,7 +177,7 @@ function parseGuidePlan(value: JsonRecord): GuideContentPlan {
   return {
     schemaVersion: 1,
     planType: 'guide',
-    title: requiredString(value.title, 'contentPlan.title'),
+    title: normalizeGuideUserFacingTitle(value.title, 'contentPlan.title'),
     thesis: requiredString(value.thesis, 'contentPlan.thesis'),
     recommendationAngle: requiredString(value.recommendationAngle, 'contentPlan.recommendationAngle'),
     outline,

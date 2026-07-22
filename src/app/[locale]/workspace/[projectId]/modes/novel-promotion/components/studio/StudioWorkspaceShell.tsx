@@ -290,20 +290,15 @@ function AssistantPanel({
             {model.activeMode === 'board' ? (
               <ActionButton
                 icon="sparkles"
-                label={model.workflow.storyboardGenerating ? '镜头规划生成中' : '重新生成镜头规划'}
-                onClick={() => { void runtime.onRunScriptToStoryboard() }}
-                disabled={model.workflow.storyboardGenerating}
+                label={runtime.isTransitioning ? '镜头规划处理中' : model.workflow.hasVisualPlan ? 'AI 重写镜头规划' : '生成镜头规划初稿'}
+                onClick={() => { void runtime.onRunVisualPlan() }}
+                disabled={runtime.isTransitioning}
               />
             ) : null}
             {model.activeMode === 'produce' ? (
-              <ActionButton icon="video" label="批量生成视频" onClick={() => {
-                const videoModel = runtime.videoModel || runtime.userVideoModels[0]?.value
-                if (!videoModel) {
-                  window.alert('请先在设置中配置视频模型。')
-                  return
-                }
-                void runtime.onGenerateAllVideos({ videoModel })
-              }} />
+              <div className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-xs leading-5 text-stone-400">
+                页面顶部提供“批量生成单图视频”和“批量生成首尾帧视频”两个入口，提交前都会先预检并二次确认。
+              </div>
             ) : null}
           </div>
         </section>
@@ -371,7 +366,12 @@ export default function StudioWorkspaceShell({
     [model],
   )
   const activeItem = navItems.find((item) => item.id === model.activeMode) || navItems[0]
-  const incompleteShotCount = model.shots.filter((shot) => !shot.imageUrl || shot.status === 'generating' || shot.status === 'failed').length
+  const incompleteShotCount = model.shots.filter((shot) => (
+    !shot.imageUrl
+    || shot.status === 'generating'
+    || shot.status === 'failed'
+    || shot.status === 'needs_review'
+  )).length
   const productionReady = model.shots.length > 0 && incompleteShotCount === 0
   const navigate = (route: string) => {
     if (route === 'videos' && !productionReady) {

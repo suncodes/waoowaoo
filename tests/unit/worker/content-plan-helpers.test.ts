@@ -2,9 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ContentPlanResult } from '@/lib/content-planning'
 
 const txMock = vi.hoisted(() => ({
-  novelPromotionEpisode: { update: vi.fn(async () => undefined) },
+  novelPromotionEpisode: {
+    findUnique: vi.fn(async () => ({ contentPlan: null })),
+    update: vi.fn(async () => undefined),
+  },
   novelPromotionClip: {
-    deleteMany: vi.fn(async () => ({ count: 0 })),
+    findMany: vi.fn(async () => []),
+    update: vi.fn(async () => undefined),
     create: vi.fn(async () => ({ id: 'clip-1' })),
   },
 }))
@@ -76,7 +80,6 @@ describe('content plan persistence', () => {
     expect(txMock.novelPromotionEpisode.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'episode-1' },
     }))
-    expect(txMock.novelPromotionClip.deleteMany).not.toHaveBeenCalled()
     expect(txMock.novelPromotionClip.create).not.toHaveBeenCalled()
   })
 
@@ -87,7 +90,9 @@ describe('content plan persistence', () => {
       commitGuideClips: true,
     })
 
-    expect(txMock.novelPromotionClip.deleteMany).toHaveBeenCalledWith({ where: { episodeId: 'episode-1' } })
+    expect(txMock.novelPromotionClip.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { episodeId: 'episode-1' },
+    }))
     expect(txMock.novelPromotionClip.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         episodeId: 'episode-1',

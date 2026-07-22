@@ -1,4 +1,5 @@
 import type { NovelPromotionPanel, NovelPromotionStoryboard } from '@/types/project'
+import { parseVisualQualityState } from '@/lib/quality-workflow'
 import { evaluateVisualReadiness } from '@/lib/visual-readiness'
 import type { StoryboardPanel } from '../storyboard/hooks/useStoryboardState'
 import { getStoryboardPanels } from '../storyboard/hooks/storyboard-state-utils'
@@ -10,6 +11,11 @@ export interface BoardItem {
   panelOffset: number
   sourcePanel: NovelPromotionPanel
   globalNumber: number
+}
+
+function candidatesNeedConfirmation(sourcePanel: NovelPromotionPanel, hasCandidates: boolean): boolean {
+  if (!hasCandidates) return false
+  return !parseVisualQualityState(sourcePanel.visualQualityState)?.humanConfirmedAt
 }
 
 export function flattenBoardItems(
@@ -50,7 +56,7 @@ export function resolvePanelStatus({
   const readiness = evaluateVisualReadiness(sourcePanel.visualQualityState)
   if (readiness.status === 'pending') return 'generating'
   if (readiness.status === 'blocked') return 'needs_review'
-  if (hasCandidates) return 'needs_review'
+  if (candidatesNeedConfirmation(sourcePanel, hasCandidates)) return 'needs_review'
   if (panel.imageUrl) return 'locked'
   if (panel.description) return 'drafting'
   return 'empty'
@@ -70,7 +76,7 @@ export function isPanelReadyForProduction({
   modifying: boolean
 }): boolean {
   return !!panel.imageUrl
-    && !hasCandidates
+    && !candidatesNeedConfirmation(sourcePanel, hasCandidates)
     && !submitting
     && !modifying
     && !sourcePanel.imageTaskRunning

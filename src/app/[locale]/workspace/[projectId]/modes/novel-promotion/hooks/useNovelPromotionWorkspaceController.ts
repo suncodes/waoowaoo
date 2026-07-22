@@ -230,6 +230,11 @@ export function useNovelPromotionWorkspaceController({
       plan: value,
       changedUnitIds,
     }),
+    saveVisualPlan: (shotPlan, visualUnits) => artifactCommands.saveVisualPlan({
+      type: 'save_visual_plan',
+      shotPlan,
+      visualUnits,
+    }),
     toggleContentLock: artifactCommands.toggleContentLock,
     acceptContentCandidate: artifactCommands.acceptContentCandidate,
     discardContentCandidate: artifactCommands.discardContentCandidate,

@@ -6,6 +6,7 @@ import type { VideoPricingTier } from '@/lib/model-pricing/video-tier'
 import type { BatchVideoGenerationParams, VideoGenerationOptions } from './components/video'
 import type { VideoProfile, VideoProfilePreset, VisualQualityMode } from '@/lib/video-profile'
 import type { ContentPlan } from '@/lib/content-planning'
+import type { VisualPlanResult, VisualUnit } from '@/lib/visual-planning'
 import type { WorkspaceArtifactCommandResult } from '@/lib/creation-workspace/commands'
 
 export interface WorkspaceStageVideoModelOption {
@@ -40,6 +41,7 @@ export interface WorkspaceStageRuntimeValue {
   onNovelTextChange: (value: string) => Promise<void>
   onContentPlanChange: (value: unknown) => Promise<void>
   onSaveGuidePlan: (value: ContentPlan, changedUnitIds: string[]) => Promise<WorkspaceArtifactCommandResult>
+  onSaveVisualPlan: (shotPlan: VisualPlanResult['shotPlan'], visualUnits: VisualUnit[]) => Promise<WorkspaceArtifactCommandResult>
   onToggleContentLock: (unitId: string, locked: boolean) => Promise<WorkspaceArtifactCommandResult>
   onRegenerateContentUnit: (unitId: string, instruction?: string) => Promise<void>
   onAcceptContentCandidate: (unitId: string) => Promise<WorkspaceArtifactCommandResult>
@@ -54,11 +56,11 @@ export interface WorkspaceStageRuntimeValue {
   onArtStyleChange: (value: string) => Promise<void>
   onArtStyleReferenceEnabledChange: (value: boolean) => Promise<void>
   onRunStoryToScript: () => Promise<void>
-  onRunVisualPlan: () => Promise<void>
+  onRunVisualPlan: (instruction?: string) => Promise<void>
   onAnalyzeAssets: () => Promise<void>
   onClipUpdate: (clipId: string, data: unknown) => Promise<void>
   onOpenAssetLibrary: () => void
-  onRunScriptToStoryboard: () => Promise<void>
+  onRunScriptToStoryboard: (options?: { visualApprovalConfirmed?: boolean }) => Promise<void>
   onStageChange: (stage: string) => void
   onGenerateVideo: (
     storyboardId: string,

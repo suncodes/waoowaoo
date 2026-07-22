@@ -6,7 +6,6 @@ import VisualQualityBadge from '@/components/visual-quality/VisualQualityBadge'
 import { AppIcon } from '@/components/ui/icons'
 import { useUpdateProjectPanelLink } from '@/lib/query/hooks'
 import { useVideoFirstLastFrameFlow } from '@/lib/novel-promotion/stages/video-stage-runtime/useVideoFirstLastFrameFlow'
-import { evaluateVisualReadiness } from '@/lib/visual-readiness'
 import { useWorkspaceProvider } from '../../WorkspaceProvider'
 import { useWorkspaceStageRuntime } from '../../WorkspaceStageRuntimeContext'
 import { useWorkspaceEpisodeStageData } from '../../hooks/useWorkspaceEpisodeStageData'
@@ -23,6 +22,8 @@ import {
 import StudioProduceQueueRow from './StudioProduceQueueRow'
 import {
   buildProduceItems,
+  buildBatchVideoPreflight,
+  isPanelVisualReadyForVideo,
   panelLinkedToNext,
   panelLipSyncTaskRunning,
   panelVideoError,
@@ -31,6 +32,8 @@ import {
   resolveVideoStatus,
   toVideoPanels,
   type ProduceItem,
+  type BatchVideoMode,
+  type BatchVideoSkipReason,
 } from './studio-produce-model'
 import type { StudioWorkspaceModel } from './studio-types'
 
@@ -40,6 +43,83 @@ interface StudioProduceCanvasProps {
 }
 
 type FirstLastFrameFlow = ReturnType<typeof useVideoFirstLastFrameFlow>
+
+const BATCH_REASON_LABELS: Record<BatchVideoSkipReason, string> = {
+  video_exists: '已有视频',
+  video_running: '视频正在生成',
+  image_missing: '缺少首帧图片',
+  quality_not_ready: '首帧尚未完成质量确认',
+  not_linked: '未连接下一镜头',
+  last_panel: '最后一个镜头没有尾帧',
+  last_image_missing: '尾帧图片缺失',
+  last_quality_not_ready: '尾帧尚未完成质量确认',
+}
+
+interface BatchPreviewState {
+  mode: BatchVideoMode
+  eligibleCount: number
+  skippedCount: number
+  reasonCounts: Partial<Record<BatchVideoSkipReason, number>>
+  issues: string[]
+}
+
+function BatchVideoConfirmDialog({
+  preview,
+  loading,
+  onCancel,
+  onConfirm,
+}: {
+  preview: BatchPreviewState
+  loading: boolean
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  const title = preview.mode === 'firstlastframe' ? '批量生成首尾帧视频' : '批量生成单图视频'
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="w-full max-w-lg rounded-lg border border-white/15 bg-[#151613] shadow-2xl">
+        <div className="border-b border-white/10 px-5 py-4">
+          <h2 className="text-base font-semibold text-stone-50">{title}</h2>
+          <p className="mt-1 text-sm leading-6 text-stone-500">系统已完成生成前检查，请确认本次提交范围。</p>
+        </div>
+        <div className="space-y-4 p-5">
+          <div className="grid grid-cols-2 gap-3">
+            <StudioMetric label="可生成" value={preview.eligibleCount} />
+            <StudioMetric label="将跳过" value={preview.skippedCount} />
+          </div>
+          {Object.entries(preview.reasonCounts).length > 0 ? (
+            <div className="rounded-md border border-white/10 bg-white/[0.03] p-3">
+              <div className="text-xs font-semibold text-stone-400">跳过原因</div>
+              <div className="mt-2 space-y-1.5">
+                {Object.entries(preview.reasonCounts).map(([reason, count]) => (
+                  <div key={reason} className="flex items-center justify-between gap-3 text-sm text-stone-400">
+                    <span>{BATCH_REASON_LABELS[reason as BatchVideoSkipReason]}</span>
+                    <span>{count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {preview.issues.length > 0 ? (
+            <div className="rounded-md border border-rose-400/30 bg-rose-400/10 px-3 py-3 text-sm text-rose-100">
+              {preview.issues.map((issue) => <div key={issue}>{issue}</div>)}
+            </div>
+          ) : (
+            <div className="rounded-md border border-amber-400/25 bg-amber-400/10 px-3 py-3 text-sm leading-6 text-amber-100">
+              点击确认后会为 {preview.eligibleCount} 个镜头创建独立生成任务，已存在的视频不会覆盖。
+            </div>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-white/10 px-5 py-4">
+          <StudioButton variant="secondary" onClick={onCancel} disabled={loading}>取消</StudioButton>
+          <StudioButton icon="video" loading={loading} onClick={onConfirm} disabled={preview.eligibleCount === 0 || preview.issues.length > 0}>
+            确认生成
+          </StudioButton>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function booleanMapsEqual(
   left: Map<string, boolean>,
@@ -98,13 +178,11 @@ function ProductionDetailPanel({
   const firstLastPrompt = firstLastFrameFlow.flCustomPrompts.get(panelKey)
     || item.panel.firstLastFramePrompt
     || defaultFirstLastPrompt
-  const currentVisualReadiness = evaluateVisualReadiness(item.panel.visualQualityState)
-  const nextVisualReadiness = nextItem
-    ? evaluateVisualReadiness(nextItem.panel.visualQualityState)
-    : null
-  const visualQualityMessage = !currentVisualReadiness.ready
+  const currentVisualReady = isPanelVisualReadyForVideo(item.panel)
+  const nextVisualReady = nextItem ? isPanelVisualReadyForVideo(nextItem.panel) : null
+  const visualQualityMessage = !currentVisualReady
     ? (mode === 'firstlastframe' ? '首帧需要完成画面质量确认' : '当前画面需要完成质量确认')
-    : mode === 'firstlastframe' && nextVisualReadiness && !nextVisualReadiness.ready
+    : mode === 'firstlastframe' && nextVisualReady === false
       ? '尾帧需要完成画面质量确认'
       : ''
   const missingFirstLastFrameSetup = !nextItem
@@ -327,7 +405,8 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
   const updatePanelLinkMutation = useUpdateProjectPanelLink(projectId)
   const [selectedId, setSelectedId] = useState('')
   const [showVoiceWorkbench, setShowVoiceWorkbench] = useState(false)
-  const [generatingAll, setGeneratingAll] = useState(false)
+  const [batchPreview, setBatchPreview] = useState<BatchPreviewState | null>(null)
+  const [generatingMode, setGeneratingMode] = useState<BatchVideoMode | null>(null)
   const [linkSavingKey, setLinkSavingKey] = useState('')
   const items = useMemo(() => buildProduceItems(storyboards), [storyboards])
   const videoPanels = useMemo(() => toVideoPanels(items), [items])
@@ -338,11 +417,6 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
   const effectiveSelectedIndex = selectedItem ? items.findIndex((item) => item.id === selectedItem.id) : -1
   const nextItem = effectiveSelectedIndex >= 0 && effectiveSelectedIndex < items.length - 1 ? items[effectiveSelectedIndex + 1] : null
   const videoModel = runtime.videoModel || runtime.userVideoModels[0]?.value || ''
-  const blockedVideoQualityCount = items.filter((item) => (
-    item.panel.imageUrl
-    && !panelVideoUrl(item.panel)
-    && !evaluateVisualReadiness(item.panel.visualQualityState).ready
-  )).length
   const firstLastFrameFlow = useVideoFirstLastFrameFlow({
     allPanels: videoPanels,
     linkedPanels,
@@ -375,22 +449,38 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
     }
   }
 
-  const generateAll = async () => {
-    if (blockedVideoQualityCount > 0) {
-      window.alert(`有 ${blockedVideoQualityCount} 个画面尚未完成质量确认，请先返回分镜制作处理。`)
-      return
+  const openBatchPreview = (mode: BatchVideoMode) => {
+    const preflight = buildBatchVideoPreflight(items, linkedPanels, mode)
+    const issues: string[] = []
+    if (mode === 'normal' && !videoModel.trim()) issues.push('请先在设置中配置单图视频模型。')
+    if (mode === 'firstlastframe') {
+      if (!firstLastFrameFlow.flModel) issues.push('没有可用的首尾帧视频模型。')
+      if (firstLastFrameFlow.flMissingCapabilityFields.length > 0) {
+        issues.push(`首尾帧参数尚未完整：${firstLastFrameFlow.flMissingCapabilityFields.join('、')}`)
+      }
     }
-    if (!videoModel.trim()) {
-      window.alert('请先在设置中配置视频模型。')
-      return
-    }
-    setGeneratingAll(true)
+    setBatchPreview({ ...preflight, issues })
+  }
+
+  const confirmBatchGeneration = async () => {
+    if (!batchPreview) return
+    const mode = batchPreview.mode
+    const targetModel = mode === 'firstlastframe' ? firstLastFrameFlow.flModel : videoModel
+    if (!targetModel.trim()) return
+    setGeneratingMode(mode)
     try {
-      await runtime.onGenerateAllVideos({ videoModel })
+      await runtime.onGenerateAllVideos({
+        videoModel: targetModel,
+        mode,
+        ...(mode === 'firstlastframe'
+          ? { generationOptions: firstLastFrameFlow.flGenerationOptions }
+          : {}),
+      })
+      setBatchPreview(null)
     } catch {
       // Workspace video actions already surface the request error.
     } finally {
-      setGeneratingAll(false)
+      setGeneratingMode(null)
     }
   }
 
@@ -403,7 +493,16 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
           eyebrow="视频制作"
           title="镜头视频控制台"
           description="逐镜头选择单图或首尾帧模式，配置提示词、模型和连接关系，并跟进视频与配音状态。"
-          actions={<StudioButton icon="video" loading={generatingAll} onClick={() => { void generateAll() }} disabled={runtime.isTransitioning}>批量生成单图视频</StudioButton>}
+          actions={(
+            <div className="flex flex-wrap gap-2">
+              <StudioButton variant="secondary" icon="video" loading={generatingMode === 'normal'} onClick={() => openBatchPreview('normal')} disabled={runtime.isTransitioning || !!generatingMode}>
+                批量生成单图视频
+              </StudioButton>
+              <StudioButton icon="link" loading={generatingMode === 'firstlastframe'} onClick={() => openBatchPreview('firstlastframe')} disabled={runtime.isTransitioning || !!generatingMode}>
+                批量生成首尾帧视频
+              </StudioButton>
+            </div>
+          )}
         />
 
         <div className="grid gap-4 border-b border-white/10 px-6 py-4 sm:grid-cols-4">
@@ -417,9 +516,29 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
           <div className="min-h-0 overflow-hidden rounded-lg border border-white/10 bg-[#10110f]">
             <div className="border-b border-white/10 px-4 py-4"><StudioSectionHeader title="镜头队列" description="按执行顺序查看图片、视频、配音和首尾帧连接状态。" /></div>
             <div className="space-y-3 p-3">
-              {items.map((item) => {
+              {items.map((item, index) => {
                 const key = `${item.storyboard.id}-${item.panel.panelIndex}`
-                return <StudioProduceQueueRow key={item.id} item={item} linked={linkedPanels.get(key) || false} selected={selectedItem?.id === item.id} onSelect={() => setSelectedId(item.id)} />
+                const linked = linkedPanels.get(key) || false
+                const followingItem = items[index + 1]
+                return (
+                  <div key={item.id}>
+                    <StudioProduceQueueRow item={item} linked={linked} selected={selectedItem?.id === item.id} onSelect={() => setSelectedId(item.id)} />
+                    {followingItem ? (
+                      <div className="flex items-center justify-center py-2">
+                        <button
+                          type="button"
+                          onClick={() => { void toggleLink(item) }}
+                          disabled={linkSavingKey === key || !item.panel.imageUrl || !followingItem.panel.imageUrl}
+                          className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${linked ? 'border-cyan-400/40 bg-cyan-400/10 text-cyan-100' : 'border-white/10 bg-[#0f100e] text-stone-500 hover:border-white/25 hover:text-stone-200'}`}
+                          title={!item.panel.imageUrl || !followingItem.panel.imageUrl ? '上下两个镜头都需要先确认图片' : linked ? '断开首尾帧连接' : '连接上下镜头为首尾帧'}
+                        >
+                          <AppIcon name={linkSavingKey === key ? 'loader' : linked ? 'unplug' : 'link'} className={`h-3.5 w-3.5 ${linkSavingKey === key ? 'animate-spin' : ''}`} />
+                          {linked ? '断开与下一镜头的首尾帧连接' : '连接上下镜头为首尾帧'}
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                )
               })}
             </div>
           </div>
@@ -451,6 +570,14 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
           </div>
         )}
       </StudioPanel>
+      {batchPreview ? (
+        <BatchVideoConfirmDialog
+          preview={batchPreview}
+          loading={generatingMode === batchPreview.mode}
+          onCancel={() => setBatchPreview(null)}
+          onConfirm={() => { void confirmBatchGeneration() }}
+        />
+      ) : null}
     </div>
   )
 }

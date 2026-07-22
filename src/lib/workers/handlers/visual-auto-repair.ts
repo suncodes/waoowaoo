@@ -38,6 +38,9 @@ export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
   const panel = await prisma.novelPromotionPanel.findUnique({ where: { id: panelId } })
   if (!panel) throw new Error('Panel not found')
   const state = parseVisualQualityState(panel.visualQualityState)
+  if (state?.humanConfirmedAt) {
+    return { panelId: panel.id, status: state.status, superseded: true }
+  }
   if (!state || state.mode !== 'auto' || state.status !== 'repairing') {
     throw new Error('VISUAL_REPAIR_STATE_INVALID')
   }
@@ -106,22 +109,35 @@ export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
 
   await reportTaskProgress(job, 84, { stage: 'visual_auto_repair_persist', displayMode: 'detail' })
   await assertTaskActive(job, 'visual_auto_repair_persist')
-  await prisma.novelPromotionPanel.update({
-    where: { id: panel.id },
-    data: {
-      candidateImages: JSON.stringify(candidateUrls),
-      visualQualityState: asInputJson(createVisualQualityState({
-        mode: 'auto',
-        status: 'reviewing',
-        versionHash,
-        candidateUrls,
-        activeCandidateUrl: panel.imageUrl,
-        attempt,
-        maxAttempts: state.maxAttempts,
-        lastAction: action,
-      })),
-    },
-  })
+  try {
+    await prisma.novelPromotionPanel.update({
+      where: panel.updatedAt
+        ? { id: panel.id, updatedAt: panel.updatedAt }
+        : { id: panel.id },
+      data: {
+        candidateImages: JSON.stringify(candidateUrls),
+        visualQualityState: asInputJson(createVisualQualityState({
+          mode: 'auto',
+          status: 'reviewing',
+          versionHash,
+          candidateUrls,
+          activeCandidateUrl: panel.imageUrl,
+          attempt,
+          maxAttempts: state.maxAttempts,
+          lastAction: action,
+        })),
+      },
+    })
+  } catch {
+    const latestPanel = await prisma.novelPromotionPanel.findUnique({
+      where: { id: panel.id },
+      select: { visualQualityState: true },
+    })
+    if (parseVisualQualityState(latestPanel?.visualQualityState)?.humanConfirmedAt) {
+      return { panelId: panel.id, status: 'approved', superseded: true }
+    }
+    throw new Error('VISUAL_VERSION_STALE')
+  }
   await createArtifact({
     runId: readTaskRunId(job),
     stepKey: 'visual_auto_repair',

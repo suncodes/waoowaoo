@@ -2,6 +2,9 @@
 
 import { useMemo } from 'react'
 import type { VisualAssetSummary } from '@/lib/assets/contracts'
+import { normalizeGuideUserFacingTitle } from '@/lib/content-planning'
+import { hasUnconfirmedVisualCandidates } from '@/lib/quality-workflow'
+import { evaluateVisualReadiness } from '@/lib/visual-readiness'
 import { useTaskList, type TaskItem } from '@/lib/query/hooks/useTaskStatus'
 import { TASK_TYPE } from '@/lib/task/types'
 import { readContentArtifactMeta, readVisualArtifactMeta } from '@/lib/creation-workspace/artifact-state'
@@ -62,7 +65,10 @@ function panelStatus(panel: NovelPromotionPanel): StudioProductStatus {
   if (panel.videoTaskRunning || panel.imageTaskRunning) return 'generating'
   if (panel.imageErrorMessage) return 'failed'
   if (panel.videoUrl || panel.lipSyncVideoUrl) return 'locked'
-  if (panel.imageUrl) return 'needs_review'
+  if (panel.imageUrl) {
+    if (hasUnconfirmedVisualCandidates(panel.candidateImages, panel.visualQualityState)) return 'needs_review'
+    return evaluateVisualReadiness(panel.visualQualityState).ready ? 'locked' : 'needs_review'
+  }
   if (panel.description || panel.imagePrompt) return 'drafting'
   return 'empty'
 }
@@ -107,7 +113,9 @@ function buildDraftSegments(contentPlan: unknown, contentMeta: ReturnType<typeof
     const locked = state?.locked === true
     return {
       id,
-      title: readPlanningString(record.title, `段落 ${index + 1}`),
+      title: planType === 'guide'
+        ? normalizeGuideUserFacingTitle(readPlanningString(record.title, `段落 ${index + 1}`), `segments.${index}.title`)
+        : readPlanningString(record.title, `段落 ${index + 1}`),
       text: planType === 'guide'
         ? readPlanningString(record.narration)
         : readPlanningString(record.summary),
@@ -281,7 +289,12 @@ export function useStudioWorkspaceModel({
       activeMode: resolveStudioMode(currentStage, stageView),
       activeView: stageView,
       novelText: episodeData.novelText,
-      draftTitle: readPlanningString(asPlanningRecord(episodeData.contentPlan)?.title, episodeData.episodeName || '未命名视频'),
+      draftTitle: readPlanningString(asPlanningRecord(episodeData.contentPlan)?.planType) === 'guide'
+        ? normalizeGuideUserFacingTitle(
+            readPlanningString(asPlanningRecord(episodeData.contentPlan)?.title, episodeData.episodeName || '未命名视频'),
+            'contentPlan.title',
+          )
+        : readPlanningString(asPlanningRecord(episodeData.contentPlan)?.title, episodeData.episodeName || '未命名视频'),
       draftSegments,
       visualAssets: visualKitAssets,
       coreVisualAssets: visualKitAssets.filter((asset) => asset.importance === 'core'),
@@ -314,7 +327,7 @@ export function useStudioWorkspaceModel({
         hasVisualPlan: !!visualMeta?.plan || workflowState.stages['visual-design'].hasArtifact,
         hasStoryboard: workflowState.stages['storyboard-preview'].hasArtifact,
         hasVideo: workflowState.stages.production.hasArtifact,
-        storyboardGenerating: isRunActive(scriptToStoryboardStream),
+        storyboardGenerating: isRunActive(visualPlanStream) || isRunActive(scriptToStoryboardStream),
         stageStatuses: Object.fromEntries(Object.entries(workflowState.stages).map(([key, value]) => [key, value.status])),
       },
     }

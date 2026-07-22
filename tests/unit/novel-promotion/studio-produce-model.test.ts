@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { NovelPromotionPanel } from '@/types/project'
 import {
+  buildBatchVideoPreflight,
   panelLinkedToNext,
   panelVideoUrl,
   resolveImageStatus,
   resolveVideoStatus,
 } from '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/studio/studio-produce-model'
+import type { ProduceItem } from '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/studio/studio-produce-model'
 import { createVisualQualityState } from '@/lib/quality-workflow'
 
 function panel(overrides: Partial<NovelPromotionPanel> = {}): NovelPromotionPanel {
@@ -69,5 +71,55 @@ describe('studio video production model', () => {
         candidateUrls: ['frame.png'],
       }),
     }))).toBe('needs_review')
+  })
+
+  it('prechecks normal and first-last-frame batch targets independently', () => {
+    const readyState = createVisualQualityState({
+      mode: 'auto',
+      status: 'approved',
+      versionHash: 'version-ready',
+      candidateUrls: ['frame.png'],
+      humanConfirmedAt: '2026-07-22T10:00:00.000Z',
+    })
+    const items = [0, 1, 2].map((index): ProduceItem => ({
+      id: `panel-${index + 1}`,
+      number: index + 1,
+      storyboard: { id: 'storyboard-1' } as ProduceItem['storyboard'],
+      panel: panel({
+        id: `panel-${index + 1}`,
+        panelIndex: index,
+        imageUrl: `frame-${index + 1}.png`,
+        visualQualityState: readyState,
+      }),
+    }))
+    const links = new Map<string, boolean>([
+      ['storyboard-1-0', true],
+      ['storyboard-1-1', false],
+    ])
+
+    expect(buildBatchVideoPreflight(items, links, 'normal')).toMatchObject({
+      eligibleCount: 3,
+      skippedCount: 0,
+    })
+    expect(buildBatchVideoPreflight(items, links, 'firstlastframe')).toMatchObject({
+      eligibleCount: 1,
+      skippedCount: 2,
+      reasonCounts: {
+        not_linked: 1,
+        last_panel: 1,
+      },
+    })
+
+    items[0].panel.candidateImages = JSON.stringify(['frame-1.png', 'frame-1-alt.png'])
+    items[0].panel.visualQualityState = createVisualQualityState({
+      mode: 'auto',
+      status: 'approved',
+      versionHash: 'version-unconfirmed',
+      candidateUrls: ['frame-1.png', 'frame-1-alt.png'],
+    })
+    expect(buildBatchVideoPreflight(items, links, 'normal')).toMatchObject({
+      eligibleCount: 2,
+      reasonCounts: { quality_not_ready: 1 },
+    })
   })
 })

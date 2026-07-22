@@ -37,6 +37,7 @@ export function useWorkspaceArtifactCommands({
   return {
     execute,
     saveGuidePlan: (command: Extract<WorkspaceArtifactCommand, { type: 'save_guide_plan' }>) => execute(command),
+    saveVisualPlan: (command: Extract<WorkspaceArtifactCommand, { type: 'save_visual_plan' }>) => execute(command),
     toggleContentLock: (unitId: string, locked: boolean) => execute({
       type: 'toggle_content_lock',
       unitId,

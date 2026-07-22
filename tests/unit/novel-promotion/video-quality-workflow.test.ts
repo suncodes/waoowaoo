@@ -74,6 +74,17 @@ describe('video quality workflow contracts', () => {
       expect(result.contentPlan.segments[0].sourceAnchor.label).toBe('第一章')
     }
 
+    const jargonPayload = buildGuidePlanPayload()
+    jargonPayload.contentPlan.title = '开头钩子与 CTA'
+    jargonPayload.contentPlan.outline[0].title = '基础设定科普'
+    jargonPayload.contentPlan.segments[0].title = '钩子'
+    const normalized = parseContentPlanResult(jargonPayload, buildReviewPayload(), profile)
+    if (normalized.contentPlan.planType === 'guide') {
+      expect(normalized.contentPlan.title).toBe('开场问题与 结尾提示')
+      expect(normalized.contentPlan.outline[0].title).toBe('背景与基本设定')
+      expect(normalized.contentPlan.segments[0].title).toBe('开场引导')
+    }
+
     const invalidPayload = buildGuidePlanPayload()
     delete (invalidPayload.contentPlan.segments[0] as { sourceAnchor?: unknown }).sourceAnchor
     expect(() => parseContentPlanResult(invalidPayload, buildReviewPayload(), profile))

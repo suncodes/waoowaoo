@@ -4,7 +4,7 @@ import Image from 'next/image'
 import { useEffect, useMemo, useState } from 'react'
 import { AppIcon } from '@/components/ui/icons'
 import type { VisualAssetSummary } from '@/lib/assets/contracts'
-import { readVisualArtifactMeta, type VisualAnchor } from '@/lib/creation-workspace/artifact-state'
+import { readContentArtifactMeta, readVisualArtifactMeta, type VisualAnchor } from '@/lib/creation-workspace/artifact-state'
 import { resolveVisualAnchorReadiness, resolveVisualAssetStatus, selectedVisualAssetImage } from '@/lib/creation-workspace/visual-readiness'
 import { useAssetActions, useAssets } from '@/lib/query/hooks'
 import { useWorkspaceProvider } from '../../WorkspaceProvider'
@@ -67,7 +67,11 @@ function useVisualKitActions(projectId: string) {
   }
 }
 
-function buildItems(anchors: VisualAnchor[], assets: VisualAssetSummary[]): VisualKitItem[] {
+function buildItems(
+  anchors: VisualAnchor[],
+  assets: VisualAssetSummary[],
+  requiredAssetIds: ReadonlySet<string>,
+): VisualKitItem[] {
   const readiness = resolveVisualAnchorReadiness(anchors, assets)
   if (readiness.items.length > 0) {
     return readiness.items.map((item) => ({
@@ -82,11 +86,14 @@ function buildItems(anchors: VisualAnchor[], assets: VisualAssetSummary[]): Visu
       asset: item.asset,
     }))
   }
-  return assets.map((asset) => ({
+  const scopedAssets = requiredAssetIds.size > 0
+    ? assets.filter((asset) => requiredAssetIds.has(asset.id))
+    : assets
+  return scopedAssets.map((asset) => ({
     id: asset.id,
     name: asset.name,
     kind: semanticKind(asset),
-    importance: 'supporting',
+    importance: requiredAssetIds.has(asset.id) ? 'core' : 'supporting',
     description: assetDescription(asset),
     status: toProductStatus(resolveVisualAssetStatus(asset)),
     imageUrl: selectedVisualAssetImage(asset),
@@ -98,20 +105,31 @@ function buildItems(anchors: VisualAnchor[], assets: VisualAssetSummary[]): Visu
 export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasProps) {
   const runtime = useWorkspaceStageRuntime()
   const { projectId } = useWorkspaceProvider()
-  const { productionBible } = useWorkspaceEpisodeStageData()
+  const { contentPlan, productionBible } = useWorkspaceEpisodeStageData()
   const assetsQuery = useAssets({ scope: 'project', projectId })
   const actionFor = useVisualKitActions(projectId)
   const [pending, setPending] = useState<PendingAction>(null)
   const [error, setError] = useState('')
   const [selectedId, setSelectedId] = useState('')
   const visualAssets = assetsQuery.data.filter((asset): asset is VisualAssetSummary => asset.family === 'visual')
+  const contentMeta = useMemo(() => readContentArtifactMeta(contentPlan), [contentPlan])
   const visualMeta = useMemo(() => readVisualArtifactMeta(productionBible), [productionBible])
-  const items = useMemo(() => buildItems(visualMeta?.anchors || [], visualAssets), [visualAssets, visualMeta?.anchors])
+  const requiredAssetIds = useMemo(
+    () => new Set(contentMeta?.assetRequirements.assetIds || []),
+    [contentMeta?.assetRequirements.assetIds],
+  )
+  const items = useMemo(
+    () => buildItems(visualMeta?.anchors || [], visualAssets, requiredAssetIds),
+    [requiredAssetIds, visualAssets, visualMeta?.anchors],
+  )
   const coreItems = items.filter((item) => item.importance === 'core')
   const supportingItems = items.filter((item) => item.importance === 'supporting')
   const selectedItem = items.find((item) => item.id === selectedId) || items[0] || null
   const confirmedCount = items.filter((item) => item.status === 'locked').length
   const generatedCount = items.filter((item) => item.imageUrl).length
+  const availableAssetIds = useMemo(() => new Set(visualAssets.map((asset) => asset.id)), [visualAssets])
+  const missingRequirementCount = [...requiredAssetIds].filter((assetId) => !availableAssetIds.has(assetId)).length
+  const unresolvedCount = items.filter((item) => item.status !== 'locked').length + missingRequirementCount
 
   useEffect(() => {
     if (selectedItem && selectedItem.id !== selectedId) {
@@ -132,7 +150,6 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
   }
 
   const primaryAction = async () => {
-    if (model.workflow.storyboardGenerating) return
     if (model.workflow.assetRequirementStatus === 'not_started' || model.workflow.assetRequirementStatus === 'stale') {
       await runtime.onAnalyzeAssets()
       return
@@ -141,19 +158,11 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
       await runtime.onApproveAssetRequirements()
       return
     }
-    if (!model.workflow.hasVisualPlan) {
-      await runtime.onRunVisualPlan()
-      return
-    }
-    if (model.summary.missingCoreVisualAssets > 0) {
+    if (unresolvedCount > 0) {
       runtime.onOpenAssetLibrary()
       return
     }
-    if (!model.workflow.visualApproved) {
-      await runtime.onApproveStage('visual-design')
-      return
-    }
-    await runtime.onRunScriptToStoryboard()
+    runtime.onStageChange('storyboard')
   }
   const primaryLabel = model.workflow.assetRequirementStatus === 'not_started'
     ? '提取视觉资产'
@@ -161,13 +170,9 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
       ? '重新提取视觉资产'
       : model.workflow.assetRequirementStatus === 'needs_review'
         ? '确认资产清单'
-        : !model.workflow.hasVisualPlan
-          ? '生成镜头规划初稿'
-          : model.summary.missingCoreVisualAssets > 0
-            ? '完善核心资产'
-            : model.workflow.visualApproved
-              ? '生成镜头规划'
-              : '确认视觉资产'
+        : unresolvedCount > 0
+          ? `完善 ${unresolvedCount} 项视觉资产`
+          : '进入镜头规划'
 
   return (
     <div className="space-y-5">
@@ -175,7 +180,7 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
         <StudioStageHeader
           eyebrow="视觉库"
           title="角色、场景、道具一致性"
-          description="先稳定跨镜头复用对象，再让分镜和视频生产沿用同一套视觉标准。"
+          description="本阶段只处理角色、场景和道具的视觉定稿。全部资产就绪后，进入分镜制作中的镜头规划。"
           actions={(
             <>
               <StudioButton size="sm" variant="secondary" icon="folderOpen" onClick={runtime.onOpenAssetLibrary}>
@@ -184,11 +189,11 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
               <StudioButton
                 size="sm"
                 icon="sparkles"
-                loading={pending?.key === 'primary' || runtime.isTransitioning || runtime.isAssetAnalysisRunning || model.workflow.storyboardGenerating}
+                loading={pending?.key === 'primary' || runtime.isTransitioning || runtime.isAssetAnalysisRunning}
                 onClick={() => { void run('primary', primaryLabel, primaryAction) }}
-                disabled={!!pending || model.workflow.storyboardGenerating}
+                disabled={!!pending}
               >
-                {model.workflow.storyboardGenerating ? '镜头规划生成中' : primaryLabel}
+                {primaryLabel}
               </StudioButton>
             </>
           )}
@@ -211,13 +216,6 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
         <div className="rounded-md border border-cyan-400/30 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100">
           <AppIcon name="loader" className="mr-2 inline h-4 w-4 animate-spin" />
           {pending.label}
-        </div>
-      ) : null}
-
-      {model.workflow.storyboardGenerating && !pending ? (
-        <div className="rounded-md border border-cyan-400/30 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100">
-          <AppIcon name="loader" className="mr-2 inline h-4 w-4 animate-spin" />
-          镜头规划正在后台生成，切换页面不会中断。
         </div>
       ) : null}
 

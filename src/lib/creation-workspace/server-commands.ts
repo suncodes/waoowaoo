@@ -8,6 +8,7 @@ import {
   createVisualArtifactMeta,
   readContentArtifactMeta,
   readVisualArtifactMeta,
+  stripWorkspaceArtifactMeta,
   withContentArtifactMeta,
   withVisualArtifactMeta,
   type VisualArtifactMeta,
@@ -366,7 +367,13 @@ export async function executeWorkspaceArtifactCommand(params: {
 
     const current = await tx.novelPromotionEpisode.findUnique({
       where: { id: params.episodeId },
-      select: { contentPlan: true, productionBible: true },
+      select: {
+        contentPlan: true,
+        directorTreatment: true,
+        productionBible: true,
+        clips: { select: { id: true } },
+        storyboards: { select: { panels: { select: { videoUrl: true } } } },
+      },
     })
     if (!current?.contentPlan) invalid('content plan not found')
 
@@ -443,6 +450,44 @@ export async function executeWorkspaceArtifactCommand(params: {
         profileValue: project.videoProfile,
       })
       return { success: true, storyboardCount }
+    }
+
+    if (params.command.type === 'save_visual_plan') {
+      if (!current.directorTreatment || !current.productionBible) invalid('visual plan not found')
+      const meta = readVisualArtifactMeta(current.productionBible)
+      if (!meta?.plan) invalid('visual plan details not found')
+      const result = parseVisualPlanResult({
+        directorTreatment: current.directorTreatment,
+        productionBible: stripWorkspaceArtifactMeta(current.productionBible),
+        shotPlan: params.command.shotPlan,
+        visualUnits: params.command.visualUnits,
+      }, resolveVideoProfile(project.videoProfile), current.clips.map((clip) => clip.id), meta.anchors.map((anchor) => ({
+        id: anchor.assetId,
+        kind: anchor.assetKind,
+        name: anchor.name,
+      })))
+      const now = nowIso()
+      const nextMeta: VisualArtifactMeta = {
+        ...cloneWorkspaceValue(meta),
+        status: 'needs_review',
+        revision: meta.revision + 1,
+        approvedRevision: null,
+        updatedAt: now,
+        updatedBy: 'user',
+        plan: {
+          shotPlan: cloneWorkspaceValue(result.shotPlan),
+          visualUnits: cloneWorkspaceValue(result.visualUnits),
+        },
+        downstream: {
+          storyboard: current.storyboards.length > 0,
+          production: current.storyboards.some((storyboard) => storyboard.panels.some((panel) => !!panel.videoUrl)),
+        },
+      }
+      await tx.novelPromotionEpisode.update({
+        where: { id: params.episodeId },
+        data: { productionBible: asInputJson(withVisualArtifactMeta(current.productionBible, nextMeta)) },
+      })
+      return { success: true }
     }
 
     const meta = readContentArtifactMeta(current.contentPlan)

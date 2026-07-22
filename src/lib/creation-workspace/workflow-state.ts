@@ -124,9 +124,8 @@ function resolveActiveTarget(input: BuildCreationWorkflowStateInput): CreationWo
     return activeTarget({
       taskId: 'visual-plan',
       stream: input.visualPlanStream,
-      stageId: 'visual-design',
-      view: 'direction',
-      route: 'visual-plan',
+      stageId: 'storyboard-preview',
+      route: 'storyboard',
       kind: 'visual_plan',
     })
   }
@@ -244,9 +243,7 @@ export function buildCreationWorkflowState(input: BuildCreationWorkflowStateInpu
 
   const legacyVisualCompleted = !visualMeta && stageArtifacts.hasVisualPlan
   let visualStatus: CreationStageStatus
-  if (isActive(input.visualPlanStream)) visualStatus = 'running'
-  else if (isFailed(input.visualPlanStream)) visualStatus = 'failed'
-  else if (stageArtifacts.hasVisualPlan && !contentCompleted) visualStatus = 'stale'
+  if (stageArtifacts.hasVisualPlan && !contentCompleted) visualStatus = 'stale'
   else if (visualMeta?.status === 'approved' || legacyVisualCompleted) visualStatus = 'completed'
   else if (visualMeta?.status === 'stale') visualStatus = 'stale'
   else if (visualMeta || stageArtifacts.hasVisualPlan) visualStatus = 'attention'
@@ -259,7 +256,9 @@ export function buildCreationWorkflowState(input: BuildCreationWorkflowStateInpu
     || visualMeta?.downstream.storyboard === true
   )
   let storyboardStatus: CreationStageStatus
-  if (!isBookGuide && isActive(input.scriptToStoryboardStream)) storyboardStatus = 'running'
+  if (isActive(input.visualPlanStream)) storyboardStatus = 'running'
+  else if (isFailed(input.visualPlanStream) && !stageArtifacts.hasStoryboard) storyboardStatus = 'failed'
+  else if (!isBookGuide && isActive(input.scriptToStoryboardStream)) storyboardStatus = 'running'
   else if (!isBookGuide && isFailed(input.scriptToStoryboardStream)) storyboardStatus = 'failed'
   else if (storyboardStale) storyboardStatus = 'stale'
   else if (stageArtifacts.hasStoryboard) storyboardStatus = 'completed'

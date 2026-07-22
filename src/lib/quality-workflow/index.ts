@@ -35,6 +35,9 @@ export function parseVisualQualityState(value: unknown): VisualQualityState | nu
       : 2,
     lastAction: typeof value.lastAction === 'string' ? value.lastAction as RepairAction : null,
     review: isRecord(value.review) ? value.review as unknown as ImageQualityReviewResult : null,
+    humanConfirmedAt: typeof value.humanConfirmedAt === 'string' && value.humanConfirmedAt.trim()
+      ? value.humanConfirmedAt
+      : null,
     updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : new Date(0).toISOString(),
   }
 }
@@ -49,6 +52,7 @@ export function createVisualQualityState(params: {
   maxAttempts?: number
   lastAction?: RepairAction | null
   review?: ImageQualityReviewResult | null
+  humanConfirmedAt?: string | null
 }): VisualQualityState {
   return {
     schemaVersion: 1,
@@ -61,6 +65,7 @@ export function createVisualQualityState(params: {
     maxAttempts: Math.min(2, Math.max(0, Math.floor(params.maxAttempts ?? 2))),
     lastAction: params.lastAction || null,
     review: params.review || null,
+    humanConfirmedAt: params.humanConfirmedAt || null,
     updatedAt: new Date().toISOString(),
   }
 }
@@ -68,15 +73,53 @@ export function createVisualQualityState(params: {
 export function approveSelectedVisualCandidate(
   value: unknown,
   selectedUrl: string,
+  candidateUrls: string[] = [],
 ): VisualQualityState | null {
   const state = parseVisualQualityState(value)
-  if (!state || !selectedUrl.trim()) return null
+  if (!selectedUrl.trim()) return null
+  const baseState = state || createVisualQualityState({
+    mode: 'shadow',
+    status: 'shadow_completed',
+    versionHash: 'manual-confirmation',
+    candidateUrls,
+    activeCandidateUrl: selectedUrl.trim(),
+    maxAttempts: 0,
+  })
   return createVisualQualityState({
-    ...state,
-    status: state.mode === 'auto' ? 'approved' : 'shadow_completed',
+    ...baseState,
+    candidateUrls: baseState.candidateUrls.length > 0 ? baseState.candidateUrls : candidateUrls,
+    status: baseState.mode === 'auto' ? 'approved' : 'shadow_completed',
     activeCandidateUrl: selectedUrl.trim(),
     lastAction: 'select_candidate',
+    humanConfirmedAt: new Date().toISOString(),
   })
+}
+
+export function isVisualQualityProcessing(value: unknown): boolean {
+  const state = parseVisualQualityState(value)
+  return state?.mode === 'auto'
+    && (state.status === 'pending' || state.status === 'reviewing' || state.status === 'repairing')
+}
+
+export function hasUnconfirmedVisualCandidates(
+  candidateImages: unknown,
+  visualQualityState: unknown,
+): boolean {
+  let candidateCount = 0
+  if (Array.isArray(candidateImages)) {
+    candidateCount = candidateImages.filter((item) => typeof item === 'string' && item.trim()).length
+  } else if (typeof candidateImages === 'string' && candidateImages.trim()) {
+    try {
+      const parsed = JSON.parse(candidateImages) as unknown
+      candidateCount = Array.isArray(parsed)
+        ? parsed.filter((item) => typeof item === 'string' && item.trim()).length
+        : 0
+    } catch {
+      candidateCount = 0
+    }
+  }
+  if (candidateCount === 0) return false
+  return !parseVisualQualityState(visualQualityState)?.humanConfirmedAt
 }
 
 export * from './types'

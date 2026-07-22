@@ -70,6 +70,7 @@ Execution requirements:
 - visualPurpose describes the information job of the visual. visualHints must describe a concrete image in one time and place; never ask one still image to perform a news montage, multi-location collage, or several sequential actions.
 - Put exact copy only in onScreenText. Do not ask the image model to render book titles, dates, newspaper headlines, or long text.
 - Never invent book evidence. Every guide segment requires a sourceAnchor. Do not reduce a guide to plot retelling.
+- Guide titles, outline titles, segment titles, and narration must use plain audience-facing language. Do not expose production or marketing jargon such as “hook”, “CTA”, “cold open”, “viral beat”, “conversion”, or “information gain”; rewrite notes like “opening hook + basic-setting explainer” as concrete content such as “ask the opening question” or “introduce the background and basic setting”.
 
 Book guide source rules:
 - If book_seed_json is not null and the source material is only a book title, generate an editable guide-outline draft from model knowledge.

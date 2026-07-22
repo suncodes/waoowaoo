@@ -24,6 +24,7 @@ interface PanelCandidateSystemLike {
     originalUrl: string | null,
     candidates: string[],
     previousUrl: string | null,
+    selectedIndex?: number,
   ) => void
 }
 
@@ -75,6 +76,21 @@ function resolveCandidateImages(panel: NovelPromotionPanel): string[] | null {
   return null
 }
 
+export function resolveConfirmedCandidateIndex(
+  panel: Pick<NovelPromotionPanel, 'imageUrl' | 'visualQualityState'>,
+  candidates: string[],
+): number {
+  const directIndex = candidates.findIndex((candidate) => candidate === panel.imageUrl)
+  if (directIndex >= 0) return directIndex
+
+  const qualityState = parseVisualQualityState(panel.visualQualityState)
+  if (!qualityState?.activeCandidateUrl) return -1
+  const stateIndex = qualityState.candidateUrls.findIndex(
+    (candidate) => candidate === qualityState.activeCandidateUrl,
+  )
+  return stateIndex >= 0 && stateIndex < candidates.length ? stateIndex : -1
+}
+
 function clearIfExists(system: PanelCandidateSystemLike, panelId: string) {
   const state = system.getCandidateState(panelId)
   if (state) {
@@ -106,11 +122,13 @@ export function ensurePanelCandidatesInitialized(
     (existingState.previousUrl || null) !== (panel.previousImageUrl || null)
 
   if (shouldRebuildState) {
+    const confirmedIndex = resolveConfirmedCandidateIndex(panel, validCandidates)
     candidateSystem.initCandidates(
       panel.id,
       panel.imageUrl || null,
       validCandidates,
       panel.previousImageUrl || null,
+      confirmedIndex >= 0 ? confirmedIndex : 0,
     )
   }
   return true
@@ -141,7 +159,7 @@ export function getPanelCandidatesFromRuntime(
 
   return {
     candidates: validCandidates,
-    selectedIndex: 0,
+    selectedIndex: Math.max(0, resolveConfirmedCandidateIndex(panel, validCandidates)),
   }
 }
 

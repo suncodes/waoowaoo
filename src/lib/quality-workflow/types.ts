@@ -11,5 +11,6 @@ export interface VisualQualityState {
   maxAttempts: number
   lastAction: RepairAction | null
   review: ImageQualityReviewResult | null
+  humanConfirmedAt: string | null
   updatedAt: string
 }

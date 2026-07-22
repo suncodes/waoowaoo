@@ -125,5 +125,6 @@ export type VideoGenerationOptions = Record<string, VideoGenerationOptionValue>
 
 export interface BatchVideoGenerationParams {
   videoModel: string
+  mode?: VideoGenerationMode
   generationOptions?: VideoGenerationOptions
 }

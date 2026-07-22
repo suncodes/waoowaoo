@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import AiWriteModal from '@/components/home/AiWriteModal'
+import { ArtStyleGallerySelector } from '@/components/selectors/ArtStyleGallerySelector'
 import { AppIcon } from '@/components/ui/icons'
 import { apiFetch } from '@/lib/api-fetch'
 import { ART_STYLES, VIDEO_RATIOS } from '@/lib/constants'
@@ -255,19 +256,39 @@ export default function StudioStartCanvas({ model, onNavigate }: StudioStartCanv
                 ))}
               </select>
             </label>
-            <label className="block">
-              <span className="mb-2 block text-xs font-semibold text-stone-500">画面风格</span>
-              <select
-                value={runtime.artStyle || 'american-comic'}
-                onChange={(event) => { void updateConfig('style', () => runtime.onArtStyleChange(event.target.value)) }}
-                disabled={!!configSaving}
-                className="h-10 w-full rounded-md border border-white/10 bg-[#0f100e] px-3 text-sm text-stone-100 outline-none focus:border-[#e8d18a]"
-              >
-                {ART_STYLES.map((style) => (
-                  <option key={style.value} value={style.value}>{style.label}</option>
-                ))}
-              </select>
-            </label>
+            <div>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <span className="text-xs font-semibold text-stone-500">画面风格</span>
+                {configSaving === 'style' ? (
+                  <span className="flex items-center gap-1 text-[11px] text-stone-500">
+                    <AppIcon name="loader" className="h-3 w-3 animate-spin" />
+                    保存中
+                  </span>
+                ) : null}
+              </div>
+              <div className={`max-h-[360px] overflow-y-auto pr-1 ${configSaving ? 'pointer-events-none opacity-60' : ''}`}>
+                <ArtStyleGallerySelector
+                  value={runtime.artStyle || 'american-comic'}
+                  options={ART_STYLES}
+                  onChange={(value) => { void updateConfig('style', () => runtime.onArtStyleChange(value)) }}
+                  columnsClassName="grid-cols-2"
+                  imageClassName="h-20"
+                  showPrompt={false}
+                />
+              </div>
+              <label className={`mt-3 flex cursor-pointer items-start gap-3 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2.5 ${configSaving ? 'pointer-events-none opacity-60' : ''}`}>
+                <input
+                  type="checkbox"
+                  checked={runtime.artStyleReferenceEnabled}
+                  onChange={(event) => { void updateConfig('style-reference', () => runtime.onArtStyleReferenceEnabledChange(event.target.checked)) }}
+                  className="mt-0.5 h-4 w-4 accent-[#e8d18a]"
+                />
+                <span>
+                  <span className="block text-sm font-semibold text-stone-200">生成时参考风格示例图</span>
+                  <span className="mt-0.5 block text-xs leading-5 text-stone-500">开启后，当前风格示例图会作为视觉参考参与图片生成。</span>
+                </span>
+              </label>
+            </div>
             <div>
               <div className="mb-2 text-xs font-semibold text-stone-500">画面检查</div>
               <div className="grid grid-cols-2 gap-2">

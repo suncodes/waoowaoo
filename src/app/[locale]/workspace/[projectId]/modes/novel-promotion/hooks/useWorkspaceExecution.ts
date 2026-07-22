@@ -209,7 +209,7 @@ export function useWorkspaceExecution({
     t,
   ])
 
-  const runVisualPlanFlow = useCallback(async () => {
+  const runVisualPlanFlow = useCallback(async (instruction?: string) => {
     if (!episodeId) {
       alert(t('execution.selectEpisode'))
       return
@@ -217,9 +217,9 @@ export function useWorkspaceExecution({
 
     try {
       setIsTransitioning(true)
-      await planning.runVisualPlan(workspaceV2Enabled && isBookGuideProfile(resolvedVideoProfile))
+      await planning.runVisualPlan(workspaceV2Enabled && isBookGuideProfile(resolvedVideoProfile), instruction)
       await onRefresh()
-      onStageChange(workspaceV2Enabled ? 'visual-plan' : 'storyboard')
+      onStageChange('storyboard')
     } catch (err: unknown) {
       if (isAbortError(err)) {
         _ulogInfo(t('execution.requestAborted'))
@@ -246,7 +246,7 @@ export function useWorkspaceExecution({
     }
   }, [episodeId, novelText, onRefresh, onStageChange, planning, t])
 
-  const runScriptToStoryboardFlow = useCallback(async () => {
+  const runScriptToStoryboardFlow = useCallback(async (options?: { visualApprovalConfirmed?: boolean }) => {
     if (!episodeId) {
       alert(t('execution.selectEpisode'))
       return
@@ -254,7 +254,11 @@ export function useWorkspaceExecution({
 
     try {
       setIsConfirmingAssets(true)
-      if (contentPlan && readVisualArtifactMeta(productionBible)?.status !== 'approved') {
+      if (
+        !options?.visualApprovalConfirmed
+        && contentPlan
+        && readVisualArtifactMeta(productionBible)?.status !== 'approved'
+      ) {
         throw new Error(t('execution.visualApprovalRequired'))
       }
       setTransitionProgress({ message: t('execution.scriptToStoryboardRunning'), step: 'streaming' })

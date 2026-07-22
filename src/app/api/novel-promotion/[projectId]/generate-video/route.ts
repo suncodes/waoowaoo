@@ -16,6 +16,7 @@ import {
 import { resolveBuiltinPricing } from '@/lib/model-pricing/lookup'
 import { resolveProjectModelCapabilityGenerationOptions } from '@/lib/config-service'
 import { evaluateVisualReadiness } from '@/lib/visual-readiness'
+import { hasUnconfirmedVisualCandidates } from '@/lib/quality-workflow'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
@@ -35,6 +36,7 @@ function toVideoRuntimeSelections(value: unknown): Record<string, CapabilityValu
 
 function resolveVideoGenerationMode(payload: unknown): 'normal' | 'firstlastframe' {
   if (!isRecord(payload)) return 'normal'
+  if (payload.batchMode === 'firstlastframe') return 'firstlastframe'
   return isRecord(payload.firstLastFrame) ? 'firstlastframe' : 'normal'
 }
 
@@ -182,7 +184,13 @@ function buildVideoPanelBillingInfoOrThrow(payload: unknown) {
   }
 }
 
-function assertVisualReady(panel: { id: string; visualQualityState?: unknown }) {
+function assertVisualReady(panel: { id: string; candidateImages?: unknown; visualQualityState?: unknown }) {
+  if (hasUnconfirmedVisualCandidates(panel.candidateImages, panel.visualQualityState)) {
+    throw new ApiError('CONFLICT', {
+      code: 'VISUAL_CANDIDATE_NOT_CONFIRMED',
+      panelId: panel.id,
+    })
+  }
   const readiness = evaluateVisualReadiness(panel.visualQualityState)
   if (readiness.ready) return
   throw new ApiError('CONFLICT', {
@@ -207,8 +215,15 @@ export const POST = apiHandler(async (
   requireVideoModelKeyFromPayload(body)
   const locale = resolveRequiredTaskLocale(request, body)
   const isBatch = body?.all === true
+  const batchMode: 'normal' | 'firstlastframe' = body?.batchMode === 'firstlastframe'
+    ? 'firstlastframe'
+    : 'normal'
 
-  validateFirstLastFrameModel(body?.firstLastFrame)
+  validateFirstLastFrameModel(
+    isBatch && batchMode === 'firstlastframe'
+      ? { flModel: body?.videoModel }
+      : body?.firstLastFrame,
+  )
   await validateVideoCapabilityCombination({
     payload: body,
     projectId,
@@ -221,25 +236,127 @@ export const POST = apiHandler(async (
       throw new ApiError('INVALID_PARAMS')
     }
 
-    const panels = await prisma.novelPromotionPanel.findMany({
+    const episode = await prisma.novelPromotionEpisode.findFirst({
       where: {
-        storyboard: { episodeId },
-        imageUrl: { not: null },
-        OR: [
-          { videoUrl: null },
-          { videoUrl: '' },
-        ],
+        id: episodeId,
+        novelPromotionProject: { projectId },
       },
-      select: { id: true, visualQualityState: true },
+      select: { id: true },
     })
+    if (!episode) throw new ApiError('NOT_FOUND')
+
+    const storyboards = await prisma.novelPromotionStoryboard.findMany({
+      where: { episodeId },
+      select: {
+        id: true,
+        createdAt: true,
+        clip: { select: { start: true, createdAt: true } },
+        panels: {
+          orderBy: { panelIndex: 'asc' },
+          select: {
+            id: true,
+            storyboardId: true,
+            panelIndex: true,
+            imageUrl: true,
+            videoUrl: true,
+            lipSyncVideoUrl: true,
+            candidateImages: true,
+            visualQualityState: true,
+            linkedToNextPanel: true,
+            firstLastFramePrompt: true,
+          },
+        },
+      },
+    })
+    storyboards.sort((left, right) => (
+      (left.clip.start ?? Number.MAX_SAFE_INTEGER) - (right.clip.start ?? Number.MAX_SAFE_INTEGER)
+      || left.clip.createdAt.getTime() - right.clip.createdAt.getTime()
+      || left.createdAt.getTime() - right.createdAt.getTime()
+    ))
+    const panels = storyboards.flatMap((storyboard) => storyboard.panels)
 
     if (panels.length === 0) {
-      return NextResponse.json({ tasks: [], total: 0 })
+      return NextResponse.json({ tasks: [], total: 0, skipped: 0, reasonCounts: {} })
     }
-    panels.forEach(assertVisualReady)
+
+    const reasonCounts: Record<string, number> = {}
+    const skip = (reason: string) => {
+      reasonCounts[reason] = (reasonCounts[reason] || 0) + 1
+    }
+    const basePayload = { ...body }
+    delete basePayload.all
+    delete basePayload.episodeId
+    delete basePayload.batchMode
+    const targets: Array<{ panelId: string; payload: Record<string, unknown> }> = []
+
+    panels.forEach((panel, index) => {
+      if (panel.videoUrl?.trim() || panel.lipSyncVideoUrl?.trim()) {
+        skip('video_exists')
+        return
+      }
+      if (!panel.imageUrl?.trim()) {
+        skip('image_missing')
+        return
+      }
+      if (
+        hasUnconfirmedVisualCandidates(panel.candidateImages, panel.visualQualityState)
+        || !evaluateVisualReadiness(panel.visualQualityState).ready
+      ) {
+        skip('quality_not_ready')
+        return
+      }
+      if (batchMode === 'normal') {
+        targets.push({
+          panelId: panel.id,
+          payload: {
+            ...basePayload,
+            storyboardId: panel.storyboardId,
+            panelIndex: panel.panelIndex,
+          },
+        })
+        return
+      }
+
+      const nextPanel = panels[index + 1]
+      if (!nextPanel) {
+        skip('last_panel')
+        return
+      }
+      if (!panel.linkedToNextPanel) {
+        skip('not_linked')
+        return
+      }
+      if (!nextPanel.imageUrl?.trim()) {
+        skip('last_image_missing')
+        return
+      }
+      if (
+        hasUnconfirmedVisualCandidates(nextPanel.candidateImages, nextPanel.visualQualityState)
+        || !evaluateVisualReadiness(nextPanel.visualQualityState).ready
+      ) {
+        skip('last_quality_not_ready')
+        return
+      }
+      targets.push({
+        panelId: panel.id,
+        payload: {
+          ...basePayload,
+          storyboardId: panel.storyboardId,
+          panelIndex: panel.panelIndex,
+          firstLastFrame: {
+            lastFrameStoryboardId: nextPanel.storyboardId,
+            lastFramePanelIndex: nextPanel.panelIndex,
+            flModel: body.videoModel,
+            ...(panel.firstLastFramePrompt?.trim()
+              ? { customPrompt: panel.firstLastFramePrompt.trim() }
+              : {}),
+          },
+        },
+      })
+    })
 
     const results = await Promise.all(
-      panels.map(async (panel) =>
+      targets.map(async (target) =>
         submitTask({
           userId: session.user.id,
           locale,
@@ -248,17 +365,23 @@ export const POST = apiHandler(async (
           episodeId,
           type: TASK_TYPE.VIDEO_PANEL,
           targetType: 'NovelPromotionPanel',
-          targetId: panel.id,
-          payload: withTaskUiPayload(body, {
-            hasOutputAtStart: await hasPanelVideoOutput(panel.id),
+          targetId: target.panelId,
+          payload: withTaskUiPayload(target.payload, {
+            hasOutputAtStart: await hasPanelVideoOutput(target.panelId),
           }),
-          dedupeKey: `video_panel:${panel.id}`,
-          billingInfo: buildVideoPanelBillingInfoOrThrow(body),
+          dedupeKey: `video_panel:${target.panelId}`,
+          billingInfo: buildVideoPanelBillingInfoOrThrow(target.payload),
         }),
       ),
     )
 
-    return NextResponse.json({ tasks: results, total: panels.length })
+    return NextResponse.json({
+      tasks: results,
+      total: targets.length,
+      skipped: panels.length - targets.length,
+      reasonCounts,
+      mode: batchMode,
+    })
   }
 
   const storyboardId = body?.storyboardId
@@ -269,7 +392,7 @@ export const POST = apiHandler(async (
 
   const panel = await prisma.novelPromotionPanel.findFirst({
     where: { storyboardId, panelIndex: Number(panelIndex) },
-    select: { id: true, visualQualityState: true },
+    select: { id: true, candidateImages: true, visualQualityState: true },
   })
 
   if (!panel) {
@@ -288,7 +411,7 @@ export const POST = apiHandler(async (
         storyboardId: firstLastFrame.lastFrameStoryboardId,
         panelIndex: Number(firstLastFrame.lastFramePanelIndex),
       },
-      select: { id: true, visualQualityState: true },
+      select: { id: true, candidateImages: true, visualQualityState: true },
     })
     if (!lastFramePanel) throw new ApiError('NOT_FOUND')
     assertVisualReady(lastFramePanel)

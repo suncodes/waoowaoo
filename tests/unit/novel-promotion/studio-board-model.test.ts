@@ -7,7 +7,7 @@ import {
   resolvePanelStatus,
 } from '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/studio/studio-board-model'
 
-function sourcePanel(status: 'approved' | 'human_required'): NovelPromotionPanel {
+function sourcePanel(status: 'approved' | 'human_required', humanConfirmedAt?: string): NovelPromotionPanel {
   return {
     id: 'panel-1',
     imageUrl: 'frame.png',
@@ -18,6 +18,7 @@ function sourcePanel(status: 'approved' | 'human_required'): NovelPromotionPanel
       status,
       versionHash: 'version-1',
       candidateUrls: ['frame.png'],
+      humanConfirmedAt,
     }),
   } as NovelPromotionPanel
 }
@@ -62,6 +63,25 @@ describe('studio storyboard readiness', () => {
       panel,
       sourcePanel: source,
       hasCandidates: false,
+      submitting: false,
+      modifying: false,
+    })).toBe(true)
+  })
+
+  it('keeps retained candidates switchable without blocking a human-confirmed panel', () => {
+    const source = sourcePanel('approved', '2026-07-22T10:00:00.000Z')
+
+    expect(resolvePanelStatus({
+      panel,
+      sourcePanel: source,
+      hasCandidates: true,
+      submitting: false,
+      modifying: false,
+    })).toBe('locked')
+    expect(isPanelReadyForProduction({
+      panel,
+      sourcePanel: source,
+      hasCandidates: true,
       submitting: false,
       modifying: false,
     })).toBe(true)

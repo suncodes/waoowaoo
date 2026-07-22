@@ -1,4 +1,5 @@
 import type { ContentPlan } from '@/lib/content-planning'
+import type { VisualPlanResult, VisualUnit } from '@/lib/visual-planning'
 import type { CreationStageId } from './stages'
 import type { WorkspaceImpactSummary } from './artifact-state'
 
@@ -34,6 +35,11 @@ export type WorkspaceArtifactCommand =
     }
   | {
       type: 'materialize_guide_storyboard'
+    }
+  | {
+      type: 'save_visual_plan'
+      shotPlan: VisualPlanResult['shotPlan']
+      visualUnits: VisualUnit[]
     }
 
 export interface WorkspaceArtifactCommandResult {

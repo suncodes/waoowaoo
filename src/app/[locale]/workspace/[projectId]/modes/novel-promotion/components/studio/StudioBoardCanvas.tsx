@@ -6,18 +6,21 @@ import VisualQualityBadge from '@/components/visual-quality/VisualQualityBadge'
 import ImagePreviewModal from '@/components/ui/ImagePreviewModal'
 import { AppIcon } from '@/components/ui/icons'
 import type { CreationWorkflowState } from '@/lib/creation-workspace/workflow-state'
+import { isVisualQualityProcessing, parseVisualQualityState } from '@/lib/quality-workflow'
 import { useWorkspaceProvider } from '../../WorkspaceProvider'
 import { useWorkspaceStageRuntime } from '../../WorkspaceStageRuntimeContext'
 import { useWorkspaceEpisodeStageData } from '../../hooks/useWorkspaceEpisodeStageData'
 import { CharacterPickerModal, LocationPickerModal, type PanelEditData } from '../PanelEditForm'
 import AIDataModal from '../storyboard/AIDataModal'
 import ImageEditModal from '../storyboard/ImageEditModal'
+import { resolveConfirmedCandidateIndex } from '../storyboard/hooks/panel-candidate-runtime'
 import { useStoryboardModalRuntime } from '../storyboard/hooks/useStoryboardModalRuntime'
 import { useStoryboardStageController } from '../storyboard/hooks/useStoryboardStageController'
-import { StudioButton, StudioMetric, StudioSectionHeader, StudioStageHeader } from './StudioPrimitives'
+import { StudioButton, StudioEmptyState, StudioMetric, StudioSectionHeader, StudioStageHeader } from './StudioPrimitives'
 import { type StudioWorkspaceModel } from './studio-types'
 import StudioBoardEmpty from './StudioBoardEmpty'
 import StudioBoardShotCard from './StudioBoardShotCard'
+import StudioShotPlanEditor from './StudioShotPlanEditor'
 import { currentImageUrl, flattenBoardItems, isPanelReadyForProduction, resolvePanelStatus, type BoardItem } from './studio-board-model'
 
 interface StudioBoardCanvasProps {
@@ -29,17 +32,36 @@ interface StudioBoardCanvasProps {
 function BoardDetailPanel({
   item,
   controller,
+  confirmLabel,
+  onCandidateConfirmed,
 }: {
   item: BoardItem
   controller: ReturnType<typeof useStoryboardStageController>
+  confirmLabel?: string
+  onCandidateConfirmed?: () => void
 }) {
   const panelData = controller.getPanelEditData(item.panel)
   const saveState = controller.saveStateByPanel[item.panel.id]
   const candidates = controller.getPanelCandidates(item.sourcePanel)
+  const qualityState = parseVisualQualityState(item.sourcePanel.visualQualityState)
+  const qualityProcessing = isVisualQualityProcessing(item.sourcePanel.visualQualityState)
+  const hasConfirmedCandidate = !!qualityState?.humanConfirmedAt
   const selectedImageUrl = currentImageUrl(item, candidates)
   const isSubmitting = controller.submittingPanelImageIds.has(item.panel.id) || !!item.sourcePanel.imageTaskRunning
   const isModifying = controller.modifyingPanels.has(item.panel.id)
   const disabled = isSubmitting || isModifying
+  const selectedCandidateUrl = candidates?.candidates[candidates.selectedIndex] || null
+  const confirmedCandidateIndex = candidates
+    ? resolveConfirmedCandidateIndex(item.sourcePanel, candidates.candidates)
+    : -1
+  const hasFinalCandidate = hasConfirmedCandidate || qualityState?.status === 'approved'
+  const selectedIsCurrent = !!selectedCandidateUrl && (
+    hasFinalCandidate
+      ? confirmedCandidateIndex >= 0
+        ? candidates?.selectedIndex === confirmedCandidateIndex
+        : selectedCandidateUrl === item.panel.imageUrl
+      : !qualityState && selectedCandidateUrl === item.panel.imageUrl
+  )
   const update = (updates: Partial<PanelEditData>) => {
     controller.handlePanelUpdate(item.panel.id, item.panel, updates)
   }
@@ -112,10 +134,24 @@ function BoardDetailPanel({
           </StudioButton>
         </div>
 
+        {qualityProcessing && qualityState ? (
+          <div className="rounded-md border border-cyan-400/25 bg-cyan-400/10 p-3 text-sm text-cyan-100">
+            <div className="flex items-center gap-2 font-semibold">
+              <AppIcon name="loader" className="h-4 w-4 animate-spin" />
+              {qualityState.status === 'repairing'
+                ? `自动修复中（第 ${Math.min(qualityState.maxAttempts, qualityState.attempt + 1)}/${qualityState.maxAttempts} 次）`
+                : qualityState.status === 'reviewing'
+                  ? '正在检查候选图片'
+                  : '候选图片等待检查'}
+            </div>
+            <p className="mt-1 text-xs leading-5 text-cyan-100/70">检查与修复流程完成前不能确认，完成后候选图会自动恢复显示。</p>
+          </div>
+        ) : null}
+
         {candidates ? (
           <div className="rounded-md border border-amber-400/25 bg-amber-400/10 p-3">
             <div className="flex items-center justify-between gap-3">
-              <span className="text-xs font-semibold text-amber-100">候选图待确认</span>
+              <span className="text-xs font-semibold text-amber-100">{hasConfirmedCandidate ? '候选图（可随时切换）' : '候选图待确认'}</span>
               <div className="flex gap-2">
                 <StudioButton
                   size="sm"
@@ -124,13 +160,14 @@ function BoardDetailPanel({
                     const imageUrl = candidates.candidates[candidates.selectedIndex]
                     if (imageUrl && !imageUrl.startsWith('PENDING:')) {
                       void controller.selectPanelCandidate(item.panel.id, imageUrl)
+                        .then(() => onCandidateConfirmed?.())
+                        .catch(() => undefined)
                     }
                   }}
-                  disabled={disabled}
+                  disabled={disabled || qualityProcessing || selectedIsCurrent}
                 >
-                  设为定稿
+                  {selectedIsCurrent ? '当前定稿' : confirmLabel || (hasConfirmedCandidate ? '确认切换' : '设为定稿')}
                 </StudioButton>
-                <StudioButton size="sm" variant="ghost" onClick={() => { void controller.cancelPanelCandidate(item.panel.id) }} disabled={disabled}>取消</StudioButton>
               </div>
             </div>
             <div className="mt-3 grid grid-cols-3 gap-2">
@@ -161,6 +198,9 @@ function BoardDetailPanel({
                         sizes="140px"
                       />
                     )}
+                    {!pending && candidateUrl === item.panel.imageUrl ? (
+                      <span className="absolute bottom-1 left-1 rounded bg-emerald-600/90 px-1.5 py-0.5 text-[10px] font-semibold text-white">当前定稿</span>
+                    ) : null}
                   </button>
                 )
               })}
@@ -281,12 +321,15 @@ function BoardDetailPanel({
 function StudioBoardRuntime({
   model,
   onNavigate,
+  workflowState,
   projectId,
   episodeId,
 }: StudioBoardCanvasProps & { projectId: string; episodeId: string }) {
   const runtime = useWorkspaceStageRuntime()
   const { clips, storyboards } = useWorkspaceEpisodeStageData()
   const [selectedPanelId, setSelectedPanelId] = useState('')
+  const [activeStep, setActiveStep] = useState<'plan' | 'images'>(model.workflow.hasStoryboard ? 'images' : 'plan')
+  const [reviewMode, setReviewMode] = useState(false)
   const controller = useStoryboardStageController({
     projectId,
     episodeId,
@@ -299,7 +342,19 @@ function StudioBoardRuntime({
     () => flattenBoardItems(controller.sortedStoryboards, controller.getTextPanels),
     [controller.getTextPanels, controller.sortedStoryboards],
   )
-  const selectedItem = items.find((item) => item.panel.id === selectedPanelId) || items[0] || null
+  const itemReadyForProduction = (item: BoardItem) => {
+    const candidates = controller.getPanelCandidates(item.sourcePanel)
+    return isPanelReadyForProduction({
+      panel: item.panel,
+      sourcePanel: item.sourcePanel,
+      hasCandidates: !!candidates,
+      submitting: controller.submittingPanelImageIds.has(item.panel.id),
+      modifying: controller.modifyingPanels.has(item.panel.id),
+    })
+  }
+  const reviewItems = items.filter((item) => !itemReadyForProduction(item))
+  const visibleItems = reviewMode ? reviewItems : items
+  const selectedItem = visibleItems.find((item) => item.panel.id === selectedPanelId) || visibleItems[0] || null
   const blockedProductionCount = items.filter((item) => {
     const candidates = controller.getPanelCandidates(item.sourcePanel)
     return !isPanelReadyForProduction({
@@ -308,7 +363,7 @@ function StudioBoardRuntime({
       modifying: controller.modifyingPanels.has(item.panel.id),
     })
   }).length
-  const productionReady = blockedProductionCount === 0 && controller.runningCount === 0
+  const productionReady = items.length > 0 && blockedProductionCount === 0 && controller.runningCount === 0
 
   const modalRuntime = useStoryboardModalRuntime({
     projectId,
@@ -340,8 +395,12 @@ function StudioBoardRuntime({
     }
   }, [selectedItem, selectedPanelId])
 
-  if (items.length === 0) {
-    return <StudioBoardEmpty model={model} />
+  const advanceReview = () => {
+    if (!selectedItem) return
+    const currentIndex = reviewItems.findIndex((item) => item.panel.id === selectedItem.panel.id)
+    const nextItem = reviewItems[currentIndex + 1]
+      || reviewItems.find((item) => item.panel.id !== selectedItem.panel.id)
+    if (nextItem) setSelectedPanelId(nextItem.panel.id)
   }
 
   return (
@@ -349,15 +408,15 @@ function StudioBoardRuntime({
       {model.workflow.storyboardGenerating ? (
         <div className="rounded-md border border-cyan-400/30 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100">
           <AppIcon name="loader" className="mr-2 inline h-4 w-4 animate-spin" />
-          镜头规划仍在生成，当前列表会随任务结果继续更新。
+          镜头规划任务正在后台运行，当前内容会随任务结果继续更新。
         </div>
       ) : null}
       <section className="rounded-lg border border-white/10 bg-[#151613]">
         <StudioStageHeader
           eyebrow="分镜制作"
           title="镜头规划与分镜画面"
-          description="先确认镜头规划、角色场景绑定和摄影表演信息，再生成并确认分镜图片。"
-          actions={(
+          description="分两步完成：先查看、编辑并确认镜头规划，再生成和确认分镜图片。"
+          actions={activeStep === 'images' ? (
             <>
               <StudioButton size="sm" variant="secondary" icon="sparkles" loading={controller.isEpisodeBatchSubmitting} onClick={() => { void controller.handleGenerateAllPanels() }}>
               生成缺失图片
@@ -366,61 +425,112 @@ function StudioBoardRuntime({
               {productionReady ? '确认并进入制作' : `${blockedProductionCount} 个镜头待确认`}
               </StudioButton>
             </>
-          )}
+          ) : undefined}
         />
 
-        <div className="grid gap-4 border-b border-white/10 px-6 py-4 sm:grid-cols-4">
-          <StudioMetric label="镜头" value={items.length} />
-          <StudioMetric label="图片完成" value={`${items.filter((item) => item.panel.imageUrl).length}/${items.length}`} />
-          <StudioMetric label="生成中" value={controller.runningCount} />
-          <StudioMetric label="待生成" value={controller.pendingPanelCount} />
+        <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-6 py-3">
+          <button
+            type="button"
+            onClick={() => setActiveStep('plan')}
+            className={`rounded-md px-4 py-2 text-sm font-semibold transition-colors ${activeStep === 'plan' ? 'bg-[#f3e9cf] text-[#161512]' : 'bg-white/[0.04] text-stone-400 hover:bg-white/[0.08]'}`}
+          >
+            1. 镜头规划
+          </button>
+          <AppIcon name="arrowRight" className="h-4 w-4 text-stone-600" />
+          <button
+            type="button"
+            onClick={() => setActiveStep('images')}
+            className={`rounded-md px-4 py-2 text-sm font-semibold transition-colors ${activeStep === 'images' ? 'bg-[#f3e9cf] text-[#161512]' : 'bg-white/[0.04] text-stone-400 hover:bg-white/[0.08]'}`}
+          >
+            2. 分镜图片
+          </button>
         </div>
 
-        {!productionReady ? (
-          <div className="border-b border-amber-400/20 bg-amber-400/[0.07] px-6 py-3 text-sm text-amber-100">
-            进入生产台前，需要为每个镜头确认定稿图片，并等待所有图片任务结束。
+        {activeStep === 'plan' ? (
+          <div className="p-4">
+            <StudioShotPlanEditor model={model} workflowState={workflowState} onOpenImages={() => setActiveStep('images')} />
           </div>
-        ) : null}
-
-        <div className="grid min-h-[620px] gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-          <div className="min-h-0 overflow-hidden rounded-lg border border-white/10 bg-[#10110f]">
-            <div className="border-b border-white/10 px-4 py-4">
-              <StudioSectionHeader
-                title="镜头队列"
-                description="逐个确认画面描述、角色场景绑定和定稿图片。"
-              />
+        ) : (
+          <>
+            <div className="grid gap-4 border-b border-white/10 px-6 py-4 sm:grid-cols-4">
+              <StudioMetric label="镜头" value={items.length} />
+              <StudioMetric label="图片完成" value={`${items.filter((item) => item.panel.imageUrl).length}/${items.length}`} />
+              <StudioMetric label="生成中" value={controller.runningCount} />
+              <StudioMetric label="待生成" value={controller.pendingPanelCount} />
             </div>
-            <div className="space-y-3 p-3">
-              {items.map((item) => {
-                const candidates = controller.getPanelCandidates(item.sourcePanel)
-                const submitting = controller.submittingPanelImageIds.has(item.panel.id)
-                const modifying = controller.modifyingPanels.has(item.panel.id)
-                const status = resolvePanelStatus({
-                  panel: item.panel,
-                  sourcePanel: item.sourcePanel,
-                  hasCandidates: !!candidates,
-                  submitting,
-                  modifying,
-                })
-                return (
-                  <StudioBoardShotCard
-                    key={item.panel.id}
-                    item={item}
-                    selected={selectedItem?.panel.id === item.panel.id}
-                    status={status}
-                    imageUrl={currentImageUrl(item, candidates)}
-                    running={submitting || modifying || !!item.sourcePanel.imageTaskRunning}
-                    onSelect={() => setSelectedPanelId(item.panel.id)}
-                    onPreview={controller.setPreviewImage}
+
+            {!productionReady && items.length > 0 ? (
+              <div className="border-b border-amber-400/20 bg-amber-400/[0.07] px-6 py-3 text-sm text-amber-100">
+                进入生产台前，需要为每个镜头确认定稿图片，并等待所有图片任务结束。
+              </div>
+            ) : null}
+
+            {items.length === 0 ? (
+              <div className="p-6">
+                <StudioEmptyState
+                  icon="image"
+                  title="还没有可制作的分镜图片"
+                  description="先在“镜头规划”中生成并确认初稿，系统生成正式分镜后再进入这里。"
+                  action={<StudioButton icon="chevronLeft" variant="secondary" onClick={() => setActiveStep('plan')}>返回镜头规划</StudioButton>}
+                />
+              </div>
+            ) : (
+              <div className="grid min-h-[620px] gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+                <div className="min-h-0 overflow-hidden rounded-lg border border-white/10 bg-[#10110f]">
+                  <div className="border-b border-white/10 px-4 py-4">
+                    <StudioSectionHeader
+                      title="镜头队列"
+                      description={reviewMode ? `一次处理一个待确认镜头，完成后自动进入下一个（剩余 ${reviewItems.length}）` : '逐个确认画面描述、角色场景绑定和定稿图片。'}
+                      actions={(
+                        <div className="flex rounded-md border border-white/10 bg-[#0f100e] p-1">
+                          <button type="button" onClick={() => setReviewMode(false)} className={`rounded px-3 py-1.5 text-xs font-semibold ${!reviewMode ? 'bg-[#f3e9cf] text-[#161512]' : 'text-stone-500 hover:text-stone-200'}`}>全部</button>
+                          <button type="button" onClick={() => setReviewMode(true)} className={`rounded px-3 py-1.5 text-xs font-semibold ${reviewMode ? 'bg-[#f3e9cf] text-[#161512]' : 'text-stone-500 hover:text-stone-200'}`}>待确认 {reviewItems.length}</button>
+                        </div>
+                      )}
+                    />
+                  </div>
+                  <div className="space-y-3 p-3">
+                    {reviewMode && reviewItems.length === 0 ? (
+                      <div className="rounded-md border border-emerald-400/20 bg-emerald-400/10 px-4 py-5 text-center text-sm text-emerald-100">全部镜头已确认，可以进入视频制作。</div>
+                    ) : null}
+                    {(reviewMode ? selectedItem ? [selectedItem] : [] : visibleItems).map((item) => {
+                      const candidates = controller.getPanelCandidates(item.sourcePanel)
+                      const submitting = controller.submittingPanelImageIds.has(item.panel.id)
+                      const modifying = controller.modifyingPanels.has(item.panel.id)
+                      const status = resolvePanelStatus({
+                        panel: item.panel,
+                        sourcePanel: item.sourcePanel,
+                        hasCandidates: !!candidates,
+                        submitting,
+                        modifying,
+                      })
+                      return (
+                        <StudioBoardShotCard
+                          key={item.panel.id}
+                          item={item}
+                          selected={selectedItem?.panel.id === item.panel.id}
+                          status={status}
+                          imageUrl={currentImageUrl(item, candidates)}
+                          running={submitting || modifying || !!item.sourcePanel.imageTaskRunning}
+                          onSelect={() => setSelectedPanelId(item.panel.id)}
+                          onPreview={controller.setPreviewImage}
+                        />
+                      )
+                    })}
+                  </div>
+                </div>
+                {selectedItem ? (
+                  <BoardDetailPanel
+                    item={selectedItem}
+                    controller={controller}
+                    confirmLabel={reviewMode && reviewItems.length > 1 ? '确认并查看下一个' : undefined}
+                    onCandidateConfirmed={reviewMode ? advanceReview : undefined}
                   />
-                )
-              })}
-            </div>
-          </div>
-          {selectedItem ? (
-            <BoardDetailPanel item={selectedItem} controller={controller} />
-          ) : null}
-        </div>
+                ) : null}
+              </div>
+            )}
+          </>
+        )}
       </section>
 
       {modalRuntime.editingPanel ? (
@@ -479,8 +589,8 @@ function StudioBoardRuntime({
 export default function StudioBoardCanvas({ model, onNavigate, workflowState }: StudioBoardCanvasProps) {
   const { projectId, episodeId } = useWorkspaceProvider()
 
-  if (!episodeId || model.shots.length === 0) {
-    return <StudioBoardEmpty model={model} />
+  if (!episodeId) {
+    return <StudioBoardEmpty />
   }
 
   return (

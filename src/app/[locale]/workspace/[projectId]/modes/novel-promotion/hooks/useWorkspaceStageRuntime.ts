@@ -7,6 +7,7 @@ import type { VideoPricingTier } from '@/lib/model-pricing/video-tier'
 import type { BatchVideoGenerationParams, VideoGenerationOptions } from '../components/video'
 import { resolveVideoProfile, type VideoProfile } from '@/lib/video-profile'
 import type { ContentPlan } from '@/lib/content-planning'
+import type { VisualPlanResult, VisualUnit } from '@/lib/visual-planning'
 import type { WorkspaceArtifactCommandResult } from '@/lib/creation-workspace/commands'
 
 interface UseWorkspaceStageRuntimeParams {
@@ -36,8 +37,8 @@ interface UseWorkspaceStageRuntimeParams {
   runWithRebuildConfirm: (action: 'storyToScript' | 'scriptToStoryboard', operation: () => Promise<void>) => Promise<void>
   runStoryToScriptFlow: () => Promise<void>
   runContentUnitRewrite: (unitId: string, instruction?: string) => Promise<void>
-  runVisualPlanFlow: () => Promise<void>
-  runScriptToStoryboardFlow: () => Promise<void>
+  runVisualPlanFlow: (instruction?: string) => Promise<void>
+  runScriptToStoryboardFlow: (options?: { visualApprovalConfirmed?: boolean }) => Promise<void>
   handleAnalyzeAssets: () => Promise<void>
   handleUpdateClip: (clipId: string, updates: Record<string, unknown>) => Promise<void>
   openAssetLibrary: (characterId?: string | null, refreshAssets?: boolean) => void
@@ -64,6 +65,7 @@ interface UseWorkspaceStageRuntimeParams {
   ) => Promise<void>
   handleUpdatePanelVideoModel: (storyboardId: string, panelIndex: number, model: string) => Promise<void>
   saveGuidePlan: (value: ContentPlan, changedUnitIds: string[]) => Promise<WorkspaceArtifactCommandResult>
+  saveVisualPlan: (shotPlan: VisualPlanResult['shotPlan'], visualUnits: VisualUnit[]) => Promise<WorkspaceArtifactCommandResult>
   toggleContentLock: (unitId: string, locked: boolean) => Promise<WorkspaceArtifactCommandResult>
   acceptContentCandidate: (unitId: string) => Promise<WorkspaceArtifactCommandResult>
   discardContentCandidate: (unitId: string) => Promise<WorkspaceArtifactCommandResult>
@@ -104,6 +106,7 @@ export function useWorkspaceStageRuntime({
   handleUpdateVideoPrompt,
   handleUpdatePanelVideoModel,
   saveGuidePlan,
+  saveVisualPlan,
   toggleContentLock,
   acceptContentCandidate,
   discardContentCandidate,
@@ -143,6 +146,7 @@ export function useWorkspaceStageRuntime({
     onNovelTextChange: (value) => handleUpdateEpisode('novelText', value),
     onContentPlanChange: (value) => handleUpdateEpisode('contentPlan', value),
     onSaveGuidePlan: saveGuidePlan,
+    onSaveVisualPlan: saveVisualPlan,
     onToggleContentLock: toggleContentLock,
     onRegenerateContentUnit: runContentUnitRewrite,
     onAcceptContentCandidate: acceptContentCandidate,
@@ -171,7 +175,7 @@ export function useWorkspaceStageRuntime({
     },
     onArtStyleReferenceEnabledChange: (value) => handleUpdateConfig('artStyleReferenceEnabled', value),
     onRunStoryToScript: () => runWithRebuildConfirm('storyToScript', runStoryToScriptFlow),
-    onRunVisualPlan: () => runWithRebuildConfirm('scriptToStoryboard', runVisualPlanFlow),
+    onRunVisualPlan: (instruction) => runWithRebuildConfirm('scriptToStoryboard', () => runVisualPlanFlow(instruction)),
     onAnalyzeAssets: handleAnalyzeAssets,
     onClipUpdate: (clipId, data) => {
       if (!data || typeof data !== 'object' || Array.isArray(data)) {
@@ -180,7 +184,7 @@ export function useWorkspaceStageRuntime({
       return handleUpdateClip(clipId, data as Record<string, unknown>)
     },
     onOpenAssetLibrary: () => openAssetLibrary(),
-    onRunScriptToStoryboard: () => runWithRebuildConfirm('scriptToStoryboard', runScriptToStoryboardFlow),
+    onRunScriptToStoryboard: (options) => runWithRebuildConfirm('scriptToStoryboard', () => runScriptToStoryboardFlow(options)),
     onStageChange: handleStageChange,
     onGenerateVideo: handleGenerateVideo,
     onGenerateAllVideos: handleGenerateAllVideos,
@@ -213,6 +217,7 @@ export function useWorkspaceStageRuntime({
     runVisualPlanFlow,
     runWithRebuildConfirm,
     saveGuidePlan,
+    saveVisualPlan,
     toggleContentLock,
     acceptContentCandidate,
     discardContentCandidate,

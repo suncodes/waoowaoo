@@ -114,6 +114,28 @@ describe('creation workflow state', () => {
     })
   })
 
+  it('routes visual-plan generation to the storyboard stage', () => {
+    const state = createState({
+      visualPlanStream: {
+        ...idleStream,
+        runId: 'visual-plan-1',
+        status: 'running',
+        isRunning: true,
+        overallProgress: 42,
+        activeMessage: '正在生成镜头规划初稿',
+      },
+    })
+
+    expect(state.stages['storyboard-preview'].status).toBe('running')
+    expect(state.stages['visual-design'].status).not.toBe('running')
+    expect(state.activeTarget).toMatchObject({
+      stageId: 'storyboard-preview',
+      route: 'storyboard',
+      kind: 'visual_plan',
+      progress: 42,
+    })
+  })
+
   it('does not unlock visual preparation for an unconfirmed legacy script', () => {
     const state = createState({
       stageArtifacts: {

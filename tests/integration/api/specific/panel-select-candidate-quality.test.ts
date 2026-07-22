@@ -57,7 +57,7 @@ describe('api specific - panel candidate quality approval', () => {
     })
   })
 
-  it('accepts a recovered quality candidate after candidateImages was cleared', async () => {
+  it('accepts a recovered quality candidate and retains all candidates for later switching', async () => {
     const mod = await import('@/app/api/novel-promotion/[projectId]/panel/select-candidate/route')
     const req = buildMockRequest({
       path: '/api/novel-promotion/project-1/panel/select-candidate',
@@ -77,14 +77,49 @@ describe('api specific - panel candidate quality approval', () => {
       status: 'approved',
       activeCandidateUrl: 'candidate-1.png',
       lastAction: 'select_candidate',
+      humanConfirmedAt: expect.any(String),
     })
     expect(prismaMock.novelPromotionPanel.update).toHaveBeenCalledWith({
       where: { id: 'panel-1' },
       data: expect.objectContaining({
         imageUrl: 'candidate-1.png',
-        candidateImages: null,
-        visualQualityState: expect.objectContaining({ status: 'approved' }),
+        candidateImages: JSON.stringify(['candidate-1.png']),
+        visualQualityState: expect.objectContaining({
+          status: 'approved',
+          humanConfirmedAt: expect.any(String),
+        }),
       }),
     })
+  })
+
+  it('rejects confirmation while automatic quality review is still running', async () => {
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValue({
+      id: 'panel-1',
+      imageUrl: 'old.png',
+      imageHistory: null,
+      candidateImages: JSON.stringify(['candidate-1.png']),
+      visualQualityState: createVisualQualityState({
+        mode: 'auto',
+        status: 'repairing',
+        versionHash: 'version-1',
+        candidateUrls: ['candidate-1.png'],
+        attempt: 1,
+      }),
+    })
+    const mod = await import('@/app/api/novel-promotion/[projectId]/panel/select-candidate/route')
+    const req = buildMockRequest({
+      path: '/api/novel-promotion/project-1/panel/select-candidate',
+      method: 'POST',
+      body: {
+        panelId: 'panel-1',
+        action: 'select',
+        selectedImageUrl: '/m/candidate-1.png',
+      },
+    })
+
+    const res = await mod.POST(req, { params: Promise.resolve({ projectId: 'project-1' }) })
+
+    expect(res.status).toBe(409)
+    expect(prismaMock.novelPromotionPanel.update).not.toHaveBeenCalled()
   })
 })
