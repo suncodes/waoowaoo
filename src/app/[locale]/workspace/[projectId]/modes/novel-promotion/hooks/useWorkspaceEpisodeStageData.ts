@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo } from 'react'
 import { useEpisodeData } from '@/lib/query/hooks'
 import type { NovelPromotionClip, NovelPromotionStoryboard } from '@/types/project'
 import { useWorkspaceProvider } from '../WorkspaceProvider'
@@ -21,14 +22,22 @@ export function useWorkspaceEpisodeStageData() {
   const { projectId, episodeId } = useWorkspaceProvider()
   const { data: episodeData } = useEpisodeData(projectId, episodeId || null)
   const payload = episodeData as EpisodeStagePayload | null
-  const clips = (payload?.clips || []).filter(isWorkspaceClipActive)
-  const activeClipIds = new Set(clips.map((clip) => clip.id))
+  const sourceClips = payload?.clips
+  const sourceStoryboards = payload?.storyboards
+  const clips = useMemo(
+    () => (sourceClips || []).filter(isWorkspaceClipActive),
+    [sourceClips],
+  )
+  const storyboards = useMemo(() => {
+    const activeClipIds = new Set(clips.map((clip) => clip.id))
+    return (sourceStoryboards || []).filter((storyboard) => activeClipIds.has(storyboard.clipId))
+  }, [clips, sourceStoryboards])
 
   return {
     episodeName: payload?.name,
     novelText: payload?.novelText || '',
     clips,
-    storyboards: (payload?.storyboards || []).filter((storyboard) => activeClipIds.has(storyboard.clipId)),
+    storyboards,
     creativeBrief: payload?.creativeBrief,
     contentPlan: payload?.contentPlan,
     contentReview: payload?.contentReview,

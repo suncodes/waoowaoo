@@ -2,6 +2,13 @@
 
 const PROBE_SUCCESS_COOLDOWN_MS = 60_000
 const PROBE_RETRY_INTERVAL_MS = 2_000
+const PROBE_RETRY_DELAYS_MS = [
+  PROBE_RETRY_INTERVAL_MS,
+  5_000,
+  15_000,
+  30_000,
+  60_000,
+] as const
 const successfulProbeScopes = new Map<string, number>()
 
 type RecoveryProbeContext = {
@@ -28,6 +35,13 @@ function scheduleProbe(
 export function startRecoveryProbe(args: StartRecoveryProbeArgs): () => void {
   let cancelled = false
   let retryTimer: ReturnType<typeof setTimeout> | null = null
+  let missedProbeCount = 0
+
+  const canProbeNow = () => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return false
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return false
+    return true
+  }
 
   const clearRetryTimer = () => {
     if (retryTimer) {
@@ -46,6 +60,7 @@ export function startRecoveryProbe(args: StartRecoveryProbeArgs): () => void {
 
   const probe = async () => {
     if (cancelled || args.hasRunState()) return
+    if (!canProbeNow()) return
 
     const lastSuccessAt = successfulProbeScopes.get(args.storageKey)
     if (lastSuccessAt) {
@@ -65,7 +80,11 @@ export function startRecoveryProbe(args: StartRecoveryProbeArgs): () => void {
     if (cancelled || args.hasRunState()) return
 
     if (!activeRunId) {
-      scheduleRetry(PROBE_RETRY_INTERVAL_MS)
+      const retryDelay = PROBE_RETRY_DELAYS_MS[
+        Math.min(missedProbeCount, PROBE_RETRY_DELAYS_MS.length - 1)
+      ]
+      missedProbeCount += 1
+      scheduleRetry(retryDelay)
       return
     }
 
@@ -73,11 +92,30 @@ export function startRecoveryProbe(args: StartRecoveryProbeArgs): () => void {
     args.onRecovered(activeRunId)
   }
 
+  const resumeProbe = () => {
+    if (!canProbeNow() || cancelled || args.hasRunState()) return
+    missedProbeCount = 0
+    scheduleRetry(0)
+  }
+
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', resumeProbe)
+  }
+  if (typeof window !== 'undefined') {
+    window.addEventListener('online', resumeProbe)
+  }
+
   void probe()
 
   return () => {
     cancelled = true
     clearRetryTimer()
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', resumeProbe)
+    }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('online', resumeProbe)
+    }
   }
 }
 
@@ -86,5 +124,6 @@ export const recoveryProbeTestUtils = {
     successfulProbeScopes.clear()
   },
   PROBE_RETRY_INTERVAL_MS,
+  PROBE_RETRY_DELAYS_MS,
   PROBE_SUCCESS_COOLDOWN_MS,
 }

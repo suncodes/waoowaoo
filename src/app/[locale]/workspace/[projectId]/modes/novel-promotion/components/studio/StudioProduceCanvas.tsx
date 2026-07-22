@@ -39,6 +39,21 @@ interface StudioProduceCanvasProps {
 
 type FirstLastFrameFlow = ReturnType<typeof useVideoFirstLastFrameFlow>
 
+function booleanMapsEqual(
+  left: Map<string, boolean>,
+  right: Map<string, boolean>,
+): boolean {
+  if (left.size !== right.size) return false
+  for (const [key, value] of left) {
+    if (right.get(key) !== value) return false
+  }
+  return true
+}
+
+function translateFirstLastFrameKey(key: string): string {
+  return key === 'firstLastFrame.thenTransitionTo' ? '然后自然过渡到' : key
+}
+
 function EmptyProduce({ onNavigate }: { onNavigate: (route: string) => void }) {
   return (
     <StudioEmptyState
@@ -89,10 +104,15 @@ function ProductionDetailPanel({
     || firstLastFrameFlow.flMissingCapabilityFields.length > 0
 
   useEffect(() => {
-    setMode(item.panel.videoGenerationMode === 'firstlastframe' || linked ? 'firstlastframe' : 'normal')
+    setMode(initialMode)
     setPrompt(item.panel.videoPrompt || '')
-    setSelectedModel(panelVideoModel(item.panel) || runtime.videoModel || runtime.userVideoModels[0]?.value || '')
-  }, [item, linked, runtime.userVideoModels, runtime.videoModel])
+    setSelectedModel(initialModel)
+  }, [
+    initialMode,
+    initialModel,
+    item.id,
+    item.panel.videoPrompt,
+  ])
 
   const saveNormalPrompt = async () => {
     if (prompt === (item.panel.videoPrompt || '')) return
@@ -298,11 +318,11 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
     linkedPanels,
     videoModelOptions: runtime.userVideoModels,
     onGenerateVideo: runtime.onGenerateVideo,
-    t: (key) => key === 'firstLastFrame.thenTransitionTo' ? '然后自然过渡到' : key,
+    t: translateFirstLastFrameKey,
   })
 
   useEffect(() => {
-    setLinkedPanels(persistedLinks)
+    setLinkedPanels((current) => booleanMapsEqual(current, persistedLinks) ? current : persistedLinks)
   }, [persistedLinks])
 
   useEffect(() => {

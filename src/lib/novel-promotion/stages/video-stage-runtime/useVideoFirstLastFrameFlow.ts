@@ -24,6 +24,17 @@ interface FirstLastFrameCapabilityField {
 
 type VideoGenerationOptionValue = string | number | boolean
 
+function stringMapsEqual(
+  left: Map<string, string>,
+  right: Map<string, string>,
+): boolean {
+  if (left.size !== right.size) return false
+  for (const [key, value] of left) {
+    if (right.get(key) !== value) return false
+  }
+  return true
+}
+
 function parseByOptionType(
   input: string,
   sample: VideoGenerationOptionValue,
@@ -89,7 +100,7 @@ export function useVideoFirstLastFrameFlow({
         if (!existingPanelKeys.has(key)) next.delete(key)
       }
 
-      return next
+      return stringMapsEqual(previous, next) ? previous : next
     })
   }, [allPanels])
 
