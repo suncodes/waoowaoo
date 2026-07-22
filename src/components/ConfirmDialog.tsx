@@ -1,5 +1,7 @@
 'use client'
 
+import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslations } from 'next-intl'
 import { AppIcon } from '@/components/ui/icons'
 
@@ -28,7 +30,22 @@ export default function ConfirmDialog({
 
   const finalConfirmText = confirmText || t('confirm')
   const finalCancelText = cancelText || t('cancel')
-  if (!show) return null
+
+  useEffect(() => {
+    if (!show) return
+    const previousOverflow = document.body.style.overflow
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onCancel()
+    }
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [onCancel, show])
+
+  if (!show || typeof document === 'undefined') return null
 
   const typeStyles = {
     danger: {
@@ -56,7 +73,7 @@ export default function ConfirmDialog({
 
   const currentStyle = typeStyles[type]
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
       role="dialog"
@@ -97,6 +114,7 @@ export default function ConfirmDialog({
             </button>
           </div>
         </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
