@@ -80,7 +80,9 @@ export function useVideoFirstLastFrameFlow({
     [videoModelOptions],
   )
   const [flModel, setFlModel] = useState(firstLastFrameModelOptions[0]?.value || '')
-  const [flGenerationOptions, setFlGenerationOptions] = useState<VideoGenerationOptions>({})
+  const [flGenerationOptions, setFlGenerationOptions] = useState<VideoGenerationOptions>({
+    generationMode: 'firstlastframe',
+  })
   const [flCustomPrompts, setFlCustomPrompts] = useState<Map<string, string>>(new Map())
 
   useEffect(() => {
@@ -137,11 +139,18 @@ export function useVideoFirstLastFrameFlow({
 
   useEffect(() => {
     setFlGenerationOptions((previous) => {
-      return normalizeVideoGenerationSelections({
-        definitions: flCapabilityDefinitions,
-        pricingTiers: flPricingTiers,
-        selection: previous,
-      })
+      return {
+        ...normalizeVideoGenerationSelections({
+          definitions: flCapabilityDefinitions,
+          pricingTiers: flPricingTiers,
+          selection: {
+            ...previous,
+            generationMode: 'firstlastframe',
+          },
+          pinnedFields: ['generationMode'],
+        }),
+        generationMode: 'firstlastframe',
+      }
     })
   }, [flCapabilityDefinitions, flPricingTiers])
 
@@ -163,18 +172,20 @@ export function useVideoFirstLastFrameFlow({
   )
 
   const flCapabilityFields: FirstLastFrameCapabilityField[] = useMemo(() => {
-    return flCapabilityDefinitions.map((definition) => {
-      const effectiveField = flEffectiveFieldMap.get(definition.field)
-      const enabledOptions = effectiveField?.options ?? []
-      return {
-        field: definition.field,
-        label: toFieldLabel(definition.field),
-        options: definition.options as VideoGenerationOptionValue[],
-        disabledOptions: (definition.options as VideoGenerationOptionValue[])
-          .filter((option) => !enabledOptions.includes(option)),
-        value: effectiveField?.value as VideoGenerationOptionValue | undefined,
-      }
-    })
+    return flCapabilityDefinitions
+      .filter((definition) => definition.field !== 'generationMode')
+      .map((definition) => {
+        const effectiveField = flEffectiveFieldMap.get(definition.field)
+        const enabledOptions = effectiveField?.options ?? []
+        return {
+          field: definition.field,
+          label: toFieldLabel(definition.field),
+          options: definition.options as VideoGenerationOptionValue[],
+          disabledOptions: (definition.options as VideoGenerationOptionValue[])
+            .filter((option) => !enabledOptions.includes(option)),
+          value: effectiveField?.value as VideoGenerationOptionValue | undefined,
+        }
+      })
   }, [flCapabilityDefinitions, flEffectiveFieldMap])
 
   const flMissingCapabilityFields = useMemo(
@@ -196,9 +207,11 @@ export function useVideoFirstLastFrameFlow({
         selection: {
           ...previous,
           [field]: parsedValue,
+          generationMode: 'firstlastframe',
         },
-        pinnedFields: [field],
+        pinnedFields: [field, 'generationMode'],
       }),
+      generationMode: 'firstlastframe',
     }))
   }, [flCapabilityDefinitions, flDefinitionFieldMap, flPricingTiers])
 

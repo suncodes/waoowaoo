@@ -22,11 +22,12 @@ import { usePanelEpisodeCachePatch } from './usePanelEpisodeCachePatch'
 interface UsePanelCandidatesProps {
   projectId: string
   episodeId?: string
-  onConfirmed?: (panelId: string, imageUrl: string | null) => void
+  onConfirmed?: (panelId: string, imageUrl: string | null, visualQualityState?: unknown) => void
 }
 
 interface SelectPanelCandidateResult {
   imageUrl?: string
+  visualQualityState?: unknown
 }
 
 export function usePanelCandidates({
@@ -75,12 +76,15 @@ export function usePanelCandidates({
       _ulogInfo('[confirmPanelCandidate] ✅ 已清除本地候选状态')
 
       const confirmedImageUrl = result.imageUrl || imageUrl
-      onConfirmed?.(panelId, confirmedImageUrl)
+      onConfirmed?.(panelId, confirmedImageUrl, result.visualQualityState)
       patchPanelInEpisodeCache(panelId, {
         imageUrl: confirmedImageUrl,
         candidateImages: null,
         imageTaskRunning: false,
         imageErrorMessage: null,
+        ...(result.visualQualityState !== undefined
+          ? { visualQualityState: result.visualQualityState }
+          : {}),
       })
 
       if (onSilentRefresh) {

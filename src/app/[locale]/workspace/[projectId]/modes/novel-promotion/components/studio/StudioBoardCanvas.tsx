@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { MediaImageWithLoading } from '@/components/media/MediaImageWithLoading'
+import VisualQualityBadge from '@/components/visual-quality/VisualQualityBadge'
 import ImagePreviewModal from '@/components/ui/ImagePreviewModal'
 import { AppIcon } from '@/components/ui/icons'
 import type { CreationWorkflowState } from '@/lib/creation-workspace/workflow-state'
@@ -13,23 +14,17 @@ import AIDataModal from '../storyboard/AIDataModal'
 import ImageEditModal from '../storyboard/ImageEditModal'
 import { useStoryboardModalRuntime } from '../storyboard/hooks/useStoryboardModalRuntime'
 import { useStoryboardStageController } from '../storyboard/hooks/useStoryboardStageController'
-import {
-  StudioButton,
-  StudioMetric,
-  StudioSectionHeader,
-  StudioStageHeader,
-} from './StudioPrimitives'
+import { StudioButton, StudioMetric, StudioSectionHeader, StudioStageHeader } from './StudioPrimitives'
 import { type StudioWorkspaceModel } from './studio-types'
 import StudioBoardEmpty from './StudioBoardEmpty'
 import StudioBoardShotCard from './StudioBoardShotCard'
-import { currentImageUrl, flattenBoardItems, resolvePanelStatus, type BoardItem } from './studio-board-model'
+import { currentImageUrl, flattenBoardItems, isPanelReadyForProduction, resolvePanelStatus, type BoardItem } from './studio-board-model'
 
 interface StudioBoardCanvasProps {
   model: StudioWorkspaceModel
   onNavigate: (route: string) => void
   workflowState: CreationWorkflowState
 }
-
 
 function BoardDetailPanel({
   item,
@@ -82,6 +77,7 @@ function BoardDetailPanel({
               {isModifying ? '改图中' : '生成中'}
             </div>
           ) : null}
+          <VisualQualityBadge state={item.sourcePanel.visualQualityState} className="absolute bottom-2 left-2 z-20" />
         </div>
 
         <div className="grid grid-cols-2 gap-2">
@@ -306,11 +302,11 @@ function StudioBoardRuntime({
   const selectedItem = items.find((item) => item.panel.id === selectedPanelId) || items[0] || null
   const blockedProductionCount = items.filter((item) => {
     const candidates = controller.getPanelCandidates(item.sourcePanel)
-    return !item.panel.imageUrl
-      || !!candidates
-      || controller.submittingPanelImageIds.has(item.panel.id)
-      || controller.modifyingPanels.has(item.panel.id)
-      || !!item.sourcePanel.imageTaskRunning
+    return !isPanelReadyForProduction({
+      panel: item.panel, sourcePanel: item.sourcePanel, hasCandidates: !!candidates,
+      submitting: controller.submittingPanelImageIds.has(item.panel.id),
+      modifying: controller.modifyingPanels.has(item.panel.id),
+    })
   }).length
   const productionReady = blockedProductionCount === 0 && controller.runningCount === 0
 

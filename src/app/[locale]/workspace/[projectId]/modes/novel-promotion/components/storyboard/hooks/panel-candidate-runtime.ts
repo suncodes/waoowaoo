@@ -2,6 +2,7 @@
 
 import type { NovelPromotionPanel } from '@/types/project'
 import { extractErrorMessage } from '@/lib/errors/extract'
+import { parseVisualQualityState } from '@/lib/quality-workflow'
 
 export interface PanelCandidateData {
   candidates: string[]
@@ -45,6 +46,35 @@ function parseCandidateImages(candidateImagesStr: string): string[] | null {
   }
 }
 
+function resolveCandidateImages(panel: NovelPromotionPanel): string[] | null {
+  const qualityState = parseVisualQualityState(panel.visualQualityState)
+  if (
+    qualityState?.mode === 'auto'
+    && (
+      qualityState.status === 'pending'
+      || qualityState.status === 'reviewing'
+      || qualityState.status === 'repairing'
+    )
+  ) {
+    return null
+  }
+
+  if (panel.candidateImages) {
+    const candidates = parseCandidateImages(panel.candidateImages)
+    if (candidates) return candidates
+  }
+
+  if (
+    qualityState
+    && (qualityState.status === 'human_required' || qualityState.status === 'failed')
+    && qualityState.candidateUrls.length > 0
+  ) {
+    return qualityState.candidateUrls
+  }
+
+  return null
+}
+
 function clearIfExists(system: PanelCandidateSystemLike, panelId: string) {
   const state = system.getCandidateState(panelId)
   if (state) {
@@ -56,13 +86,7 @@ export function ensurePanelCandidatesInitialized(
   panel: NovelPromotionPanel,
   candidateSystem: PanelCandidateSystemLike,
 ): boolean {
-  const candidateImagesStr = panel.candidateImages
-  if (!candidateImagesStr) {
-    clearIfExists(candidateSystem, panel.id)
-    return false
-  }
-
-  const candidates = parseCandidateImages(candidateImagesStr)
+  const candidates = resolveCandidateImages(panel)
   if (!candidates) {
     clearIfExists(candidateSystem, panel.id)
     return false
@@ -96,6 +120,9 @@ export function getPanelCandidatesFromRuntime(
   panel: NovelPromotionPanel,
   candidateSystem: PanelCandidateSystemLike,
 ): PanelCandidateData | null {
+  const candidates = resolveCandidateImages(panel)
+  if (!candidates) return null
+
   const localState = candidateSystem.getCandidateState(panel.id)
   if (localState && localState.candidates.length > 0) {
     return {
@@ -103,12 +130,6 @@ export function getPanelCandidatesFromRuntime(
       selectedIndex: localState.selectedIndex,
     }
   }
-
-  const candidateImagesStr = panel.candidateImages
-  if (!candidateImagesStr) return null
-
-  const candidates = parseCandidateImages(candidateImagesStr)
-  if (!candidates) return null
 
   const validCandidates = candidates.filter((candidate) => !candidate.startsWith('PENDING:'))
   if (validCandidates.length === 0) {

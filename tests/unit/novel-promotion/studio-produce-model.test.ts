@@ -3,8 +3,10 @@ import type { NovelPromotionPanel } from '@/types/project'
 import {
   panelLinkedToNext,
   panelVideoUrl,
+  resolveImageStatus,
   resolveVideoStatus,
 } from '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/studio/studio-produce-model'
+import { createVisualQualityState } from '@/lib/quality-workflow'
 
 function panel(overrides: Partial<NovelPromotionPanel> = {}): NovelPromotionPanel {
   return {
@@ -55,5 +57,17 @@ describe('studio video production model', () => {
     const linkedPanel = panel() as NovelPromotionPanel & { linkedToNextPanel: boolean }
     linkedPanel.linkedToNextPanel = true
     expect(panelLinkedToNext(linkedPanel)).toBe(true)
+  })
+
+  it('does not report a human-required image as confirmed', () => {
+    expect(resolveImageStatus(panel({
+      imageUrl: 'frame.png',
+      visualQualityState: createVisualQualityState({
+        mode: 'auto',
+        status: 'human_required',
+        versionHash: 'version-1',
+        candidateUrls: ['frame.png'],
+      }),
+    }))).toBe('needs_review')
   })
 })

@@ -76,7 +76,7 @@ export function useStoryboardImageGeneration({
   } = usePanelCandidates({
     projectId,
     episodeId,
-    onConfirmed: (panelId, confirmedImageUrl) => {
+    onConfirmed: (panelId, confirmedImageUrl, visualQualityState) => {
       setLocalStoryboards((previousStoryboards) =>
         previousStoryboards.map((storyboard) => {
           const panels = getStoryboardPanels(storyboard)
@@ -89,6 +89,7 @@ export function useStoryboardImageGeneration({
               imageUrl: confirmedImageUrl ?? panel.imageUrl,
               candidateImages: null,
               imageTaskRunning: false,
+              ...(visualQualityState !== undefined ? { visualQualityState } : {}),
             }
           })
           return changed ? { ...storyboard, panels: updatedPanels } : storyboard

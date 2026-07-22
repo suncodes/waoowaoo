@@ -77,19 +77,21 @@ export async function handleVisualQualityReviewTask(job: Job<TaskJobData>) {
   }
   const attempt = currentState?.attempt || 0
   const maxAttempts = currentState?.maxAttempts ?? profile.qualityPolicy.maxRepairAttempts
-  await prisma.novelPromotionPanel.update({
+  const reviewingState = createVisualQualityState({
+    mode,
+    status: 'reviewing',
+    versionHash,
+    candidateUrls,
+    activeCandidateUrl: currentState?.activeCandidateUrl || panel.imageUrl,
+    attempt,
+    maxAttempts,
+  })
+  const reviewingPanel = await prisma.novelPromotionPanel.update({
     where: { id: panel.id },
     data: {
-      visualQualityState: asInputJson(createVisualQualityState({
-        mode,
-        status: 'reviewing',
-        versionHash,
-        candidateUrls,
-        activeCandidateUrl: currentState?.activeCandidateUrl || panel.imageUrl,
-        attempt,
-        maxAttempts,
-      })),
+      visualQualityState: asInputJson(reviewingState),
     },
+    select: { updatedAt: true },
   })
 
   await reportTaskProgress(job, 18, { stage: 'visual_quality_prepare', displayMode: 'detail' })
@@ -152,35 +154,59 @@ export async function handleVisualQualityReviewTask(job: Job<TaskJobData>) {
   else if (decision.action === 'approve' || decision.action === 'select_candidate') nextStatus = 'approved'
   else if (decision.action === 'human_required') nextStatus = 'human_required'
   else nextStatus = 'repairing'
-  await prisma.novelPromotionPanel.update({
-    where: { id: panel.id },
-    data: {
-      ...(nextStatus === 'approved' && selectedUrl ? {
-        previousImageUrl: panel.imageUrl && panel.imageUrl !== selectedUrl ? panel.imageUrl : panel.previousImageUrl,
-        imageUrl: selectedUrl,
-      } : {}),
-      visualQualityState: asInputJson(createVisualQualityState({
-        mode,
-        status: nextStatus,
-        versionHash,
-        candidateUrls,
-        activeCandidateUrl: nextStatus === 'approved' ? selectedUrl : panel.imageUrl,
-        attempt,
-        maxAttempts,
-        lastAction: decision.action,
-        review,
-      })),
-    },
+
+  const nextQualityState = createVisualQualityState({
+    mode,
+    status: nextStatus,
+    versionHash,
+    candidateUrls,
+    activeCandidateUrl: nextStatus === 'approved' ? selectedUrl : panel.imageUrl,
+    attempt,
+    maxAttempts,
+    lastAction: decision.action,
+    review,
   })
-  const runId = readTaskRunId(job)
   await createArtifact({
-    runId,
+    runId: readTaskRunId(job),
     stepKey: 'visual_quality_review',
     artifactType: 'visual.quality.review',
     refId: panel.id,
     versionHash,
     payload: toJsonRecord({ targetSpec, checks, review, decision, mode, candidateUrls }),
   })
+
+  const finalWrite = await prisma.novelPromotionPanel.updateMany({
+    where: {
+      id: panel.id,
+      updatedAt: reviewingPanel.updatedAt,
+    },
+    data: {
+      ...(nextStatus === 'approved' && selectedUrl ? {
+        previousImageUrl: panel.imageUrl && panel.imageUrl !== selectedUrl ? panel.imageUrl : panel.previousImageUrl,
+        imageUrl: selectedUrl,
+      } : {}),
+      visualQualityState: asInputJson(nextQualityState),
+    },
+  })
+
+  if (finalWrite.count === 0) {
+    const latestPanel = await prisma.novelPromotionPanel.findUnique({
+      where: { id: panel.id },
+      select: { visualQualityState: true },
+    })
+    const latestState = parseVisualQualityState(latestPanel?.visualQualityState)
+    if (latestState?.status === 'approved') {
+      return {
+        panelId: panel.id,
+        mode: latestState.mode,
+        status: 'approved' as const,
+        review,
+        decision,
+        superseded: true,
+      }
+    }
+    throw new Error('VISUAL_VERSION_STALE')
+  }
 
   if (nextStatus === 'repairing') {
     const imageModel = decision.action === 'edit' && novelData.editModel

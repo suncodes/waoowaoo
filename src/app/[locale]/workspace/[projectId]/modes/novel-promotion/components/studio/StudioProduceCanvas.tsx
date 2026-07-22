@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { MediaImageWithLoading } from '@/components/media/MediaImageWithLoading'
+import VisualQualityBadge from '@/components/visual-quality/VisualQualityBadge'
 import { AppIcon } from '@/components/ui/icons'
 import { useUpdateProjectPanelLink } from '@/lib/query/hooks'
 import { useVideoFirstLastFrameFlow } from '@/lib/novel-promotion/stages/video-stage-runtime/useVideoFirstLastFrameFlow'
+import { evaluateVisualReadiness } from '@/lib/visual-readiness'
 import { useWorkspaceProvider } from '../../WorkspaceProvider'
 import { useWorkspaceStageRuntime } from '../../WorkspaceStageRuntimeContext'
 import { useWorkspaceEpisodeStageData } from '../../hooks/useWorkspaceEpisodeStageData'
@@ -96,6 +98,15 @@ function ProductionDetailPanel({
   const firstLastPrompt = firstLastFrameFlow.flCustomPrompts.get(panelKey)
     || item.panel.firstLastFramePrompt
     || defaultFirstLastPrompt
+  const currentVisualReadiness = evaluateVisualReadiness(item.panel.visualQualityState)
+  const nextVisualReadiness = nextItem
+    ? evaluateVisualReadiness(nextItem.panel.visualQualityState)
+    : null
+  const visualQualityMessage = !currentVisualReadiness.ready
+    ? (mode === 'firstlastframe' ? '首帧需要完成画面质量确认' : '当前画面需要完成质量确认')
+    : mode === 'firstlastframe' && nextVisualReadiness && !nextVisualReadiness.ready
+      ? '尾帧需要完成画面质量确认'
+      : ''
   const missingFirstLastFrameSetup = !nextItem
     || !item.panel.imageUrl
     || !nextItem.panel.imageUrl
@@ -142,6 +153,10 @@ function ProductionDetailPanel({
   const generate = async () => {
     setGenerating(true)
     try {
+      if (visualQualityMessage) {
+        window.alert(`${visualQualityMessage}，请返回分镜制作处理。`)
+        return
+      }
       if (mode === 'firstlastframe') {
         if (missingFirstLastFrameSetup || !nextItem) return
         await saveFirstLastPrompt()
@@ -167,6 +182,8 @@ function ProductionDetailPanel({
         return
       }
       await runtime.onGenerateVideo(item.storyboard.id, item.panel.panelIndex, selectedModel, undefined, undefined, item.panel.id)
+    } catch {
+      // Workspace video actions already surface the request error.
     } finally {
       setGenerating(false)
     }
@@ -196,6 +213,12 @@ function ProductionDetailPanel({
               <div className="absolute inset-0 flex items-center justify-center bg-black/55 text-sm font-semibold text-cyan-100">
                 <AppIcon name="loader" className="mr-2 h-4 w-4 animate-spin" />生成中
               </div>
+            ) : null}
+            {!videoUrl ? (
+              <VisualQualityBadge
+                state={item.panel.visualQualityState}
+                className="absolute bottom-2 left-2 z-20"
+              />
             ) : null}
           </div>
           {error ? <div className="rounded-md border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs text-rose-100">{error}</div> : null}
@@ -240,11 +263,13 @@ function ProductionDetailPanel({
                   <div className="relative aspect-video overflow-hidden rounded bg-black">
                     {item.panel.imageUrl ? <MediaImageWithLoading src={item.panel.imageUrl} alt="首帧" containerClassName="h-full w-full" className="h-full w-full object-cover" sizes="180px" /> : null}
                     <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white">首帧</span>
+                    <VisualQualityBadge state={item.panel.visualQualityState} className="absolute right-1 top-1 z-20" />
                   </div>
                   <AppIcon name="arrowRight" className="h-4 w-4 text-stone-500" />
                   <div className="relative aspect-video overflow-hidden rounded bg-black">
                     {nextItem.panel.imageUrl ? <MediaImageWithLoading src={nextItem.panel.imageUrl} alt="尾帧" containerClassName="h-full w-full" className="h-full w-full object-cover" sizes="180px" /> : null}
                     <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white">尾帧 · 镜头 {nextItem.number}</span>
+                    <VisualQualityBadge state={nextItem.panel.visualQualityState} className="absolute right-1 top-1 z-20" />
                   </div>
                 </div>
               ) : <p className="mt-3 text-xs text-stone-500">最后一个镜头没有可连接的下一镜头。</p>}
@@ -282,10 +307,10 @@ function ProductionDetailPanel({
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs text-stone-500">{savingPrompt ? '提示词保存中' : mode === 'firstlastframe' && !linked ? '连接下一镜头后可生成' : '生成参数已就绪'}</span>
+          <span className="text-xs text-stone-500">{savingPrompt ? '提示词保存中' : visualQualityMessage || (mode === 'firstlastframe' && !linked ? '连接下一镜头后可生成' : '生成参数已就绪')}</span>
           <div className="flex gap-2">
             <StudioButton size="sm" variant="secondary" onClick={() => { void (mode === 'normal' ? saveNormalPrompt() : saveFirstLastPrompt()) }} disabled={savingPrompt}>保存提示词</StudioButton>
-            <StudioButton size="sm" icon="video" loading={generating || !!item.panel.videoTaskRunning} onClick={() => { void generate() }} disabled={mode === 'normal' ? !item.panel.imageUrl : missingFirstLastFrameSetup}>
+            <StudioButton size="sm" icon="video" loading={generating || !!item.panel.videoTaskRunning} onClick={() => { void generate() }} disabled={!!visualQualityMessage || (mode === 'normal' ? !item.panel.imageUrl : missingFirstLastFrameSetup)}>
               {videoUrl ? '重新生成' : mode === 'firstlastframe' ? '生成首尾帧视频' : '生成单图视频'}
             </StudioButton>
           </div>
@@ -313,6 +338,11 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
   const effectiveSelectedIndex = selectedItem ? items.findIndex((item) => item.id === selectedItem.id) : -1
   const nextItem = effectiveSelectedIndex >= 0 && effectiveSelectedIndex < items.length - 1 ? items[effectiveSelectedIndex + 1] : null
   const videoModel = runtime.videoModel || runtime.userVideoModels[0]?.value || ''
+  const blockedVideoQualityCount = items.filter((item) => (
+    item.panel.imageUrl
+    && !panelVideoUrl(item.panel)
+    && !evaluateVisualReadiness(item.panel.visualQualityState).ready
+  )).length
   const firstLastFrameFlow = useVideoFirstLastFrameFlow({
     allPanels: videoPanels,
     linkedPanels,
@@ -346,6 +376,10 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
   }
 
   const generateAll = async () => {
+    if (blockedVideoQualityCount > 0) {
+      window.alert(`有 ${blockedVideoQualityCount} 个画面尚未完成质量确认，请先返回分镜制作处理。`)
+      return
+    }
     if (!videoModel.trim()) {
       window.alert('请先在设置中配置视频模型。')
       return
@@ -353,6 +387,8 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
     setGeneratingAll(true)
     try {
       await runtime.onGenerateAllVideos({ videoModel })
+    } catch {
+      // Workspace video actions already surface the request error.
     } finally {
       setGeneratingAll(false)
     }

@@ -4,7 +4,11 @@ import { createVisualQualityState } from '@/lib/quality-workflow'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 
 const prismaMock = vi.hoisted(() => ({
-  novelPromotionPanel: { findUnique: vi.fn(), update: vi.fn(async () => undefined) },
+  novelPromotionPanel: {
+    findUnique: vi.fn(),
+    update: vi.fn(async () => ({ updatedAt: new Date('2026-01-01T00:00:00.000Z') })),
+    updateMany: vi.fn(async () => ({ count: 1 })),
+  },
   novelPromotionProject: { findUnique: vi.fn() },
 }))
 const visualMock = vi.hoisted(() => ({
@@ -128,8 +132,11 @@ describe('worker visual-quality-review behavior', () => {
     const result = await handleVisualQualityReviewTask(buildJob())
 
     expect(result).toMatchObject({ panelId: 'panel-1', mode: 'auto', status: 'approved' })
-    expect(prismaMock.novelPromotionPanel.update).toHaveBeenLastCalledWith({
-      where: { id: 'panel-1' },
+    expect(prismaMock.novelPromotionPanel.updateMany).toHaveBeenLastCalledWith({
+      where: {
+        id: 'panel-1',
+        updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+      },
       data: expect.objectContaining({
         imageUrl: 'candidate-1.png',
         visualQualityState: expect.objectContaining({ status: 'approved', activeCandidateUrl: 'candidate-1.png' }),
@@ -140,6 +147,45 @@ describe('worker visual-quality-review behavior', () => {
       artifactType: 'visual.quality.review',
       versionHash: 'version-1',
     }))
+  })
+
+  it('does not overwrite a manual approval completed while the review was running', async () => {
+    const approvedState = createVisualQualityState({
+      mode: 'auto',
+      status: 'approved',
+      versionHash: 'version-1',
+      candidateUrls: ['candidate-1.png'],
+      activeCandidateUrl: 'candidate-1.png',
+      lastAction: 'select_candidate',
+    })
+    prismaMock.novelPromotionPanel.findUnique
+      .mockResolvedValueOnce({
+        id: 'panel-1',
+        imageUrl: null,
+        previousImageUrl: null,
+        candidateImages: JSON.stringify(['candidate-1.png']),
+        visualQualityState: createVisualQualityState({
+          mode: 'auto',
+          status: 'pending',
+          versionHash: 'version-1',
+          candidateUrls: ['candidate-1.png'],
+        }),
+        linkedToNextPanel: false,
+        storyboard: { episodeId: 'episode-1', episode: { productionBible: {} } },
+      })
+      .mockResolvedValueOnce({ visualQualityState: approvedState })
+    prismaMock.novelPromotionPanel.updateMany.mockResolvedValueOnce({ count: 0 })
+    visualMock.decideVisualRepair.mockReturnValue({
+      action: 'human_required',
+      candidateIndex: 0,
+      reason: 'manual review required',
+      promptPatch: visualMock.review.promptPatch,
+    })
+
+    const result = await handleVisualQualityReviewTask(buildJob())
+
+    expect(result).toMatchObject({ status: 'approved', superseded: true })
+    expect(taskMock.submitTask).not.toHaveBeenCalled()
   })
 
   it('routes a repairable failure into a separate bounded repair task', async () => {

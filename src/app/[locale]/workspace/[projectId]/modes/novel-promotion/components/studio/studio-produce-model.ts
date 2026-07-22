@@ -1,4 +1,5 @@
 import type { NovelPromotionPanel, NovelPromotionStoryboard } from '@/types/project'
+import { evaluateVisualReadiness } from '@/lib/visual-readiness'
 import type { VideoPanel } from '../video'
 import { getStoryboardPanels } from '../storyboard/hooks/storyboard-state-utils'
 import type { StudioProductStatus } from './studio-types'
@@ -37,6 +38,9 @@ export function panelLinkedToNext(panel: NovelPromotionPanel) {
 export function resolveImageStatus(panel: NovelPromotionPanel): StudioProductStatus {
   if (panel.imageTaskRunning) return 'generating'
   if (panel.imageErrorMessage) return 'failed'
+  const readiness = evaluateVisualReadiness(panel.visualQualityState)
+  if (readiness.status === 'pending') return 'generating'
+  if (readiness.status === 'blocked') return 'needs_review'
   if (panel.imageUrl) return 'locked'
   return 'empty'
 }
@@ -78,6 +82,7 @@ export function toVideoPanels(items: ProduceItem[]): VideoPanel[] {
     videoModel: panelVideoModel(item.panel) || undefined,
     linkedToNextPanel: panelLinkedToNext(item.panel),
     firstLastFramePrompt: item.panel.firstLastFramePrompt || undefined,
+    visualQualityState: item.panel.visualQualityState,
     textPanel: {
       panel_number: item.number,
       shot_type: item.panel.shotType || '',
