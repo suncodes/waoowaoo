@@ -7,6 +7,10 @@ import type { AssetRenderSummary, AssetVariantSummary, VisualAssetSummary } from
 import { useAssetActions } from '@/lib/query/hooks'
 import { StudioButton, StudioPanel, StudioStatusBadge } from './StudioPrimitives'
 import type { StudioProductStatus } from './studio-types'
+import {
+  buildVisualAssetSelectPayload,
+  visualAssetSelectionIndex,
+} from './studio-visual-asset-selection'
 
 export interface VisualKitItem {
   id: string
@@ -57,11 +61,6 @@ function buildGeneratePayload(asset: VisualAssetSummary, count: number) {
   return { id: asset.id, count }
 }
 
-function buildSelectPayload(asset: VisualAssetSummary, variant: AssetVariantSummary, render: AssetRenderSummary) {
-  if (asset.kind === 'character') return { id: asset.id, appearanceId: variant.id, selectedIndex: render.index }
-  return { id: asset.id, imageIndex: render.index }
-}
-
 export default function StudioVisualAssetInspector({
   item,
   actions,
@@ -109,7 +108,12 @@ export default function StudioVisualAssetInspector({
 
   const select = async (variant: AssetVariantSummary, render: AssetRenderSummary) => {
     if (!item.asset || !actions) return
-    await onRun(`select:${item.id}:${render.index}`, '设为定稿图', () => actions.selectRender(buildSelectPayload(item.asset!, variant, render)))
+    const selectedIndex = visualAssetSelectionIndex(item.asset, variant, render)
+    await onRun(
+      `select:${item.id}:${selectedIndex}`,
+      '设为定稿图',
+      () => actions.selectRender(buildVisualAssetSelectPayload(item.asset!, variant, render)),
+    )
   }
 
   return (
@@ -161,7 +165,7 @@ export default function StudioVisualAssetInspector({
         <div className="border-t border-white/10 px-5 py-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <div><h3 className="text-sm font-semibold text-stone-50">候选图</h3><p className="mt-1 text-xs text-stone-500">先切换比较，再确认定稿。</p></div>
-            <StudioButton size="sm" icon="check" loading={selectedRender ? pendingKey === `select:${item.id}:${selectedRender.render.index}` : false} onClick={() => { if (selectedRender) void select(selectedRender.variant, selectedRender.render) }} disabled={!selectedRender || selectedRenderKey === confirmedRenderKey || disabled}>
+            <StudioButton size="sm" icon="check" loading={selectedRender && item.asset ? pendingKey === `select:${item.id}:${visualAssetSelectionIndex(item.asset, selectedRender.variant, selectedRender.render)}` : false} onClick={() => { if (selectedRender) void select(selectedRender.variant, selectedRender.render) }} disabled={!selectedRender || selectedRenderKey === confirmedRenderKey || disabled}>
               {selectedRenderKey === confirmedRenderKey ? '当前已定稿' : '设为定稿'}
             </StudioButton>
           </div>
