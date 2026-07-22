@@ -176,7 +176,7 @@ function buildAssetAnalysisJob(
       label: '视觉资产提取',
       status: 'generating',
       progress: 8,
-      message: '正在从已确认文稿中提取角色、场景和关键道具',
+      message: '正在从已确认成稿中提取角色、场景和关键道具',
     }]
   }
   if (assetRequirementStatus === 'needs_review') {
@@ -203,7 +203,7 @@ function buildAssetAnalysisJob(
       label: '视觉资产提取',
       status: 'stale',
       progress: 100,
-      message: '文稿已变化，需要重新提取',
+      message: '正式成稿已变化，需要重新提取',
     }]
   }
   return []
@@ -292,10 +292,10 @@ export function useStudioWorkspaceModel({
         ...buildDiagnosticJobs(diagnosticTasksQuery.data || []),
         ...buildAssetAnalysisJob(workflowState.facts.assetRequirementStatus, isAssetAnalysisRunning),
         ...buildJobs([
-          { id: 'content-plan', label: '文稿规划', stream: contentPlanStream },
-          { id: 'story-script', label: '剧本生成', stream: storyToScriptStream },
-          { id: 'visual-plan', label: '视觉方案', stream: visualPlanStream },
-          { id: 'storyboard', label: '分镜生成', stream: scriptToStoryboardStream },
+          { id: 'content-plan', label: '内容方案生成', stream: contentPlanStream },
+          { id: 'story-script', label: workflowState.facts.isBookGuide ? '导读稿生成' : '剧本生成', stream: storyToScriptStream },
+          { id: 'visual-plan', label: '视觉方案与镜头规划初稿', stream: visualPlanStream },
+          { id: 'storyboard', label: '镜头规划生成', stream: scriptToStoryboardStream },
         ]),
       ],
       summary: {
@@ -314,6 +314,7 @@ export function useStudioWorkspaceModel({
         hasVisualPlan: !!visualMeta?.plan || workflowState.stages['visual-design'].hasArtifact,
         hasStoryboard: workflowState.stages['storyboard-preview'].hasArtifact,
         hasVideo: workflowState.stages.production.hasArtifact,
+        storyboardGenerating: isRunActive(scriptToStoryboardStream),
         stageStatuses: Object.fromEntries(Object.entries(workflowState.stages).map(([key, value]) => [key, value.status])),
       },
     }

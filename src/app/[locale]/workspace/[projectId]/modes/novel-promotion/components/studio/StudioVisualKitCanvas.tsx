@@ -132,6 +132,7 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
   }
 
   const primaryAction = async () => {
+    if (model.workflow.storyboardGenerating) return
     if (model.workflow.assetRequirementStatus === 'not_started' || model.workflow.assetRequirementStatus === 'stale') {
       await runtime.onAnalyzeAssets()
       return
@@ -161,11 +162,11 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
       : model.workflow.assetRequirementStatus === 'needs_review'
         ? '确认资产清单'
         : !model.workflow.hasVisualPlan
-          ? '生成视觉方案'
+          ? '生成镜头规划初稿'
           : model.summary.missingCoreVisualAssets > 0
             ? '完善核心资产'
             : model.workflow.visualApproved
-              ? '生成分镜'
+              ? '生成镜头规划'
               : '确认视觉资产'
 
   return (
@@ -183,11 +184,11 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
               <StudioButton
                 size="sm"
                 icon="sparkles"
-                loading={pending?.key === 'primary' || runtime.isTransitioning || runtime.isAssetAnalysisRunning}
+                loading={pending?.key === 'primary' || runtime.isTransitioning || runtime.isAssetAnalysisRunning || model.workflow.storyboardGenerating}
                 onClick={() => { void run('primary', primaryLabel, primaryAction) }}
-                disabled={!!pending}
+                disabled={!!pending || model.workflow.storyboardGenerating}
               >
-                {primaryLabel}
+                {model.workflow.storyboardGenerating ? '镜头规划生成中' : primaryLabel}
               </StudioButton>
             </>
           )}
@@ -213,11 +214,18 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
         </div>
       ) : null}
 
+      {model.workflow.storyboardGenerating && !pending ? (
+        <div className="rounded-md border border-cyan-400/30 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100">
+          <AppIcon name="loader" className="mr-2 inline h-4 w-4 animate-spin" />
+          镜头规划正在后台生成，切换页面不会中断。
+        </div>
+      ) : null}
+
       {items.length === 0 ? (
         <StudioEmptyState
           icon="folderCards"
           title="还没有视觉资产清单"
-          description="确认文稿后，先提取需要跨镜头一致的角色、场景和关键道具。"
+          description="确认正式成稿后，先提取需要跨镜头一致的角色、场景和关键道具。"
         />
       ) : (
         <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
@@ -267,12 +275,12 @@ function VisualConsistencyAudit({ items, onOpenAssets }: { items: VisualKitItem[
     <StudioPanel>
       <StudioSectionHeader
         title="一致性审计"
-        description="汇总跨镜头资产的定稿状态和文稿来源覆盖，不再重复展示第二套资产编辑器。"
+        description="汇总跨镜头资产的定稿状态和成稿来源覆盖，不再重复展示第二套资产编辑器。"
         actions={<StudioButton size="sm" variant="secondary" icon="folderOpen" onClick={onOpenAssets}>打开项目资产库</StudioButton>}
       />
       <div className="mt-4 grid gap-3 md:grid-cols-3">
         <StudioMetric label="待处理资产" value={unresolved.length} helper="未定稿或生成失败" />
-        <StudioMetric label="无来源锚点" value={uncovered.length} helper="未关联文稿段落" />
+        <StudioMetric label="无来源锚点" value={uncovered.length} helper="未关联成稿段落" />
         <StudioMetric label="可复用资产" value={items.filter((item) => item.status === 'locked' && item.sourceCount > 1).length} helper="覆盖多个内容单元" />
       </div>
       {unresolved.length > 0 ? (

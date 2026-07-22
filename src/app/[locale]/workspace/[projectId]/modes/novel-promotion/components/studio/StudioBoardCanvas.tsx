@@ -350,11 +350,17 @@ function StudioBoardRuntime({
 
   return (
     <div className="space-y-4">
+      {model.workflow.storyboardGenerating ? (
+        <div className="rounded-md border border-cyan-400/30 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100">
+          <AppIcon name="loader" className="mr-2 inline h-4 w-4 animate-spin" />
+          镜头规划仍在生成，当前列表会随任务结果继续更新。
+        </div>
+      ) : null}
       <section className="rounded-lg border border-white/10 bg-[#151613]">
         <StudioStageHeader
-          eyebrow="分镜板"
-          title="镜头分镜板"
-          description="以镜头为单位确认画面、角色、场景和可生产的视觉结果。"
+          eyebrow="分镜制作"
+          title="镜头规划与分镜画面"
+          description="先确认镜头规划、角色场景绑定和摄影表演信息，再生成并确认分镜图片。"
           actions={(
             <>
               <StudioButton size="sm" variant="secondary" icon="sparkles" loading={controller.isEpisodeBatchSubmitting} onClick={() => { void controller.handleGenerateAllPanels() }}>

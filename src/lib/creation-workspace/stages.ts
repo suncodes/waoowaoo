@@ -114,6 +114,7 @@ export interface CreationStageRoute {
 const STAGE_ID_SET = new Set<string>(CREATION_STAGE_IDS)
 
 const LEGACY_STAGE_ROUTES: Record<string, Omit<CreationStageRoute, 'isAlias'>> = {
+  overview: { stageId: 'setup', view: 'overview' },
   config: { stageId: 'setup' },
   'content-plan': { stageId: 'content', view: 'plan' },
   'content-assets': { stageId: 'content', view: 'assets' },

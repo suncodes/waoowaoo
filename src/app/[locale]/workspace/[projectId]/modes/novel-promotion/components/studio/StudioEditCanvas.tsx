@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MediaImageWithLoading } from '@/components/media/MediaImageWithLoading'
 import { AppIcon } from '@/components/ui/icons'
 import {
@@ -92,12 +92,148 @@ function ReviewTimeline({
   )
 }
 
+function SequentialVideoPlayer({
+  shots,
+  selectedId,
+  autoAdvance,
+  onSelect,
+}: {
+  shots: StudioShot[]
+  selectedId: string
+  autoAdvance: boolean
+  onSelect: (id: string) => void
+}) {
+  const playableShots = useMemo(() => shots.filter((shot) => !!shot.videoUrl), [shots])
+  const initialIndex = Math.max(0, playableShots.findIndex((shot) => shot.id === selectedId))
+  const videoRefs = useRef<[HTMLVideoElement | null, HTMLVideoElement | null]>([null, null])
+  const [currentIndex, setCurrentIndex] = useState(initialIndex)
+  const [activeSlot, setActiveSlot] = useState<0 | 1>(0)
+  const [slotIndexes, setSlotIndexes] = useState<[number | null, number | null]>([
+    initialIndex,
+    initialIndex + 1 < playableShots.length ? initialIndex + 1 : null,
+  ])
+  const [slotReady, setSlotReady] = useState<[boolean, boolean]>([false, false])
+  const [pending, setPending] = useState<{ slot: 0 | 1; index: number; play: boolean } | null>(null)
+  const [buffering, setBuffering] = useState(false)
+
+  const setReady = useCallback((slot: 0 | 1, ready: boolean) => {
+    setSlotReady((previous) => {
+      if (previous[slot] === ready) return previous
+      const next: [boolean, boolean] = [...previous]
+      next[slot] = ready
+      return next
+    })
+  }, [])
+
+  const transitionTo = useCallback((slot: 0 | 1, index: number, shouldPlay: boolean) => {
+    const previousSlot = activeSlot
+    videoRefs.current[previousSlot]?.pause()
+    const target = videoRefs.current[slot]
+    if (target) target.currentTime = 0
+    setActiveSlot(slot)
+    setCurrentIndex(index)
+    setPending(null)
+    setBuffering(false)
+    setReady(slot, true)
+    setReady(previousSlot, false)
+    setSlotIndexes((previous) => {
+      const next: [number | null, number | null] = [...previous]
+      next[slot] = index
+      next[previousSlot] = index + 1 < playableShots.length ? index + 1 : null
+      return next
+    })
+    const shot = playableShots[index]
+    if (shot) onSelect(shot.id)
+    if (shouldPlay) {
+      window.requestAnimationFrame(() => {
+        void videoRefs.current[slot]?.play().catch(() => undefined)
+      })
+    }
+  }, [activeSlot, onSelect, playableShots, setReady])
+
+  const requestTransition = useCallback((targetIndex: number, shouldPlay: boolean) => {
+    if (!playableShots[targetIndex] || targetIndex === currentIndex) return
+    const existingSlot = slotIndexes.findIndex((index) => index === targetIndex)
+    if (existingSlot >= 0) {
+      const slot = existingSlot as 0 | 1
+      const element = videoRefs.current[slot]
+      if (slotReady[slot] || (element?.readyState ?? 0) >= HTMLMediaElement.HAVE_FUTURE_DATA) {
+        transitionTo(slot, targetIndex, shouldPlay)
+        return
+      }
+    }
+    const preloadSlot: 0 | 1 = activeSlot === 0 ? 1 : 0
+    setPending({ slot: preloadSlot, index: targetIndex, play: shouldPlay })
+    setBuffering(true)
+    setReady(preloadSlot, false)
+    setSlotIndexes((previous) => {
+      const next: [number | null, number | null] = [...previous]
+      next[preloadSlot] = targetIndex
+      return next
+    })
+  }, [activeSlot, currentIndex, playableShots, setReady, slotIndexes, slotReady, transitionTo])
+
+  useEffect(() => {
+    if (playableShots.length === 0) return
+    const targetIndex = playableShots.findIndex((shot) => shot.id === selectedId)
+    if (targetIndex < 0 || targetIndex === currentIndex) return
+    const currentVideo = videoRefs.current[activeSlot]
+    requestTransition(targetIndex, !!currentVideo && !currentVideo.paused)
+  }, [activeSlot, currentIndex, playableShots, requestTransition, selectedId])
+
+  useEffect(() => {
+    if (currentIndex < playableShots.length) return
+    const nextIndex = Math.max(0, playableShots.length - 1)
+    setCurrentIndex(nextIndex)
+    setActiveSlot(0)
+    setSlotIndexes([nextIndex, nextIndex + 1 < playableShots.length ? nextIndex + 1 : null])
+  }, [currentIndex, playableShots.length])
+
+  if (playableShots.length === 0) return null
+
+  return (
+    <div className="relative h-full min-h-[460px] w-full bg-black">
+      {[0, 1].map((rawSlot) => {
+        const slot = rawSlot as 0 | 1
+        const index = slotIndexes[slot]
+        const shot = index === null ? null : playableShots[index]
+        return (
+          <video
+            key={slot}
+            ref={(element) => { videoRefs.current[slot] = element }}
+            src={shot?.videoUrl || undefined}
+            controls={slot === activeSlot}
+            preload="auto"
+            onCanPlay={() => {
+              setReady(slot, true)
+              if (pending?.slot === slot && pending.index === index) transitionTo(slot, pending.index, pending.play)
+            }}
+            onWaiting={() => { if (slot === activeSlot) setBuffering(true) }}
+            onPlaying={() => { if (slot === activeSlot) setBuffering(false) }}
+            onEnded={() => {
+              if (slot !== activeSlot || index !== currentIndex || !autoAdvance) return
+              if (currentIndex < playableShots.length - 1) requestTransition(currentIndex + 1, true)
+            }}
+            className={`absolute inset-0 h-full max-h-[620px] w-full object-contain transition-opacity duration-150 ${slot === activeSlot ? 'z-10 opacity-100' : 'pointer-events-none z-0 opacity-0'}`}
+          />
+        )
+      })}
+      {buffering ? (
+        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-black/45 text-sm font-semibold text-cyan-100">
+          <AppIcon name="loader" className="mr-2 h-4 w-4 animate-spin" />正在预加载下一镜头
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 export default function StudioEditCanvas({ model, onNavigate }: StudioEditCanvasProps) {
   const initialShot = useMemo(
     () => model.shots.find((shot) => shot.videoUrl) || model.shots[0] || null,
     [model.shots],
   )
   const [selectedId, setSelectedId] = useState(initialShot?.id || '')
+  const [autoAdvance, setAutoAdvance] = useState(true)
   const selectedShot = model.shots.find((shot) => shot.id === selectedId) || initialShot
   const completedVideos = model.summary.completedVideos
   const totalShots = model.shots.length
@@ -138,7 +274,7 @@ export default function StudioEditCanvas({ model, onNavigate }: StudioEditCanvas
         icon="film"
         title="还没有可检查的镜头"
         description="先完成分镜和视频生产，再进入成片检查。"
-        action={<StudioButton onClick={() => onNavigate('storyboard')}>返回分镜板</StudioButton>}
+        action={<StudioButton onClick={() => onNavigate('storyboard')}>返回分镜制作</StudioButton>}
       />
     )
   }
@@ -169,12 +305,22 @@ export default function StudioEditCanvas({ model, onNavigate }: StudioEditCanvas
           <div className="border-b border-white/10 px-5 py-4">
             <StudioSectionHeader
               title="镜头预览"
-              description={selectedShot ? `当前检查第 ${selectedShot.number} 镜。` : '选择一个镜头开始检查。'}
+              description={selectedShot ? `当前检查第 ${selectedShot.number} 镜；视频结束后${autoAdvance ? '自动播放下一镜头' : '停留在当前镜头'}。` : '选择一个镜头开始检查。'}
+              actions={(
+                <StudioButton size="sm" variant="secondary" icon={autoAdvance ? 'pause' : 'play'} onClick={() => setAutoAdvance((value) => !value)}>
+                  顺序播放 {autoAdvance ? '已开启' : '已关闭'}
+                </StudioButton>
+              )}
             />
           </div>
           <div className="flex min-h-[460px] items-center justify-center bg-black">
             {selectedShot?.videoUrl ? (
-              <video src={selectedShot.videoUrl} controls className="h-full max-h-[620px] w-full object-contain" />
+              <SequentialVideoPlayer
+                shots={model.shots}
+                selectedId={selectedShot.id}
+                autoAdvance={autoAdvance}
+                onSelect={setSelectedId}
+              />
             ) : selectedShot?.imageUrl ? (
               <MediaImageWithLoading
                 src={selectedShot.imageUrl}

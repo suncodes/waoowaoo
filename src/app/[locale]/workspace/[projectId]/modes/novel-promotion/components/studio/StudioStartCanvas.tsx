@@ -21,10 +21,12 @@ import {
   StudioSectionHeader,
   StudioStageHeader,
 } from './StudioPrimitives'
+import StudioPlanPreview from './StudioPlanPreview'
 import { type StudioProductStatus, type StudioWorkspaceModel } from './studio-types'
 
 interface StudioStartCanvasProps {
   model: StudioWorkspaceModel
+  onNavigate: (route: string) => void
 }
 
 const PROFILE_OPTIONS: Array<{
@@ -67,7 +69,7 @@ const QUALITY_OPTIONS: Array<{
   },
 ]
 
-export default function StudioStartCanvas({ model }: StudioStartCanvasProps) {
+export default function StudioStartCanvas({ model, onNavigate }: StudioStartCanvasProps) {
   const runtime = useWorkspaceStageRuntime()
   const homeT = useTranslations('home')
   const [text, setText] = useState(model.novelText)
@@ -92,6 +94,7 @@ export default function StudioStartCanvas({ model }: StudioStartCanvasProps) {
   const start = async () => {
     await saveText()
     await runtime.onRunStoryToScript()
+    onNavigate('content-plan')
   }
 
   const updateConfig = async (key: string, operation: () => Promise<void>) => {
@@ -124,45 +127,41 @@ export default function StudioStartCanvas({ model }: StudioStartCanvasProps) {
   const textLength = text.trim().length
   const hasUnsavedInput = text !== model.novelText
   const isBookGuide = runtime.videoProfile.preset === VIDEO_PROFILE_PRESET.BOOK_GUIDE
+  const editableReady = model.workflow.isBookGuide || model.workflow.hasScriptOutput
   const inputPlaceholder = isBookGuide
     ? '输入书名、作者、章节范围或你的解读角度。例如：《海底两万里》，重点讲尼摩船长与海洋想象。'
-    : '输入原文、剧情梗概或分集资料。系统会先整理文稿，再进入视觉资产和分镜制作。'
+    : '输入原文、剧情梗概或分集资料。系统会先生成剧情方案，再进入正式剧本制作。'
   const processSteps: Array<{ label: string; helper: string; status: StudioProductStatus }> = [
     {
-      label: '简报输入',
+      label: '原始材料',
       helper: hasUnsavedInput ? '有未保存修改' : textLength > 0 ? `${textLength} 字` : '等待输入',
       status: textLength === 0 ? 'empty' : hasUnsavedInput ? 'drafting' : 'locked',
     },
     {
-      label: '文稿初稿',
-      helper: model.draftSegments.length > 0 ? `${model.draftSegments.length} 段` : '生成后进入编辑',
+      label: isBookGuide ? '导读方案' : '剧情方案',
+      helper: model.draftSegments.length > 0 ? `${model.draftSegments.length} 段` : '等待生成',
       status: runtime.isTransitioning ? 'generating' : model.draftSegments.length > 0 ? 'locked' : 'empty',
     },
     {
-      label: '视觉资产',
-      helper: model.workflow.hasVisualPlan ? `缺失核心 ${model.summary.missingCoreVisualAssets}` : '从文稿提取',
-      status: model.workflow.visualApproved ? 'locked' : model.workflow.hasVisualPlan ? 'needs_review' : 'empty',
-    },
-    {
-      label: '镜头生产',
-      helper: model.shots.length > 0 ? `${model.shots.length} 个镜头` : '分镜确认后开始',
-      status: model.workflow.hasVideo ? 'locked' : model.shots.length > 0 ? 'drafting' : 'empty',
+      label: '方案确认',
+      helper: model.draftSegments.length > 0 ? '可进入成稿制作' : '等待内容方案',
+      status: model.draftSegments.length > 0 ? 'needs_review' : 'empty',
     },
   ]
   return (
     <div className="space-y-4">
       <StudioPanel padding="none">
         <StudioStageHeader
-          eyebrow="项目简报"
-          title="制作输入台"
-          description="先确定作品类型、画幅和视觉风格，再输入原始材料。后续文稿、视觉资产和分镜会按这里的业务设定承接。"
+          eyebrow="内容策划"
+          title={isBookGuide ? '书籍导读策划' : '漫剧内容策划'}
+          description="从原始材料形成可确认的内容方案。本阶段只处理输入、扩写和结构策划，不展示下游生产统计。"
           actions={(
             <>
               <StudioButton variant="secondary" icon="sparklesAlt" onClick={() => setAiWriteOpen(true)} disabled={runtime.isTransitioning || saving}>
                 {isBookGuide ? 'AI 扩写导读材料' : 'AI 写作'}
               </StudioButton>
               <StudioButton icon="sparkles" loading={runtime.isTransitioning || saving} onClick={() => { void start() }} disabled={!text.trim()}>
-                {isBookGuide ? '生成导读框架' : '生成文稿初稿'}
+                {isBookGuide ? '生成导读方案' : '生成剧情方案'}
               </StudioButton>
             </>
           )}
@@ -298,16 +297,27 @@ export default function StudioStartCanvas({ model }: StudioStartCanvasProps) {
           </StudioPanel>
 
           <StudioPanel>
-            <StudioSectionHeader title="生成范围" description="第一步只生成文稿初稿，不直接跳过资产和分镜确认。" />
+            <StudioSectionHeader title="策划概览" description="只展示当前内容策划阶段的输入和方案状态。" />
             <div className="mt-4 grid grid-cols-2 gap-3">
-              <StudioMetric label="文稿段落" value={model.draftSegments.length || '-'} />
-              <StudioMetric label="镜头数量" value={model.shots.length || '-'} />
-              <StudioMetric label="核心资产缺口" value={model.summary.missingCoreVisualAssets} />
-              <StudioMetric label="完成视频" value={model.summary.completedVideos} />
+              <StudioMetric label="输入字数" value={textLength || '-'} />
+              <StudioMetric label="方案段落" value={model.draftSegments.length || '-'} />
+              <StudioMetric label="预计时长" value={model.summary.totalDurationSec ? `${model.summary.totalDurationSec} 秒` : '-'} />
+              <StudioMetric label="下一阶段" value={model.draftSegments.length > 0 ? '成稿制作' : '等待方案'} />
             </div>
           </StudioPanel>
         </aside>
       </div>
+
+      {model.draftSegments.length > 0 ? (
+        <StudioPlanPreview
+          model={model}
+          editableReady={editableReady}
+          onOpenDraft={() => onNavigate('script')}
+          onGenerateDraft={() => {
+            void runtime.onRunStoryToScript().then(() => onNavigate('script'))
+          }}
+        />
+      ) : null}
       <AiWriteModal
         open={aiWriteOpen}
         loading={aiWriteLoading}
@@ -320,7 +330,7 @@ export default function StudioStartCanvas({ model }: StudioStartCanvasProps) {
         title={isBookGuide ? '扩写书籍导读材料' : undefined}
         description={isBookGuide ? '先把书名、章节范围和解读角度扩写成导读策划稿，再生成内容方案。' : undefined}
         placeholder={isBookGuide ? '输入书名、作者、章节范围、目标读者和你希望强调的观点。' : undefined}
-        hint={isBookGuide ? '扩写结果会回填到项目简报；你仍可以继续编辑，再点击“生成导读框架”。' : undefined}
+        hint={isBookGuide ? '扩写结果会回填到内容策划；你仍可以继续编辑，再点击“生成导读方案”。' : undefined}
       />
     </div>
   )

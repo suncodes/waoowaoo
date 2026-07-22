@@ -5,6 +5,7 @@ import StudioBoardCanvas from './StudioBoardCanvas'
 import StudioDraftCanvas from './StudioDraftCanvas'
 import StudioEditCanvas from './StudioEditCanvas'
 import StudioExportCanvas from './StudioExportCanvas'
+import StudioOverviewCanvas from './StudioOverviewCanvas'
 import StudioProduceCanvas from './StudioProduceCanvas'
 import StudioStartCanvas from './StudioStartCanvas'
 import StudioVisualKitCanvas from './StudioVisualKitCanvas'
@@ -17,7 +18,8 @@ interface StudioStageCanvasProps {
 }
 
 export default function StudioStageCanvas({ model, onNavigate, workflowState }: StudioStageCanvasProps) {
-  if (model.activeMode === 'start') return <StudioStartCanvas model={model} />
+  if (model.activeMode === 'overview') return <StudioOverviewCanvas model={model} onNavigate={onNavigate} />
+  if (model.activeMode === 'planning') return <StudioStartCanvas model={model} onNavigate={onNavigate} />
   if (model.activeMode === 'draft') return <StudioDraftCanvas model={model} onNavigate={onNavigate} />
   if (model.activeMode === 'visual-kit') return <StudioVisualKitCanvas model={model} />
   if (model.activeMode === 'board') return <StudioBoardCanvas model={model} onNavigate={onNavigate} workflowState={workflowState} />

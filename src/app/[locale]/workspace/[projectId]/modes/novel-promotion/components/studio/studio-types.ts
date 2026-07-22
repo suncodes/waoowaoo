@@ -4,7 +4,8 @@ import type { AppIconName } from '@/components/ui/icons'
 import type { CreationStageStatus } from '@/lib/creation-workspace/stages'
 
 export type StudioModeId =
-  | 'start'
+  | 'overview'
+  | 'planning'
   | 'draft'
   | 'visual-kit'
   | 'board'
@@ -114,6 +115,7 @@ export interface StudioWorkspaceModel {
     hasVisualPlan: boolean
     hasStoryboard: boolean
     hasVideo: boolean
+    storyboardGenerating: boolean
     stageStatuses: Record<string, CreationStageStatus>
   }
 }
@@ -129,14 +131,16 @@ export function statusFromCreationStage(status: CreationStageStatus): StudioProd
 }
 
 export function resolveStudioMode(currentStage: string, stageView?: string | null): StudioModeId {
-  if (currentStage === 'setup') return 'start'
+  if (currentStage === 'setup' && stageView === 'overview') return 'overview'
+  if (currentStage === 'setup') return 'planning'
+  if (currentStage === 'content' && stageView === 'plan') return 'planning'
   if (currentStage === 'content') return 'draft'
   if (currentStage === 'visual-design') return 'visual-kit'
   if (currentStage === 'storyboard-preview') return 'board'
   if (currentStage === 'production') return 'produce'
   if (currentStage === 'edit' && stageView === 'export') return 'export'
   if (currentStage === 'edit') return 'edit'
-  return 'start'
+  return 'planning'
 }
 
 export function statusLabel(status: StudioProductStatus) {

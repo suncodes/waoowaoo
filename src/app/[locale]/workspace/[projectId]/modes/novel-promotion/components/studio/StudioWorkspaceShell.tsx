@@ -49,30 +49,27 @@ interface StudioWorkspaceShellProps {
 }
 
 const MODE_CONFIG: Array<Omit<StudioNavItem, 'status' | 'disabled'>> = [
-  { id: 'start', route: 'config', label: '项目简报', subtitle: '输入', icon: 'fileText' },
-  { id: 'draft', route: 'content', label: '文稿', subtitle: '脚本', icon: 'bookOpen' },
-  { id: 'visual-kit', route: 'assets', label: '视觉库', subtitle: '角色场景', icon: 'folderCards' },
-  { id: 'board', route: 'storyboard', label: '分镜板', subtitle: '镜头', icon: 'image' },
-  { id: 'produce', route: 'videos', label: '生产台', subtitle: '视频配音', icon: 'video' },
+  { id: 'overview', route: 'overview', label: '项目概览', subtitle: '状态与任务', icon: 'barChart' },
+  { id: 'planning', route: 'config', label: '内容策划', subtitle: '输入与方案', icon: 'brain' },
+  { id: 'draft', route: 'script', label: '成稿制作', subtitle: '剧本与导读稿', icon: 'bookOpen' },
+  { id: 'visual-kit', route: 'assets', label: '视觉资产', subtitle: '角色场景道具', icon: 'folderCards' },
+  { id: 'board', route: 'storyboard', label: '分镜制作', subtitle: '规划与画面', icon: 'image' },
+  { id: 'produce', route: 'videos', label: '视频制作', subtitle: '视频与配音', icon: 'video' },
   { id: 'edit', route: 'editor', label: '成片检查', subtitle: '预览', icon: 'film' },
   { id: 'export', route: 'export', label: '交付', subtitle: '导出', icon: 'download' },
 ]
 
 function navStatus(mode: StudioModeId, model: StudioWorkspaceModel): StudioProductStatus {
-  if (mode === 'start') return model.novelText.trim() ? 'locked' : 'drafting'
+  if (mode === 'overview') return 'drafting'
+  if (mode === 'planning') return model.draftSegments.length > 0 ? 'locked' : model.novelText.trim() ? 'drafting' : 'empty'
   if (mode === 'draft') return statusFromCreationStage(model.workflow.stageStatuses.content || 'not_started')
   if (mode === 'visual-kit') return statusFromCreationStage(model.workflow.stageStatuses['visual-design'] || 'not_started')
-  if (mode === 'board') return statusFromCreationStage(model.workflow.stageStatuses['storyboard-preview'] || 'not_started')
+  if (mode === 'board') return model.workflow.storyboardGenerating
+    ? 'generating'
+    : statusFromCreationStage(model.workflow.stageStatuses['storyboard-preview'] || 'not_started')
   if (mode === 'produce') return statusFromCreationStage(model.workflow.stageStatuses.production || 'not_started')
   if (mode === 'edit') return model.workflow.hasVideo ? 'drafting' : 'empty'
   return model.workflow.hasVideo ? 'needs_review' : 'empty'
-}
-
-function progressWeight(status: StudioProductStatus) {
-  if (status === 'locked') return 1
-  if (status === 'generating') return 0.7
-  if (status === 'drafting' || status === 'needs_review' || status === 'stale') return 0.45
-  return 0
 }
 
 function StudioTopBar({
@@ -81,7 +78,6 @@ function StudioTopBar({
   currentEpisodeId,
   videoProfile,
   activeItem,
-  progressPercent,
   onEpisodeSelect,
   onEpisodeCreate,
   onOpenAssetLibrary,
@@ -100,7 +96,6 @@ function StudioTopBar({
   | 'onRefresh'
 > & {
   activeItem: StudioNavItem
-  progressPercent: number
   onOpenTaskDetails: (taskId?: string) => void
 }) {
   const [refreshing, setRefreshing] = useState(false)
@@ -159,15 +154,6 @@ function StudioTopBar({
           <IconButton icon="folderOpen" label="项目资产" onClick={onOpenAssetLibrary} />
           <IconButton icon="settingsHexMinor" label="设置" onClick={onOpenSettings} />
           <IconButton icon="refresh" label="刷新" onClick={() => { void refresh() }} spinning={refreshing} />
-        </div>
-      </div>
-      <div className="border-t border-white/10 px-4 py-3 lg:px-5">
-        <div className="flex items-center justify-between gap-4 text-xs text-stone-500">
-          <span>制作进度</span>
-          <span>{progressPercent}%</span>
-        </div>
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
-          <div className="h-full rounded-full bg-[#e8d18a] transition-[width] duration-300" style={{ width: `${progressPercent}%` }} />
         </div>
       </div>
     </header>
@@ -232,7 +218,7 @@ function StudioNav({
                 <span className={`relative flex h-8 w-8 items-center justify-center rounded-md ${active ? 'bg-[#f3e9cf] text-[#15130f]' : 'bg-white/[0.06] text-stone-400'}`}>
                   <AppIcon name={item.icon} className="h-4 w-4" />
                   <span className="absolute -right-1 -top-1 rounded bg-[#0b0c0a] px-1 text-[9px] leading-4 text-stone-500">
-                    {String(index + 1).padStart(2, '0')}
+                    {item.id === 'overview' ? 'OV' : String(index).padStart(2, '0')}
                   </span>
                 </span>
                 <span className="min-w-0">
@@ -251,42 +237,6 @@ function StudioNav({
   )
 }
 
-function StructurePanel({ model, onNavigate }: { model: StudioWorkspaceModel; onNavigate: (route: string) => void }) {
-  const rows = [
-    { label: '文稿段落', value: model.draftSegments.length, route: 'content' },
-    { label: '核心资产', value: model.coreVisualAssets.length, route: 'assets' },
-    { label: '分镜镜头', value: model.shots.length, route: 'storyboard' },
-    { label: '已完成视频', value: model.summary.completedVideos, route: 'videos' },
-  ]
-  return (
-    <aside className="space-y-3 rounded-lg border border-white/10 bg-[#0f100d] p-4">
-      <div>
-        <h2 className="text-sm font-semibold text-stone-50">作品账本</h2>
-        <p className="mt-1 text-xs leading-5 text-stone-500">文稿、资产、镜头和视频的当前数量。</p>
-      </div>
-      <div className="space-y-2">
-        {rows.map((row) => (
-          <button
-            key={row.label}
-            type="button"
-            onClick={() => onNavigate(row.route)}
-            className="flex w-full items-center justify-between rounded-md border border-white/10 bg-white/[0.03] px-3 py-2.5 text-left text-sm hover:bg-white/[0.06]"
-          >
-            <span className="text-stone-400">{row.label}</span>
-            <span className="font-semibold text-stone-100">{row.value}</span>
-          </button>
-        ))}
-      </div>
-      {model.novelText ? (
-        <div className="rounded-md border border-white/10 bg-white/[0.03] p-3">
-          <div className="text-xs font-semibold text-stone-400">原始材料</div>
-          <p className="mt-2 line-clamp-5 text-xs leading-5 text-stone-500">{model.novelText}</p>
-        </div>
-      ) : null}
-    </aside>
-  )
-}
-
 function AssistantPanel({
   model,
   onNavigate,
@@ -298,8 +248,9 @@ function AssistantPanel({
   const activeAsset = model.coreVisualAssets.find((asset) => asset.status !== 'locked') || model.coreVisualAssets[0]
   const activeShot = model.shots.find((shot) => shot.status === 'failed') || model.shots.find((shot) => !shot.videoUrl) || model.shots[0]
   const modeTitle = {
-    start: '项目简报',
-    draft: '文稿状态',
+    overview: '项目概览',
+    planning: '内容策划',
+    draft: model.workflow.isBookGuide ? '导读稿制作' : '剧本制作',
     'visual-kit': '视觉资产',
     board: '镜头状态',
     produce: '生产状态',
@@ -310,7 +261,7 @@ function AssistantPanel({
     ? [`核心资产待确认：${model.summary.missingCoreVisualAssets}`, activeAsset ? `当前资产：${activeAsset.name}` : '暂无核心资产']
     : model.activeMode === 'board' || model.activeMode === 'produce'
       ? [activeShot ? `当前镜头：第 ${activeShot.number} 镜` : '暂无镜头', `失败镜头：${model.summary.failedShots}`]
-      : [`文稿段落：${model.draftSegments.length}`, `预计时长：${model.summary.totalDurationSec || '-'} 秒`]
+      : [`内容段落：${model.draftSegments.length}`, `预计时长：${model.summary.totalDurationSec || '-'} 秒`]
 
   return (
     <aside className="flex min-h-0 flex-col rounded-lg border border-white/10 bg-[#0b0c0a]">
@@ -331,13 +282,18 @@ function AssistantPanel({
           <h3 className="text-xs font-semibold text-stone-500">上下文动作</h3>
           <div className="mt-2 grid gap-2">
             {model.activeMode === 'draft' ? (
-              <ActionButton icon="edit" label="打开剧本编辑" onClick={() => onNavigate('script')} />
+              <ActionButton icon="edit" label={model.workflow.isBookGuide ? '打开导读稿编辑' : '打开剧本编辑'} onClick={() => onNavigate('script')} />
             ) : null}
             {model.activeMode === 'visual-kit' ? (
               <ActionButton icon="folderOpen" label="打开项目资产" onClick={runtime.onOpenAssetLibrary} />
             ) : null}
             {model.activeMode === 'board' ? (
-              <ActionButton icon="sparkles" label="重新生成分镜" onClick={() => { void runtime.onRunScriptToStoryboard() }} />
+              <ActionButton
+                icon="sparkles"
+                label={model.workflow.storyboardGenerating ? '镜头规划生成中' : '重新生成镜头规划'}
+                onClick={() => { void runtime.onRunScriptToStoryboard() }}
+                disabled={model.workflow.storyboardGenerating}
+              />
             ) : null}
             {model.activeMode === 'produce' ? (
               <ActionButton icon="video" label="批量生成视频" onClick={() => {
@@ -415,7 +371,6 @@ export default function StudioWorkspaceShell({
     [model],
   )
   const activeItem = navItems.find((item) => item.id === model.activeMode) || navItems[0]
-  const progressPercent = Math.round((navItems.reduce((sum, item) => sum + progressWeight(item.status), 0) / navItems.length) * 100)
   const incompleteShotCount = model.shots.filter((shot) => !shot.imageUrl || shot.status === 'generating' || shot.status === 'failed').length
   const productionReady = model.shots.length > 0 && incompleteShotCount === 0
   const navigate = (route: string) => {
@@ -428,11 +383,11 @@ export default function StudioWorkspaceShell({
     onStageChange(route)
   }
   const taskDescriptors = useMemo<CreationTaskDescriptor[]>(() => [
-    { id: 'content-plan', label: '文稿规划', stream: contentPlanStream },
-    { id: 'story-script', label: '剧本生成', stream: storyToScriptStream },
-    { id: 'visual-plan', label: '视觉方案', stream: visualPlanStream },
-    { id: 'storyboard', label: '分镜生成', stream: scriptToStoryboardStream },
-  ], [contentPlanStream, scriptToStoryboardStream, storyToScriptStream, visualPlanStream])
+    { id: 'content-plan', label: '内容方案生成', stream: contentPlanStream },
+    { id: 'story-script', label: model.workflow.isBookGuide ? '导读稿生成' : '剧本生成', stream: storyToScriptStream },
+    { id: 'visual-plan', label: '视觉方案与镜头规划初稿', stream: visualPlanStream },
+    { id: 'storyboard', label: '镜头规划生成', stream: scriptToStoryboardStream },
+  ], [contentPlanStream, model.workflow.isBookGuide, scriptToStoryboardStream, storyToScriptStream, visualPlanStream])
   const [taskDetailId, setTaskDetailId] = useState<string | null>(null)
   const [taskCenterOpen, setTaskCenterOpen] = useState(false)
   const renderableTaskDescriptors = useMemo(
@@ -452,7 +407,6 @@ export default function StudioWorkspaceShell({
         currentEpisodeId={currentEpisodeId}
         videoProfile={videoProfile}
         activeItem={activeItem}
-        progressPercent={progressPercent}
         onEpisodeSelect={onEpisodeSelect}
         onEpisodeCreate={onEpisodeCreate}
         onOpenAssetLibrary={onOpenAssetLibrary}
@@ -461,9 +415,8 @@ export default function StudioWorkspaceShell({
         onOpenTaskDetails={() => openTaskDetails()}
       />
       <div className="grid min-h-[calc(100vh-12rem)] gap-4 lg:grid-cols-[236px_minmax(0,1fr)_312px]">
-        <div className="space-y-4 lg:sticky lg:top-20 lg:self-start">
+        <div className="lg:sticky lg:top-20 lg:self-start">
           <StudioNav items={navItems} activeMode={model.activeMode} onNavigate={navigate} />
-          <StructurePanel model={model} onNavigate={navigate} />
         </div>
         <main id="workspace-stage-content" className="min-w-0">
           <StudioStageCanvas model={model} onNavigate={navigate} workflowState={workflowState} />

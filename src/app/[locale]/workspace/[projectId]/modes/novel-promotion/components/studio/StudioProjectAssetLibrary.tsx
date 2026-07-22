@@ -192,7 +192,7 @@ export default function StudioProjectAssetLibrary({
         ))}
       </div>
 
-      {filteredItems.length === 0 ? <StudioEmptyState icon="folderCards" title="暂无项目资产" description="先提取文稿中的视觉资产，或手动新建场景和道具。" /> : (
+      {filteredItems.length === 0 ? <StudioEmptyState icon="folderCards" title="暂无项目资产" description="先提取正式成稿中的视觉资产，或手动新建场景和道具。" /> : (
         <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
           <StudioPanel padding="none" className="overflow-hidden">
             <div className="border-b border-white/10 px-4 py-4"><StudioSectionHeader title="资产清单" description="选择一个资产查看候选图和标准描述。" /></div>
