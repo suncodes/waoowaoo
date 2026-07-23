@@ -1,9 +1,8 @@
 import type { NovelPromotionPanel, NovelPromotionStoryboard } from '@/types/project'
-import { evaluateVisualReadiness } from '@/lib/visual-readiness'
-import { hasUnconfirmedVisualCandidates } from '@/lib/quality-workflow'
 import type { VideoPanel } from '../video'
 import { getStoryboardPanels } from '../storyboard/hooks/storyboard-state-utils'
 import type { StudioProductStatus } from './studio-types'
+import { resolvePanelImageWorkflowPresentation } from './studio-board-image-workflow'
 
 export interface ProduceItem {
   id: string
@@ -122,19 +121,18 @@ export function panelLinkedToNext(panel: NovelPromotionPanel) {
 }
 
 export function isPanelVisualReadyForVideo(panel: NovelPromotionPanel) {
-  return !hasUnconfirmedVisualCandidates(panel.candidateImages, panel.visualQualityState)
-    && evaluateVisualReadiness(panel.visualQualityState).ready
+  return !!panel.imageUrl
+    && resolvePanelImageWorkflowPresentation({
+      panel,
+      hasCandidates: false,
+    }).status === 'locked'
 }
 
 export function resolveImageStatus(panel: NovelPromotionPanel): StudioProductStatus {
-  if (panel.imageTaskRunning) return 'generating'
-  if (panel.imageErrorMessage) return 'failed'
-  if (hasUnconfirmedVisualCandidates(panel.candidateImages, panel.visualQualityState)) return 'needs_review'
-  const readiness = evaluateVisualReadiness(panel.visualQualityState)
-  if (readiness.status === 'pending') return 'generating'
-  if (readiness.status === 'blocked') return 'needs_review'
-  if (panel.imageUrl) return 'locked'
-  return 'empty'
+  return resolvePanelImageWorkflowPresentation({
+    panel,
+    hasCandidates: false,
+  }).status
 }
 
 export function resolveVideoStatus(panel: NovelPromotionPanel): StudioProductStatus {

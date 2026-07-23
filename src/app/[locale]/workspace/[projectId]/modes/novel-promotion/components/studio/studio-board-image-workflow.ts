@@ -1,20 +1,18 @@
 import type { NovelPromotionPanel } from '@/types/project'
 import {
-  parseVisualQualityState,
+  resolveVisualCandidateUrls,
   type VisualCandidateGroup,
 } from '@/lib/quality-workflow'
+import {
+  resolveVisualWorkflowPresentation,
+  type VisualWorkflowPresentation,
+} from '@/lib/visual-workflow/status'
 import type { StudioProductStatus } from './studio-types'
 
 type PanelImageTaskState = NonNullable<NovelPromotionPanel['imageTaskState']>
-type ActivePanelImageTaskState = PanelImageTaskState & {
-  phase: 'queued' | 'processing'
-}
 
-export type PanelImageWorkflowPresentation = {
+export type PanelImageWorkflowPresentation = VisualWorkflowPresentation & {
   status: StudioProductStatus
-  label: string
-  blocksConfirmation: boolean
-  progress: number | null
 }
 
 export type PanelCandidateCard = {
@@ -32,170 +30,35 @@ export type PanelCandidateDisplayGroup = {
   cards: PanelCandidateCard[]
 }
 
-const IMAGE_GENERATION_TYPES = new Set([
-  'image_panel',
-  'panel_variant',
-])
-
-const IMAGE_MODIFY_TYPES = new Set([
-  'modify_asset_image',
-])
-
-function isActiveTask(state: PanelImageTaskState | null | undefined): state is ActivePanelImageTaskState {
-  return state?.phase === 'queued' || state?.phase === 'processing'
-}
-
-function repairRoundLabel(attempt?: number | null, maxAttempts?: number | null) {
-  if (!attempt || attempt <= 0) return ''
-  if (maxAttempts && maxAttempts > 0) return `（${attempt}/${maxAttempts}）`
-  return `（第 ${attempt} 轮）`
-}
-
-function labelFromTaskState(state: PanelImageTaskState) {
-  const taskType = state.runningTaskType || ''
-  if (taskType === 'visual_quality_review') {
-    if (state.phase === 'queued') return state.attempt && state.attempt > 0 ? '等待复查' : '等待检查'
-    return state.attempt && state.attempt > 0
-      ? `复查中${repairRoundLabel(state.attempt, state.maxAttempts)}`
-      : '检查中'
-  }
-  if (taskType === 'visual_auto_repair') {
-    return state.phase === 'queued'
-      ? `等待修复${repairRoundLabel(state.attempt, state.maxAttempts)}`
-      : `修复中${repairRoundLabel(state.attempt, state.maxAttempts)}`
-  }
-  if (IMAGE_MODIFY_TYPES.has(taskType)) return '改图中'
-  if (IMAGE_GENERATION_TYPES.has(taskType)) return '生成中'
-  return state.phase === 'queued' ? '等待处理' : '处理中'
-}
-
-function labelFromQualityState(panel: NovelPromotionPanel) {
-  const qualityState = parseVisualQualityState(panel.visualQualityState)
-  if (!qualityState || qualityState.mode !== 'auto') return null
-  if (qualityState.status === 'pending') return '等待检查'
-  if (qualityState.status === 'reviewing') {
-    return qualityState.attempt > 0
-      ? `复查中${repairRoundLabel(qualityState.attempt, qualityState.maxAttempts)}`
-      : '检查中'
-  }
-  if (qualityState.status === 'repairing') {
-    const nextAttempt = Math.min(qualityState.maxAttempts, qualityState.attempt + 1)
-    return `修复中${repairRoundLabel(nextAttempt, qualityState.maxAttempts)}`
-  }
-  return null
-}
-
-function hasHumanConfirmed(panel: NovelPromotionPanel) {
-  return !!parseVisualQualityState(panel.visualQualityState)?.humanConfirmedAt
-}
-
-function needsHumanReview(panel: NovelPromotionPanel) {
-  const qualityState = parseVisualQualityState(panel.visualQualityState)
-  return qualityState?.status === 'human_required'
-}
-
 export function resolvePanelImageWorkflowPresentation(params: {
   panel: NovelPromotionPanel
   hasCandidates: boolean
   isSubmitting?: boolean
   isModifying?: boolean
 }): PanelImageWorkflowPresentation {
-  if (params.isSubmitting) {
-    return {
-      status: 'generating',
-      label: '提交中',
-      blocksConfirmation: true,
-      progress: null,
-    }
-  }
-  if (params.isModifying) {
-    return {
-      status: 'generating',
-      label: '改图中',
-      blocksConfirmation: true,
-      progress: null,
-    }
-  }
-
+  const candidateUrls = resolveVisualCandidateUrls({
+    visualQualityState: params.panel.visualQualityState,
+    candidateImages: params.panel.candidateImages,
+  })
   const taskState = params.panel.imageTaskState || null
-  if (isActiveTask(taskState)) {
-    return {
-      status: 'generating',
-      label: labelFromTaskState(taskState),
-      blocksConfirmation: true,
-      progress: taskState.progress ?? null,
-    }
-  }
-
-  const qualityLabel = labelFromQualityState(params.panel)
-  if (qualityLabel) {
-    return {
-      status: 'generating',
-      label: qualityLabel,
-      blocksConfirmation: true,
-      progress: null,
-    }
-  }
-  if (params.panel.imageTaskRunning) {
-    return {
-      status: 'generating',
-      label: params.panel.imageTaskIntent === 'modify' ? '改图中' : '生成中',
-      blocksConfirmation: true,
-      progress: null,
-    }
-  }
-
-  if (params.panel.imageErrorMessage || taskState?.lastError) {
-    return {
-      status: 'failed',
-      label: '失败',
-      blocksConfirmation: false,
-      progress: null,
-    }
-  }
-
-  if (needsHumanReview(params.panel)) {
-    return {
-      status: 'needs_review',
-      label: '待确认',
-      blocksConfirmation: false,
-      progress: null,
-    }
-  }
-
-  if (params.hasCandidates && !hasHumanConfirmed(params.panel)) {
-    return {
-      status: 'needs_review',
-      label: '待确认',
-      blocksConfirmation: false,
-      progress: null,
-    }
-  }
-
-  if (params.panel.imageUrl) {
-    return {
-      status: 'locked',
-      label: '已确认',
-      blocksConfirmation: false,
-      progress: null,
-    }
-  }
-
-  if (params.panel.description) {
-    return {
-      status: 'drafting',
-      label: '可编辑',
-      blocksConfirmation: false,
-      progress: null,
-    }
-  }
-
-  return {
-    status: 'empty',
-    label: '未开始',
-    blocksConfirmation: false,
-    progress: null,
-  }
+  return resolveVisualWorkflowPresentation({
+    isSubmitting: params.isSubmitting,
+    isModifying: params.isModifying,
+    taskStates: [
+      taskState,
+      params.panel.imageTaskRunning && !taskState
+        ? {
+          phase: 'processing',
+          runningTaskType: params.panel.imageTaskIntent === 'modify' ? 'modify_asset_image' : 'image_panel',
+        } satisfies PanelImageTaskState
+        : null,
+    ],
+    visualQualityState: params.panel.visualQualityState,
+    hasCandidates: params.hasCandidates || candidateUrls.length > 0,
+    hasPrimaryImage: !!params.panel.imageUrl,
+    hasDraft: !!(params.panel.description || params.panel.imagePrompt),
+    hasError: !!params.panel.imageErrorMessage,
+  }) as PanelImageWorkflowPresentation
 }
 
 function compareCandidateGroups(a: VisualCandidateGroup, b: VisualCandidateGroup) {

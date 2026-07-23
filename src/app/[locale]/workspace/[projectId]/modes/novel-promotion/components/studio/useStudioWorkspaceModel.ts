@@ -3,8 +3,6 @@
 import { useMemo } from 'react'
 import type { VisualAssetSummary } from '@/lib/assets/contracts'
 import { normalizeGuideUserFacingTitle } from '@/lib/content-planning'
-import { hasUnconfirmedVisualCandidates } from '@/lib/quality-workflow'
-import { evaluateVisualReadiness } from '@/lib/visual-readiness'
 import { useTaskList, type TaskItem } from '@/lib/query/hooks/useTaskStatus'
 import { TASK_TYPE } from '@/lib/task/types'
 import { readContentArtifactMeta, readVisualArtifactMeta } from '@/lib/creation-workspace/artifact-state'
@@ -32,6 +30,7 @@ import {
   type StudioVisualAsset,
   type StudioWorkspaceModel,
 } from './studio-types'
+import { resolvePanelImageWorkflowPresentation } from './studio-board-image-workflow'
 
 interface UseStudioWorkspaceModelInput {
   currentStage: string
@@ -62,15 +61,13 @@ function splitNames(value: string | null | undefined) {
 }
 
 function panelStatus(panel: NovelPromotionPanel): StudioProductStatus {
-  if (panel.videoTaskRunning || panel.imageTaskRunning) return 'generating'
+  if (panel.videoTaskRunning) return 'generating'
   if (panel.imageErrorMessage) return 'failed'
   if (panel.videoUrl || panel.lipSyncVideoUrl) return 'locked'
-  if (panel.imageUrl) {
-    if (hasUnconfirmedVisualCandidates(panel.candidateImages, panel.visualQualityState)) return 'needs_review'
-    return evaluateVisualReadiness(panel.visualQualityState).ready ? 'locked' : 'needs_review'
-  }
-  if (panel.description || panel.imagePrompt) return 'drafting'
-  return 'empty'
+  return resolvePanelImageWorkflowPresentation({
+    panel,
+    hasCandidates: false,
+  }).status
 }
 
 function visualAssetStatus(status: ReturnType<typeof resolveVisualAssetStatus>): StudioProductStatus {

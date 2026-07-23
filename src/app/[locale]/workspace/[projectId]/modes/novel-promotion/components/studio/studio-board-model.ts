@@ -1,6 +1,4 @@
 import type { NovelPromotionPanel, NovelPromotionStoryboard } from '@/types/project'
-import { parseVisualQualityState } from '@/lib/quality-workflow'
-import { evaluateVisualReadiness } from '@/lib/visual-readiness'
 import type { StoryboardPanel } from '../storyboard/hooks/useStoryboardState'
 import { getStoryboardPanels } from '../storyboard/hooks/storyboard-state-utils'
 import type { StudioProductStatus } from './studio-types'
@@ -12,11 +10,6 @@ export interface BoardItem {
   panelOffset: number
   sourcePanel: NovelPromotionPanel
   globalNumber: number
-}
-
-function candidatesNeedConfirmation(sourcePanel: NovelPromotionPanel, hasCandidates: boolean): boolean {
-  if (!hasCandidates) return false
-  return !parseVisualQualityState(sourcePanel.visualQualityState)?.humanConfirmedAt
 }
 
 export function flattenBoardItems(
@@ -72,12 +65,14 @@ export function isPanelReadyForProduction({
   submitting: boolean
   modifying: boolean
 }): boolean {
+  const workflowPresentation = resolvePanelImageWorkflowPresentation({
+    panel: sourcePanel,
+    hasCandidates,
+    isSubmitting: submitting,
+    isModifying: modifying,
+  })
   return !!panel.imageUrl
-    && !candidatesNeedConfirmation(sourcePanel, hasCandidates)
-    && !submitting
-    && !modifying
-    && !sourcePanel.imageTaskRunning
-    && evaluateVisualReadiness(sourcePanel.visualQualityState).ready
+    && workflowPresentation.status === 'locked'
 }
 
 export function currentImageUrl(item: BoardItem, candidates: { candidates: string[]; selectedIndex: number } | null) {
