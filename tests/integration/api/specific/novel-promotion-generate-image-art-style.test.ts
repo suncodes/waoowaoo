@@ -45,6 +45,18 @@ const hasOutputMock = vi.hoisted(() => ({
   hasLocationImageOutput: vi.fn(async () => false),
 }))
 
+const prismaMock = vi.hoisted(() => ({
+  characterAppearance: {
+    findFirst: vi.fn(),
+  },
+  novelPromotionCharacter: {
+    findFirst: vi.fn(),
+  },
+  novelPromotionLocation: {
+    findUnique: vi.fn(),
+  },
+}))
+
 const billingMock = vi.hoisted(() => ({
   buildDefaultTaskBillingInfo: vi.fn(() => ({ billable: false })),
 }))
@@ -54,6 +66,7 @@ vi.mock('@/lib/task/submitter', () => ({ submitTask: submitTaskMock }))
 vi.mock('@/lib/config-service', () => configServiceMock)
 vi.mock('@/lib/task/has-output', () => hasOutputMock)
 vi.mock('@/lib/billing', () => billingMock)
+vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('@/lib/task/resolve-locale', () => ({
   resolveRequiredTaskLocale: vi.fn(() => 'zh'),
 }))
@@ -61,6 +74,10 @@ vi.mock('@/lib/task/resolve-locale', () => ({
 describe('api specific - novel promotion generate image art style', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    prismaMock.characterAppearance.findFirst.mockResolvedValue({ id: 'appearance-1' })
+    prismaMock.novelPromotionCharacter.findFirst.mockResolvedValue({
+      appearances: [{ id: 'appearance-1' }],
+    })
   })
 
   it('accepts valid artStyle and forwards it into task payload', async () => {
@@ -123,7 +140,58 @@ describe('api specific - novel promotion generate image art style', () => {
       payload?: Record<string, unknown>
       dedupeKey?: string
     } | undefined
-    expect(submitArg?.payload?.count).toBe(6)
-    expect(submitArg?.dedupeKey).toBe('image_character:appearance-1:6')
+    expect(submitArg?.payload?.count).toBe(4)
+    expect(submitArg?.dedupeKey).toBe('image_character:appearance-1:4')
+  })
+
+  it('resolves the first character appearance when legacy callers omit appearanceId', async () => {
+    prismaMock.novelPromotionCharacter.findFirst.mockResolvedValueOnce({
+      appearances: [{ id: 'appearance-primary' }],
+    })
+
+    const mod = await import('@/app/api/novel-promotion/[projectId]/generate-image/route')
+    const req = buildMockRequest({
+      path: '/api/novel-promotion/project-1/generate-image',
+      method: 'POST',
+      body: {
+        type: 'character',
+        id: 'character-1',
+        count: 2,
+      },
+    })
+
+    const res = await mod.POST(req, { params: Promise.resolve({ projectId: 'project-1' }) })
+    expect(res.status).toBe(200)
+
+    const submitArg = submitTaskMock.mock.calls[0]?.[0] as {
+      targetId?: string
+      payload?: Record<string, unknown>
+      dedupeKey?: string
+    } | undefined
+    expect(submitArg?.targetId).toBe('appearance-primary')
+    expect(submitArg?.payload?.appearanceId).toBe('appearance-primary')
+    expect(submitArg?.dedupeKey).toBe('image_character:appearance-primary:2')
+  })
+
+  it('rejects character generation when appearanceId does not belong to the character', async () => {
+    prismaMock.characterAppearance.findFirst.mockResolvedValueOnce(null)
+
+    const mod = await import('@/app/api/novel-promotion/[projectId]/generate-image/route')
+    const req = buildMockRequest({
+      path: '/api/novel-promotion/project-1/generate-image',
+      method: 'POST',
+      body: {
+        type: 'character',
+        id: 'character-1',
+        appearanceId: 'other-appearance',
+      },
+    })
+
+    const res = await mod.POST(req, { params: Promise.resolve({ projectId: 'project-1' }) })
+    const body = await res.json()
+
+    expect(res.status).toBe(404)
+    expect(body.error.code).toBe('NOT_FOUND')
+    expect(submitTaskMock).not.toHaveBeenCalled()
   })
 })

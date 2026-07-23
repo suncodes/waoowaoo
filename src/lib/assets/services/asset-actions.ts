@@ -261,6 +261,48 @@ async function submitGlobalAssetGenerateTask(input: AssetGenerateInput) {
   })
 }
 
+async function resolveProjectCharacterAppearanceId(input: {
+  projectId: string
+  characterId: string
+  appearanceId: string
+}): Promise<string> {
+  if (input.appearanceId) {
+    const appearance = await prisma.characterAppearance.findFirst({
+      where: {
+        id: input.appearanceId,
+        characterId: input.characterId,
+        character: {
+          novelPromotionProject: { projectId: input.projectId },
+        },
+      },
+      select: { id: true },
+    })
+    if (!appearance) {
+      throw new ApiError('NOT_FOUND')
+    }
+    return appearance.id
+  }
+
+  const character = await prisma.novelPromotionCharacter.findFirst({
+    where: {
+      id: input.characterId,
+      novelPromotionProject: { projectId: input.projectId },
+    },
+    select: {
+      appearances: {
+        orderBy: { appearanceIndex: 'asc' },
+        take: 1,
+        select: { id: true },
+      },
+    },
+  })
+  const appearance = character?.appearances[0]
+  if (!appearance) {
+    throw new ApiError('NOT_FOUND')
+  }
+  return appearance.id
+}
+
 async function submitProjectAssetGenerateTask(input: AssetGenerateInput) {
   const projectId = requireProjectId(input.access)
   const locale = resolveRequiredTaskLocale(input.request, input.body)
@@ -302,9 +344,16 @@ async function submitProjectAssetGenerateTask(input: AssetGenerateInput) {
     })
   }
 
+  const resolvedAppearanceId = normalizedKind === 'character'
+    ? await resolveProjectCharacterAppearanceId({
+      projectId,
+      characterId: input.assetId,
+      appearanceId,
+    })
+    : ''
   const taskType = normalizedKind === 'character' ? TASK_TYPE.IMAGE_CHARACTER : TASK_TYPE.IMAGE_LOCATION
   const targetType = normalizedKind === 'character' ? 'CharacterAppearance' : 'LocationImage'
-  const targetId = normalizedKind === 'character' ? (appearanceId || input.assetId) : input.assetId
+  const targetId = normalizedKind === 'character' ? resolvedAppearanceId : input.assetId
   if (!targetId) {
     throw new ApiError('INVALID_PARAMS')
   }
@@ -323,9 +372,14 @@ async function submitProjectAssetGenerateTask(input: AssetGenerateInput) {
   const imageModel = normalizedKind === 'character'
     ? projectModelConfig.characterModel
     : projectModelConfig.locationModel
-  const payloadBase = artStyle
-    ? { ...input.body, type: input.kind, id: input.assetId, artStyle, count }
-    : { ...input.body, type: input.kind, id: input.assetId, count }
+  const payloadBase = {
+    ...input.body,
+    type: input.kind,
+    id: input.assetId,
+    ...(normalizedKind === 'character' ? { appearanceId: resolvedAppearanceId } : {}),
+    ...(artStyle ? { artStyle } : {}),
+    count,
+  }
 
   let billingPayload: Record<string, unknown>
   try {

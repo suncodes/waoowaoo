@@ -214,13 +214,7 @@ export function mapProjectCharacterToAsset(character: ProjectCharacterRecord): C
     name: character.name,
     folderId: null,
     capabilities: registration.capabilities,
-    taskRefs: [
-      {
-        targetType: 'CharacterAppearance',
-        targetId: character.id,
-        types: PROJECT_VISUAL_ASSET_TASK_TYPES,
-      },
-    ],
+    taskRefs: [],
     taskState: createIdleTaskState(),
     variants,
     introduction: character.introduction ?? null,

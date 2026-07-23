@@ -50,6 +50,21 @@ describe('asset mappers', () => {
       index: 0,
       label: '初始形象',
     }))
+    expect(asset.taskRefs).toEqual([])
+    expect(asset.variants[0].taskRefs).toEqual([
+      {
+        targetType: 'CharacterAppearance',
+        targetId: 'appearance-1',
+        types: [
+          'image_character',
+          'image_location',
+          'modify_asset_image',
+          'regenerate_group',
+          'visual_quality_review',
+          'visual_auto_repair',
+        ],
+      },
+    ])
   })
 
   it('maps global voices into the unified audio asset contract', () => {
