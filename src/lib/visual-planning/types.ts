@@ -11,6 +11,16 @@ export type VisualType =
 
 export type RenderMode = 'generated_image' | 'text_card' | 'composite'
 
+export type ShotFunction =
+  | 'hook'
+  | 'setup'
+  | 'reaction'
+  | 'evidence'
+  | 'transition'
+  | 'payoff'
+  | 'breath'
+  | 'cta'
+
 export interface DirectorTreatment {
   schemaVersion: 1
   narrativeStrategy: string
@@ -30,12 +40,36 @@ export interface ProductionBible {
   forbiddenPatterns: string[]
 }
 
+export interface VisualAssetRef {
+  id: string
+  kind: 'character' | 'location' | 'prop'
+  name: string
+}
+
+export interface ShotContinuity {
+  fromPrevious: string
+  toNext: string
+  screenDirection: string
+  lightingContinuity: string
+}
+
+export interface SingleImageFeasibility {
+  status: 'feasible' | 'needs_split' | 'text_only' | 'composite_only'
+  reason: string
+  riskFlags: string[]
+}
+
 export interface ShotSpec {
   narrativeIntent: string
+  shotFunction: ShotFunction
+  primarySubject: string
+  visibleAssets: VisualAssetRef[]
   subjectIdentity: string[]
   startState: string
   actionBeats: string[]
   endState: string
+  continuity: ShotContinuity
+  singleImageFeasibility: SingleImageFeasibility
   spatialContinuity: string
   camera: string
   sceneLightingBaseline: string
@@ -43,12 +77,6 @@ export interface ShotSpec {
   dialogueAudio: string
   constraints: string[]
   durationIntent: string
-}
-
-export interface VisualAssetRef {
-  id: string
-  kind: 'character' | 'location' | 'prop'
-  name: string
 }
 
 export interface VisualUnit {
@@ -69,14 +97,41 @@ export interface VisualUnit {
   assetRefs?: VisualAssetRef[]
 }
 
+export interface ShotBudget {
+  totalShots: number
+  averageDurationSec: number
+  hookShots: number
+  setupShots: number
+  evidenceShots: number
+  payoffShots: number
+  breathShots: number
+}
+
+export interface ShotRhythmPoint {
+  label: string
+  shotFunction: ShotFunction | 'mixed'
+  intensity: number
+  intent: string
+}
+
+export interface ShotFunctionMixItem {
+  shotFunction: ShotFunction
+  count: number
+}
+
+export interface ShotPlan {
+  schemaVersion: 1
+  summary: string
+  totalEstimatedDurationSec: number
+  shotBudget: ShotBudget
+  rhythmCurve: ShotRhythmPoint[]
+  functionMix: ShotFunctionMixItem[]
+  continuityChecks: string[]
+}
+
 export interface VisualPlanResult {
   directorTreatment: DirectorTreatment
   productionBible: ProductionBible
-  shotPlan: {
-    schemaVersion: 1
-    summary: string
-    totalEstimatedDurationSec: number
-    continuityChecks: string[]
-  }
+  shotPlan: ShotPlan
   visualUnits: VisualUnit[]
 }

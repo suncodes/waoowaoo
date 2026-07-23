@@ -10,6 +10,10 @@ import { submitTask } from '@/lib/task/submitter'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 import { resolveVideoProfile } from '@/lib/video-profile'
 import {
+  completeLatestVisualAutoRepairLineage,
+  normalizeVisualAutoRepairLineage,
+} from '@/lib/creative-quality/contracts'
+import {
   VISUAL_REPAIR_ASSET_CANDIDATE_LIMIT,
   VISUAL_REPAIR_PANEL_CANDIDATE_LIMIT,
   resolveVisualRepairCandidateCount,
@@ -217,6 +221,24 @@ async function handleAssetVisualQualityReviewTask(job: Job<TaskJobData>) {
     && decision.action !== 'approve'
     && decision.action !== 'select_candidate'
     && decision.action !== 'human_required'
+  const incomingRepairLineage = normalizeVisualAutoRepairLineage(payload.repairLineage)
+  const completedRepairLineage = completeLatestVisualAutoRepairLineage(
+    incomingRepairLineage,
+    {
+      attempt,
+      repairVersionHash: versionHash,
+      scoreAfter: review.score,
+      accepted: decision.action === 'approve' || decision.action === 'select_candidate',
+      acceptedCandidateUrl: decision.action === 'approve' || decision.action === 'select_candidate' ? selectedUrl : null,
+      stopReason: decision.action === 'approve' || decision.action === 'select_candidate'
+        ? 'approved'
+        : canRepair
+          ? 'needs_next_repair'
+          : decision.action === 'human_required'
+            ? attempt >= maxAttempts ? 'max_attempts' : 'human_required'
+            : 'human_required',
+    },
+  )
 
   await createArtifact({
     runId: readTaskRunId(job),
@@ -224,7 +246,7 @@ async function handleAssetVisualQualityReviewTask(job: Job<TaskJobData>) {
     artifactType: 'visual.asset.quality.review',
     refId: job.data.targetId,
     versionHash,
-    payload: toJsonRecord({ targetSpec, checks, review, decision, mode, candidateUrls, assetKind }),
+    payload: toJsonRecord({ targetSpec, checks, review, decision, mode, candidateUrls, assetKind, repairLineage: completedRepairLineage }),
   })
 
   if (canRepair) {
@@ -251,6 +273,8 @@ async function handleAssetVisualQualityReviewTask(job: Job<TaskJobData>) {
         maxAttempts,
         imageModel,
         candidateCount: repairCandidateCount,
+        scoreBefore: review.score,
+        repairLineage: completedRepairLineage,
       },
       dedupeKey: `visual_auto_repair:${job.data.targetType}:${job.data.targetId}:${versionHash}:${attempt + 1}`,
     })
@@ -342,6 +366,7 @@ export async function handleVisualQualityReviewTask(job: Job<TaskJobData>) {
     activeCandidateUrl: currentState?.activeCandidateUrl || panel.imageUrl,
     attempt,
     maxAttempts,
+    repairLineage: currentState?.repairLineage,
   })
   let reviewingPanel: { updatedAt: Date }
   try {
@@ -449,6 +474,25 @@ export async function handleVisualQualityReviewTask(job: Job<TaskJobData>) {
   if (nextStatus === 'repairing' && repairCandidateCount === 0) {
     nextStatus = 'human_required'
   }
+  const completedRepairLineage = completeLatestVisualAutoRepairLineage(
+    currentState?.repairLineage?.length
+      ? currentState.repairLineage
+      : normalizeVisualAutoRepairLineage(payload.repairLineage),
+    {
+      attempt,
+      repairVersionHash: versionHash,
+      scoreAfter: review.score,
+      accepted: nextStatus === 'approved',
+      acceptedCandidateUrl: nextStatus === 'approved' ? selectedUrl : null,
+      stopReason: nextStatus === 'approved'
+        ? 'approved'
+        : nextStatus === 'shadow_completed'
+          ? 'shadow_completed'
+          : nextStatus === 'repairing'
+            ? 'needs_next_repair'
+            : attempt >= maxAttempts ? 'max_attempts' : 'human_required',
+    },
+  )
 
   const nextQualityState = createVisualQualityState({
     mode,
@@ -461,6 +505,7 @@ export async function handleVisualQualityReviewTask(job: Job<TaskJobData>) {
     maxAttempts,
     lastAction: decision.action,
     review,
+    repairLineage: completedRepairLineage,
   })
   await createArtifact({
     runId: readTaskRunId(job),
@@ -468,7 +513,7 @@ export async function handleVisualQualityReviewTask(job: Job<TaskJobData>) {
     artifactType: 'visual.quality.review',
     refId: panel.id,
     versionHash,
-    payload: toJsonRecord({ targetSpec, checks, review, decision, mode, candidateUrls }),
+    payload: toJsonRecord({ targetSpec, checks, review, decision, mode, candidateUrls, repairLineage: completedRepairLineage }),
   })
 
   const finalWrite = await prisma.novelPromotionPanel.updateMany({
@@ -523,6 +568,8 @@ export async function handleVisualQualityReviewTask(job: Job<TaskJobData>) {
         attempt: attempt + 1,
         imageModel,
         candidateCount: repairCandidateCount,
+        scoreBefore: review.score,
+        repairLineage: completedRepairLineage,
       },
       dedupeKey: `visual_auto_repair:${panel.id}:${versionHash}:${attempt + 1}`,
     })

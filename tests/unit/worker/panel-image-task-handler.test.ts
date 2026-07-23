@@ -148,7 +148,7 @@ describe('worker panel-image-task-handler behavior', () => {
     const job = buildJob({ candidateCount: 2 })
     const result = await handlePanelImageTask(job)
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       panelId: 'panel-1',
       candidateCount: 2,
       imageUrl: 'cos/panel-candidate-1.png',
@@ -156,6 +156,10 @@ describe('worker panel-image-task-handler behavior', () => {
       visualQualityVersionHash: 'version-panel-1',
       visualQualityReviewScheduled: true,
       visualQualityReviewTaskId: 'task-quality-1',
+      promptSnapshot: expect.objectContaining({
+        snapshotType: 'panel_image_prompt',
+        targetId: 'panel-1',
+      }),
     })
 
     expect(utilsMock.resolveImageSourceFromGeneration).toHaveBeenCalledWith(
@@ -223,8 +227,12 @@ describe('worker panel-image-task-handler behavior', () => {
       imageUrl: 'cos/panel-old.png',
     })
 
-    utilsMock.resolveImageSourceFromGeneration.mockResolvedValueOnce('generated-source-regen')
-    utilsMock.uploadImageSourceToCos.mockResolvedValueOnce('cos/panel-regenerated.png')
+    utilsMock.resolveImageSourceFromGeneration
+      .mockResolvedValueOnce('generated-source-regen-1')
+      .mockResolvedValueOnce('generated-source-regen-2')
+    utilsMock.uploadImageSourceToCos
+      .mockResolvedValueOnce('cos/panel-regenerated-1.png')
+      .mockResolvedValueOnce('cos/panel-regenerated-2.png')
     qualityMock.persistPanelCandidatesAndScheduleReview.mockResolvedValueOnce({
       imageUrl: null,
       mode: 'auto',
@@ -236,18 +244,22 @@ describe('worker panel-image-task-handler behavior', () => {
     const job = buildJob({ candidateCount: 1 })
     const result = await handlePanelImageTask(job)
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       panelId: 'panel-1',
-      candidateCount: 1,
+      candidateCount: 2,
       imageUrl: null,
       visualQualityMode: 'auto',
       visualQualityVersionHash: 'version-panel-2',
       visualQualityReviewScheduled: true,
       visualQualityReviewTaskId: 'task-quality-2',
+      promptSnapshot: expect.objectContaining({
+        snapshotType: 'panel_image_prompt',
+        targetId: 'panel-1',
+      }),
     })
 
     expect(qualityMock.persistPanelCandidatesAndScheduleReview).toHaveBeenCalledWith(expect.objectContaining({
-      candidates: ['cos/panel-regenerated.png'],
+      candidates: ['cos/panel-regenerated-1.png', 'cos/panel-regenerated-2.png'],
       isFirstGeneration: false,
     }))
   })

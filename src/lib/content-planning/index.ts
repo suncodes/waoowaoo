@@ -4,13 +4,17 @@ import type {
   ContentPlanResult,
   ContentReview,
   ContentReviewIssue,
+  ContentRiskCode,
+  ContentRiskFlag,
   CreativeBrief,
   GuideContentPlan,
   GuideOutlineItem,
   GuideSegment,
+  HookPattern,
   NarrativeBeat,
   NarrativeContentPlan,
   SourceAnchor,
+  SourceLedgerEntry,
 } from './types'
 
 type JsonRecord = Record<string, unknown>
@@ -50,6 +54,10 @@ function stringArray(value: unknown): string[] {
   return value.flatMap((item) => typeof item === 'string' && item.trim() ? [item.trim()] : [])
 }
 
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)))
+}
+
 function boundedNumber(value: unknown, fallback: number, min: number, max: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
   return Math.min(max, Math.max(min, value))
@@ -65,6 +73,81 @@ function readSourceType(value: unknown): SourceAnchor['sourceType'] | undefined 
     return value
   }
   return undefined
+}
+
+function readHookPattern(value: unknown, fallback: HookPattern): HookPattern {
+  if (
+    value === 'contrast' ||
+    value === 'reversal' ||
+    value === 'question' ||
+    value === 'visual_wonder' ||
+    value === 'identity_filter'
+  ) {
+    return value
+  }
+  return fallback
+}
+
+function readRiskCode(value: unknown): ContentRiskCode {
+  if (
+    value === 'source_gap' ||
+    value === 'fact_claim' ||
+    value === 'spoiler_risk' ||
+    value === 'overclaim' ||
+    value === 'visualization_gap' ||
+    value === 'duration_risk' ||
+    value === 'structure_drift'
+  ) {
+    return value
+  }
+  return 'structure_drift'
+}
+
+function parseRiskFlag(value: unknown, index: number, sourceId?: string): ContentRiskFlag {
+  if (typeof value === 'string' && value.trim()) {
+    return {
+      code: 'structure_drift',
+      severity: 'warning',
+      message: value.trim(),
+      ...(sourceId ? { sourceId } : {}),
+    }
+  }
+  if (!isRecord(value)) {
+    return {
+      code: 'structure_drift',
+      severity: 'warning',
+      message: `risk flag ${index + 1}`,
+      ...(sourceId ? { sourceId } : {}),
+    }
+  }
+  const severity = value.severity === 'critical' || value.severity === 'info'
+    ? value.severity
+    : 'warning'
+  return {
+    code: readRiskCode(value.code),
+    severity,
+    message: optionalString(value.message) || `risk flag ${index + 1}`,
+    ...(optionalString(value.sourceId) ? { sourceId: optionalString(value.sourceId) } : sourceId ? { sourceId } : {}),
+  }
+}
+
+function parseRiskFlags(value: unknown, sourceId?: string): ContentRiskFlag[] {
+  if (!Array.isArray(value)) return []
+  return value.map((item, index) => parseRiskFlag(item, index, sourceId))
+}
+
+function mergeRiskFlags(...groups: ContentRiskFlag[][]): ContentRiskFlag[] {
+  const seen = new Set<string>()
+  const merged: ContentRiskFlag[] = []
+  for (const group of groups) {
+    for (const flag of group) {
+      const key = `${flag.code}:${flag.severity}:${flag.message}:${flag.sourceId || ''}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      merged.push(flag)
+    }
+  }
+  return merged
 }
 
 function parseSourceAnchor(value: unknown, field: string, required: boolean): SourceAnchor | undefined {
@@ -88,6 +171,59 @@ function parseSourceAnchor(value: unknown, field: string, required: boolean): So
       ? { confidence: boundedNumber(value.confidence, 0.7, 0, 1) }
       : {}),
   }
+}
+
+function buildLedgerFromAnchors(anchors: Array<{ id: string; anchor?: SourceAnchor }>): SourceLedgerEntry[] {
+  const byKey = new Map<string, SourceLedgerEntry>()
+  for (const item of anchors) {
+    if (!item.anchor) continue
+    const sourceType = item.anchor.sourceType || 'user_source'
+    const confidence = boundedNumber(
+      item.anchor.confidence,
+      sourceType === 'model_knowledge' ? 0.7 : 0.85,
+      0,
+      1,
+    )
+    const key = `${sourceType}:${item.anchor.label}:${item.anchor.chapter || ''}`
+    const current = byKey.get(key)
+    const usage = current
+      ? uniqueStrings([current.usage, item.id]).join(',')
+      : item.id
+    byKey.set(key, {
+      id: current?.id || `source_${byKey.size + 1}`,
+      label: item.anchor.label,
+      sourceType,
+      usage,
+      confidence,
+      ...(item.anchor.quote ? { quote: item.anchor.quote } : {}),
+      riskFlags: current?.riskFlags || [],
+    })
+  }
+  return Array.from(byKey.values())
+}
+
+function parseSourceLedger(
+  value: unknown,
+  fallbackAnchors: Array<{ id: string; anchor?: SourceAnchor }>,
+): SourceLedgerEntry[] {
+  if (!Array.isArray(value)) return buildLedgerFromAnchors(fallbackAnchors)
+  const entries = value.flatMap((item, index): SourceLedgerEntry[] => {
+    if (!isRecord(item)) return []
+    const label = optionalString(item.label)
+    if (!label) return []
+    const sourceType = readSourceType(item.sourceType) || 'user_source'
+    const id = optionalString(item.id) || `source_${index + 1}`
+    return [{
+      id,
+      label,
+      sourceType,
+      usage: optionalString(item.usage) || 'content planning',
+      confidence: boundedNumber(item.confidence, sourceType === 'model_knowledge' ? 0.7 : 0.85, 0, 1),
+      ...(optionalString(item.quote) ? { quote: optionalString(item.quote) } : {}),
+      riskFlags: parseRiskFlags(item.riskFlags, id),
+    }]
+  })
+  return entries.length > 0 ? entries : buildLedgerFromAnchors(fallbackAnchors)
 }
 
 function parseCreativeBrief(value: unknown, profile: VideoProfile): CreativeBrief {
@@ -122,15 +258,23 @@ function parseNarrativePlan(value: JsonRecord): NarrativeContentPlan {
       summary: requiredString(item.summary, `beats.${index}.summary`),
       estimatedDurationSec: Math.round(boundedNumber(item.estimatedDurationSec, 15, 2, 600)),
       ...(sourceAnchor ? { sourceAnchor } : {}),
+      riskFlags: parseRiskFlags(item.riskFlags, optionalString(item.id) || `beat_${index + 1}`),
     }
   })
   if (beats.length === 0) throw new Error('CONTENT_PLAN_INVALID: narrative beats are required')
+  const sourceLedger = parseSourceLedger(
+    value.sourceLedger,
+    beats.map((beat) => ({ id: beat.id, anchor: beat.sourceAnchor })),
+  )
   return {
     schemaVersion: 1,
     planType: 'narrative',
     title: requiredString(value.title, 'contentPlan.title'),
     logline: requiredString(value.logline, 'contentPlan.logline'),
+    hookPattern: readHookPattern(value.hookPattern, 'contrast'),
     themes: stringArray(value.themes),
+    sourceLedger,
+    riskFlags: mergeRiskFlags(parseRiskFlags(value.riskFlags), ...beats.map((beat) => beat.riskFlags)),
     beats,
   }
 }
@@ -169,17 +313,25 @@ function parseGuidePlan(value: JsonRecord): GuideContentPlan {
       estimatedDurationSec: Math.round(boundedNumber(item.estimatedDurationSec, 20, 3, 600)),
       spoilerLevel,
       sourceAnchor: parseSourceAnchor(item.sourceAnchor, `segments.${index}.sourceAnchor`, true)!,
+      riskFlags: parseRiskFlags(item.riskFlags, optionalString(item.id) || `segment_${index + 1}`),
     }
   })
   if (outline.length === 0 || segments.length === 0) {
     throw new Error('CONTENT_PLAN_INVALID: guide outline and segments are required')
   }
+  const sourceLedger = parseSourceLedger(
+    value.sourceLedger,
+    segments.map((segment) => ({ id: segment.id, anchor: segment.sourceAnchor })),
+  )
   return {
     schemaVersion: 1,
     planType: 'guide',
     title: normalizeGuideUserFacingTitle(value.title, 'contentPlan.title'),
     thesis: requiredString(value.thesis, 'contentPlan.thesis'),
+    hookPattern: readHookPattern(value.hookPattern, 'question'),
     recommendationAngle: requiredString(value.recommendationAngle, 'contentPlan.recommendationAngle'),
+    sourceLedger,
+    riskFlags: mergeRiskFlags(parseRiskFlags(value.riskFlags), ...segments.map((segment) => segment.riskFlags)),
     outline,
     segments,
   }
@@ -203,6 +355,10 @@ function parseReviewIssue(value: unknown, index: number): ContentReviewIssue {
     'SOURCE_UNSUPPORTED',
     'SPOILER_POLICY_VIOLATION',
     'VISUAL_PURPOSE_MISSING',
+    'HOOK_WEAK',
+    'LOW_TENSION',
+    'LOW_VISUALIZATION',
+    'STABILITY_DRIFT',
   ])
   const code = typeof value.code === 'string' && allowedCodes.has(value.code as ContentReviewIssue['code'])
     ? value.code as ContentReviewIssue['code']
@@ -223,12 +379,17 @@ export function parseContentReview(value: unknown): ContentReview {
     ? value.status
     : 'approved'
   const status = issues.some((issue) => issue.severity === 'blocking') ? 'blocked' : requestedStatus
+  const score = Math.round(boundedNumber(value.score, 70, 0, 100))
   return {
     schemaVersion: 1,
     status,
-    score: Math.round(boundedNumber(value.score, 70, 0, 100)),
+    score,
     profileFitScore: Math.round(boundedNumber(value.profileFitScore, 70, 0, 100)),
     sourceSupportScore: Math.round(boundedNumber(value.sourceSupportScore, 70, 0, 100)),
+    tensionScore: Math.round(boundedNumber(value.tensionScore, score, 0, 100)),
+    visualizationScore: Math.round(boundedNumber(value.visualizationScore, score, 0, 100)),
+    pacingScore: Math.round(boundedNumber(value.pacingScore, score, 0, 100)),
+    stabilityScore: Math.round(boundedNumber(value.stabilityScore, score, 0, 100)),
     issues,
     revisionInstructions: stringArray(value.revisionInstructions),
   }

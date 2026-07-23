@@ -12,6 +12,39 @@ export interface SourceAnchor {
   confidence?: number
 }
 
+export type HookPattern =
+  | 'contrast'
+  | 'reversal'
+  | 'question'
+  | 'visual_wonder'
+  | 'identity_filter'
+
+export type ContentRiskCode =
+  | 'source_gap'
+  | 'fact_claim'
+  | 'spoiler_risk'
+  | 'overclaim'
+  | 'visualization_gap'
+  | 'duration_risk'
+  | 'structure_drift'
+
+export interface ContentRiskFlag {
+  code: ContentRiskCode
+  severity: 'info' | 'warning' | 'critical'
+  message: string
+  sourceId?: string
+}
+
+export interface SourceLedgerEntry {
+  id: string
+  label: string
+  sourceType: NonNullable<SourceAnchor['sourceType']>
+  usage: string
+  confidence: number
+  quote?: string
+  riskFlags: ContentRiskFlag[]
+}
+
 export interface CreativeBrief {
   schemaVersion: 1
   profilePreset: VideoProfile['preset']
@@ -31,6 +64,7 @@ export interface NarrativeBeat {
   summary: string
   estimatedDurationSec: number
   sourceAnchor?: SourceAnchor
+  riskFlags: ContentRiskFlag[]
 }
 
 export interface NarrativeContentPlan {
@@ -38,7 +72,10 @@ export interface NarrativeContentPlan {
   planType: 'narrative'
   title: string
   logline: string
+  hookPattern: HookPattern
   themes: string[]
+  sourceLedger: SourceLedgerEntry[]
+  riskFlags: ContentRiskFlag[]
   beats: NarrativeBeat[]
 }
 
@@ -60,6 +97,7 @@ export interface GuideSegment {
   estimatedDurationSec: number
   spoilerLevel: SpoilerLevel
   sourceAnchor: SourceAnchor
+  riskFlags: ContentRiskFlag[]
 }
 
 export interface GuideContentPlan {
@@ -67,7 +105,10 @@ export interface GuideContentPlan {
   planType: 'guide'
   title: string
   thesis: string
+  hookPattern: HookPattern
   recommendationAngle: string
+  sourceLedger: SourceLedgerEntry[]
+  riskFlags: ContentRiskFlag[]
   outline: GuideOutlineItem[]
   segments: GuideSegment[]
 }
@@ -82,6 +123,10 @@ export type ContentReviewIssueCode =
   | 'SOURCE_UNSUPPORTED'
   | 'SPOILER_POLICY_VIOLATION'
   | 'VISUAL_PURPOSE_MISSING'
+  | 'HOOK_WEAK'
+  | 'LOW_TENSION'
+  | 'LOW_VISUALIZATION'
+  | 'STABILITY_DRIFT'
 
 export interface ContentReviewIssue {
   code: ContentReviewIssueCode
@@ -96,6 +141,10 @@ export interface ContentReview {
   score: number
   profileFitScore: number
   sourceSupportScore: number
+  tensionScore: number
+  visualizationScore: number
+  pacingScore: number
+  stabilityScore: number
   issues: ContentReviewIssue[]
   revisionInstructions: string[]
 }

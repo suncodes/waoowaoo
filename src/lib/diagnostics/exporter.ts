@@ -9,7 +9,12 @@ import type { Job } from 'bullmq'
 
 const DEFAULT_MAX_FILE_BYTES = 25 * 1024 * 1024
 const DEFAULT_MAX_ARCHIVE_BYTES = 400 * 1024 * 1024
-const DIAGNOSTIC_SCHEMA_VERSION = 2
+const DIAGNOSTIC_SCHEMA_VERSION = 3
+const PROMPT_SNAPSHOT_ARTIFACT_TYPES = new Set(['prompt.panel_image.snapshot', 'prompt.panel_video.snapshot', 'prompt.asset_image.snapshot'])
+const CONTENT_QUALITY_REVIEW_ARTIFACT_TYPES = new Set(['content.quality.review'])
+const VISUAL_QUALITY_REVIEW_ARTIFACT_TYPES = new Set(['visual.quality.review', 'visual.asset.quality.review'])
+const VISUAL_AUTO_REPAIR_ARTIFACT_TYPES = new Set(['visual.repair.candidate', 'visual.asset.repair.candidate'])
+const STORYBOARD_QUALITY_REVIEW_ARTIFACT_TYPES = new Set(['storyboard.quality.review'])
 
 export type DiagnosticExportOptions = {
   episodeId?: string | null
@@ -201,6 +206,125 @@ function buildTimeline(tasks: AnyRecord[], runs: AnyRecord[]) {
     }
   }
   return events.sort((a, b) => String(a.at).localeCompare(String(b.at))).map((event, index) => ({ seq: index + 1, ...event }))
+}
+
+function buildArtifactRecords(runs: AnyRecord[]): AnyRecord[] {
+  const records: AnyRecord[] = []
+  for (const run of runs) {
+    const artifacts = Array.isArray(run.artifacts) ? run.artifacts as AnyRecord[] : []
+    for (const artifact of artifacts) {
+      const artifactData = Object.fromEntries(
+        Object.entries(artifact).filter(([key]) => key !== 'runId'),
+      )
+      records.push({ runId: run.id, ...artifactData })
+    }
+  }
+  return records
+}
+
+function filterArtifactsByType(artifacts: AnyRecord[], types: Set<string>): AnyRecord[] {
+  return artifacts.filter((artifact) => (
+    typeof artifact.artifactType === 'string'
+    && types.has(artifact.artifactType)
+  ))
+}
+
+function collectRepairLineageRecords(artifacts: AnyRecord[]): AnyRecord[] {
+  const records = new Map<string, AnyRecord>()
+  for (const artifact of artifacts) {
+    const payload = asRecord(artifact.payload)
+    const lineageValue = payload.repairLineage
+    const lineageItems = Array.isArray(lineageValue) ? lineageValue : lineageValue ? [lineageValue] : []
+    for (const item of lineageItems) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) continue
+      const lineageRecord = item as AnyRecord
+      const keyParts = [
+        lineageRecord.targetType,
+        lineageRecord.targetId,
+        lineageRecord.attempt,
+        lineageRecord.repairVersionHash,
+      ].map((part) => String(part || ''))
+      const key = keyParts.join('|') || `${records.size}`
+      const nextRecord: AnyRecord = {
+        runId: artifact.runId || null,
+        artifactId: artifact.id || null,
+        artifactType: artifact.artifactType || null,
+        stepKey: artifact.stepKey || null,
+        refId: artifact.refId || null,
+        versionHash: artifact.versionHash || null,
+        ...lineageRecord,
+      }
+      const existing = records.get(key)
+      const nextReviewed = Boolean(nextRecord.reviewedAt || nextRecord.scoreAfter !== null && nextRecord.scoreAfter !== undefined)
+      const existingReviewed = Boolean(existing?.reviewedAt || existing?.scoreAfter !== null && existing?.scoreAfter !== undefined)
+      if (!existing || (nextReviewed && !existingReviewed)) records.set(key, nextRecord)
+    }
+  }
+  return [...records.values()]
+}
+
+function collectAssetBibleRecords(episodes: AnyRecord[]): AnyRecord[] {
+  const records: AnyRecord[] = []
+  for (const episode of episodes) {
+    const contentPlan = asRecord(episode.contentPlan)
+    const workspace = asRecord(contentPlan._workspace)
+    const assetRequirements = asRecord(workspace.assetRequirements)
+    const assetBible = Array.isArray(assetRequirements.assetBible) ? assetRequirements.assetBible : []
+    for (const item of assetBible) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) continue
+      records.push({
+        episodeId: episode.id || null,
+        contentRevision: workspace.revision || null,
+        assetRequirementStatus: assetRequirements.status || null,
+        analyzedAt: assetRequirements.analyzedAt || null,
+        ...(item as AnyRecord),
+      })
+    }
+  }
+  return records
+}
+
+function collectAssetBibleReviewRecords(episodes: AnyRecord[]): AnyRecord[] {
+  const records: AnyRecord[] = []
+  for (const episode of episodes) {
+    const contentPlan = asRecord(episode.contentPlan)
+    const workspace = asRecord(contentPlan._workspace)
+    const assetRequirements = asRecord(workspace.assetRequirements)
+    const review = asRecord(assetRequirements.review)
+    if (Object.keys(review).length === 0) continue
+    records.push({
+      episodeId: episode.id || null,
+      contentRevision: workspace.revision || null,
+      assetRequirementStatus: assetRequirements.status || null,
+      analyzedAt: assetRequirements.analyzedAt || null,
+      ...review,
+    })
+  }
+  return records
+}
+
+function stringifyJsonLines(records: AnyRecord[]): string {
+  return records.map((item) => stringifyJsonLine(item)).join('\n')
+}
+
+function buildQualityArtifactViews(artifacts: AnyRecord[]) {
+  const promptSnapshots = filterArtifactsByType(artifacts, PROMPT_SNAPSHOT_ARTIFACT_TYPES)
+  const contentQualityReviews = filterArtifactsByType(artifacts, CONTENT_QUALITY_REVIEW_ARTIFACT_TYPES)
+  const visualQualityReviews = filterArtifactsByType(artifacts, VISUAL_QUALITY_REVIEW_ARTIFACT_TYPES)
+  const visualAutoRepairs = filterArtifactsByType(artifacts, VISUAL_AUTO_REPAIR_ARTIFACT_TYPES)
+  const storyboardQualityReviews = filterArtifactsByType(artifacts, STORYBOARD_QUALITY_REVIEW_ARTIFACT_TYPES)
+  const visualRepairLineage = collectRepairLineageRecords([
+    ...visualQualityReviews,
+    ...visualAutoRepairs,
+  ])
+  return {
+    promptSnapshots,
+    contentQualityReviews,
+    storyboardQualityReviews,
+    visualQualityReviews,
+    visualAutoRepairs,
+    visualRepairLineage,
+  }
 }
 
 function parseProjectLlmInvocations(logText: string, includeReasoning: boolean): AnyRecord[] {
@@ -485,6 +609,10 @@ async function createArchive(params: {
   }
   const data = await collectProjectData(params.projectId, options.episodeId)
   const timeline = buildTimeline(data.tasks as unknown as AnyRecord[], data.runs as unknown as AnyRecord[])
+  const artifactRecords = buildArtifactRecords(data.runs as unknown as AnyRecord[])
+  const qualityArtifacts = buildQualityArtifactViews(artifactRecords)
+  const assetBibleRecords = collectAssetBibleRecords(data.domain.episodes as unknown as AnyRecord[])
+  const assetBibleReviewRecords = collectAssetBibleReviewRecords(data.domain.episodes as unknown as AnyRecord[])
   const generatedAt = new Date()
   const archive = archiver('zip', { zlib: { level: 6 } })
   const output = new PassThrough()
@@ -588,14 +716,35 @@ async function createArchive(params: {
     mediaIndex.push(item)
   }
   archive.append(stringifyJson(mediaIndex), { name: 'media/media-index.json' })
-  archive.append(stringifyJson(data.runs.flatMap((run) => Array.isArray(run.artifacts)
-    ? run.artifacts.map((artifact) => {
-      const artifactData = Object.fromEntries(
-        Object.entries(artifact as AnyRecord).filter(([key]) => key !== 'runId'),
-      )
-      return { runId: run.id, ...artifactData }
-    })
-    : [])), { name: 'snapshots/artifacts.json' })
+  archive.append(stringifyJson(artifactRecords), { name: 'snapshots/artifacts.json' })
+  archive.append(stringifyJsonLines(assetBibleRecords), { name: 'quality/asset-bible.jsonl' })
+  archive.append(stringifyJsonLines(assetBibleReviewRecords), { name: 'quality/asset-bible-reviews.jsonl' })
+  archive.append(stringifyJsonLines(qualityArtifacts.contentQualityReviews), { name: 'quality/content-quality-reviews.jsonl' })
+  archive.append(stringifyJsonLines(qualityArtifacts.storyboardQualityReviews), { name: 'quality/storyboard-quality-reviews.jsonl' })
+  archive.append(stringifyJsonLines(qualityArtifacts.promptSnapshots), { name: 'quality/prompt-snapshots.jsonl' })
+  archive.append(stringifyJsonLines(qualityArtifacts.visualQualityReviews), { name: 'quality/visual-quality-reviews.jsonl' })
+  archive.append(stringifyJsonLines(qualityArtifacts.visualAutoRepairs), { name: 'quality/visual-auto-repairs.jsonl' })
+  archive.append(stringifyJsonLines(qualityArtifacts.visualRepairLineage), { name: 'quality/visual-repair-lineage.jsonl' })
+  archive.append(stringifyJson({
+    promptSnapshotCount: qualityArtifacts.promptSnapshots.length,
+    assetBibleCount: assetBibleRecords.length,
+    assetBibleReviewCount: assetBibleReviewRecords.length,
+    contentQualityReviewCount: qualityArtifacts.contentQualityReviews.length,
+    storyboardQualityReviewCount: qualityArtifacts.storyboardQualityReviews.length,
+    visualQualityReviewCount: qualityArtifacts.visualQualityReviews.length,
+    visualAutoRepairCount: qualityArtifacts.visualAutoRepairs.length,
+    visualRepairLineageCount: qualityArtifacts.visualRepairLineage.length,
+    files: {
+      assetBible: 'quality/asset-bible.jsonl',
+      assetBibleReviews: 'quality/asset-bible-reviews.jsonl',
+      contentQualityReviews: 'quality/content-quality-reviews.jsonl',
+      storyboardQualityReviews: 'quality/storyboard-quality-reviews.jsonl',
+      promptSnapshots: 'quality/prompt-snapshots.jsonl',
+      visualQualityReviews: 'quality/visual-quality-reviews.jsonl',
+      visualAutoRepairs: 'quality/visual-auto-repairs.jsonl',
+      visualRepairLineage: 'quality/visual-repair-lineage.jsonl',
+    },
+  }), { name: 'quality/quality-index.json' })
   const validationChecks = buildValidationChecks(data.tasks as unknown as AnyRecord[], data.runs as unknown as AnyRecord[], mediaIndex)
   archive.append(stringifyJson(validationChecks), { name: 'validation/checks.json' })
   archive.append(stringifyJson(buildQualitySignals({
@@ -619,6 +768,15 @@ async function createArchive(params: {
       mediaOmitted: mediaIndex.length - includedMedia,
       timelineEvents: timeline.length,
       modelInvocations: promptInvocations.length,
+      artifacts: artifactRecords.length,
+      assetBibleRecords: assetBibleRecords.length,
+      assetBibleReviews: assetBibleReviewRecords.length,
+      contentQualityReviews: qualityArtifacts.contentQualityReviews.length,
+      storyboardQualityReviews: qualityArtifacts.storyboardQualityReviews.length,
+      promptSnapshots: qualityArtifacts.promptSnapshots.length,
+      visualQualityReviews: qualityArtifacts.visualQualityReviews.length,
+      visualAutoRepairs: qualityArtifacts.visualAutoRepairs.length,
+      visualRepairLineageRecords: qualityArtifacts.visualRepairLineage.length,
     },
     limits: {
       maxMediaFileBytes: maxFileBytes,
@@ -631,6 +789,7 @@ async function createArchive(params: {
     '',
     'This package is intended for offline analysis of the complete creation workflow.',
     'It contains project snapshots, task and Graph events, correlated model invocation records, validation checks, media indexes and selected media files.',
+    'Quality-focused traces are also grouped under quality/: content, asset, storyboard and visual reviews, prompt snapshots, auto repairs and repair lineage.',
     'Use invocationId, runId, stepKey and artifact references to distinguish prompt/model issues from workflow/state issues.',
     'Secrets and credentials are redacted during export.',
     `Reasoning included: ${options.includeReasoning ? 'yes' : 'no'}.`,

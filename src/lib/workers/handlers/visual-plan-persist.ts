@@ -21,6 +21,7 @@ export async function persistVisualPlan(params: {
   narratorLabel: string
   anchors?: VisualAnchor[]
   deferStoryboard?: boolean
+  storyboardReview?: unknown
 }) {
   await prisma.$transaction(async (tx) => {
     const currentEpisode = await tx.novelPromotionEpisode.findUnique({
@@ -46,6 +47,7 @@ export async function persistVisualPlan(params: {
     meta.plan = {
       shotPlan: cloneWorkspaceValue(params.result.shotPlan),
       visualUnits: cloneWorkspaceValue(params.result.visualUnits),
+      ...(params.storyboardReview !== undefined ? { storyboardReview: cloneWorkspaceValue(params.storyboardReview) } : {}),
     }
     meta.downstream = {
       storyboard: currentEpisode.storyboards.length > 0,

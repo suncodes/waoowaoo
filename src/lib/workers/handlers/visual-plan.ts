@@ -4,6 +4,7 @@ import { createArtifact } from '@/lib/run-runtime/service'
 import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
 import { isBookGuideProfile, resolveVideoProfile } from '@/lib/video-profile'
 import { parseVisualPlanResult, type VisualAssetRef, type VisualPlanResult } from '@/lib/visual-planning'
+import { reviewVisualPlanStoryboard, type StoryboardReviewResult } from '@/lib/visual-planning/storyboard-review'
 import type { TaskJobData } from '@/lib/task/types'
 import { reportTaskProgress } from '@/lib/workers/shared'
 import { assertTaskActive } from '@/lib/workers/utils'
@@ -42,6 +43,7 @@ function isRepairableVisualPlanOutputError(error: unknown): boolean {
     : null
   return record?.code === PLANNING_JSON_PARSE_ERROR_CODE
     || readErrorMessage(error).startsWith('VISUAL_PLAN_INVALID:')
+    || readErrorMessage(error).startsWith('VISUAL_PLAN_REVIEW_FAILED:')
 }
 
 function readInvalidCandidateOutput(
@@ -65,7 +67,8 @@ async function generateValidatedVisualPlan(params: {
   clipsJson: string
   assetsJson: string
   assets: VisualAssetRef[]
-}): Promise<VisualPlanResult> {
+  targetId: string
+}): Promise<{ result: VisualPlanResult; storyboardReview: StoryboardReviewResult }> {
   let prompt = params.initialPrompt
 
   for (let attempt = 1; attempt <= MAX_VISUAL_PLAN_OUTPUT_ATTEMPTS; attempt += 1) {
@@ -83,7 +86,16 @@ async function generateValidatedVisualPlan(params: {
         stepAttempt: attempt,
         temperature: attempt === 1 ? 0.4 : 0.2,
       })
-      return parseVisualPlanResult(candidate, params.profile, params.clipIds, params.assets)
+      const result = parseVisualPlanResult(candidate, params.profile, params.clipIds, params.assets)
+      const storyboardReview = reviewVisualPlanStoryboard({
+        targetId: params.targetId,
+        result,
+        profile: params.profile,
+      })
+      if (storyboardReview.status !== 'passed') {
+        throw new Error(`VISUAL_PLAN_REVIEW_FAILED:${storyboardReview.score}:${storyboardReview.evidence.slice(0, 5).join(' | ')}`)
+      }
+      return { result, storyboardReview }
     } catch (error) {
       if (!isRepairableVisualPlanOutputError(error) || attempt === MAX_VISUAL_PLAN_OUTPUT_ATTEMPTS) {
         throw error
@@ -191,7 +203,7 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
   const planningPrompt = rewriteInstruction
     ? `${initialPrompt}\n\n${job.data.locale === 'en' ? 'Rewrite instruction' : '本次重写要求'}：${rewriteInstruction}`
     : initialPrompt
-  const parsedResult = await generateValidatedVisualPlan({
+  const { result: parsedResult, storyboardReview: initialStoryboardReview } = await generateValidatedVisualPlan({
     job,
     model,
     initialPrompt: planningPrompt,
@@ -200,6 +212,7 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     clipsJson,
     assetsJson,
     assets: visualAssets,
+    targetId: episodeId,
   })
   const explicitlyReferencedAssetIds = parsedResult.visualUnits.flatMap(
     (unit) => unit.assetRefs?.map((asset) => asset.id) || [],
@@ -220,6 +233,12 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     ...parsedResult,
     visualUnits: bindVisualUnitsToAnchors(parsedResult.visualUnits, anchors),
   }
+  const storyboardReview = reviewVisualPlanStoryboard({
+    targetId: episodeId,
+    result,
+    profile,
+    reviewedAt: initialStoryboardReview.reviewedAt,
+  })
   const deferStoryboard = payload.deferStoryboard === true
 
   await reportTaskProgress(job, 82, { stage: 'visual_plan_persist', displayMode: 'detail' })
@@ -231,19 +250,29 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     narratorLabel: job.data.locale === 'en' ? 'Narrator' : '旁白',
     anchors,
     deferStoryboard,
+    storyboardReview,
+  })
+  await createArtifact({
+    runId: readTaskRunId(job),
+    stepKey: 'storyboard_review',
+    artifactType: 'storyboard.quality.review',
+    refId: episodeId,
+    payload: toJsonRecord({ profile, review: storyboardReview }),
   })
   await createArtifact({
     runId: readTaskRunId(job),
     stepKey: 'visual_plan',
     artifactType: 'visual.plan',
     refId: episodeId,
-    payload: toJsonRecord({ profile, ...result }),
+    payload: toJsonRecord({ profile, storyboardReview, ...result }),
   })
 
   return {
     episodeId,
     profilePreset: profile.preset,
     visualUnitCount: result.visualUnits.length,
+    storyboardReviewScore: storyboardReview.score,
+    storyboardReviewStatus: storyboardReview.status,
     storyboardPersisted: isBookGuideProfile(profile) && !deferStoryboard,
   }
 }

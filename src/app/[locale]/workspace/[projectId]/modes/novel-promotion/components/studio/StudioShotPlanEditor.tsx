@@ -46,8 +46,12 @@ function readEditablePlan(productionBible: unknown): EditableVisualPlan | null {
   const meta = readVisualArtifactMeta(productionBible)
   if (!meta?.plan) return null
   const rawShotPlan = asWorkspaceRecord(meta.plan.shotPlan)
+  const rawShotBudget = asWorkspaceRecord(rawShotPlan?.shotBudget)
   const summary = typeof rawShotPlan?.summary === 'string' ? rawShotPlan.summary : ''
   if (!summary || meta.plan.visualUnits.length === 0) return null
+  const readBudgetNumber = (key: string, fallback: number) => (
+    typeof rawShotBudget?.[key] === 'number' ? rawShotBudget[key] : fallback
+  )
   return {
     shotPlan: {
       schemaVersion: 1,
@@ -55,6 +59,21 @@ function readEditablePlan(productionBible: unknown): EditableVisualPlan | null {
       totalEstimatedDurationSec: typeof rawShotPlan?.totalEstimatedDurationSec === 'number'
         ? rawShotPlan.totalEstimatedDurationSec
         : 0,
+      shotBudget: {
+        totalShots: readBudgetNumber('totalShots', meta.plan.visualUnits.length),
+        averageDurationSec: readBudgetNumber('averageDurationSec', 0),
+        hookShots: readBudgetNumber('hookShots', 0),
+        setupShots: readBudgetNumber('setupShots', 0),
+        evidenceShots: readBudgetNumber('evidenceShots', 0),
+        payoffShots: readBudgetNumber('payoffShots', 0),
+        breathShots: readBudgetNumber('breathShots', 0),
+      },
+      rhythmCurve: Array.isArray(rawShotPlan?.rhythmCurve)
+        ? cloneWorkspaceValue(rawShotPlan.rhythmCurve) as EditableVisualPlan['shotPlan']['rhythmCurve']
+        : [],
+      functionMix: Array.isArray(rawShotPlan?.functionMix)
+        ? cloneWorkspaceValue(rawShotPlan.functionMix) as EditableVisualPlan['shotPlan']['functionMix']
+        : [],
       continuityChecks: Array.isArray(rawShotPlan?.continuityChecks)
         ? rawShotPlan.continuityChecks.filter((item): item is string => typeof item === 'string')
         : [],

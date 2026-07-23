@@ -1,4 +1,6 @@
 import type { CreationStageId } from './stages'
+import type { AssetBibleItem } from '@/lib/assets/asset-bible'
+import type { AssetBibleReviewResult } from '@/lib/assets/asset-bible-review'
 
 export const WORKSPACE_ARTIFACT_META_KEY = '_workspace'
 
@@ -39,6 +41,8 @@ export interface AssetRequirementArtifactState {
   analyzedAt: string | null
   approvedAt: string | null
   assetIds: string[]
+  assetBible: AssetBibleItem[]
+  review: AssetBibleReviewResult | null
 }
 
 export interface ContentArtifactMeta {
@@ -75,6 +79,7 @@ export interface VisualAnchor {
 export interface StoredVisualPlan {
   shotPlan: unknown
   visualUnits: unknown[]
+  storyboardReview?: unknown
 }
 
 export interface VisualArtifactMeta {
@@ -181,6 +186,7 @@ function readAssetRequirementStatus(value: unknown): AssetRequirementStatus {
 
 function readAssetRequirements(value: unknown): AssetRequirementArtifactState {
   const record = asWorkspaceRecord(value)
+  const rawAssetBible = Array.isArray(record?.assetBible) ? record.assetBible : []
   return {
     status: readAssetRequirementStatus(record?.status),
     analyzedRevision: typeof record?.analyzedRevision === 'number'
@@ -189,6 +195,8 @@ function readAssetRequirements(value: unknown): AssetRequirementArtifactState {
     analyzedAt: readString(record?.analyzedAt) || null,
     approvedAt: readString(record?.approvedAt) || null,
     assetIds: [...new Set(readStringArray(record?.assetIds))],
+    assetBible: cloneWorkspaceValue(rawAssetBible) as AssetBibleItem[],
+    review: record?.review ? cloneWorkspaceValue(record.review) as AssetBibleReviewResult : null,
   }
 }
 
@@ -228,6 +236,8 @@ export function createContentArtifactMeta(now: string, author: WorkspaceArtifact
       analyzedAt: null,
       approvedAt: null,
       assetIds: [],
+      assetBible: [],
+      review: null,
     },
     latestImpact: null,
     downstream: {
@@ -345,6 +355,7 @@ export function readVisualArtifactMeta(value: unknown): VisualArtifactMeta | nul
       ? {
           shotPlan: cloneWorkspaceValue(plan.shotPlan),
           visualUnits: Array.isArray(plan.visualUnits) ? cloneWorkspaceValue(plan.visualUnits) : [],
+          ...(plan.storyboardReview !== undefined ? { storyboardReview: cloneWorkspaceValue(plan.storyboardReview) } : {}),
         }
       : null,
     latestImpact: readImpact(meta.latestImpact),

@@ -280,12 +280,14 @@ async function runStepWithRetry<T>(params: {
 }
 
 function mergePanelsWithRules(params: {
+  planPanels: StoryboardPanel[]
   finalPanels: StoryboardPanel[]
   photographyRules: PhotographyRule[]
   actingDirections: ActingDirection[]
 }) {
-  const { finalPanels, photographyRules, actingDirections } = params
+  const { planPanels, finalPanels, photographyRules, actingDirections } = params
   return finalPanels.map((panel, index) => {
+    const planPanel = planPanels.find((item) => item.panel_number === panel.panel_number)
     const rule = photographyRules.find((item) => item.panel_number === panel.panel_number)
     if (!rule) {
       throw new Error(`Missing photography rule for panel_number=${String(panel.panel_number)} at index=${index}`)
@@ -295,6 +297,7 @@ function mergePanelsWithRules(params: {
       throw new Error(`Missing acting direction for panel_number=${String(panel.panel_number)} at index=${index}`)
     }
     return {
+      ...(planPanel || {}),
       ...panel,
       photographyPlan: {
         composition: rule.composition,
@@ -514,6 +517,7 @@ export async function runScriptToStoryboardAtomicRetry(params: {
 
   if (params.retryTarget.phase !== 'phase1') {
     const finalPanels = mergePanelsWithRules({
+      planPanels: requireRows(phase1Panels, 'storyboard.clip.phase1'),
       finalPanels: requireRows(phase3Panels, 'storyboard.clip.phase3'),
       photographyRules: requireRows(phase2Cinematography, 'storyboard.clip.phase2.cine'),
       actingDirections: requireRows(phase2Acting, 'storyboard.clip.phase2.acting'),

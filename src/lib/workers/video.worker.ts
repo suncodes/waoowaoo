@@ -18,6 +18,13 @@ import { resolveBuiltinCapabilitiesByModelKey } from '@/lib/model-capabilities/l
 import { parseModelKeyStrict } from '@/lib/model-config-contract'
 import { getProviderConfig } from '@/lib/api-config'
 import { mergeProjectVideosToStorage } from '@/lib/novel-promotion/video-merge-export'
+import { createCreativeQualityHash } from '@/lib/creative-quality/contracts'
+import { createOptionalGenerationSnapshotArtifact } from '@/lib/creative-quality/runtime-artifacts'
+import {
+  buildPanelVideoGenerationSnapshot,
+  buildPanelVideoPromptSpec,
+  compilePanelVideoPrompt,
+} from '@/lib/prompt-compiler/panel-video-prompt-compiler'
 
 type AnyObj = Record<string, unknown>
 type VideoOptionValue = string | number | boolean
@@ -96,8 +103,8 @@ async function generateVideoForPanel(
   const firstLastCustomPrompt = typeof firstLastFramePayload?.customPrompt === 'string' ? firstLastFramePayload.customPrompt : null
   const persistedFirstLastPrompt = firstLastFramePayload ? panel.firstLastFramePrompt : null
   const customPrompt = typeof payload.customPrompt === 'string' ? payload.customPrompt : null
-  const prompt = firstLastCustomPrompt || persistedFirstLastPrompt || customPrompt || panel.videoPrompt || panel.description
-  if (!prompt) {
+  const sourcePrompt = firstLastCustomPrompt || persistedFirstLastPrompt || customPrompt || panel.videoPrompt || panel.description
+  if (!sourcePrompt) {
     throw new Error(`Panel ${panel.id} has no video prompt`)
   }
 
@@ -138,6 +145,45 @@ async function generateVideoForPanel(
       }
     }
   }
+  const promptSpec = buildPanelVideoPromptSpec({
+    context: {
+      panel: {
+        panelId: panel.id,
+        description: panel.description,
+        videoPrompt: panel.videoPrompt,
+        imagePrompt: panel.imagePrompt,
+        cameraMove: panel.cameraMove,
+        duration: panel.duration,
+        photographyRules: (panel as { photographyRules?: unknown }).photographyRules,
+      },
+      generationMode,
+      customPrompt: firstLastCustomPrompt || persistedFirstLastPrompt || customPrompt || null,
+      lastFrameProvided: Boolean(lastFrameImageUrl),
+    },
+    locale: job.data.locale === 'en' ? 'en' : 'zh',
+  })
+  const prompt = compilePanelVideoPrompt(promptSpec, job.data.locale === 'en' ? 'en' : 'zh')
+  const promptSnapshot = buildPanelVideoGenerationSnapshot({
+    targetId: panel.id,
+    modelKey: model,
+    promptTemplateId: 'prompt_compiler.panel_video.v1',
+    referenceImages: [sourceImageUrl, ...(lastFrameImageUrl ? [lastFrameImageUrl] : [])],
+    promptSpec,
+    compiledPrompt: prompt,
+    assetVersionHash: createCreativeQualityHash({
+      sourceImageUrl,
+      lastFrameImageUrl: lastFrameImageUrl || null,
+      generationMode,
+    }),
+  })
+  await createOptionalGenerationSnapshotArtifact({
+    job,
+    stepKey: 'panel_video_prompt',
+    artifactType: 'prompt.panel_video.snapshot',
+    refId: panel.id,
+    versionHash: promptSnapshot.promptHash,
+    payload: promptSnapshot,
+  })
 
   const generatedVideo = await resolveVideoSourceFromGeneration(job, {
     userId: job.data.userId,

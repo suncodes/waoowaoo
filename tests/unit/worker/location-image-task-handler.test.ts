@@ -95,9 +95,14 @@ describe('worker location-image-task-handler behavior', () => {
     const result = await handleLocationImageTask(buildJob({ imageIndex: 0 }))
     const animeStylePrompt = getArtStylePrompt('japanese-anime', 'zh')
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       updated: 1,
       locationIds: ['location-1'],
+      promptSnapshots: [expect.objectContaining({
+        snapshotType: 'asset_image_prompt',
+        targetType: 'LocationImage',
+        targetId: 'location-image-1',
+      })],
     })
 
     expect(sharedMock.generateProjectLabeledImageToStorage).toHaveBeenCalledWith(
@@ -120,7 +125,7 @@ describe('worker location-image-task-handler behavior', () => {
     )
     expect(sharedMock.generateProjectLabeledImageToStorage).toHaveBeenCalledWith(
       expect.objectContaining({
-        prompt: expect.stringContaining('必须使用宽广完整的场景全景构图'),
+        prompt: expect.stringContaining('宽广完整的场景全景构图'),
       }),
     )
     const generationCall = sharedMock.generateProjectLabeledImageToStorage.mock.calls[0] as unknown as [{ prompt: string }] | undefined
@@ -165,9 +170,10 @@ describe('worker location-image-task-handler behavior', () => {
 
     const result = await handleLocationImageTask(buildJob({ locationId: 'location-1', count: 1 }, 'location-1'))
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       updated: 1,
       locationIds: ['location-1'],
+      promptSnapshots: [expect.objectContaining({ snapshotType: 'asset_image_prompt' })],
     })
     expect(sharedMock.generateProjectLabeledImageToStorage).toHaveBeenCalledTimes(1)
     expect(prismaMock.locationImage.update).toHaveBeenCalledTimes(1)

@@ -170,12 +170,14 @@ function withStepMeta(
 }
 
 function mergePanelsWithRules(params: {
+  planPanels: StoryboardPanel[]
   finalPanels: StoryboardPanel[]
   photographyRules: PhotographyRule[]
   actingDirections: ActingDirection[]
 }) {
-  const { finalPanels, photographyRules, actingDirections } = params
+  const { planPanels, finalPanels, photographyRules, actingDirections } = params
   return finalPanels.map((panel, index) => {
+    const planPanel = planPanels.find((item) => item.panel_number === panel.panel_number)
     const rules = photographyRules.find((rule) => rule.panel_number === panel.panel_number)
     if (!rules) {
       throw new Error(`Missing photography rule for panel_number=${String(panel.panel_number)} at index=${index}`)
@@ -186,6 +188,7 @@ function mergePanelsWithRules(params: {
     }
 
     return {
+      ...(planPanel || {}),
       ...panel,
       photographyPlan: {
         composition: rules.composition,
@@ -475,6 +478,7 @@ export async function runScriptToStoryboardOrchestrator(
         clipId: clip.id,
         clipIndex,
         finalPanels: mergePanelsWithRules({
+          planPanels,
           finalPanels: filteredPhase3Panels,
           photographyRules,
           actingDirections,

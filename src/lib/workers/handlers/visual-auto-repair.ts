@@ -18,6 +18,10 @@ import {
   VISUAL_REPAIR_CANDIDATE_COUNT,
   VISUAL_REPAIR_MAX_ATTEMPTS,
 } from '@/lib/visual-quality/repair-policy'
+import {
+  createVisualAutoRepairLineage,
+  normalizeVisualAutoRepairLineage,
+} from '@/lib/creative-quality/contracts'
 import { createVisualVersionHash, type ImageTargetSpec, type PromptPatch } from '@/lib/visual-quality'
 import { reportTaskProgress } from '@/lib/workers/shared'
 import {
@@ -171,6 +175,26 @@ async function handleAssetVisualAutoRepairTask(job: Job<TaskJobData>) {
     candidateUrls,
   })
   const versionHash = createVisualVersionHash({ targetSpec, candidateUrls })
+  const scoreBefore = typeof payload.scoreBefore === 'number' && Number.isFinite(payload.scoreBefore)
+    ? payload.scoreBefore
+    : null
+  const repairLineageRecord = createVisualAutoRepairLineage({
+    targetType: assetKind,
+    targetId: job.data.targetId,
+    attempt,
+    action,
+    sourceCandidateUrl,
+    candidateUrls,
+    previousVersionHash: typeof payload.versionHash === 'string' ? payload.versionHash : null,
+    repairVersionHash: versionHash,
+    scoreBefore,
+    promptPatch,
+    imageModel,
+  })
+  const repairLineage = [
+    ...normalizeVisualAutoRepairLineage(payload.repairLineage),
+    repairLineageRecord,
+  ]
 
   await createArtifact({
     runId: readTaskRunId(job),
@@ -188,6 +212,7 @@ async function handleAssetVisualAutoRepairTask(job: Job<TaskJobData>) {
       imageModel,
       promptPatch,
       assetKind,
+      repairLineage,
     }),
   })
 
@@ -208,6 +233,7 @@ async function handleAssetVisualAutoRepairTask(job: Job<TaskJobData>) {
       analysisModel: modelConfig.analysisModel,
       attempt,
       maxAttempts,
+      repairLineage,
     },
     dedupeKey: `visual_quality_review:${job.data.targetType}:${job.data.targetId}:${versionHash}`,
   })
@@ -297,6 +323,23 @@ export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
     ))
   }
   const versionHash = createVisualVersionHash({ targetSpec, candidateUrls })
+  const repairLineageRecord = createVisualAutoRepairLineage({
+    targetType: 'panel',
+    targetId: panel.id,
+    attempt,
+    action,
+    sourceCandidateUrl,
+    candidateUrls,
+    previousVersionHash: expectedVersionHash,
+    repairVersionHash: versionHash,
+    scoreBefore: state.review?.score ?? null,
+    promptPatch,
+    imageModel,
+  })
+  const repairLineage = [
+    ...(state.repairLineage || []),
+    repairLineageRecord,
+  ]
   const candidateGroups = appendVisualCandidateGroup(
     resolveVisualCandidateGroups({
       visualQualityState: state,
@@ -337,6 +380,7 @@ export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
           attempt,
           maxAttempts: state.maxAttempts,
           lastAction: action,
+          repairLineage,
         })),
       },
     })
@@ -366,6 +410,7 @@ export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
       sourceCandidateUrl,
       imageModel,
       promptPatch,
+      repairLineage: repairLineageRecord,
     }),
   })
 
@@ -381,11 +426,12 @@ export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
     payload: {
       panelId: panel.id,
       candidateUrls,
-        versionHash,
-        analysisModel: modelConfig.analysisModel,
-        attempt,
-        maxAttempts,
-      },
+      versionHash,
+      analysisModel: modelConfig.analysisModel,
+      attempt,
+      maxAttempts,
+      repairLineage,
+    },
     dedupeKey: `visual_quality_review:${panel.id}:${versionHash}`,
   })
   return { panelId: panel.id, candidateUrls, versionHash, attempt, maxAttempts }

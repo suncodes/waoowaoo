@@ -40,6 +40,21 @@ Return JSON only:
   "shotPlan": {
     "summary": "global shot-plan summary",
     "totalEstimatedDurationSec": 90,
+    "shotBudget": {
+      "totalShots": 12,
+      "averageDurationSec": 6,
+      "hookShots": 1,
+      "setupShots": 4,
+      "evidenceShots": 4,
+      "payoffShots": 1,
+      "breathShots": 2
+    },
+    "rhythmCurve": [
+      {"label": "opening", "shotFunction": "hook|setup|reaction|evidence|transition|payoff|breath|cta|mixed", "intensity": 0.8, "intent": "rhythm intent"}
+    ],
+    "functionMix": [
+      {"shotFunction": "hook|setup|reaction|evidence|transition|payoff|breath|cta", "count": 1}
+    ],
     "continuityChecks": ["cross-shot check"]
   },
   "visualUnits": [{
@@ -59,10 +74,24 @@ Return JSON only:
     "assetRefs": [{"id": "exact available asset id", "kind": "character|location|prop", "name": "exact asset name"}],
     "shotSpec": {
       "narrativeIntent": "shot purpose",
+      "shotFunction": "hook|setup|reaction|evidence|transition|payoff|breath|cta",
+      "primarySubject": "single primary visual subject",
+      "visibleAssets": [{"id": "exact available asset id", "kind": "character|location|prop", "name": "exact asset name"}],
       "subjectIdentity": ["identity anchor"],
       "startState": "opening state",
       "actionBeats": ["ordered action"],
       "endState": "stable closing state",
+      "continuity": {
+        "fromPrevious": "what this shot inherits from the previous shot",
+        "toNext": "what this shot hands to the next shot",
+        "screenDirection": "eye-line and movement direction",
+        "lightingContinuity": "lighting and color continuity"
+      },
+      "singleImageFeasibility": {
+        "status": "feasible|needs_split|text_only|composite_only",
+        "reason": "why this does or does not work as one still image",
+        "riskFlags": ["generation risk"]
+      },
       "spatialContinuity": "spatial continuity",
       "camera": "shot size, angle, and primary move",
       "sceneLightingBaseline": "lighting baseline",
@@ -73,5 +102,14 @@ Return JSON only:
     }
   }]
 }
+
+Shot-planning standards:
+- shotPlan must allocate a global shot-function budget before individual units. Do not split mechanically by text length. The hook/setup/evidence/payoff/breath/cta mix must serve the content plan.
+- functionMix must be explainable from visualUnits[*].shotSpec.shotFunction; it must not be decorative summary.
+- rhythmCurve describes emotion or information intensity across the whole video, using intensity from 0 to 1.
+- Every visualUnit has exactly one shotFunction, one primarySubject, and one primary visual event.
+- shotSpec.visibleAssets must stay consistent with visualUnit.assetRefs. If a locked asset appears, do not mention it only in description.
+- continuity must state what the shot inherits from the previous shot and hands to the next shot; do not write only "natural transition".
+- If singleImageFeasibility.status is not feasible, imagePrompt must downgrade according to text_card or composite responsibilities, or the content must be split into multiple visualUnits.
 
 A guide must cover every clip and choose among book cover, quote card, diagram, illustration, and kinetic text according to information purpose. Do not make every unit a character illustration. When several sources or locations are needed, split them into several visualUnits instead of packing them into one imagePrompt. Fiction must also cover every clip and may provide compact global recommendations per clip; detailed storyboard generation must still obey the Treatment and Bible.

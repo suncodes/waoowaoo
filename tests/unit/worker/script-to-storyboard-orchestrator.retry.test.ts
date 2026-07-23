@@ -15,7 +15,26 @@ describe('script-to-storyboard orchestrator retry', () => {
           throw new TypeError('terminated')
         }
         return {
-          text: JSON.stringify([{ panel_number: 1, description: '镜头', location: '场景A', source_text: '原文', characters: [] }]),
+          text: JSON.stringify([{
+            panel_number: 1,
+            description: '镜头',
+            location: '场景A',
+            source_text: '原文',
+            characters: [],
+            shot_function: 'hook',
+            primary_subject: '角色A',
+            continuity: {
+              from_previous: '首次建立',
+              to_next: '进入动作',
+              screen_direction: '角色A看向右侧',
+              lighting_continuity: '顶光保持',
+            },
+            single_image_feasibility: {
+              status: 'feasible',
+              reason: '单一空间动作',
+              risk_flags: [],
+            },
+          }]),
           reasoning: '',
         }
       }
@@ -56,6 +75,10 @@ describe('script-to-storyboard orchestrator retry', () => {
     })
 
     expect(result.summary.clipCount).toBe(1)
+    expect(result.clipPanels[0].finalPanels[0]).toEqual(expect.objectContaining({
+      shot_function: 'hook',
+      primary_subject: '角色A',
+    }))
     expect(runStep).toHaveBeenCalled()
     expect(attemptsByAction.get('storyboard_phase1_plan')).toBe(3)
     expect(phase1Metas).toEqual([

@@ -60,6 +60,7 @@ export function addGuideSegment(params: {
       label: reference?.sourceAnchor.label || params.sourceLabel,
       ...(reference?.sourceAnchor.chapter ? { chapter: reference.sourceAnchor.chapter } : {}),
     },
+    riskFlags: [],
   }
   const insertAt = Math.max(0, Math.min(params.afterIndex + 1, next.segments.length))
   next.segments.splice(insertAt, 0, segment)
@@ -134,6 +135,7 @@ export function mergeGuideSegmentWithNext(
     narration: [current.narration.trim(), following.narration.trim()].filter(Boolean).join('\n\n'),
     visualPurpose: uniqueStrings([current.visualPurpose, following.visualPurpose]).join(' / '),
     visualHints: uniqueStrings([...current.visualHints, ...following.visualHints]),
+    riskFlags: [...current.riskFlags, ...following.riskFlags],
     onScreenText: uniqueStrings([current.onScreenText, following.onScreenText]).join(' / ') || undefined,
     estimatedDurationSec: current.estimatedDurationSec + following.estimatedDurationSec,
     sourceAnchor: {

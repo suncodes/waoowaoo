@@ -39,6 +39,19 @@ Output format (JSON array only):
     "location": "location name",
     "scene_type": "daily",
     "source_text": "exact or near-exact source excerpt",
+    "shot_function": "hook|setup|reaction|evidence|transition|payoff|breath|cta",
+    "primary_subject": "single primary visual subject",
+    "continuity": {
+      "from_previous": "what this panel inherits from the previous panel",
+      "to_next": "what this panel hands to the next panel",
+      "screen_direction": "eye-line and movement direction",
+      "lighting_continuity": "lighting and color handoff"
+    },
+    "single_image_feasibility": {
+      "status": "feasible|needs_split|text_only|composite_only",
+      "reason": "why it works or does not work as one still image",
+      "risk_flags": ["risk"]
+    },
     "shot_type": "medium shot",
     "camera_move": "static",
     "video_prompt": "short visual motion prompt",
@@ -66,3 +79,5 @@ Planning rules:
 17. A speaker must be visible for dialogue. Add a separate listener reaction only when it materially advances emotion or story.
 18. For narrated guides, use visuals that carry the stated information. Never invent a host, reader, or character associated only with the art style.
 19. Characters absent from the character library must not appear in `characters` or description. Art style controls visual language only and is not a source of characters, buildings, logos, or motifs.
+20. Every panel must include shot_function, primary_subject, continuity, and single_image_feasibility. These fields feed the downstream professional prompt compiler and must not be omitted.
+21. If single_image_feasibility.status is not feasible, keep description limited to what one still image can express and explain the split/composite risk in reason.

@@ -1,4 +1,6 @@
 import type { ContentPlan, GuideContentPlan, GuideSegment } from '@/lib/content-planning'
+import type { AssetBibleItem } from '@/lib/assets/asset-bible'
+import type { AssetBibleReviewResult } from '@/lib/assets/asset-bible-review'
 import {
   cloneWorkspaceValue,
   createContentArtifactMeta,
@@ -255,6 +257,8 @@ export function approveContentArtifact(contentPlan: unknown, now: string): unkno
 export function markContentAssetRequirementsAnalyzed(params: {
   contentPlan: unknown
   assetIds: string[]
+  assetBible?: AssetBibleItem[]
+  review?: AssetBibleReviewResult
   now: string
 }): unknown {
   const meta = cloneWorkspaceValue(
@@ -266,6 +270,8 @@ export function markContentAssetRequirementsAnalyzed(params: {
     analyzedAt: params.now,
     approvedAt: null,
     assetIds: [...new Set(params.assetIds.filter(Boolean))],
+    assetBible: cloneWorkspaceValue(params.assetBible || []),
+    review: params.review ? cloneWorkspaceValue(params.review) : null,
   }
   meta.updatedAt = params.now
   meta.updatedBy = 'ai'

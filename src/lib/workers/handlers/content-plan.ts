@@ -7,12 +7,17 @@ import {
   type BookGuideSourceMode,
 } from '@/lib/book-guide/seed'
 import {
+  type ContentRiskFlag,
   type ContentPlanResult,
   parseContentPlan,
   parseContentPlanResult,
   parseContentReview,
   type GuideContentPlan,
 } from '@/lib/content-planning'
+import {
+  mergeContentReviewWithQualityGate,
+  reviewContentPlanQuality,
+} from '@/lib/content-planning/content-quality-review'
 import { createArtifact } from '@/lib/run-runtime/service'
 import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
 import { isBookGuideProfile, resolveVideoProfile } from '@/lib/video-profile'
@@ -81,13 +86,34 @@ function applyBookGuideEvidencePolicy(
   }
 
   const sourceConfidence = Math.min(seed.confidence, 0.7)
+  const sourceGapRisk: ContentRiskFlag = {
+    code: 'source_gap',
+    severity: 'warning',
+    message: '当前导读框架仅基于模型常识，需用户提供原文或资料后再确认事实细节。',
+  }
   const contentPlan: GuideContentPlan = {
     ...result.contentPlan,
+    sourceLedger: result.contentPlan.sourceLedger.map((entry) => ({
+      ...entry,
+      sourceType: 'model_knowledge',
+      confidence: Math.min(entry.confidence, sourceConfidence),
+      quote: undefined,
+      riskFlags: entry.riskFlags.some((risk) => risk.code === 'source_gap')
+        ? entry.riskFlags
+        : [...entry.riskFlags, { ...sourceGapRisk, sourceId: entry.id }],
+    })),
+    riskFlags: result.contentPlan.riskFlags.some((risk) => risk.code === 'source_gap')
+      ? result.contentPlan.riskFlags
+      : [...result.contentPlan.riskFlags, sourceGapRisk],
     segments: result.contentPlan.segments.map((segment) => {
       const sourceAnchor = { ...segment.sourceAnchor }
       delete sourceAnchor.quote
+      const segmentRisk = segment.riskFlags.some((risk) => risk.code === 'source_gap')
+        ? segment.riskFlags
+        : [...segment.riskFlags, { ...sourceGapRisk, sourceId: segment.id }]
       return {
         ...segment,
+        riskFlags: segmentRisk,
         sourceAnchor: {
           ...sourceAnchor,
           sourceType: 'model_knowledge',
@@ -118,6 +144,7 @@ function applyBookGuideEvidencePolicy(
       status: result.contentReview.status === 'blocked' ? 'blocked' : 'warning',
       sourceSupportScore: Math.min(result.contentReview.sourceSupportScore, 70),
       score: Math.min(result.contentReview.score, 85),
+      stabilityScore: Math.min(result.contentReview.stabilityScore, 85),
       issues,
       revisionInstructions: result.contentReview.revisionInstructions,
     },
@@ -365,29 +392,47 @@ export async function handleContentPlanTask(job: Job<TaskJobData>) {
     parseContentPlanResult(planPayload, reviewPayload, profile),
     bookGuideSeed,
   )
+  const contentQualityReview = reviewContentPlanQuality({
+    targetId: episodeId,
+    result,
+    profile,
+  })
+  const gatedResult: ContentPlanResult = {
+    ...result,
+    contentReview: mergeContentReviewWithQualityGate(result.contentReview, contentQualityReview),
+  }
   await reportTaskProgress(job, 84, { stage: 'content_plan_persist', displayMode: 'detail' })
   await assertTaskActive(job, 'content_plan_persist')
   await persistContentPlan({
     episodeId,
-    result,
-    commitGuideClips: result.contentReview.status !== 'blocked',
+    result: gatedResult,
+    commitGuideClips: gatedResult.contentReview.status !== 'blocked',
+  })
+  await createArtifact({
+    runId: readTaskRunId(job),
+    stepKey: 'content_quality_review',
+    artifactType: 'content.quality.review',
+    refId: episodeId,
+    payload: toJsonRecord({ profile, bookGuideSeed, review: contentQualityReview }),
   })
   await createArtifact({
     runId: readTaskRunId(job),
     stepKey: 'content_plan',
     artifactType: 'content.plan',
     refId: episodeId,
-    payload: toJsonRecord({ profile, bookGuideSeed, ...result }),
+    payload: toJsonRecord({ profile, bookGuideSeed, contentQualityReview, ...gatedResult }),
   })
 
-  if (result.contentReview.status === 'blocked') {
-    throw new Error(`CONTENT_PLAN_BLOCKED: ${result.contentReview.revisionInstructions.join('; ')}`)
+  if (gatedResult.contentReview.status === 'blocked') {
+    throw new Error(`CONTENT_PLAN_BLOCKED: ${gatedResult.contentReview.revisionInstructions.join('; ')}`)
   }
   return {
     episodeId,
     profilePreset: profile.preset,
-    planType: result.contentPlan.planType,
-    reviewStatus: result.contentReview.status,
-    reviewScore: result.contentReview.score,
+    planType: gatedResult.contentPlan.planType,
+    reviewStatus: gatedResult.contentReview.status,
+    reviewScore: gatedResult.contentReview.score,
+    contentQualityReviewStatus: contentQualityReview.status,
+    contentQualityReviewScore: contentQualityReview.score,
   }
 }

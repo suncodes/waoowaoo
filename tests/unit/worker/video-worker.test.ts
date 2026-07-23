@@ -10,6 +10,9 @@ type PanelRow = {
   imageUrl: string | null
   videoPrompt: string | null
   description: string | null
+  imagePrompt?: string | null
+  cameraMove?: string | null
+  photographyRules?: unknown
   firstLastFramePrompt: string | null
   duration: number | null
 }
@@ -42,6 +45,9 @@ const concurrencyGateMock = vi.hoisted(() => ({
   withUserConcurrencyGate: vi.fn(async <T>(input: {
     run: () => Promise<T>
   }) => await input.run()),
+}))
+const artifactMock = vi.hoisted(() => ({
+  createArtifact: vi.fn(async () => undefined),
 }))
 
 const prismaMock = vi.hoisted(() => ({
@@ -98,6 +104,7 @@ vi.mock('@/lib/api-config', () => ({
 }))
 vi.mock('@/lib/config-service', () => configServiceMock)
 vi.mock('@/lib/workers/user-concurrency-gate', () => concurrencyGateMock)
+vi.mock('@/lib/run-runtime/service', () => artifactMock)
 
 function buildPanel(overrides?: Partial<PanelRow>): PanelRow {
   return {
@@ -106,6 +113,8 @@ function buildPanel(overrides?: Partial<PanelRow>): PanelRow {
     imageUrl: 'cos/panel-image.png',
     videoPrompt: 'panel prompt',
     description: 'panel description',
+    imagePrompt: 'panel image prompt',
+    cameraMove: 'slow push',
     firstLastFramePrompt: null,
     duration: 5,
     ...(overrides || {}),
@@ -222,6 +231,57 @@ describe('worker video processor behavior', () => {
       videoUrl: 'cos/lip-sync/video.mp4',
       actualVideoTokens: 108000,
     })
+  })
+
+  it('VIDEO_PANEL: 使用结构化视频 prompt compiler 并写入快照 artifact', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce(buildPanel({
+      videoPrompt: '缓慢转头看向窗外',
+      photographyRules: {
+        shotSpec: {
+          narrativeIntent: '建立人物压迫感',
+          primarySubject: '尼摩船长',
+          startState: '站在舷窗前',
+          actionBeats: ['缓慢转头看向窗外', '窗外微光流动'],
+          endState: '停在凝视深海的姿态',
+          continuity: {
+            fromPrevious: '承接潜艇外观',
+            toNext: '进入驾驶舱细节',
+            screenDirection: '看向画面右侧',
+            lightingContinuity: '冷色舷窗光',
+          },
+        },
+      },
+    }))
+
+    const job = buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: {
+        runId: 'run-video-1',
+        videoModel: 'ark::doubao-seedance-2-0-260128',
+      },
+    })
+
+    await processor!(job)
+
+    expect(utilsMock.resolveVideoSourceFromGeneration).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        options: expect.objectContaining({
+          prompt: expect.stringContaining('图生视频镜头'),
+        }),
+      }),
+    )
+    const generationCall = utilsMock.resolveVideoSourceFromGeneration.mock.calls[0]?.[1] as { options?: { prompt?: string } }
+    expect(generationCall.options?.prompt).toContain('主体主运动：缓慢转头看向窗外')
+    expect(generationCall.options?.prompt).toContain('不要改变角色身份')
+    expect(artifactMock.createArtifact).toHaveBeenCalledWith(expect.objectContaining({
+      runId: 'run-video-1',
+      stepKey: 'panel_video_prompt',
+      artifactType: 'prompt.panel_video.snapshot',
+      refId: 'panel-1',
+    }))
   })
 
   it('LIP_SYNC: 缺少 panel 时显式失败', async () => {

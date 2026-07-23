@@ -72,6 +72,12 @@ describe('video quality workflow contracts', () => {
     expect(result.contentPlan.planType).toBe('guide')
     if (result.contentPlan.planType === 'guide') {
       expect(result.contentPlan.segments[0].sourceAnchor.label).toBe('第一章')
+      expect(result.contentPlan.hookPattern).toBe('question')
+      expect(result.contentPlan.sourceLedger).toEqual([expect.objectContaining({
+        label: '第一章',
+        sourceType: 'user_source',
+      })])
+      expect(result.contentPlan.segments[0].riskFlags).toEqual([])
     }
 
     const jargonPayload = buildGuidePlanPayload()
@@ -125,6 +131,11 @@ describe('video quality workflow contracts', () => {
     const result = parseVisualPlanResult(rawPlan, profile, ['clip-1'])
     expect(result.visualUnits[0].shotSpec.startState).toBe('stable opening state')
     expect(result.visualUnits[0].shotSpec.durationIntent).toBe('8 seconds')
+    expect(result.visualUnits[0].shotSpec.shotFunction).toBe('hook')
+    expect(result.visualUnits[0].shotSpec.primarySubject).toBe('展示行为循环图')
+    expect(result.visualUnits[0].shotSpec.singleImageFeasibility.status).toBe('feasible')
+    expect(result.shotPlan.shotBudget.totalShots).toBe(1)
+    expect(result.shotPlan.functionMix).toEqual([{ shotFunction: 'hook', count: 1 }])
     expect(() => parseVisualPlanResult(rawPlan, profile, ['clip-other']))
       .toThrow('clipId does not exist')
     expect(() => parseVisualPlanResult(rawPlan, profile, ['clip-1', 'clip-2']))

@@ -31,7 +31,11 @@
    - characters: [{name: "角色名", appearance: "形象名", slot: "场景固定位置描述"}]
    - location: 场景名称（从资产库选择）
    - scene_type: daily/emotion/action/epic/suspense
-   - source_text: 对应原文片段 ⚠️ 必填，不得为空
+  - source_text: 对应原文片段 ⚠️ 必填，不得为空
+  - shot_function: hook/setup/reaction/evidence/transition/payoff/breath/cta，镜头承担的唯一叙事功能
+  - primary_subject: 唯一主视觉主体，必须是画面真正焦点
+  - continuity: {from_previous: "承接上一镜的信息", to_next: "交给下一镜的信息", screen_direction: "视线和运动方向", lighting_continuity: "光色承接"}
+  - single_image_feasibility: {status: "feasible|needs_split|text_only|composite_only", reason: "单图可执行性原因", risk_flags: ["风险"]}
 
 3. source_text 规则（极其重要）：
    ⚠️ 每个分镜都必须包含，不得为null或空字符串
@@ -250,6 +254,19 @@
     ],
     "location": "办公室",
     "scene_type": "daily",
+    "shot_function": "setup",
+    "primary_subject": "张三",
+    "continuity": {
+      "from_previous": "办公室空间首次建立",
+      "to_next": "张三准备开口推动会议",
+      "screen_direction": "张三从门口向室内移动",
+      "lighting_continuity": "办公室自然光保持一致"
+    },
+    "single_image_feasibility": {
+      "status": "feasible",
+      "reason": "一个办公室空间中的一次进入动作",
+      "risk_flags": []
+    },
     "source_text": "张三走进办公室，看着正在工作的李四和王五"
   },
   {
@@ -262,6 +279,19 @@
     ],
     "location": "办公室",
     "scene_type": "daily",
+    "shot_function": "evidence",
+    "primary_subject": "张三",
+    "continuity": {
+      "from_previous": "承接张三进入办公室后的位置",
+      "to_next": "李四和王五将作出反应",
+      "screen_direction": "张三面向工位区域",
+      "lighting_continuity": "办公室光线不变"
+    },
+    "single_image_feasibility": {
+      "status": "feasible",
+      "reason": "说话者可见，听者仅作为空间关系",
+      "risk_flags": []
+    },
     "source_text": "说：开会了"
   },
   {
@@ -274,6 +304,19 @@
     ],
     "location": "办公室",
     "scene_type": "daily",
+    "shot_function": "reaction",
+    "primary_subject": "李四和王五",
+    "continuity": {
+      "from_previous": "承接张三发出开会要求",
+      "to_next": "王五准备起身",
+      "screen_direction": "李四和王五看向门口",
+      "lighting_continuity": "办公室光线不变"
+    },
+    "single_image_feasibility": {
+      "status": "feasible",
+      "reason": "同一空间中的一次反应",
+      "risk_flags": []
+    },
     "source_text": "李四抬头点了点头，王五放下手中的笔"
   },
   {
@@ -286,6 +329,19 @@
     ],
     "location": "办公室",
     "scene_type": "daily",
+    "shot_function": "transition",
+    "primary_subject": "王五",
+    "continuity": {
+      "from_previous": "承接王五放下笔",
+      "to_next": "进入下一段会议行动",
+      "screen_direction": "人物向门口方向移动",
+      "lighting_continuity": "办公室光线不变"
+    },
+    "single_image_feasibility": {
+      "status": "feasible",
+      "reason": "一个站起动作，不塞入连续过程",
+      "risk_flags": []
+    },
     "source_text": "王五站起身"
   }
 ]
@@ -337,3 +393,5 @@ Clip信息：
 16. ⚠️ JSON安全：原文中的所有引号（""''「」等）在 JSON 字符串值中必须统一替换为「」，严禁出现未转义的英文双引号 "
 17. 镜头数量自检：不得按字符数拆镜；不得生成内容相同、仅景别不同的冗余镜头；总镜头时长必须与 Clip.duration 基本一致
 18. 未在角色库中明确存在的角色不得出现在 characters 或 description 中；风格名称不能被当作角色来源
+19. 每个分镜必须填写 shot_function、primary_subject、continuity、single_image_feasibility；这些字段用于后续专业提示词编译，不得省略
+20. single_image_feasibility.status 不是 feasible 时，必须在 description 中只保留能由单张图表达的内容，并在 reason 说明需要拆分或合成的原因

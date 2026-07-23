@@ -37,6 +37,8 @@ describe('content asset requirement state', () => {
       analyzedAt: '2026-07-20T01:00:00.000Z',
       approvedAt: null,
       assetIds: [],
+      assetBible: [],
+      review: null,
     })
 
     const approved = approveContentAssetRequirements(analyzed, '2026-07-20T01:05:00.000Z')

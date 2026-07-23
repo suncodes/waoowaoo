@@ -99,10 +99,15 @@ describe('worker character-image-task-handler behavior', () => {
     const job = buildJob({ imageIndex: 0 })
     const result = await handleCharacterImageTask(job)
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       appearanceId: 'appearance-2',
       imageCount: 1,
       imageUrl: 'cos/character-generated-0.png',
+      promptSnapshots: [expect.objectContaining({
+        snapshotType: 'asset_image_prompt',
+        targetType: 'CharacterAppearance',
+        targetId: 'appearance-2',
+      })],
     })
 
     const generationInput = sharedMock.generateProjectLabeledImageToStorage.mock.calls[0]?.[0] as {
@@ -182,11 +187,17 @@ describe('worker character-image-task-handler behavior', () => {
 
     const result = await handleCharacterImageTask(buildJob({ count: 5 }))
 
-    expect(sharedMock.generateProjectLabeledImageToStorage).toHaveBeenCalledTimes(5)
-    expect(result).toEqual({
+    expect(sharedMock.generateProjectLabeledImageToStorage).toHaveBeenCalledTimes(4)
+    expect(result).toMatchObject({
       appearanceId: 'appearance-2',
-      imageCount: 5,
+      imageCount: 4,
       imageUrl: 'cos/character-generated-0.png',
+      promptSnapshots: [
+        expect.objectContaining({ snapshotType: 'asset_image_prompt' }),
+        expect.objectContaining({ snapshotType: 'asset_image_prompt' }),
+        expect.objectContaining({ snapshotType: 'asset_image_prompt' }),
+        expect.objectContaining({ snapshotType: 'asset_image_prompt' }),
+      ],
     })
     expect(prismaMock.characterAppearance.update).toHaveBeenCalledWith({
       where: { id: 'appearance-2' },
@@ -196,7 +207,6 @@ describe('worker character-image-task-handler behavior', () => {
           'cos/character-generated-1.png',
           'cos/character-generated-2.png',
           'cos/character-generated-3.png',
-          'cos/character-generated-4.png',
         ]),
         imageUrl: 'cos/character-generated-0.png',
       },

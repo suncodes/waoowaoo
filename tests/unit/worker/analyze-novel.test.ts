@@ -276,6 +276,12 @@ describe('worker analyze-novel behavior', () => {
               analyzedAt: expect.any(String),
               approvedAt: null,
               assetIds: [],
+              assetBible: [],
+              review: expect.objectContaining({
+                reviewKind: 'asset_bible',
+                status: 'passed',
+                assetCount: 0,
+              }),
             },
           }),
         }),
@@ -331,6 +337,92 @@ describe('worker analyze-novel behavior', () => {
           _workspace: expect.objectContaining({ status: 'stale' }),
         }),
       }),
+    })
+  })
+
+  it('writes an asset bible with evidence for reviewable visual requirements', async () => {
+    prismaMock.novelPromotionProject.findUnique
+      .mockResolvedValueOnce({
+        id: 'np-project-1',
+        analysisModel: 'llm::analysis-1',
+        artStyle: 'cinematic',
+        globalAssetText: '全局设定文本',
+        characters: [],
+        locations: [],
+      })
+      .mockResolvedValueOnce({
+        id: 'np-project-1',
+        characters: [{ id: 'char-nemo', name: '尼摩船长', introduction: '神秘的潜艇指挥者' }],
+        locations: [{ id: 'prop-nautilus', name: '鹦鹉螺号潜水艇', summary: '核心潜艇道具', assetKind: 'prop' }],
+      })
+    prismaMock.novelPromotionEpisode.findUnique.mockResolvedValue({
+      id: 'episode-1',
+      novelPromotionProjectId: 'np-project-1',
+      novelText: '尼摩船长驾驶鹦鹉螺号潜水艇进入深海。',
+      contentPlan: {
+        planType: 'guide',
+        title: '海底两万里导读',
+        thesis: '理解科学想象',
+        recommendationAngle: '冒险与技术',
+        outline: [],
+        segments: [{
+          id: 'segment-1',
+          title: '深海冒险',
+          narration: '尼摩船长驾驶鹦鹉螺号潜水艇进入深海。',
+          visualPurpose: '锁定核心人物和潜艇',
+          visualHints: ['尼摩船长', '鹦鹉螺号潜水艇'],
+        }],
+      },
+      productionBible: null,
+      clips: [{
+        id: 'clip-1',
+        summary: '深海冒险',
+        content: '尼摩船长驾驶鹦鹉螺号潜水艇进入深海。',
+        screenplay: null,
+        characters: null,
+        location: null,
+        props: null,
+      }],
+    })
+    llmMock.getCompletionContent
+      .mockReset()
+      .mockReturnValueOnce(JSON.stringify({ characters: [] }))
+      .mockReturnValueOnce(JSON.stringify({ locations: [] }))
+      .mockReturnValueOnce(JSON.stringify({ props: [] }))
+
+    await handleAnalyzeNovelTask(buildJob())
+
+    expect(prismaMock.novelPromotionEpisode.update).toHaveBeenCalledWith({
+      where: { id: 'episode-1' },
+      data: {
+        contentPlan: expect.objectContaining({
+          _workspace: expect.objectContaining({
+            assetRequirements: expect.objectContaining({
+              assetIds: expect.arrayContaining(['char-nemo', 'prop-nautilus']),
+              review: expect.objectContaining({
+                reviewKind: 'asset_bible',
+                status: 'passed',
+                assetCount: 2,
+                mustLockCount: 2,
+              }),
+              assetBible: expect.arrayContaining([
+                expect.objectContaining({
+                  id: 'char-nemo',
+                  canonicalName: '尼摩船长',
+                  priority: 'must_lock',
+                  generationNeed: 'reference_required',
+                  evidence: expect.arrayContaining([expect.objectContaining({ sourceId: 'segment-1' })]),
+                }),
+                expect.objectContaining({
+                  id: 'prop-nautilus',
+                  canonicalName: '鹦鹉螺号潜水艇',
+                  kind: 'prop',
+                }),
+              ]),
+            }),
+          }),
+        }),
+      },
     })
   })
 })

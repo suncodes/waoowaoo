@@ -136,10 +136,12 @@ describe('worker visual-plan behavior', () => {
   it('persists guide storyboards through the shared visual plan adapter', async () => {
     const result = await handleVisualPlanTask(buildJob())
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       episodeId: 'episode-1',
       profilePreset: 'book_guide',
       visualUnitCount: 1,
+      storyboardReviewScore: expect.any(Number),
+      storyboardReviewStatus: 'passed',
       storyboardPersisted: true,
     })
     expect(persistenceMock.persistVisualPlan).toHaveBeenCalledWith(expect.objectContaining({
@@ -147,9 +149,14 @@ describe('worker visual-plan behavior', () => {
       isBookGuide: true,
       narratorLabel: '旁白',
       result: expect.objectContaining({ visualUnits: [expect.objectContaining({ clipId: 'clip-1' })] }),
+      storyboardReview: expect.objectContaining({ reviewKind: 'storyboard_plan', status: 'passed' }),
     }))
     expect(artifactMock.createArtifact).toHaveBeenCalledWith(expect.objectContaining({
       artifactType: 'visual.plan',
+      runId: 'run-visual-1',
+    }))
+    expect(artifactMock.createArtifact).toHaveBeenCalledWith(expect.objectContaining({
+      artifactType: 'storyboard.quality.review',
       runId: 'run-visual-1',
     }))
   })
@@ -321,6 +328,32 @@ describe('worker visual-plan behavior', () => {
     expect(planningMock.executePlanningJsonStep).toHaveBeenCalledTimes(2)
     expect(planningMock.executePlanningJsonStep).toHaveBeenNthCalledWith(2, expect.objectContaining({
       action: 'visual_plan_repair',
+    }))
+  })
+
+  it('repairs visual plans that fail storyboard feasibility review', async () => {
+    const invalid = visualPlanPayload()
+    invalid.visualUnits[0] = {
+      ...invalid.visualUnits[0],
+      renderMode: 'generated_image',
+      shotSpec: {
+        singleImageFeasibility: {
+          status: 'needs_split',
+          reason: '同一张图要求展示两个不同时间点',
+          riskFlags: ['multi_moment'],
+        },
+      },
+    } as typeof invalid.visualUnits[number] & { shotSpec: unknown }
+    planningMock.executePlanningJsonStep
+      .mockResolvedValueOnce(invalid)
+      .mockResolvedValueOnce(visualPlanPayload())
+
+    await handleVisualPlanTask(buildJob())
+
+    expect(planningMock.executePlanningJsonStep).toHaveBeenCalledTimes(2)
+    expect(planningMock.executePlanningJsonStep).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      action: 'visual_plan_repair',
+      stepAttempt: 2,
     }))
   })
 

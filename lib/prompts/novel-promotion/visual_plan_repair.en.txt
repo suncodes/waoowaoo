@@ -26,3 +26,6 @@ Hard requirements:
 8. Every assetRefs id, kind, and name must exactly match Available assets. Do not omit assetRefs when the shot mentions an existing asset.
 9. Every imagePrompt describes one time, one place, and one primary visual event. Remove montage, collage, multi-scene, and exact-text generation requests.
 10. Repair render responsibilities: text_card is a text-free plate, composite is one clean plate or foreground element, and generated_image is one complete shot.
+11. shotPlan must contain shotBudget, rhythmCurve, functionMix, and continuityChecks. If missing, conservatively derive them from visualUnits.
+12. Every shotSpec must contain shotFunction, primarySubject, visibleAssets, continuity, and singleImageFeasibility. If missing, derive them from description, assetRefs, shotType, and cameraMove.
+13. shotSpec.visibleAssets must match visualUnit.assetRefs and must not reference IDs outside Available assets.

@@ -96,6 +96,7 @@ describe('worker visual-auto-repair behavior', () => {
       candidateUrls: ['panel-1-1-0.png', 'panel-1-1-1.png'],
       versionHash: 'version-2',
       attempt: 1,
+      maxAttempts: 1,
     })
     expect(utilsMock.resolveImageSourceFromGeneration).toHaveBeenCalledTimes(2)
     expect(utilsMock.resolveImageSourceFromGeneration).toHaveBeenCalledWith(
@@ -112,12 +113,17 @@ describe('worker visual-auto-repair behavior', () => {
     expect(prismaMock.novelPromotionPanel.update).toHaveBeenCalledWith({
       where: { id: 'panel-1' },
       data: expect.objectContaining({
-        candidateImages: JSON.stringify(['panel-1-1-0.png', 'panel-1-1-1.png']),
+        candidateImages: JSON.stringify(['candidate-original.png', 'panel-1-1-0.png', 'panel-1-1-1.png']),
         visualQualityState: expect.objectContaining({
           status: 'reviewing',
           versionHash: 'version-2',
           attempt: 1,
           activeCandidateUrl: 'approved-old.png',
+          repairLineage: [expect.objectContaining({
+            attempt: 1,
+            repairVersionHash: 'version-2',
+            scoreBefore: null,
+          })],
         }),
       }),
     })
@@ -126,6 +132,7 @@ describe('worker visual-auto-repair behavior', () => {
       payload: expect.objectContaining({
         candidateUrls: ['panel-1-1-0.png', 'panel-1-1-1.png'],
         versionHash: 'version-2',
+        repairLineage: [expect.objectContaining({ repairVersionHash: 'version-2' })],
       }),
     }))
     expect(artifactMock.createArtifact).toHaveBeenCalledWith(expect.objectContaining({

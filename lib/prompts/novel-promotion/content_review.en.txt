@@ -18,8 +18,12 @@ Return JSON only:
   "score": 0,
   "profileFitScore": 0,
   "sourceSupportScore": 0,
+  "tensionScore": 0,
+  "visualizationScore": 0,
+  "pacingScore": 0,
+  "stabilityScore": 0,
   "issues": [{
-    "code": "PROFILE_MISMATCH|STRUCTURE_WEAK|DURATION_OVERFLOW|REPETITION|SOURCE_UNSUPPORTED|SPOILER_POLICY_VIOLATION|VISUAL_PURPOSE_MISSING",
+    "code": "PROFILE_MISMATCH|STRUCTURE_WEAK|DURATION_OVERFLOW|REPETITION|SOURCE_UNSUPPORTED|SPOILER_POLICY_VIOLATION|VISUAL_PURPOSE_MISSING|HOOK_WEAK|LOW_TENSION|LOW_VISUALIZATION|STABILITY_DRIFT",
     "severity": "warning|blocking",
     "message": "specific problem",
     "segmentId": "optional segment ID"
@@ -29,11 +33,20 @@ Return JSON only:
 
 For guides, focus on source anchors, factual support, spoiler policy, spoken naturalness, and visual purpose. For fiction, focus on the throughline, beat progression, repetition, and target duration. Do not award a high sourceSupportScore without evidence.
 
+Score requirements:
+- tensionScore: whether the first 5-12 seconds establish a clear question, contrast, suspense, or viewing promise. If it is only a flat introduction, cap it at 75 and flag HOOK_WEAK or LOW_TENSION.
+- visualizationScore: whether every visualPurpose and visualHints pair can become one time, one place, and one primary visual event. Abstract claims without visible carriers must not score above 75.
+- pacingScore: whether total duration, segment length, information density, and spoken naturalness fit the target.
+- stabilityScore: whether hookPattern, thesis/logline, outline/beat, sourceLedger, and riskFlags lock the same creative direction. If a rerun with the same input would likely change the angle or evidence boundary, cap it at 80.
+
 Mandatory checks:
 - If planned duration exceeds 92% of targetDurationSec, flag DURATION_OVERFLOW. A plan that fills the target exactly must not be approved.
 - If narration clearly exceeds a natural spoken capacity for estimatedDurationSec, flag DURATION_OVERFLOW.
 - If a segment answers several unrelated questions, repeats previous conclusions, or lacks a clear viewer takeaway, flag STRUCTURE_WEAK or REPETITION.
 - If visualHints ask one still image to perform a montage, multi-location collage, sequential actions, or exact text rendering, flag VISUAL_PURPOSE_MISSING and require one time, one place, and one primary visual event.
+- If hookPattern conflicts with the first segment, or the first segment lacks a clear question, contrast, or promise, flag HOOK_WEAK.
+- If sourceLedger is missing, conflicts with sourceAnchor, or high-risk facts have no evidence boundary, flag SOURCE_UNSUPPORTED.
+- If riskFlags are empty despite model knowledge, factual claims, spoiler risk, or non-visualizable content, flag STABILITY_DRIFT.
 - In model-knowledge mode, precise rankings, quantities, verbatim quotations, absolute claims, or named attribution claims must be flagged SOURCE_UNSUPPORTED.
 - If light-spoiler content reveals an ending, identity answer, or decisive twist outcome, flag SPOILER_POLICY_VIOLATION.
 - Approve only when structure, evidence boundaries, timing, and visual responsibilities are all executable.

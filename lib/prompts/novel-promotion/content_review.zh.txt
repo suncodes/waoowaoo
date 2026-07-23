@@ -18,8 +18,12 @@ VideoProfile：
   "score": 0,
   "profileFitScore": 0,
   "sourceSupportScore": 0,
+  "tensionScore": 0,
+  "visualizationScore": 0,
+  "pacingScore": 0,
+  "stabilityScore": 0,
   "issues": [{
-    "code": "PROFILE_MISMATCH|STRUCTURE_WEAK|DURATION_OVERFLOW|REPETITION|SOURCE_UNSUPPORTED|SPOILER_POLICY_VIOLATION|VISUAL_PURPOSE_MISSING",
+    "code": "PROFILE_MISMATCH|STRUCTURE_WEAK|DURATION_OVERFLOW|REPETITION|SOURCE_UNSUPPORTED|SPOILER_POLICY_VIOLATION|VISUAL_PURPOSE_MISSING|HOOK_WEAK|LOW_TENSION|LOW_VISUALIZATION|STABILITY_DRIFT",
     "severity": "warning|blocking",
     "message": "具体问题",
     "segmentId": "可选段落 ID"
@@ -29,11 +33,20 @@ VideoProfile：
 
 导读重点检查来源锚点、事实支持、剧透策略、口播自然度和视觉功能；剧情重点检查主线、节拍推进、重复和目标时长。没有证据时不得给高 sourceSupportScore。
 
+分项评分要求：
+- tensionScore：开头 5～12 秒是否形成明确问题、反差、悬念或观看承诺；如果只是平铺介绍，不得高于 75，并标记 HOOK_WEAK 或 LOW_TENSION。
+- visualizationScore：每段 visualPurpose 与 visualHints 是否能转成单一时空、单一视觉事件；抽象概念没有可见承载时不得高于 75。
+- pacingScore：总时长、段落长短、信息密度和口播自然度是否匹配。
+- stabilityScore：hookPattern、thesis/logline、outline/beat、sourceLedger 和 riskFlags 是否能锁定同一创作方向；如果同一输入重跑很可能改换立意或来源边界，不得高于 80。
+
 必须执行以下检查：
 - 预计总时长超过 targetDurationSec 的 92%，标记 DURATION_OVERFLOW；完全卡满目标时长不得批准。
 - narration 明显超过对应 estimatedDurationSec 的自然口播容量，标记 DURATION_OVERFLOW。
 - 单个段落同时回答多个无主次的问题、重复前文结论或缺少明确观众收获，标记 STRUCTURE_WEAK 或 REPETITION。
 - visualHints 要求单张图完成混剪、多地点拼贴、多个连续动作或准确文字渲染，标记 VISUAL_PURPOSE_MISSING，并要求拆成单一时空、单一视觉事件。
+- 如果 hookPattern 与首段内容不一致，或第一段没有明确问题/反差/承诺，标记 HOOK_WEAK。
+- 如果 sourceLedger 缺失、与 sourceAnchor 冲突，或高风险事实没有来源边界，标记 SOURCE_UNSUPPORTED。
+- 如果 riskFlags 明显为空但计划存在模型常识、事实断言、剧透或不可视化风险，标记 STABILITY_DRIFT。
 - 模型常识模式出现精确排名、数量、直接引语、绝对化判断或具体归因性断言，标记 SOURCE_UNSUPPORTED。
 - 轻剧透内容揭示结局、身份答案、关键反转结果，标记 SPOILER_POLICY_VIOLATION。
 - 只有结构、来源边界、时长和视觉职责均可执行时才允许 approved。

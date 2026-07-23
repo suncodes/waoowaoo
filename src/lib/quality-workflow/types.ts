@@ -1,4 +1,5 @@
 import type { ImageQualityReviewResult, RepairAction } from '@/lib/visual-quality'
+import type { VisualAutoRepairLineage } from '@/lib/creative-quality/contracts'
 
 export type VisualCandidateGroupOrigin = 'initial' | 'repair'
 
@@ -28,6 +29,7 @@ export interface VisualQualityState {
   maxAttempts: number
   lastAction: RepairAction | null
   review: ImageQualityReviewResult | null
+  repairLineage: VisualAutoRepairLineage[]
   humanConfirmedAt: string | null
   updatedAt: string
 }

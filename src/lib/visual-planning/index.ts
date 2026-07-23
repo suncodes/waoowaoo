@@ -4,7 +4,14 @@ import type {
   DirectorTreatment,
   ProductionBible,
   RenderMode,
+  ShotBudget,
+  ShotFunction,
+  ShotFunctionMixItem,
+  ShotPlan,
+  ShotRhythmPoint,
   ShotSpec,
+  SingleImageFeasibility,
+  ShotContinuity,
   VisualPlanResult,
   VisualAssetRef,
   VisualType,
@@ -36,6 +43,30 @@ function stringArray(value: unknown): string[] {
 function numberInRange(value: unknown, fallback: number, min: number, max: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
   return Math.min(max, Math.max(min, value))
+}
+
+function readShotFunction(value: unknown, fallback: ShotFunction): ShotFunction {
+  if (
+    value === 'hook' ||
+    value === 'setup' ||
+    value === 'reaction' ||
+    value === 'evidence' ||
+    value === 'transition' ||
+    value === 'payoff' ||
+    value === 'breath' ||
+    value === 'cta'
+  ) {
+    return value
+  }
+  return fallback
+}
+
+function inferShotFunction(fallback: JsonRecord): ShotFunction {
+  if (fallback.panelNumber === 1) return 'hook'
+  const visualType = fallback.visualType
+  if (visualType === 'diagram' || visualType === 'book_cover' || visualType === 'quote_card') return 'evidence'
+  if (visualType === 'kinetic_text') return 'transition'
+  return 'setup'
 }
 
 function parseDirectorTreatment(value: unknown): DirectorTreatment {
@@ -80,14 +111,64 @@ function parseSourceAnchor(value: unknown): SourceAnchor | undefined {
   }
 }
 
-function parseShotSpec(value: unknown, fallback: JsonRecord): ShotSpec {
+function parseVisibleAssets(value: unknown, fallbackAssets: VisualAssetRef[]): VisualAssetRef[] {
+  if (!Array.isArray(value)) return fallbackAssets
+  const refs = value.flatMap((item): VisualAssetRef[] => {
+    if (!isRecord(item)) return []
+    const id = optionalString(item.id)
+    const kind = item.kind === 'character' || item.kind === 'location' || item.kind === 'prop'
+      ? item.kind
+      : null
+    const name = optionalString(item.name)
+    return id && kind && name ? [{ id, kind, name }] : []
+  })
+  return refs.length > 0 ? refs : fallbackAssets
+}
+
+function parseShotContinuity(value: unknown, fallback: JsonRecord): ShotContinuity {
   const raw = isRecord(value) ? value : {}
   return {
+    fromPrevious: optionalString(raw.fromPrevious) || optionalString(fallback.spatialContinuity) || '承接上一镜已建立的空间、主体位置和情绪',
+    toNext: optionalString(raw.toNext) || '为下一镜保留清晰的动作或信息方向',
+    screenDirection: optionalString(raw.screenDirection) || optionalString(fallback.spatialContinuity) || '保持既定视线和运动方向',
+    lightingContinuity: optionalString(raw.lightingContinuity) || optionalString(fallback.sceneLightingBaseline) || '遵循 productionBible 的光色连续性',
+  }
+}
+
+function parseSingleImageFeasibility(value: unknown, fallback: JsonRecord): SingleImageFeasibility {
+  const raw = isRecord(value) ? value : {}
+  const status = raw.status === 'needs_split'
+    || raw.status === 'text_only'
+    || raw.status === 'composite_only'
+    ? raw.status
+    : 'feasible'
+  return {
+    status,
+    reason: optionalString(raw.reason) || optionalString(fallback.description) || '单一时空、单一构图和单一主要视觉事件',
+    riskFlags: stringArray(raw.riskFlags),
+  }
+}
+
+function parseShotSpec(value: unknown, fallback: JsonRecord, assetRefs: VisualAssetRef[]): ShotSpec {
+  const raw = isRecord(value) ? value : {}
+  const shotFunction = readShotFunction(raw.shotFunction, inferShotFunction(fallback))
+  const visibleAssets = parseVisibleAssets(raw.visibleAssets, assetRefs)
+  const primarySubject = optionalString(raw.primarySubject)
+    || visibleAssets.find((asset) => asset.kind === 'character')?.name
+    || visibleAssets[0]?.name
+    || optionalString(fallback.description)
+    || '当前镜头主体'
+  return {
     narrativeIntent: optionalString(raw.narrativeIntent) || requiredString(fallback.description, 'visualUnit.description'),
+    shotFunction,
+    primarySubject,
+    visibleAssets,
     subjectIdentity: stringArray(raw.subjectIdentity),
     startState: optionalString(raw.startState) || 'stable opening state',
     actionBeats: stringArray(raw.actionBeats),
     endState: optionalString(raw.endState) || 'stable closing state',
+    continuity: parseShotContinuity(raw.continuity, raw),
+    singleImageFeasibility: parseSingleImageFeasibility(raw.singleImageFeasibility, fallback),
     spatialContinuity: optionalString(raw.spatialContinuity) || 'preserve established screen direction',
     camera: optionalString(raw.camera) || optionalString(fallback.cameraMove) || 'locked camera',
     sceneLightingBaseline: optionalString(raw.sceneLightingBaseline) || 'follow production bible',
@@ -155,7 +236,9 @@ function mentionsAsset(unit: VisualUnit, asset: VisualAssetRef): boolean {
     description: unit.description,
     imagePrompt: unit.imagePrompt,
     videoPrompt: unit.videoPrompt,
+    primarySubject: unit.shotSpec.primarySubject,
     subjectIdentity: unit.shotSpec.subjectIdentity,
+    visibleAssets: unit.shotSpec.visibleAssets,
   }).toLowerCase()
   return text.includes(asset.name.toLowerCase())
 }
@@ -174,6 +257,7 @@ function parseVisualUnits(
     }
     const onScreenText = optionalString(item.onScreenText)
     const sourceAnchor = parseSourceAnchor(item.sourceAnchor)
+    const assetRefs = parseAssetRefs(item.assetRefs, index, availableAssets)
     const unit: VisualUnit = {
       id: optionalString(item.id) || `visual_${index + 1}`,
       clipId,
@@ -188,8 +272,8 @@ function parseVisualUnits(
       durationSec: numberInRange(item.durationSec, 5, 1, 60),
       ...(onScreenText ? { onScreenText } : {}),
       ...(sourceAnchor ? { sourceAnchor } : {}),
-      shotSpec: parseShotSpec(item.shotSpec, item),
-      assetRefs: parseAssetRefs(item.assetRefs, index, availableAssets),
+      shotSpec: parseShotSpec(item.shotSpec, item, assetRefs),
+      assetRefs,
     }
     const referencedAssetIds = new Set(unit.assetRefs?.map((asset) => asset.id) || [])
     for (const asset of availableAssets.values()) {
@@ -199,6 +283,97 @@ function parseVisualUnits(
     }
     return unit
   })
+}
+
+function parseShotBudget(value: unknown, visualUnits: VisualUnit[]): ShotBudget {
+  const raw = isRecord(value) ? value : {}
+  const totalDuration = visualUnits.reduce((sum, unit) => sum + unit.durationSec, 0)
+  const totalShots = Math.round(numberInRange(raw.totalShots, visualUnits.length, 1, 999))
+  const averageDurationSec = numberInRange(
+    raw.averageDurationSec,
+    totalShots > 0 ? totalDuration / totalShots : 0,
+    0,
+    600,
+  )
+  const functionCounts = countShotFunctions(visualUnits)
+  return {
+    totalShots,
+    averageDurationSec,
+    hookShots: Math.round(numberInRange(raw.hookShots, functionCounts.get('hook') || 0, 0, 999)),
+    setupShots: Math.round(numberInRange(raw.setupShots, functionCounts.get('setup') || 0, 0, 999)),
+    evidenceShots: Math.round(numberInRange(raw.evidenceShots, functionCounts.get('evidence') || 0, 0, 999)),
+    payoffShots: Math.round(numberInRange(raw.payoffShots, functionCounts.get('payoff') || 0, 0, 999)),
+    breathShots: Math.round(numberInRange(raw.breathShots, functionCounts.get('breath') || 0, 0, 999)),
+  }
+}
+
+function countShotFunctions(visualUnits: VisualUnit[]): Map<ShotFunction, number> {
+  const counts = new Map<ShotFunction, number>()
+  for (const unit of visualUnits) {
+    counts.set(unit.shotSpec.shotFunction, (counts.get(unit.shotSpec.shotFunction) || 0) + 1)
+  }
+  return counts
+}
+
+function parseRhythmCurve(value: unknown, visualUnits: VisualUnit[]): ShotRhythmPoint[] {
+  if (Array.isArray(value)) {
+    const points = value.flatMap((item, index): ShotRhythmPoint[] => {
+      if (!isRecord(item)) return []
+      const shotFunction = item.shotFunction === 'mixed'
+        ? 'mixed'
+        : readShotFunction(item.shotFunction, 'setup')
+      return [{
+        label: optionalString(item.label) || `rhythm_${index + 1}`,
+        shotFunction,
+        intensity: numberInRange(item.intensity, 0.5, 0, 1),
+        intent: optionalString(item.intent) || '镜头节奏节点',
+      }]
+    })
+    if (points.length > 0) return points
+  }
+  return visualUnits.map((unit, index) => ({
+    label: unit.id || `visual_${index + 1}`,
+    shotFunction: unit.shotSpec.shotFunction,
+    intensity: unit.shotSpec.shotFunction === 'hook' || unit.shotSpec.shotFunction === 'payoff' ? 0.8 : 0.5,
+    intent: unit.shotSpec.narrativeIntent,
+  }))
+}
+
+function parseFunctionMix(value: unknown, visualUnits: VisualUnit[]): ShotFunctionMixItem[] {
+  if (Array.isArray(value)) {
+    const items = value.flatMap((item): ShotFunctionMixItem[] => {
+      if (!isRecord(item)) return []
+      return [{
+        shotFunction: readShotFunction(item.shotFunction, 'setup'),
+        count: Math.round(numberInRange(item.count, 0, 0, 999)),
+      }]
+    }).filter((item) => item.count > 0)
+    if (items.length > 0) return items
+  }
+  return Array.from(countShotFunctions(visualUnits).entries())
+    .map(([shotFunction, count]) => ({ shotFunction, count }))
+}
+
+function parseShotPlan(
+  value: unknown,
+  profile: VideoProfile,
+  visualUnits: VisualUnit[],
+): ShotPlan {
+  const raw = isRecord(value) ? value : {}
+  return {
+    schemaVersion: 1,
+    summary: requiredString(raw.summary, 'shotPlan.summary'),
+    totalEstimatedDurationSec: numberInRange(
+      raw.totalEstimatedDurationSec,
+      profile.targetDurationSec,
+      1,
+      3600,
+    ),
+    shotBudget: parseShotBudget(raw.shotBudget, visualUnits),
+    rhythmCurve: parseRhythmCurve(raw.rhythmCurve, visualUnits),
+    functionMix: parseFunctionMix(raw.functionMix, visualUnits),
+    continuityChecks: stringArray(raw.continuityChecks),
+  }
 }
 
 export function parseVisualPlanResult(
@@ -222,17 +397,7 @@ export function parseVisualPlanResult(
   return {
     directorTreatment: parseDirectorTreatment(value.directorTreatment),
     productionBible: parseProductionBible(value.productionBible),
-    shotPlan: {
-      schemaVersion: 1,
-      summary: requiredString(shotPlan.summary, 'shotPlan.summary'),
-      totalEstimatedDurationSec: numberInRange(
-        shotPlan.totalEstimatedDurationSec,
-        profile.targetDurationSec,
-        1,
-        3600,
-      ),
-      continuityChecks: stringArray(shotPlan.continuityChecks),
-    },
+    shotPlan: parseShotPlan(shotPlan, profile, visualUnits),
     visualUnits,
   }
 }

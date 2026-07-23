@@ -30,14 +30,26 @@ VideoProfile：
   "planType": "narrative",
   "title": "标题",
   "logline": "一句话主线",
+  "hookPattern": "contrast|reversal|question|visual_wonder|identity_filter",
   "themes": ["主题"],
+  "sourceLedger": [{
+    "id": "source_1",
+    "label": "来源名称或位置",
+    "sourceType": "verified_source|user_source|model_knowledge|reference_summary",
+    "usage": "用于哪些 beat 或关键判断",
+    "confidence": 0.85,
+    "quote": "可选，必须来自原始材料",
+    "riskFlags": [{"code": "source_gap|fact_claim|spoiler_risk|overclaim|visualization_gap|duration_risk|structure_drift", "severity": "info|warning|critical", "message": "风险说明"}]
+  }],
+  "riskFlags": [{"code": "source_gap|fact_claim|spoiler_risk|overclaim|visualization_gap|duration_risk|structure_drift", "severity": "info|warning|critical", "message": "全片风险"}],
   "beats": [{
     "id": "beat_1",
     "title": "节拍标题",
     "purpose": "叙事作用",
     "summary": "内容摘要",
     "estimatedDurationSec": 15,
-    "sourceAnchor": {"label": "可选来源位置", "quote": "可选原文"}
+    "sourceAnchor": {"label": "可选来源位置", "quote": "可选原文"},
+    "riskFlags": [{"code": "source_gap|fact_claim|spoiler_risk|overclaim|visualization_gap|duration_risk|structure_drift", "severity": "info|warning|critical", "message": "本节拍风险"}]
   }]
 }
 
@@ -46,7 +58,18 @@ VideoProfile：
   "planType": "guide",
   "title": "导读标题",
   "thesis": "全片核心判断",
+  "hookPattern": "contrast|reversal|question|visual_wonder|identity_filter",
   "recommendationAngle": "推荐或解读角度",
+  "sourceLedger": [{
+    "id": "source_1",
+    "label": "章节、用户资料或模型常识边界",
+    "sourceType": "verified_source|user_source|model_knowledge|reference_summary",
+    "usage": "用于哪些 segment 或关键判断",
+    "confidence": 0.7,
+    "quote": "可选，只有原始材料含有逐字依据时才能填写",
+    "riskFlags": [{"code": "source_gap|fact_claim|spoiler_risk|overclaim|visualization_gap|duration_risk|structure_drift", "severity": "info|warning|critical", "message": "来源风险"}]
+  }],
+  "riskFlags": [{"code": "source_gap|fact_claim|spoiler_risk|overclaim|visualization_gap|duration_risk|structure_drift", "severity": "info|warning|critical", "message": "全片风险"}],
   "outline": [{"id": "outline_1", "title": "章节", "question": "回答的问题", "takeaway": "核心收获"}],
   "segments": [{
     "id": "segment_1",
@@ -58,7 +81,8 @@ VideoProfile：
     "onScreenText": "可选且简短的屏幕文字",
     "estimatedDurationSec": 20,
     "spoilerLevel": "none|light|full",
-    "sourceAnchor": {"label": "章节或位置", "quote": "已验证原文依据，可选", "chapter": "章节", "sourceType": "verified_source|user_source|model_knowledge|reference_summary", "confidence": 0.7}
+    "sourceAnchor": {"label": "章节或位置", "quote": "已验证原文依据，可选", "chapter": "章节", "sourceType": "verified_source|user_source|model_knowledge|reference_summary", "confidence": 0.7},
+    "riskFlags": [{"code": "source_gap|fact_claim|spoiler_risk|overclaim|visualization_gap|duration_risk|structure_drift", "severity": "info|warning|critical", "message": "本段风险"}]
   }]
 }
 
@@ -66,6 +90,9 @@ VideoProfile：
 - 旁白不是把目标时长全部填满。按中文口播约 3.5～4.2 字/秒估算，segments 或 beats 的预计总时长应控制在 targetDurationSec 的 85%～92%，至少预留 8% 给停顿、转场、片头片尾和剪辑调整。
 - 每个 segment 或 beat 只承担一个核心问题、判断或剧情推进，不在同一单元塞入多个平行结论。
 - 开头 5～12 秒必须建立一个明确问题、反差或承诺，但禁止连续堆叠多个未经支持的“爆点”。
+- hookPattern 必须只选一种，且要与第一段内容一致：contrast 表示对比，reversal 表示反转，question 表示问题，visual_wonder 表示强视觉奇观，identity_filter 表示身份代入。
+- sourceLedger 是全片事实账本。任何高风险事实、作者归因、作品细节、主题判断都要能在 sourceLedger 或 sourceAnchor 中找到边界；无法验证时用 model_knowledge 或 source_gap 标记。
+- riskFlags 必须真实暴露风险，不要为了通过评审而留空。只有确认无明显风险时才返回空数组。
 - narration 必须口语自然、短句优先、可直接配音；避免“天花板、全部实现、绝对不会、全球前十”等无来源的绝对化宣传语。
 - visualPurpose 只说明画面的信息职责；visualHints 必须是单一时空中可拍摄或可生成的具体画面，不得要求一张图片完成新闻混剪、多地点拼贴或多个连续动作。
 - 屏幕文字保持简短，准确文字只进入 onScreenText，不要求图片模型直接生成书名、年份、新闻标题或长句。
@@ -75,6 +102,7 @@ VideoProfile：
 书籍导读来源规则：
 - 如果 book_seed_json 不为 null 且原始材料只是书名，应基于模型常识生成“可编辑导读框架草稿”。
 - 模型常识模式下 sourceAnchor.sourceType 必须是 "model_knowledge"，confidence 不得高于 0.7，不得填写 quote。
+- 模型常识模式下 sourceLedger.sourceType 必须是 "model_knowledge"，confidence 不得高于 0.7，并至少包含一个 source_gap 风险。
 - 只有原始材料提供了可验证摘录或明确资料时，才允许填写 quote，并使用 "verified_source" 或 "user_source"。
 - 如果不能确认作者、章节或细节，用更保守的 label 和 narration，不要编造具体原文。
 - 模型常识模式下禁止生成精确排名、精确销量/翻译数量、未经来源支持的直接引语、具体人物“坦言受启发”等归因性断言；确需表达时改为保守、可核验的概括。

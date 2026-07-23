@@ -104,6 +104,7 @@ describe('asset hub character image prompt suffix regression', () => {
     expect(prompt).toContain('主角，黑发，冷静')
     expect(prompt).toContain(CHARACTER_PROMPT_SUFFIX)
     expect(countOccurrences(prompt, CHARACTER_PROMPT_SUFFIX)).toBe(1)
+    expect(prompt.endsWith(CHARACTER_PROMPT_SUFFIX)).toBe(true)
     expect(callArg?.options).toEqual(expect.objectContaining({ aspectRatio: CHARACTER_ASSET_IMAGE_RATIO }))
     expect(callArg?.label).toBeUndefined()
   })
@@ -125,10 +126,14 @@ describe('asset hub character image prompt suffix regression', () => {
       count: 1,
     }))
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       type: 'location',
       locationId: 'global-location-1',
       imageCount: 1,
+      promptSnapshots: [expect.objectContaining({
+        snapshotType: 'asset_image_prompt',
+        targetType: 'GlobalLocationImage',
+      })],
     })
     expect(sharedMock.generateCleanImageToStorage).toHaveBeenCalledTimes(1)
     expect(prismaMock.globalLocationImage.update).toHaveBeenCalledTimes(1)
@@ -165,6 +170,7 @@ describe('asset hub character image prompt suffix regression', () => {
 
     expect(prompt).toContain(PROP_PROMPT_SUFFIX)
     expect(countOccurrences(prompt, PROP_PROMPT_SUFFIX)).toBe(1)
+    expect(prompt.endsWith(PROP_PROMPT_SUFFIX)).toBe(true)
     expect(callArg?.options).toEqual(expect.objectContaining({ aspectRatio: PROP_IMAGE_RATIO }))
     expect(callArg?.label).toBeUndefined()
   })

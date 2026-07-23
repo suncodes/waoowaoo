@@ -1,6 +1,7 @@
 import type { Job } from 'bullmq'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createVisualQualityState } from '@/lib/quality-workflow'
+import { createVisualAutoRepairLineage } from '@/lib/creative-quality/contracts'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 
 const prismaMock = vi.hoisted(() => ({
@@ -209,6 +210,71 @@ describe('worker visual-quality-review behavior', () => {
         attempt: 1,
         versionHash: 'version-1',
         candidateCount: 2,
+        scoreBefore: 95,
+        repairLineage: [],
+      }),
+    }))
+  })
+
+  it('completes panel auto-repair lineage when a repaired candidate is approved', async () => {
+    const lineage = createVisualAutoRepairLineage({
+      targetType: 'panel',
+      targetId: 'panel-1',
+      attempt: 1,
+      action: 'regenerate',
+      candidateUrls: ['candidate-1.png'],
+      previousVersionHash: 'version-0',
+      repairVersionHash: 'version-1',
+      scoreBefore: 58,
+      promptPatch: { preserve: [], add: ['restore subject'], remove: [], negative: [], rationale: 'subject mismatch' },
+      imageModel: 'image::storyboard',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    })
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValue({
+      id: 'panel-1',
+      imageUrl: null,
+      previousImageUrl: null,
+      candidateImages: JSON.stringify(['candidate-1.png']),
+      visualQualityState: createVisualQualityState({
+        mode: 'auto',
+        status: 'reviewing',
+        versionHash: 'version-1',
+        candidateUrls: ['candidate-1.png'],
+        attempt: 1,
+        maxAttempts: 2,
+        repairLineage: [lineage],
+      }),
+      linkedToNextPanel: false,
+      storyboard: { episodeId: 'episode-1', episode: { productionBible: {} } },
+    })
+    visualMock.decideVisualRepair.mockReturnValue({
+      action: 'approve',
+      candidateIndex: 0,
+      reason: 'quality threshold satisfied',
+      promptPatch: visualMock.review.promptPatch,
+    })
+
+    await handleVisualQualityReviewTask(buildJob())
+
+    const updateManyCalls = prismaMock.novelPromotionPanel.updateMany.mock.calls as unknown as Array<[{
+      data: { visualQualityState: { repairLineage: Array<Record<string, unknown>> } }
+    }]>
+    const updateArgs = updateManyCalls[updateManyCalls.length - 1][0]
+    expect(updateArgs.data.visualQualityState.repairLineage[0]).toMatchObject({
+      attempt: 1,
+      repairVersionHash: 'version-1',
+      scoreBefore: 58,
+      scoreAfter: 95,
+      accepted: true,
+      acceptedCandidateUrl: 'candidate-1.png',
+      stopReason: 'approved',
+    })
+    expect(artifactMock.createArtifact).toHaveBeenCalledWith(expect.objectContaining({
+      payload: expect.objectContaining({
+        repairLineage: [expect.objectContaining({
+          scoreAfter: 95,
+          accepted: true,
+        })],
       }),
     }))
   })

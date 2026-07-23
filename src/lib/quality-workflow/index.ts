@@ -1,4 +1,8 @@
 import type { ImageQualityReviewResult, RepairAction } from '@/lib/visual-quality'
+import {
+  normalizeVisualAutoRepairLineage,
+  type VisualAutoRepairLineage,
+} from '@/lib/creative-quality/contracts'
 import { VISUAL_REPAIR_MAX_ATTEMPTS } from '@/lib/visual-quality/repair-policy'
 import type { VisualCandidateGroup, VisualQualityState } from './types'
 
@@ -189,6 +193,7 @@ export function parseVisualQualityState(value: unknown): VisualQualityState | nu
       : VISUAL_REPAIR_MAX_ATTEMPTS,
     lastAction: typeof value.lastAction === 'string' ? value.lastAction as RepairAction : null,
     review: isRecord(value.review) ? value.review as unknown as ImageQualityReviewResult : null,
+    repairLineage: normalizeVisualAutoRepairLineage(value.repairLineage),
     humanConfirmedAt: typeof value.humanConfirmedAt === 'string' && value.humanConfirmedAt.trim()
       ? value.humanConfirmedAt
       : null,
@@ -207,6 +212,7 @@ export function createVisualQualityState(params: {
   maxAttempts?: number
   lastAction?: RepairAction | null
   review?: ImageQualityReviewResult | null
+  repairLineage?: VisualAutoRepairLineage[] | null
   humanConfirmedAt?: string | null
 }): VisualQualityState {
   return {
@@ -221,6 +227,7 @@ export function createVisualQualityState(params: {
     maxAttempts: Math.min(VISUAL_REPAIR_MAX_ATTEMPTS, Math.max(0, Math.floor(params.maxAttempts ?? VISUAL_REPAIR_MAX_ATTEMPTS))),
     lastAction: params.lastAction || null,
     review: params.review || null,
+    repairLineage: normalizeVisualAutoRepairLineage(params.repairLineage),
     humanConfirmedAt: params.humanConfirmedAt || null,
     updatedAt: new Date().toISOString(),
   }

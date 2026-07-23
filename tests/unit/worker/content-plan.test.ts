@@ -139,12 +139,14 @@ describe('worker content-plan behavior', () => {
 
     const result = await handleContentPlanTask(buildJob())
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       episodeId: 'episode-1',
       profilePreset: 'ai_comic',
       planType: 'narrative',
       reviewStatus: 'approved',
       reviewScore: 90,
+      contentQualityReviewStatus: 'passed',
+      contentQualityReviewScore: expect.any(Number),
     })
     expect(persistenceMock.persistContentPlan).toHaveBeenCalledWith(expect.objectContaining({
       episodeId: 'episode-1',
@@ -152,6 +154,11 @@ describe('worker content-plan behavior', () => {
       result: expect.objectContaining({
         contentPlan: expect.objectContaining({ planType: 'narrative' }),
       }),
+    }))
+    expect(artifactMock.createArtifact).toHaveBeenCalledWith(expect.objectContaining({
+      runId: 'run-content-1',
+      artifactType: 'content.quality.review',
+      refId: 'episode-1',
     }))
     expect(artifactMock.createArtifact).toHaveBeenCalledWith(expect.objectContaining({
       runId: 'run-content-1',
@@ -191,11 +198,17 @@ describe('worker content-plan behavior', () => {
       profilePreset: 'book_guide',
       planType: 'guide',
       reviewStatus: 'warning',
+      contentQualityReviewStatus: 'passed',
     }))
     const persisted = (persistenceMock.persistContentPlan.mock.calls as unknown as Array<[{
       result: {
         contentPlan: {
-          segments: Array<{ sourceAnchor: { quote?: string; sourceType?: string; confidence?: number } }>
+          sourceLedger: Array<{ sourceType?: string; confidence?: number; quote?: string; riskFlags: Array<{ code?: string }> }>
+          riskFlags: Array<{ code?: string }>
+          segments: Array<{
+            sourceAnchor: { quote?: string; sourceType?: string; confidence?: number }
+            riskFlags: Array<{ code?: string }>
+          }>
         }
         contentReview: {
           sourceSupportScore: number
@@ -206,11 +219,19 @@ describe('worker content-plan behavior', () => {
     expect(persisted).toBeDefined()
     const contentPlan = persisted?.result.contentPlan
     const contentReview = persisted?.result.contentReview
+    expect(contentPlan?.sourceLedger[0]).toEqual(expect.objectContaining({
+      sourceType: 'model_knowledge',
+      confidence: expect.any(Number),
+      quote: undefined,
+    }))
+    expect(contentPlan?.sourceLedger[0]?.riskFlags.some((risk) => risk.code === 'source_gap')).toBe(true)
+    expect(contentPlan?.riskFlags.some((risk) => risk.code === 'source_gap')).toBe(true)
     expect(contentPlan?.segments[0]?.sourceAnchor).toEqual(expect.objectContaining({
       sourceType: 'model_knowledge',
       confidence: expect.any(Number),
     }))
     expect(contentPlan?.segments[0]?.sourceAnchor.quote).toBeUndefined()
+    expect(contentPlan?.segments[0]?.riskFlags.some((risk) => risk.code === 'source_gap')).toBe(true)
     expect(contentReview?.sourceSupportScore).toBeLessThanOrEqual(70)
     expect(contentReview?.issues.some((issue) => issue.code === 'SOURCE_UNSUPPORTED')).toBe(true)
   })

@@ -13,6 +13,8 @@ import { resolveAnalysisModel } from './resolve-analysis-model'
 import { seedProjectLocationBackedImageSlots } from '@/lib/assets/services/location-backed-assets'
 import { normalizeLocationAvailableSlots } from '@/lib/location-available-slots'
 import { resolvePropVisualDescription } from '@/lib/assets/prop-description'
+import { buildAssetBible } from '@/lib/assets/asset-bible'
+import { reviewAssetBible } from '@/lib/assets/asset-bible-review'
 import {
   bindStoredVisualUnitsToAnchors,
   buildVisualAnchors,
@@ -102,10 +104,23 @@ async function syncEpisodeVisualAnchors(params: {
     locations: projectAssets.locations,
     includeAssetIds: params.includeAssetIds,
   })
+  const assetBible = buildAssetBible({
+    anchors,
+    contentPlan: episode.contentPlan,
+    clips: episode.clips,
+  })
   const now = new Date().toISOString()
+  const assetBibleReview = reviewAssetBible({
+    targetId: params.episodeId,
+    assetBible,
+    expectedAssetIds: anchors.map((anchor) => anchor.assetId),
+    reviewedAt: now,
+  })
   const contentPlan = markContentAssetRequirementsAnalyzed({
     contentPlan: episode.contentPlan,
     assetIds: anchors.map((anchor) => anchor.assetId),
+    assetBible,
+    review: assetBibleReview,
     now,
   })
   let productionBible = episode.productionBible

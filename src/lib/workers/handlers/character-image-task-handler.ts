@@ -1,12 +1,20 @@
 import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
-import { CHARACTER_ASSET_IMAGE_RATIO, addCharacterPromptSuffix, appendPromptSegments, isArtStyleValue, prependStyleReferenceImage, PRIMARY_APPEARANCE_INDEX, type ArtStyleValue } from '@/lib/constants'
+import { CHARACTER_ASSET_IMAGE_RATIO, isArtStyleValue, prependStyleReferenceImage, PRIMARY_APPEARANCE_INDEX, type ArtStyleValue } from '@/lib/constants'
 import { resolveArtStyleForGeneration } from '@/lib/art-style-generation'
 import { submitTask } from '@/lib/task/submitter'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 import { encodeImageUrls } from '@/lib/contracts/image-urls-contract'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
 import { assertVisionInputSupported, createVisualVersionHash } from '@/lib/visual-quality'
+import { createCreativeQualityHash, type GenerationSnapshot } from '@/lib/creative-quality/contracts'
+import { createOptionalGenerationSnapshotArtifact } from '@/lib/creative-quality/runtime-artifacts'
+import {
+  ASSET_PROMPT_TEMPLATE_ID,
+  buildAssetImageGenerationSnapshot,
+  buildAssetPromptSpec,
+  compileAssetImagePrompt,
+} from '@/lib/prompt-compiler/asset-prompt-compiler'
 import { reportTaskProgress } from '../shared'
 import {
   assertTaskActive,
@@ -162,16 +170,55 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
   const imageUrls = parseImageUrls(appearance.imageUrls, 'characterAppearance.imageUrls')
   const nextImageUrls = [...imageUrls]
   const label = `${characterName} - ${appearance.changeReason || '形象'}`
+  const promptSnapshots: GenerationSnapshot[] = []
 
   for (let i = 0; i < indexes.length; i++) {
     const index = indexes[i]
     const raw = baseDescriptions[index] || baseDescriptions[0]
-    const styledPrompt = appendPromptSegments(
-      raw,
-      [resolvedArtStyle.prompt, resolvedArtStyle.referenceInstruction],
-      job.data.locale,
-    )
-    const prompt = addCharacterPromptSuffix(styledPrompt)
+    const promptSpec = buildAssetPromptSpec({
+      assetId: appearance.id,
+      assetKind: 'character',
+      assetName: characterName,
+      description: raw,
+      renderPurpose: appearance.appearanceIndex === PRIMARY_APPEARANCE_INDEX ? 'reference_sheet' : 'variant',
+      variantLabel: appearance.changeReason,
+      styleText: resolvedArtStyle.prompt,
+      styleReferenceInstruction: resolvedArtStyle.referenceInstruction,
+      locale: job.data.locale,
+    })
+    const prompt = compileAssetImagePrompt({
+      spec: promptSpec,
+      locale: job.data.locale,
+    })
+    const assetVersionHash = createCreativeQualityHash({
+      assetKind: 'character',
+      appearanceId: appearance.id,
+      characterId: appearance.characterId,
+      characterName,
+      appearanceIndex: appearance.appearanceIndex,
+      changeReason: appearance.changeReason,
+      description: raw,
+      referenceImages,
+    })
+    const promptSnapshot = buildAssetImageGenerationSnapshot({
+      targetType: 'CharacterAppearance',
+      targetId: appearance.id,
+      modelKey: modelId,
+      promptTemplateId: ASSET_PROMPT_TEMPLATE_ID,
+      referenceImages,
+      promptSpec,
+      compiledPrompt: prompt,
+      assetVersionHash,
+    })
+    promptSnapshots.push(promptSnapshot)
+    await createOptionalGenerationSnapshotArtifact({
+      job,
+      stepKey: 'asset_image_prompt',
+      artifactType: 'prompt.asset_image.snapshot',
+      refId: `${appearance.id}:${index}`,
+      versionHash: promptSnapshot.promptHash,
+      payload: promptSnapshot,
+    })
 
     await reportTaskProgress(job, 15 + Math.floor((i / Math.max(indexes.length, 1)) * 55), {
       stage: 'generate_character_image',
@@ -250,5 +297,6 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
     appearanceId: appearance.id,
     imageCount: nextImageUrls.filter(Boolean).length,
     imageUrl: mainImage || null,
+    promptSnapshots,
   }
 }

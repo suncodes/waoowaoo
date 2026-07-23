@@ -40,6 +40,21 @@ Clips：{clips_json}
   "shotPlan": {
     "summary": "全片镜头规划摘要",
     "totalEstimatedDurationSec": 90,
+    "shotBudget": {
+      "totalShots": 12,
+      "averageDurationSec": 6,
+      "hookShots": 1,
+      "setupShots": 4,
+      "evidenceShots": 4,
+      "payoffShots": 1,
+      "breathShots": 2
+    },
+    "rhythmCurve": [
+      {"label": "开场", "shotFunction": "hook|setup|reaction|evidence|transition|payoff|breath|cta|mixed", "intensity": 0.8, "intent": "节奏目的"}
+    ],
+    "functionMix": [
+      {"shotFunction": "hook|setup|reaction|evidence|transition|payoff|breath|cta", "count": 1}
+    ],
     "continuityChecks": ["跨镜检查"]
   },
   "visualUnits": [{
@@ -59,10 +74,24 @@ Clips：{clips_json}
     "assetRefs": [{"id": "必须来自可用资产", "kind": "character|location|prop", "name": "资产库中的精确名称"}],
     "shotSpec": {
       "narrativeIntent": "镜头目的",
+      "shotFunction": "hook|setup|reaction|evidence|transition|payoff|breath|cta",
+      "primarySubject": "唯一主视觉主体",
+      "visibleAssets": [{"id": "必须来自可用资产", "kind": "character|location|prop", "name": "资产库中的精确名称"}],
       "subjectIdentity": ["身份锚点"],
       "startState": "起始状态",
       "actionBeats": ["按顺序的动作"],
       "endState": "稳定结束状态",
+      "continuity": {
+        "fromPrevious": "承接上一镜的主体、空间、动作或信息",
+        "toNext": "交给下一镜的动作、视线、道具或信息",
+        "screenDirection": "视线和运动方向",
+        "lightingContinuity": "与前后镜的光色承接"
+      },
+      "singleImageFeasibility": {
+        "status": "feasible|needs_split|text_only|composite_only",
+        "reason": "为什么适合或不适合单张图片",
+        "riskFlags": ["可能导致生成失败的问题"]
+      },
       "spatialContinuity": "空间连续性",
       "camera": "景别、角度和主运镜",
       "sceneLightingBaseline": "灯光基线",
@@ -73,5 +102,14 @@ Clips：{clips_json}
     }
   }]
 }
+
+镜头规划标准：
+- shotPlan 必须先分配全片镜头功能预算，不得机械按文字长度拆分。hook/setup/evidence/payoff/breath/cta 的比例要服务内容计划。
+- functionMix 必须能被 visualUnits 中的 shotSpec.shotFunction 解释，不能写成装饰性总结。
+- rhythmCurve 描述全片情绪或信息强度变化，intensity 使用 0～1。
+- 每个 visualUnit 只能有一个 shotFunction、一个 primarySubject 和一个主要视觉事件。
+- shotSpec.visibleAssets 必须与 visualUnit.assetRefs 保持一致；稳定资产出现时不能只写在描述里。
+- continuity 要说明承接上一镜和交给下一镜的信息，不能只写“自然过渡”。
+- singleImageFeasibility.status 如果不是 feasible，imagePrompt 必须按 text_card 或 composite 的职责降级，或把内容拆成多个 visualUnit。
 
 导读必须覆盖每个 clip，并在书封、引用卡、图表、插画、动态文字之间按信息功能选择，不要全部生成人物插画。需要表达多个素材或多个地点时，拆成多个 visualUnit，不得塞进一张 imagePrompt。剧情也必须覆盖每个 clip，可以为每个 clip 提供少量全局建议，后续细分镜仍必须服从 Treatment 和 Bible。

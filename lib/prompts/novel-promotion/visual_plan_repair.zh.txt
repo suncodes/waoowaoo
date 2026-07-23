@@ -26,3 +26,6 @@ VideoProfile：
 8. assetRefs 中的 id、kind、name 必须逐字来自可用资产；画面提到已有资产时不得遗漏 assetRefs。
 9. 每个 imagePrompt 只能描述一个时空和一个主要视觉事件；删除混剪、拼接、多场景同框和准确文字生成要求。
 10. 按 renderMode 修复职责：text_card 为无字底图，composite 为单一干净底图或前景素材，generated_image 为完整单镜头。
+11. shotPlan 必须包含 shotBudget、rhythmCurve、functionMix、continuityChecks；缺失时根据 visualUnits 保守补齐。
+12. 每个 shotSpec 必须包含 shotFunction、primarySubject、visibleAssets、continuity、singleImageFeasibility；缺失时根据 description、assetRefs、shotType、cameraMove 补齐。
+13. shotSpec.visibleAssets 必须与 visualUnit.assetRefs 一致；不能引用可用资产之外的 id。

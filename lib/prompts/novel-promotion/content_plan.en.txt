@@ -30,14 +30,26 @@ For contentDomain=fiction and communicationGoal=narrative, contentPlan must be:
   "planType": "narrative",
   "title": "title",
   "logline": "single-sentence throughline",
+  "hookPattern": "contrast|reversal|question|visual_wonder|identity_filter",
   "themes": ["theme"],
+  "sourceLedger": [{
+    "id": "source_1",
+    "label": "source name or location",
+    "sourceType": "verified_source|user_source|model_knowledge|reference_summary",
+    "usage": "which beats or claims it supports",
+    "confidence": 0.85,
+    "quote": "optional, must come from the source material",
+    "riskFlags": [{"code": "source_gap|fact_claim|spoiler_risk|overclaim|visualization_gap|duration_risk|structure_drift", "severity": "info|warning|critical", "message": "risk note"}]
+  }],
+  "riskFlags": [{"code": "source_gap|fact_claim|spoiler_risk|overclaim|visualization_gap|duration_risk|structure_drift", "severity": "info|warning|critical", "message": "overall risk"}],
   "beats": [{
     "id": "beat_1",
     "title": "beat title",
     "purpose": "narrative purpose",
     "summary": "content summary",
     "estimatedDurationSec": 15,
-    "sourceAnchor": {"label": "optional source location", "quote": "optional quote"}
+    "sourceAnchor": {"label": "optional source location", "quote": "optional quote"},
+    "riskFlags": [{"code": "source_gap|fact_claim|spoiler_risk|overclaim|visualization_gap|duration_risk|structure_drift", "severity": "info|warning|critical", "message": "beat risk"}]
   }]
 }
 
@@ -46,7 +58,18 @@ For contentDomain=book and communicationGoal=explain, contentPlan must be:
   "planType": "guide",
   "title": "guide title",
   "thesis": "central interpretation",
+  "hookPattern": "contrast|reversal|question|visual_wonder|identity_filter",
   "recommendationAngle": "recommendation or explanation angle",
+  "sourceLedger": [{
+    "id": "source_1",
+    "label": "chapter, user material, or model-knowledge boundary",
+    "sourceType": "verified_source|user_source|model_knowledge|reference_summary",
+    "usage": "which segments or claims it supports",
+    "confidence": 0.7,
+    "quote": "optional, only when the source material contains verbatim evidence",
+    "riskFlags": [{"code": "source_gap|fact_claim|spoiler_risk|overclaim|visualization_gap|duration_risk|structure_drift", "severity": "info|warning|critical", "message": "source risk"}]
+  }],
+  "riskFlags": [{"code": "source_gap|fact_claim|spoiler_risk|overclaim|visualization_gap|duration_risk|structure_drift", "severity": "info|warning|critical", "message": "overall risk"}],
   "outline": [{"id": "outline_1", "title": "section", "question": "question answered", "takeaway": "key takeaway"}],
   "segments": [{
     "id": "segment_1",
@@ -58,7 +81,8 @@ For contentDomain=book and communicationGoal=explain, contentPlan must be:
     "onScreenText": "optional short on-screen text",
     "estimatedDurationSec": 20,
     "spoilerLevel": "none|light|full",
-    "sourceAnchor": {"label": "chapter or location", "quote": "verified source quote, optional", "chapter": "chapter", "sourceType": "verified_source|user_source|model_knowledge|reference_summary", "confidence": 0.7}
+    "sourceAnchor": {"label": "chapter or location", "quote": "verified source quote, optional", "chapter": "chapter", "sourceType": "verified_source|user_source|model_knowledge|reference_summary", "confidence": 0.7},
+    "riskFlags": [{"code": "source_gap|fact_claim|spoiler_risk|overclaim|visualization_gap|duration_risk|structure_drift", "severity": "info|warning|critical", "message": "segment risk"}]
   }]
 }
 
@@ -66,6 +90,9 @@ Execution requirements:
 - Do not fill the entire target duration with narration. Estimate a natural spoken pace and keep the summed segment/beat duration within 85%-92% of targetDurationSec, leaving at least 8% for pauses, transitions, opening/closing, and editorial adjustment.
 - Each segment or beat must carry one primary question, claim, or story progression. Do not pack several parallel claims into one unit.
 - The first 5-12 seconds must establish one clear question, contrast, or promise without stacking unsupported hooks.
+- hookPattern must choose exactly one pattern and match the first segment: contrast, reversal, question, visual_wonder, or identity_filter.
+- sourceLedger is the factual ledger for the whole plan. Any high-risk fact, attribution, work detail, or interpretive claim must have a boundary in sourceLedger or sourceAnchor; when not verifiable, mark model_knowledge or source_gap.
+- riskFlags must expose real risks. Return an empty array only when no obvious risk remains.
 - Narration must be voice-ready, conversational, and concise. Avoid unsupported absolutes such as "the best ever", "all came true", "guaranteed", or global rankings.
 - visualPurpose describes the information job of the visual. visualHints must describe a concrete image in one time and place; never ask one still image to perform a news montage, multi-location collage, or several sequential actions.
 - Put exact copy only in onScreenText. Do not ask the image model to render book titles, dates, newspaper headlines, or long text.
@@ -75,6 +102,7 @@ Execution requirements:
 Book guide source rules:
 - If book_seed_json is not null and the source material is only a book title, generate an editable guide-outline draft from model knowledge.
 - In model-knowledge mode, sourceAnchor.sourceType must be "model_knowledge", confidence must not exceed 0.7, and quote must be omitted.
+- In model-knowledge mode, sourceLedger.sourceType must be "model_knowledge", confidence must not exceed 0.7, and at least one source_gap risk must be present.
 - Only include quote when the source material contains a verifiable excerpt or explicit user-provided reference, using "verified_source" or "user_source".
 - If the author, chapter, or detail is uncertain, use conservative labels and narration instead of inventing exact source evidence.
 - In model-knowledge mode, do not invent precise rankings, sales/translation counts, verbatim quotations, or attribution claims that a named person explicitly credited the work. Use conservative, verifiable summaries instead.

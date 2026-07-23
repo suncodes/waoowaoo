@@ -1,12 +1,18 @@
 import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
-import { CHARACTER_ASSET_IMAGE_RATIO, LOCATION_IMAGE_RATIO, PROP_IMAGE_RATIO, addCharacterPromptSuffix, addLocationPromptSuffix, addPropPromptSuffix, appendArtStyleReferenceImage, appendPromptSegments, getArtStylePrompt, getArtStyleReferenceInstruction } from '@/lib/constants'
+import { CHARACTER_ASSET_IMAGE_RATIO, LOCATION_IMAGE_RATIO, PROP_IMAGE_RATIO, appendArtStyleReferenceImage, getArtStylePrompt, getArtStyleReferenceInstruction } from '@/lib/constants'
 import { type TaskJobData } from '@/lib/task/types'
 import { encodeImageUrls } from '@/lib/contracts/image-urls-contract'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
 import { PRIMARY_APPEARANCE_INDEX } from '@/lib/constants'
-import { buildLocationImagePromptCore } from '@/lib/location-image-prompt'
-import { buildPropImagePromptCore } from '@/lib/prop-image-prompt'
+import { createCreativeQualityHash, type GenerationSnapshot } from '@/lib/creative-quality/contracts'
+import { createOptionalGenerationSnapshotArtifact } from '@/lib/creative-quality/runtime-artifacts'
+import {
+  ASSET_PROMPT_TEMPLATE_ID,
+  buildAssetImageGenerationSnapshot,
+  buildAssetPromptSpec,
+  compileAssetImagePrompt,
+} from '@/lib/prompt-compiler/asset-prompt-compiler'
 import {
   assertTaskActive,
   getUserModels,
@@ -97,14 +103,54 @@ export async function handleAssetHubImageTask(job: Job<TaskJobData>) {
     const base = descriptions.length ? descriptions : [appearance.description || '']
     const count = normalizeImageGenerationCount('character', payload.count)
     const imageUrls: string[] = []
+    const promptSnapshots: GenerationSnapshot[] = []
 
     for (let i = 0; i < count; i++) {
       const raw = base[i] || base[0]
-      const prompt = appendPromptSegments(
-        addCharacterPromptSuffix(raw),
-        [artStyle, styleReferenceInstruction],
-        job.data.locale,
-      )
+      const promptSpec = buildAssetPromptSpec({
+        assetId: appearance.id,
+        assetKind: 'character',
+        assetName: character.name,
+        description: raw,
+        renderPurpose: appearance.appearanceIndex === PRIMARY_APPEARANCE_INDEX ? 'reference_sheet' : 'variant',
+        variantLabel: appearance.changeReason,
+        styleText: artStyle,
+        styleReferenceInstruction,
+        locale: job.data.locale,
+      })
+      const prompt = compileAssetImagePrompt({
+        spec: promptSpec,
+        locale: job.data.locale,
+      })
+      const assetVersionHash = createCreativeQualityHash({
+        assetKind: 'character',
+        appearanceId: appearance.id,
+        characterId: character.id,
+        characterName: character.name,
+        appearanceIndex: appearance.appearanceIndex,
+        changeReason: appearance.changeReason,
+        description: raw,
+        referenceImages: styleReferenceImages,
+      })
+      const promptSnapshot = buildAssetImageGenerationSnapshot({
+        targetType: 'GlobalCharacterAppearance',
+        targetId: appearance.id,
+        modelKey: modelId,
+        promptTemplateId: ASSET_PROMPT_TEMPLATE_ID,
+        referenceImages: styleReferenceImages,
+        promptSpec,
+        compiledPrompt: prompt,
+        assetVersionHash,
+      })
+      promptSnapshots.push(promptSnapshot)
+      await createOptionalGenerationSnapshotArtifact({
+        job,
+        stepKey: 'asset_image_prompt',
+        artifactType: 'prompt.asset_image.snapshot',
+        refId: `${appearance.id}:${i}`,
+        versionHash: promptSnapshot.promptHash,
+        payload: promptSnapshot,
+      })
       const imageKey = await generateCleanImageToStorage({
         job,
         userId,
@@ -130,7 +176,7 @@ export async function handleAssetHubImageTask(job: Job<TaskJobData>) {
       },
     })
 
-    return { type: payload.type, appearanceId: appearance.id, imageCount: imageUrls.length }
+    return { type: payload.type, appearanceId: appearance.id, imageCount: imageUrls.length, promptSnapshots }
   }
 
   if (payload.type === 'location' || payload.type === 'prop') {
@@ -151,27 +197,55 @@ export async function handleAssetHubImageTask(job: Job<TaskJobData>) {
     const targetImages = Object.prototype.hasOwnProperty.call(payload, 'count')
       ? location.images.slice(0, count)
       : location.images
+    const promptSnapshots: GenerationSnapshot[] = []
 
     for (const image of targetImages) {
       if (!image.description) continue
-      const promptCore = payload.type === 'prop'
-        ? buildPropImagePromptCore({
-          description: image.description,
-        })
-        : buildLocationImagePromptCore({
-          description: image.description,
-          availableSlotsRaw: image.availableSlots,
-          locale: job.data.locale === 'en' ? 'en' : 'zh',
-        })
-      const promptWithSuffix = payload.type === 'prop'
-        ? addPropPromptSuffix(promptCore)
-        : addLocationPromptSuffix(promptCore)
-      const prompt = appendPromptSegments(
-        promptWithSuffix,
-        [artStyle, styleReferenceInstruction],
-        job.data.locale,
-      )
+      const assetKind = payload.type === 'prop' ? 'prop' : 'location'
+      const promptSpec = buildAssetPromptSpec({
+        assetId: image.id,
+        assetKind,
+        assetName: location.name,
+        description: image.description,
+        renderPurpose: assetKind === 'prop' ? 'reference_sheet' : 'single_reference',
+        styleText: artStyle,
+        styleReferenceInstruction,
+        availableSlotsRaw: image.availableSlots,
+        locale: job.data.locale,
+      })
+      const prompt = compileAssetImagePrompt({
+        spec: promptSpec,
+        locale: job.data.locale,
+      })
       const aspectRatio = payload.type === 'prop' ? PROP_IMAGE_RATIO : LOCATION_IMAGE_RATIO
+      const assetVersionHash = createCreativeQualityHash({
+        assetKind,
+        locationImageId: image.id,
+        locationId: location.id,
+        locationName: location.name,
+        description: image.description,
+        availableSlots: image.availableSlots,
+        referenceImages: styleReferenceImages,
+      })
+      const promptSnapshot = buildAssetImageGenerationSnapshot({
+        targetType: 'GlobalLocationImage',
+        targetId: image.id,
+        modelKey: modelId,
+        promptTemplateId: ASSET_PROMPT_TEMPLATE_ID,
+        referenceImages: styleReferenceImages,
+        promptSpec,
+        compiledPrompt: prompt,
+        assetVersionHash,
+      })
+      promptSnapshots.push(promptSnapshot)
+      await createOptionalGenerationSnapshotArtifact({
+        job,
+        stepKey: 'asset_image_prompt',
+        artifactType: 'prompt.asset_image.snapshot',
+        refId: image.id,
+        versionHash: promptSnapshot.promptHash,
+        payload: promptSnapshot,
+      })
 
       const imageKey = await generateCleanImageToStorage({
         job,
@@ -193,7 +267,7 @@ export async function handleAssetHubImageTask(job: Job<TaskJobData>) {
       })
     }
 
-    return { type: payload.type, locationId: location.id, imageCount: targetImages.length }
+    return { type: payload.type, locationId: location.id, imageCount: targetImages.length, promptSnapshots }
   }
 
   throw new Error(`Unsupported asset-hub image type: ${String(payload.type)}`)

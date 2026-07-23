@@ -133,7 +133,7 @@ describe('diagnostic export task contract', () => {
     const lines = (await zip.file('prompts/invocations.jsonl')!.async('string')).split('\n').filter(Boolean)
     const invocation = JSON.parse(lines[0]) as { input: { apiKey: string }; outputReasoning: string }
 
-    expect(manifest.schemaVersion).toBe(2)
+    expect(manifest.schemaVersion).toBe(3)
     expect(lines).toHaveLength(1)
     expect(invocation.input.apiKey).toBe('[REDACTED]')
     expect(invocation.outputReasoning).toBe('[OMITTED]')
@@ -283,5 +283,247 @@ describe('diagnostic export task contract', () => {
     expect(invocation.status).toBe('failed')
     expect(invocation.errors).toHaveLength(2)
     expect(invocation.errors[1].error.message).toBe('invalid response')
+  })
+
+  it('groups prompt snapshots, visual reviews and auto repairs for quality analysis', async () => {
+    const repairLineage = {
+      schemaVersion: 1,
+      targetType: 'panel',
+      targetId: 'panel-1',
+      attempt: 1,
+      action: 'regenerate',
+      sourceCandidateUrl: 'candidate-old.png',
+      candidateUrls: ['candidate-new.png'],
+      previousVersionHash: 'version-old',
+      repairVersionHash: 'version-new',
+      scoreBefore: 58,
+      scoreAfter: null,
+      accepted: null,
+      acceptedCandidateUrl: null,
+      stopReason: null,
+      promptPatch: { preserve: [], add: ['fix subject'], remove: [], negative: [], rationale: 'subject mismatch' },
+      changedVariables: ['add'],
+      imageModel: 'image::storyboard',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      reviewedAt: null,
+    }
+    vi.mocked(prisma.novelPromotionEpisode.findMany).mockResolvedValue([{
+      id: 'episode-asset-bible',
+      contentPlan: {
+        planType: 'guide',
+        _workspace: {
+          revision: 2,
+          assetRequirements: {
+            status: 'needs_review',
+            analyzedAt: '2026-01-01T00:00:00.000Z',
+            review: {
+              schemaVersion: 1,
+              targetId: 'episode-asset-bible',
+              targetType: 'asset',
+              reviewKind: 'asset_bible',
+              specVersion: 'asset-bible-review.v1',
+              score: 82,
+              confidence: 0.88,
+              status: 'passed',
+              dimensions: [],
+              criticalIssues: [],
+              route: 'NONE',
+              evidence: [],
+              assetCount: 1,
+              mustLockCount: 1,
+              reviewedAt: '2026-01-01T00:00:00.000Z',
+            },
+            assetBible: [{
+              id: 'char-nemo',
+              kind: 'character',
+              canonicalName: '尼摩船长',
+              priority: 'must_lock',
+              generationNeed: 'reference_required',
+            }],
+          },
+        },
+      },
+    }] as never)
+    vi.mocked(prisma.graphRun.findMany).mockResolvedValue([{
+      id: 'run-quality',
+      events: [],
+      steps: [],
+      attempts: [],
+      checkpoints: [],
+      artifacts: [
+        {
+          id: 'artifact-prompt',
+          runId: 'run-quality',
+          stepKey: 'panel_image_prompt',
+          artifactType: 'prompt.panel_image.snapshot',
+          refId: 'panel-1',
+          versionHash: 'prompt-hash',
+          payload: { promptHash: 'prompt-hash', promptSpec: { primarySubject: 'Hero' }, compiledPrompt: 'full prompt' },
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        },
+        {
+          id: 'artifact-video-prompt',
+          runId: 'run-quality',
+          stepKey: 'panel_video_prompt',
+          artifactType: 'prompt.panel_video.snapshot',
+          refId: 'panel-1',
+          versionHash: 'video-prompt-hash',
+          payload: { promptHash: 'video-prompt-hash', promptSpec: { primaryMotion: 'slow push' }, compiledPrompt: 'compiled video prompt' },
+          createdAt: new Date('2026-01-01T00:00:00.100Z'),
+        },
+        {
+          id: 'artifact-content-review',
+          runId: 'run-quality',
+          stepKey: 'content_quality_review',
+          artifactType: 'content.quality.review',
+          refId: 'episode-asset-bible',
+          versionHash: 'content-review',
+          payload: {
+            review: {
+              schemaVersion: 1,
+              targetId: 'episode-asset-bible',
+              targetType: 'content',
+              reviewKind: 'content_plan',
+              specVersion: 'content-plan-quality.v1',
+              score: 84,
+              confidence: 0.84,
+              status: 'passed',
+              dimensions: [],
+              criticalIssues: [],
+              route: 'NONE',
+              evidence: [],
+              planType: 'guide',
+              unitCount: 3,
+              reviewedAt: '2026-01-01T00:00:00.000Z',
+            },
+          },
+          createdAt: new Date('2026-01-01T00:00:00.250Z'),
+        },
+        {
+          id: 'artifact-storyboard-review',
+          runId: 'run-quality',
+          stepKey: 'storyboard_review',
+          artifactType: 'storyboard.quality.review',
+          refId: 'episode-asset-bible',
+          versionHash: 'storyboard-review',
+          payload: {
+            review: {
+              schemaVersion: 1,
+              targetId: 'episode-asset-bible',
+              targetType: 'storyboard',
+              reviewKind: 'storyboard_plan',
+              specVersion: 'storyboard-review.v1',
+              score: 88,
+              confidence: 0.86,
+              status: 'passed',
+              dimensions: [],
+              criticalIssues: [],
+              route: 'NONE',
+              evidence: [],
+              visualUnitCount: 3,
+              reviewedAt: '2026-01-01T00:00:00.000Z',
+            },
+          },
+          createdAt: new Date('2026-01-01T00:00:00.500Z'),
+        },
+        {
+          id: 'artifact-repair',
+          runId: 'run-quality',
+          stepKey: 'visual_auto_repair',
+          artifactType: 'visual.repair.candidate',
+          refId: 'panel-1',
+          versionHash: 'version-new',
+          payload: { repairLineage },
+          createdAt: new Date('2026-01-01T00:00:01.000Z'),
+        },
+        {
+          id: 'artifact-review',
+          runId: 'run-quality',
+          stepKey: 'visual_quality_review',
+          artifactType: 'visual.quality.review',
+          refId: 'panel-1',
+          versionHash: 'version-new',
+          payload: {
+            repairLineage: [{
+              ...repairLineage,
+              scoreAfter: 91,
+              accepted: true,
+              acceptedCandidateUrl: 'candidate-new.png',
+              stopReason: 'approved',
+              reviewedAt: '2026-01-01T00:00:02.000Z',
+            }],
+          },
+          createdAt: new Date('2026-01-01T00:00:02.000Z'),
+        },
+      ],
+      workflowType: 'story_to_video',
+      taskType: 'story_to_video',
+      status: 'completed',
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    }] as never)
+
+    const job = {
+      data: {
+        taskId: 'task-quality-export',
+        type: TASK_TYPE.DIAGNOSTIC_EXPORT,
+        locale: 'zh',
+        projectId: 'project-1',
+        targetType: 'NovelPromotionProject',
+        targetId: 'project-1',
+        userId: 'user-1',
+        payload: { options: { includeReasoning: false } },
+      },
+    } as Job
+
+    await buildDiagnosticExport(job)
+    const [archiveBuffer] = vi.mocked(uploadObject).mock.calls[0]
+    const zip = await JSZip.loadAsync(archiveBuffer)
+    const manifest = JSON.parse(await zip.file('manifest.json')!.async('string')) as { counts: Record<string, number> }
+    const qualityIndex = JSON.parse(await zip.file('quality/quality-index.json')!.async('string')) as Record<string, number>
+    const promptLines = (await zip.file('quality/prompt-snapshots.jsonl')!.async('string')).split('\n').filter(Boolean)
+    const assetBibleLines = (await zip.file('quality/asset-bible.jsonl')!.async('string')).split('\n').filter(Boolean)
+    const assetReviewLines = (await zip.file('quality/asset-bible-reviews.jsonl')!.async('string')).split('\n').filter(Boolean)
+    const contentReviewLines = (await zip.file('quality/content-quality-reviews.jsonl')!.async('string')).split('\n').filter(Boolean)
+    const storyboardReviewLines = (await zip.file('quality/storyboard-quality-reviews.jsonl')!.async('string')).split('\n').filter(Boolean)
+    const reviewLines = (await zip.file('quality/visual-quality-reviews.jsonl')!.async('string')).split('\n').filter(Boolean)
+    const repairLines = (await zip.file('quality/visual-auto-repairs.jsonl')!.async('string')).split('\n').filter(Boolean)
+    const lineageLines = (await zip.file('quality/visual-repair-lineage.jsonl')!.async('string')).split('\n').filter(Boolean)
+    const assetBible = JSON.parse(assetBibleLines[0]) as { episodeId: string; canonicalName: string; contentRevision: number }
+    const lineage = JSON.parse(lineageLines[0]) as { scoreAfter: number; accepted: boolean; artifactType: string }
+
+    expect(promptLines).toHaveLength(2)
+    expect(assetBibleLines).toHaveLength(1)
+    expect(assetReviewLines).toHaveLength(1)
+    expect(contentReviewLines).toHaveLength(1)
+    expect(storyboardReviewLines).toHaveLength(1)
+    expect(assetBible).toMatchObject({
+      episodeId: 'episode-asset-bible',
+      canonicalName: '尼摩船长',
+      contentRevision: 2,
+    })
+    expect(reviewLines).toHaveLength(1)
+    expect(repairLines).toHaveLength(1)
+    expect(lineageLines).toHaveLength(1)
+    expect(lineage).toMatchObject({ scoreAfter: 91, accepted: true, artifactType: 'visual.quality.review' })
+    expect(qualityIndex).toMatchObject({
+      promptSnapshotCount: 2,
+      assetBibleCount: 1,
+      assetBibleReviewCount: 1,
+      contentQualityReviewCount: 1,
+      storyboardQualityReviewCount: 1,
+      visualQualityReviewCount: 1,
+      visualAutoRepairCount: 1,
+      visualRepairLineageCount: 1,
+    })
+    expect(manifest.counts).toMatchObject({
+      assetBibleRecords: 1,
+      assetBibleReviews: 1,
+      contentQualityReviews: 1,
+      storyboardQualityReviews: 1,
+      promptSnapshots: 2,
+      visualQualityReviews: 1,
+      visualAutoRepairs: 1,
+      visualRepairLineageRecords: 1,
+    })
   })
 })

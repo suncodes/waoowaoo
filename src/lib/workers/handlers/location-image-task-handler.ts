@@ -1,11 +1,19 @@
 import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
-import { LOCATION_IMAGE_RATIO, PROP_IMAGE_RATIO, addLocationPromptSuffix, addPropPromptSuffix, appendPromptSegments, isArtStyleValue, prependStyleReferenceImage, type ArtStyleValue } from '@/lib/constants'
+import { LOCATION_IMAGE_RATIO, PROP_IMAGE_RATIO, isArtStyleValue, prependStyleReferenceImage, type ArtStyleValue } from '@/lib/constants'
 import { resolveArtStyleForGeneration } from '@/lib/art-style-generation'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
 import { submitTask } from '@/lib/task/submitter'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 import { assertVisionInputSupported, createVisualVersionHash } from '@/lib/visual-quality'
+import { createCreativeQualityHash, type GenerationSnapshot } from '@/lib/creative-quality/contracts'
+import { createOptionalGenerationSnapshotArtifact } from '@/lib/creative-quality/runtime-artifacts'
+import {
+  ASSET_PROMPT_TEMPLATE_ID,
+  buildAssetImageGenerationSnapshot,
+  buildAssetPromptSpec,
+  compileAssetImagePrompt,
+} from '@/lib/prompt-compiler/asset-prompt-compiler'
 import { reportTaskProgress } from '../shared'
 import {
   assertTaskActive,
@@ -16,8 +24,6 @@ import {
   generateProjectLabeledImageToStorage,
   pickFirstString,
 } from './image-task-handler-shared'
-import { buildLocationImagePromptCore } from '@/lib/location-image-prompt'
-import { buildPropImagePromptCore } from '@/lib/prop-image-prompt'
 import { buildLocationAssetTargetSpec } from './visual-quality-review-helpers'
 
 function resolvePayloadArtStyle(payload: AnyObj): ArtStyleValue | undefined {
@@ -173,6 +179,7 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
     imageKey: string
     promptBody: string
   }>>()
+  const promptSnapshots: GenerationSnapshot[] = []
 
   for (let i = 0; i < locationImages.length; i++) {
     const item = locationImages[i]
@@ -180,25 +187,50 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
     const name = locationNameMap[item.locationId] || item.location?.name || '场景'
     const promptBody = item.description || ''
     if (!promptBody) continue
-    const promptCore = assetType === 'prop'
-      ? buildPropImagePromptCore({
-        description: promptBody,
-      })
-      : buildLocationImagePromptCore({
-        description: promptBody,
-        availableSlotsRaw: item.availableSlots,
-        locale: job.data.locale === 'en' ? 'en' : 'zh',
-      })
-
-    const styledPrompt = appendPromptSegments(
-      promptCore,
-      [resolvedArtStyle.prompt, resolvedArtStyle.referenceInstruction],
-      job.data.locale,
-    )
-    const prompt = assetType === 'prop'
-      ? addPropPromptSuffix(styledPrompt)
-      : addLocationPromptSuffix(styledPrompt)
+    const promptSpec = buildAssetPromptSpec({
+      assetId: item.id,
+      assetKind: assetType,
+      assetName: name,
+      description: promptBody,
+      renderPurpose: assetType === 'prop' ? 'reference_sheet' : 'single_reference',
+      styleText: resolvedArtStyle.prompt,
+      styleReferenceInstruction: resolvedArtStyle.referenceInstruction,
+      availableSlotsRaw: item.availableSlots,
+      locale: job.data.locale,
+    })
+    const prompt = compileAssetImagePrompt({
+      spec: promptSpec,
+      locale: job.data.locale,
+    })
     const aspectRatio = assetType === 'prop' ? PROP_IMAGE_RATIO : LOCATION_IMAGE_RATIO
+    const assetVersionHash = createCreativeQualityHash({
+      assetKind: assetType,
+      locationImageId: item.id,
+      locationId: item.locationId,
+      name,
+      description: promptBody,
+      availableSlots: item.availableSlots,
+      referenceImages: styleReferenceImages,
+    })
+    const promptSnapshot = buildAssetImageGenerationSnapshot({
+      targetType: 'LocationImage',
+      targetId: item.id,
+      modelKey: modelId,
+      promptTemplateId: ASSET_PROMPT_TEMPLATE_ID,
+      referenceImages: styleReferenceImages,
+      promptSpec,
+      compiledPrompt: prompt,
+      assetVersionHash,
+    })
+    promptSnapshots.push(promptSnapshot)
+    await createOptionalGenerationSnapshotArtifact({
+      job,
+      stepKey: 'asset_image_prompt',
+      artifactType: 'prompt.asset_image.snapshot',
+      refId: item.id,
+      versionHash: promptSnapshot.promptHash,
+      payload: promptSnapshot,
+    })
     await reportTaskProgress(job, 20 + Math.floor((i / Math.max(locationImages.length, 1)) * 55), {
       stage: 'generate_location_image',
       imageId: item.id,
@@ -280,5 +312,6 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
   return {
     updated: locationImages.length,
     locationIds,
+    promptSnapshots,
   }
 }

@@ -20,9 +20,16 @@ import {
   resolveNovelData,
 } from './image-task-handler-shared'
 import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
+import { createArtifact } from '@/lib/run-runtime/service'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
 import { parseLocationAvailableSlots } from '@/lib/location-available-slots'
 import { persistPanelCandidatesAndScheduleReview } from './panel-visual-quality-trigger'
+import { createCreativeQualityHash } from '@/lib/creative-quality/contracts'
+import {
+  buildPanelImageGenerationSnapshot,
+  buildPanelImagePromptSpec,
+} from '@/lib/prompt-compiler/panel-image-prompt-compiler'
+
 function parseJsonUnknown(raw: string | null | undefined): unknown | null {
   if (!raw) return null
   try {
@@ -59,6 +66,22 @@ function pickAppearanceDescription(appearance: {
   return '无描述'
 }
 
+function asJsonRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function readOptionalTaskRunId(job: Job<TaskJobData>): string | null {
+  const payload = asJsonRecord(job.data.payload)
+  const meta = asJsonRecord(payload.meta)
+  return pickFirstString(payload.runId, meta.runId)
+}
+
+function toJsonRecord(value: unknown): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(value)) as Record<string, unknown>
+}
+
 function buildPanelPromptContext(params: {
   panel: {
     id: string
@@ -85,9 +108,11 @@ function buildPanelPromptContext(params: {
     const character = findCharacterByName(params.projectData.characters || [], reference.name)
     if (!character) {
       return {
+        id: null,
         name: reference.name,
         appearance: reference.appearance || null,
         description: '无角色外貌数据',
+        slot: reference.slot || null,
       }
     }
 
@@ -98,6 +123,7 @@ function buildPanelPromptContext(params: {
         : null) || appearances[0] || null
 
     return {
+      id: character.id,
       name: character.name,
       appearance: matchedAppearance?.changeReason || null,
       description: matchedAppearance ? pickAppearanceDescription(matchedAppearance) : '无角色外貌数据',
@@ -113,11 +139,25 @@ function buildPanelPromptContext(params: {
     if (!matchedLocation) return null
     const selectedImage = (matchedLocation.images || []).find((item) => item.isSelected) || matchedLocation.images?.[0]
     return {
+      id: matchedLocation.id,
       name: matchedLocation.name,
       description: selectedImage?.description || null,
       available_slots: parseLocationAvailableSlots(selectedImage?.availableSlots),
     }
   })()
+
+  const panelProps = parseDescriptionList(params.panel.props)
+  const propContexts = panelProps.map((name) => {
+    const matchedProp = (params.projectData.locations || []).find(
+      (item) => item.assetKind === 'prop' && item.name.toLowerCase() === name.toLowerCase(),
+    )
+    const selectedImage = (matchedProp?.images || []).find((item) => item.isSelected) || matchedProp?.images?.[0]
+    return {
+      id: matchedProp?.id || null,
+      name,
+      description: selectedImage?.description || null,
+    }
+  })
 
   return {
     panel: {
@@ -142,6 +182,7 @@ function buildPanelPromptContext(params: {
     context: {
       character_appearances: characterContexts,
       location_reference: locationContext,
+      prop_references: propContexts,
     },
   }
 }
@@ -253,11 +294,32 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
     },
     projectData,
   })
-  const contextJson = JSON.stringify(promptContext, null, 2)
+  const resolvedStyleText = styleText || fallbackStyleText
+  const assetVersionHash = createCreativeQualityHash({
+    characters: promptContext.context.character_appearances.map((item) => ({
+      id: item.id,
+      name: item.name,
+      appearance: item.appearance,
+      description: item.description,
+      slot: item.slot,
+    })),
+    location: promptContext.context.location_reference,
+    props: promptContext.context.prop_references,
+    referenceImages,
+  })
+  const panelPromptSpec = buildPanelImagePromptSpec({
+    context: promptContext,
+    aspectRatio,
+    styleText: resolvedStyleText,
+  })
+  const contextJson = JSON.stringify({
+    ...promptContext,
+    prompt_spec: panelPromptSpec,
+  }, null, 2)
   const prompt = buildPanelPrompt({
     locale: job.data.locale,
     aspectRatio,
-    styleText: styleText || fallbackStyleText,
+    styleText: resolvedStyleText,
     sourceText: panel.srtSegment || panel.description || '',
     contextJson,
   })
@@ -267,6 +329,34 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
       promptLength: prompt.length,
     },
   })
+  const promptSnapshot = buildPanelImageGenerationSnapshot({
+    targetId: panel.id,
+    modelKey,
+    promptTemplateId: PROMPT_IDS.NP_SINGLE_PANEL_IMAGE,
+    referenceImages,
+    promptSpec: panelPromptSpec,
+    compiledPrompt: prompt,
+    assetVersionHash,
+  })
+  const runId = readOptionalTaskRunId(job)
+  if (runId) {
+    try {
+      await createArtifact({
+        runId,
+        stepKey: 'panel_image_prompt',
+        artifactType: 'prompt.panel_image.snapshot',
+        refId: panel.id,
+        versionHash: promptSnapshot.promptHash,
+        payload: toJsonRecord(promptSnapshot),
+      })
+    } catch (error) {
+      logger.warn({
+        message: 'panel image prompt snapshot artifact failed',
+        details: { panelId: panel.id, runId },
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
 
   const candidates: string[] = []
 
@@ -311,5 +401,6 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
     visualQualityVersionHash: quality.versionHash,
     visualQualityReviewScheduled: quality.reviewScheduled,
     visualQualityReviewTaskId: quality.reviewTaskId,
+    promptSnapshot,
   }
 }

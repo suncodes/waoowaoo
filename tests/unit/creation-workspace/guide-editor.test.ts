@@ -14,7 +14,10 @@ function createPlan(): GuideContentPlan {
     planType: 'guide',
     title: '海底两万里',
     thesis: '理解自由、技术与孤独',
+    hookPattern: 'question',
     recommendationAngle: '经典科幻导读',
+    sourceLedger: [],
+    riskFlags: [],
     outline: [{ id: 'outline-1', title: '主题', question: '讲了什么', takeaway: '核心价值' }],
     segments: [
       {
@@ -27,6 +30,7 @@ function createPlan(): GuideContentPlan {
         estimatedDurationSec: 20,
         spoilerLevel: 'light',
         sourceAnchor: { label: '第一章', chapter: '第一章' },
+        riskFlags: [],
       },
       {
         id: 'segment-2',
@@ -38,6 +42,7 @@ function createPlan(): GuideContentPlan {
         estimatedDurationSec: 18,
         spoilerLevel: 'light',
         sourceAnchor: { label: '第十章', chapter: '第十章' },
+        riskFlags: [],
       },
     ],
   }

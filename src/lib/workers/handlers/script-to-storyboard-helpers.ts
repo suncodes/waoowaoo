@@ -61,6 +61,129 @@ function parseStringArray(raw: string | null): string[] {
   }
 }
 
+function readPanelString(value: unknown): string {
+  return typeof value === 'string' && value.trim() ? value.trim() : ''
+}
+
+function readPanelField(panel: StoryboardPanel, snakeKey: string, camelKey: string): unknown {
+  return panel[snakeKey] ?? panel[camelKey]
+}
+
+function readPanelShotFunction(panel: StoryboardPanel): string {
+  const value = readPanelString(readPanelField(panel, 'shot_function', 'shotFunction'))
+  if (
+    value === 'hook' ||
+    value === 'setup' ||
+    value === 'reaction' ||
+    value === 'evidence' ||
+    value === 'transition' ||
+    value === 'payoff' ||
+    value === 'breath' ||
+    value === 'cta'
+  ) {
+    return value
+  }
+  if (panel.panel_number === 1) return 'hook'
+  return panel.scene_type === 'emotion' ? 'reaction' : 'setup'
+}
+
+function readPanelCharacterNames(panel: StoryboardPanel): string[] {
+  if (!Array.isArray(panel.characters)) return []
+  return panel.characters.flatMap((item) => {
+    if (typeof item === 'string' && item.trim()) return [item.trim()]
+    const record = asJsonRecord(item)
+    const name = readPanelString(record?.name)
+    return name ? [name] : []
+  })
+}
+
+function readPanelPropNames(panel: StoryboardPanel): string[] {
+  if (!Array.isArray(panel.props)) return []
+  return panel.props.flatMap((item) => typeof item === 'string' && item.trim() ? [item.trim()] : [])
+}
+
+function readPanelPrimarySubject(panel: StoryboardPanel): string {
+  return readPanelString(readPanelField(panel, 'primary_subject', 'primarySubject'))
+    || readPanelCharacterNames(panel)[0]
+    || readPanelPropNames(panel)[0]
+    || readPanelString(panel.location)
+    || readPanelString(panel.description)
+    || '当前分镜主体'
+}
+
+function buildPanelVisibleAssets(panel: StoryboardPanel): JsonRecord[] {
+  return [
+    ...readPanelCharacterNames(panel).map((name) => ({ id: '', kind: 'character', name })),
+    ...(readPanelString(panel.location) ? [{ id: '', kind: 'location', name: readPanelString(panel.location) }] : []),
+    ...readPanelPropNames(panel).map((name) => ({ id: '', kind: 'prop', name })),
+  ]
+}
+
+function readPanelContinuity(panel: StoryboardPanel): JsonRecord {
+  const raw = asJsonRecord(panel.continuity) || {}
+  return {
+    fromPrevious: readPanelString(raw.fromPrevious) || readPanelString(raw.from_previous) || '承接上一镜已建立的空间、主体位置和情绪',
+    toNext: readPanelString(raw.toNext) || readPanelString(raw.to_next) || '为下一镜保留清晰动作或信息方向',
+    screenDirection: readPanelString(raw.screenDirection) || readPanelString(raw.screen_direction) || '保持既定视线和运动方向',
+    lightingContinuity: readPanelString(raw.lightingContinuity) || readPanelString(raw.lighting_continuity) || '保持前后镜光色一致',
+  }
+}
+
+function readPanelSingleImageFeasibility(panel: StoryboardPanel): JsonRecord {
+  const raw = asJsonRecord(readPanelField(panel, 'single_image_feasibility', 'singleImageFeasibility')) || {}
+  const status = readPanelString(raw.status)
+  return {
+    status: status === 'needs_split' || status === 'text_only' || status === 'composite_only'
+      ? status
+      : 'feasible',
+    reason: readPanelString(raw.reason) || '单一时空、单一构图和单一主要视觉事件',
+    riskFlags: Array.isArray(raw.riskFlags)
+      ? raw.riskFlags.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      : Array.isArray(raw.risk_flags)
+        ? raw.risk_flags.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+        : [],
+  }
+}
+
+function buildPanelShotSpec(panel: StoryboardPanel): JsonRecord {
+  const description = readPanelString(panel.description)
+  return {
+    narrativeIntent: description || readPanelString(panel.source_text) || '当前分镜目的',
+    shotFunction: readPanelShotFunction(panel),
+    primarySubject: readPanelPrimarySubject(panel),
+    visibleAssets: buildPanelVisibleAssets(panel),
+    subjectIdentity: readPanelCharacterNames(panel),
+    startState: description || 'stable opening state',
+    actionBeats: description ? [description] : [],
+    endState: 'stable closing state',
+    continuity: readPanelContinuity(panel),
+    singleImageFeasibility: readPanelSingleImageFeasibility(panel),
+    spatialContinuity: readPanelString(asJsonRecord(panel.continuity)?.screen_direction)
+      || readPanelString(asJsonRecord(panel.continuity)?.screenDirection)
+      || 'preserve established screen direction',
+    camera: [readPanelString(panel.shot_type), readPanelString(panel.camera_move)].filter(Boolean).join('，') || 'locked camera',
+    sceneLightingBaseline: 'follow photography plan',
+    colorGrade: 'follow photography plan',
+    dialogueAudio: '',
+    constraints: ['one time, one place, one composition, one primary visual event'],
+    durationIntent: typeof panel.duration === 'number' && Number.isFinite(panel.duration)
+      ? `${panel.duration} seconds`
+      : 'match clip pacing',
+  }
+}
+
+function buildPanelPhotographyPlan(panel: StoryboardPanel): JsonRecord {
+  const plan = asJsonRecord(panel.photographyPlan) || {}
+  const existingShotSpec = asJsonRecord(plan.shotSpec) || {}
+  return {
+    ...plan,
+    shotSpec: {
+      ...buildPanelShotSpec(panel),
+      ...existingShotSpec,
+    },
+  }
+}
+
 export function parseVoiceLinesJson(responseText: string): JsonRecord[] {
   const rows = safeParseJsonArray(responseText)
   if (rows.length === 0) {
@@ -196,7 +319,7 @@ export async function persistStoryboardsAndPanels(params: {
             characters: panel.characters ? JSON.stringify(panel.characters) : null,
             props: panel.props ? JSON.stringify(panel.props) : null,
             srtSegment: panel.source_text || null,
-            photographyRules: panel.photographyPlan ? JSON.stringify(panel.photographyPlan) : null,
+            photographyRules: JSON.stringify(buildPanelPhotographyPlan(panel)),
             actingNotes: panel.actingNotes ? JSON.stringify(panel.actingNotes) : null,
             duration: panel.duration || null,
           },
@@ -290,7 +413,7 @@ export async function persistStoryboardOutputs(params: {
             characters: panel.characters ? JSON.stringify(panel.characters) : null,
             props: panel.props ? JSON.stringify(panel.props) : null,
             srtSegment: panel.source_text || null,
-            photographyRules: panel.photographyPlan ? JSON.stringify(panel.photographyPlan) : null,
+            photographyRules: JSON.stringify(buildPanelPhotographyPlan(panel)),
             actingNotes: panel.actingNotes ? JSON.stringify(panel.actingNotes) : null,
             duration: panel.duration || null,
           },
