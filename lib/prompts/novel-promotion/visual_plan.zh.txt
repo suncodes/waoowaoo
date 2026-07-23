@@ -98,7 +98,16 @@ Clips：{clips_json}
       "colorGrade": "调色",
       "dialogueAudio": "旁白、对白或环境音",
       "constraints": ["约束"],
-      "durationIntent": "时长依据"
+      "durationIntent": "时长依据",
+      "promptBlueprint": {
+        "subject": ["最终图片提示词必须包含的主体身份和外观锚点"],
+        "environment": ["最终图片提示词必须包含的场景空间和锚点"],
+        "action": ["最终图片/视频提示词必须包含的单一动作或状态"],
+        "camera": ["景别、角度、构图、镜头运动"],
+        "lighting": ["光源方向、光质、调色连续性"],
+        "style": ["艺术风格只作用于线条、材质、配色、光影"],
+        "negative": ["禁止项：文字、水印、多主体、多场景、未指定资产等"]
+      }
     }
   }]
 }
@@ -111,5 +120,9 @@ Clips：{clips_json}
 - shotSpec.visibleAssets 必须与 visualUnit.assetRefs 保持一致；稳定资产出现时不能只写在描述里。
 - continuity 要说明承接上一镜和交给下一镜的信息，不能只写“自然过渡”。
 - singleImageFeasibility.status 如果不是 feasible，imagePrompt 必须按 text_card 或 composite 的职责降级，或把内容拆成多个 visualUnit。
+- promptBlueprint 是最终专业提示词的骨架，必须具体到可执行视觉元素；不得只写“精致画面、电影感、高清”等泛词。
+- imagePrompt 必须把 promptBlueprint 中的 subject/environment/action/camera/lighting/style 合成成自然完整的提示词，不能只重复分镜描述。
+- videoPrompt 必须从 startState、actionBeats、endState 和 promptBlueprint.action/camera 推导，描述首帧之后发生的可控运动，不要重新设计静态外观。
+- 如果 ContentPlan 或 screenplay 中包含 voiceRhythm、sourceBoundary、promotion_voiceover、visual_beats，必须优先使用它们决定镜头功能和信息密度；不要按文本长度机械拆镜。
 
 导读必须覆盖每个 clip，并在书封、引用卡、图表、插画、动态文字之间按信息功能选择，不要全部生成人物插画。需要表达多个素材或多个地点时，拆成多个 visualUnit，不得塞进一张 imagePrompt。剧情也必须覆盖每个 clip，可以为每个 clip 提供少量全局建议，后续细分镜仍必须服从 Treatment 和 Bible。

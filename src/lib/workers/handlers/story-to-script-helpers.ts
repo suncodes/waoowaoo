@@ -73,6 +73,13 @@ export async function persistAnalyzedCharacters(params: {
       visual_keywords: toStringArray(item.visual_keywords),
       gender: item.gender,
       age_range: item.age_range,
+      identity_locks: toStringArray(item.identity_locks),
+      silhouette_locks: toStringArray(item.silhouette_locks),
+      costume_locks: toStringArray(item.costume_locks),
+      color_locks: toStringArray(item.color_locks),
+      forbidden_variants: toStringArray(item.forbidden_variants),
+      continuity_notes: toStringArray(item.continuity_notes),
+      expected_appearances: Array.isArray(item.expected_appearances) ? item.expected_appearances : [],
     }
 
     const createdRow = await db.novelPromotionCharacter.create({

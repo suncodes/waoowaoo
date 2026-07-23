@@ -72,12 +72,13 @@ Output rules:
 3. Do not repeat props that already exist in the prop library with the exact same name.
 4. Keep names stable and short.
 5. `summary` is for humans only. Keep it short and objective. Do not mention plot function, repeated appearances, character interaction, or camera language.
-6. `description` is for image generation only. Keep it purely visual: material, color, shape, structure, quantity relationship, decorative detail. Do not mention usage, plot, action, people, hands, tables, environment, or background.
+6. `description` is for image generation only. It must contain stable cross-shot identity locks: material, color, shape, silhouette, key parts, distinctive wear, markings, or texture. Keep it purely visual and do not mention usage, plot, action, people, hands, tables, environment, or background.
 7. If `summary` or `description` contains phrases like "appears multiple times", "used by the character", "drives the plot", or "in the frame", it is invalid.
 8. Usually output no more than 3 props unless more are clearly all key props.
 9. If none exist, return {"props": []}. Returning an empty array is correct in most cases.
 10. Replace raw quotation marks inside JSON string values with corner brackets「」.
 11. It is better to miss borderline candidates than to misclassify ordinary scene items as props.
+12. If the source does not provide enough information for a stable visual description, do not output the prop.
 
 Input:
 {input}

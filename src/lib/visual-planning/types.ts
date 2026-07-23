@@ -59,6 +59,16 @@ export interface SingleImageFeasibility {
   riskFlags: string[]
 }
 
+export interface ShotPromptBlueprint {
+  subject: string[]
+  environment: string[]
+  action: string[]
+  camera: string[]
+  lighting: string[]
+  style: string[]
+  negative: string[]
+}
+
 export interface ShotSpec {
   narrativeIntent: string
   shotFunction: ShotFunction
@@ -77,6 +87,7 @@ export interface ShotSpec {
   dialogueAudio: string
   constraints: string[]
   durationIntent: string
+  promptBlueprint?: ShotPromptBlueprint
 }
 
 export interface VisualUnit {

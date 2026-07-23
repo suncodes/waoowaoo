@@ -20,7 +20,15 @@ Common shape:
     "targetDurationSec": 90,
     "tone": ["tone"],
     "mustInclude": ["required item"],
-    "mustAvoid": ["forbidden item"]
+    "mustAvoid": ["forbidden item"],
+    "hookCandidates": [{
+      "id": "hook_1",
+      "pattern": "contrast|reversal|question|visual_wonder|identity_filter",
+      "line": "voice-ready opening line",
+      "promise": "specific viewer promise",
+      "sourceBoundary": "which source facts support this line and what it must not exceed",
+      "riskFlags": [{"code": "source_gap|fact_claim|spoiler_risk|overclaim|visualization_gap|duration_risk|structure_drift", "severity": "info|warning|critical", "message": "risk note"}]
+    }]
   },
   "contentPlan": {}
 }
@@ -49,6 +57,18 @@ For contentDomain=fiction and communicationGoal=narrative, contentPlan must be:
     "summary": "content summary",
     "estimatedDurationSec": 15,
     "sourceAnchor": {"label": "optional source location", "quote": "optional quote"},
+    "voiceRhythm": {
+      "role": "opening_question|promise|setup|conflict|turn|evidence|payoff|closing",
+      "voiceIntent": "what this beat should make the viewer understand or feel",
+      "emotion": "beat emotion",
+      "pacing": "fast|steady|slow",
+      "pauseAfterSec": 0.4
+    },
+    "sourceBoundary": {
+      "factualBasis": "verified|user_provided|model_knowledge|interpretation",
+      "allowedExpression": "how expression may be reorganized",
+      "forbiddenExpression": ["facts, reactions, or conclusions that must not be added"]
+    },
     "riskFlags": [{"code": "source_gap|fact_claim|spoiler_risk|overclaim|visualization_gap|duration_risk|structure_drift", "severity": "info|warning|critical", "message": "beat risk"}]
   }]
 }
@@ -82,6 +102,18 @@ For contentDomain=book and communicationGoal=explain, contentPlan must be:
     "estimatedDurationSec": 20,
     "spoilerLevel": "none|light|full",
     "sourceAnchor": {"label": "chapter or location", "quote": "verified source quote, optional", "chapter": "chapter", "sourceType": "verified_source|user_source|model_knowledge|reference_summary", "confidence": 0.7},
+    "voiceRhythm": {
+      "role": "opening_question|promise|setup|conflict|turn|evidence|payoff|closing",
+      "voiceIntent": "what this segment should make the viewer understand or feel",
+      "emotion": "segment emotion",
+      "pacing": "fast|steady|slow",
+      "pauseAfterSec": 0.4
+    },
+    "sourceBoundary": {
+      "factualBasis": "verified|user_provided|model_knowledge|interpretation",
+      "allowedExpression": "how expression may be reorganized",
+      "forbiddenExpression": ["unsupported facts, attribution, evaluation, or spoilers"]
+    },
     "riskFlags": [{"code": "source_gap|fact_claim|spoiler_risk|overclaim|visualization_gap|duration_risk|structure_drift", "severity": "info|warning|critical", "message": "segment risk"}]
   }]
 }
@@ -90,10 +122,14 @@ Execution requirements:
 - Do not fill the entire target duration with narration. Estimate a natural spoken pace and keep the summed segment/beat duration within 85%-92% of targetDurationSec, leaving at least 8% for pauses, transitions, opening/closing, and editorial adjustment.
 - Each segment or beat must carry one primary question, claim, or story progression. Do not pack several parallel claims into one unit.
 - The first 5-12 seconds must establish one clear question, contrast, or promise without stacking unsupported hooks.
+- creativeBrief.hookCandidates must include 2-3 candidates, and each opening line must have a clear source boundary. The final hookPattern must match the first segment or beat.
 - hookPattern must choose exactly one pattern and match the first segment: contrast, reversal, question, visual_wonder, or identity_filter.
 - sourceLedger is the factual ledger for the whole plan. Any high-risk fact, attribution, work detail, or interpretive claim must have a boundary in sourceLedger or sourceAnchor; when not verifiable, mark model_knowledge or source_gap.
 - riskFlags must expose real risks. Return an empty array only when no obvious risk remains.
-- Narration must be voice-ready, conversational, and concise. Avoid unsupported absolutes such as "the best ever", "all came true", "guaranteed", or global rankings.
+- Narration or summary must serve voice-ready promotional expression: short lines, clear rhythm, intentional pauses, and emotion progression. You may reorganize wording and order, but must not add events, dialogue, character reactions, factual attribution, or conclusions absent from the source.
+- voiceRhythm must state the unit's voiceover role, emotion, and pacing. Do not make every unit the same role or pacing.
+- sourceBoundary must distinguish expression-level rewriting from facts that cannot be expanded; downstream screenplay, storyboard, and prompt generation will use it as a boundary.
+- Avoid unsupported absolutes such as "the best ever", "all came true", "guaranteed", or global rankings.
 - visualPurpose describes the information job of the visual. visualHints must describe a concrete image in one time and place; never ask one still image to perform a news montage, multi-location collage, or several sequential actions.
 - Put exact copy only in onScreenText. Do not ask the image model to render book titles, dates, newspaper headlines, or long text.
 - Never invent book evidence. Every guide segment requires a sourceAnchor. Do not reduce a guide to plot retelling.

@@ -201,7 +201,9 @@ function compileSpecBody(spec: AssetPromptSpec, locale: Locale): string {
       slotText ? `Fixed usable positions:\n${slotText}` : '',
       `Background rule: ${spec.backgroundRule}.`,
       `Style application: ${spec.styleApplication}.`,
+      listLine('Source evidence and design boundary: ', spec.sourceEvidence, 'use only the supplied asset description'),
       listLine('Quality terms: ', spec.qualityTerms, 'clean readable asset image'),
+      `Negative constraints: ${spec.negativeConstraints.join('; ')}.`,
     ].filter(Boolean).join('\n')
   }
   return [
@@ -215,7 +217,9 @@ function compileSpecBody(spec: AssetPromptSpec, locale: Locale): string {
     slotText ? `固定可用位置：\n${slotText}` : '',
     `背景规则：${spec.backgroundRule}。`,
     `项目风格作用范围：${spec.styleApplication}。`,
+    listLine('来源依据与设计边界：', spec.sourceEvidence, '只使用当前资产描述'),
     listLine('质量要求：', spec.qualityTerms, '干净清晰的资产图'),
+    `禁止项：${spec.negativeConstraints.join('；')}。`,
   ].filter(Boolean).join('\n')
 }
 
@@ -226,10 +230,7 @@ export function compileAssetImagePrompt(params: {
   const body = compileSpecBody(params.spec, params.locale)
   if (params.spec.assetKind === 'character') return addCharacterPromptSuffix(body)
   if (params.spec.assetKind === 'prop') return addPropPromptSuffix(body)
-  const negative = params.locale === 'en'
-    ? `Negative constraints: ${params.spec.negativeConstraints.join('; ')}.`
-    : `禁止项：${params.spec.negativeConstraints.join('；')}。`
-  return addLocationPromptSuffix(`${body}\n${negative}`.trim())
+  return addLocationPromptSuffix(body.trim())
 }
 
 export function getAssetPromptTerminalConstraint(kind: AssetPromptSpec['assetKind']): string {

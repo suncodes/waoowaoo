@@ -81,6 +81,10 @@ function readContinuity(shotSpec: Record<string, unknown>): Record<string, unkno
   return asRecord(shotSpec.continuity)
 }
 
+function readPromptBlueprint(shotSpec: Record<string, unknown>): Record<string, unknown> {
+  return asRecord(shotSpec.promptBlueprint)
+}
+
 function boundedDuration(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null
   return Math.round(value > 1000 ? value / 1000 : value)
@@ -132,7 +136,11 @@ export function buildPanelVideoPromptSpec(params: {
   const locale = params.locale || 'zh'
   const shotSpec = readShotSpec(params.context)
   const continuity = readContinuity(shotSpec)
+  const promptBlueprint = readPromptBlueprint(shotSpec)
   const actionBeats = stringArray(shotSpec.actionBeats)
+  const blueprintActions = stringArray(promptBlueprint.action)
+  const blueprintCamera = stringArray(promptBlueprint.camera)
+  const blueprintNegative = stringArray(promptBlueprint.negative)
   const customPrompt = readString(params.context.customPrompt)
   const rawVideoPrompt = readString(params.context.panel.videoPrompt)
   const description = readString(params.context.panel.description)
@@ -145,6 +153,7 @@ export function buildPanelVideoPromptSpec(params: {
   const primaryMotion = firstNonEmpty(
     customPrompt,
     actionBeats[0],
+    blueprintActions[0],
     rawVideoPrompt,
     description,
     locale === 'en' ? 'subtle controlled motion matching the storyboard intent' : '符合分镜意图的轻微受控运动',
@@ -159,7 +168,7 @@ export function buildPanelVideoPromptSpec(params: {
     startState: firstNonEmpty(readString(shotSpec.startState), locale === 'en' ? 'start from the exact source frame' : '从源图首帧状态开始'),
     primaryMotion,
     secondaryMotion: actionBeats.slice(1, 3),
-    cameraMotion: firstNonEmpty(readString(shotSpec.camera), readString(params.context.panel.cameraMove), locale === 'en' ? 'locked or gently moving camera' : '锁定机位或轻微镜头运动'),
+    cameraMotion: firstNonEmpty(readString(shotSpec.camera), blueprintCamera[0], readString(params.context.panel.cameraMove), locale === 'en' ? 'locked or gently moving camera' : '锁定机位或轻微镜头运动'),
     focusChange: locale === 'en' ? 'keep focus on the primary subject unless the prompt explicitly asks otherwise' : '焦点保持在主视觉主体上，除非提示词明确要求转移',
     environmentMotion: locale === 'en' ? 'only subtle environmental motion that supports the main action' : '只加入服务主体动作的轻微环境运动',
     endState: firstNonEmpty(readString(shotSpec.endState), locale === 'en' ? 'end in a stable readable pose' : '结束在稳定可读的姿态或画面状态'),
@@ -170,7 +179,10 @@ export function buildPanelVideoPromptSpec(params: {
       firstNonEmpty(readString(continuity.lightingContinuity), locale === 'en' ? 'preserve lighting and color continuity' : '保持光色连续性'),
     ],
     durationSec: boundedDuration(params.context.panel.duration),
-    negativeConstraints: buildNegativeConstraints(locale),
+    negativeConstraints: Array.from(new Set([
+      ...buildNegativeConstraints(locale),
+      ...blueprintNegative,
+    ])),
   }
 }
 

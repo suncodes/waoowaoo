@@ -8,6 +8,7 @@ import type {
   ShotFunction,
   ShotFunctionMixItem,
   ShotPlan,
+  ShotPromptBlueprint,
   ShotRhythmPoint,
   ShotSpec,
   SingleImageFeasibility,
@@ -149,10 +150,25 @@ function parseSingleImageFeasibility(value: unknown, fallback: JsonRecord): Sing
   }
 }
 
+function parseShotPromptBlueprint(value: unknown): ShotPromptBlueprint | undefined {
+  if (!isRecord(value)) return undefined
+  const blueprint: ShotPromptBlueprint = {
+    subject: stringArray(value.subject),
+    environment: stringArray(value.environment),
+    action: stringArray(value.action),
+    camera: stringArray(value.camera),
+    lighting: stringArray(value.lighting),
+    style: stringArray(value.style),
+    negative: stringArray(value.negative),
+  }
+  return Object.values(blueprint).some((items) => items.length > 0) ? blueprint : undefined
+}
+
 function parseShotSpec(value: unknown, fallback: JsonRecord, assetRefs: VisualAssetRef[]): ShotSpec {
   const raw = isRecord(value) ? value : {}
   const shotFunction = readShotFunction(raw.shotFunction, inferShotFunction(fallback))
   const visibleAssets = parseVisibleAssets(raw.visibleAssets, assetRefs)
+  const promptBlueprint = parseShotPromptBlueprint(raw.promptBlueprint)
   const primarySubject = optionalString(raw.primarySubject)
     || visibleAssets.find((asset) => asset.kind === 'character')?.name
     || visibleAssets[0]?.name
@@ -176,6 +192,7 @@ function parseShotSpec(value: unknown, fallback: JsonRecord, assetRefs: VisualAs
     dialogueAudio: optionalString(raw.dialogueAudio) || '',
     constraints: stringArray(raw.constraints),
     durationIntent: optionalString(raw.durationIntent) || `${numberInRange(fallback.durationSec, 5, 1, 60)} seconds`,
+    ...(promptBlueprint ? { promptBlueprint } : {}),
   }
 }
 

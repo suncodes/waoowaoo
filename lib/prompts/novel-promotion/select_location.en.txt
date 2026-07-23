@@ -16,11 +16,13 @@ Selection rules:
 For each selected location, generate 3 wide-angle environment descriptions.
 Each description should:
 - start with location name in brackets: "[Location Name] ..."
+- include stable scene identity locks: era, architecture type, entrance/window placement, core anchors, main light direction, and dominant color atmosphere
 - describe spatial layout, depth layers, major objects, and lighting direction
 - define at least 3 stable anchor objects or anchor areas that can support later character placement
 - make the usable open space around those anchors visually clear
 - remain environment-only (no named protagonist actions)
 - use concise, production-ready English
+- keep the three descriptions consistent in entrance placement, anchor objects, scale, and lighting; vary only camera angle or minor detail
 
 If the source location is generic, such as 「classroom」, 「office」, or 「living room」, you must proactively make it specific enough for controllable image generation:
 - define the visible main structure
@@ -34,6 +36,8 @@ Output format (JSON only):
     {
       "name": "location_name",
       "summary": "short usage summary",
+      "design_locks": ["era and architecture type", "fixed entrance/window/core anchors", "main light and color baseline"],
+      "forbidden_elements": ["no named characters", "no era drift", "no text, watermark, or logo"],
       "has_crowd": false,
       "crowd_description": "",
       "available_slots": [
@@ -58,5 +62,6 @@ Strict constraints:
 5. Slot descriptions must be concrete and reusable, tied to visible anchors such as the outer side of a desk row, the open floor before the blackboard, the inner side of a doorway, the space beside a window wall.
 6. Do not mention character posture, action, or emotion inside `available_slots`. Describe position only.
 7. Every anchor mentioned in `available_slots` must also appear clearly in the location descriptions.
-8. ⚠️ JSON SAFETY: All quotation marks in text (""''「」 etc.) MUST be converted to corner brackets「」in JSON string values. NEVER use raw ASCII double quotes " inside string values.
+8. design_locks and forbidden_elements must constrain descriptions; downstream image generation reads descriptions and slots, so naturally include the locks in every description.
+9. ⚠️ JSON SAFETY: All quotation marks in text (""''「」 etc.) MUST be converted to corner brackets「」in JSON string values. NEVER use raw ASCII double quotes " inside string values.
   

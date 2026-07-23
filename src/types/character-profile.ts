@@ -43,6 +43,27 @@ export interface CharacterProfileData {
 
     /** 年龄段描述 */
     age_range: string
+
+    /** 需要跨镜保持不变的身份锚点 */
+    identity_locks?: string[]
+
+    /** 轮廓、体态、发型等不变量 */
+    silhouette_locks?: string[]
+
+    /** 固定服装或时代服饰约束 */
+    costume_locks?: string[]
+
+    /** 固定主色和点缀色 */
+    color_locks?: string[]
+
+    /** 禁止生成的混淆项 */
+    forbidden_variants?: string[]
+
+    /** 跨镜连续性备注 */
+    continuity_notes?: string[]
+
+    /** 预期子形象草案 */
+    expected_appearances?: unknown[]
 }
 
 /**

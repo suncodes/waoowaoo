@@ -76,4 +76,32 @@ describe('panel video prompt compiler', () => {
     expect(snapshot.promptHash).toBeTruthy()
     expect(snapshot.specHash).toBeTruthy()
   })
+
+  it('uses promptBlueprint when action beats are absent', () => {
+    const spec = buildPanelVideoPromptSpec({
+      locale: 'zh',
+      context: {
+        generationMode: 'normal',
+        panel: {
+          panelId: 'panel-blueprint',
+          description: '潜艇舷窗',
+          photographyRules: {
+            shotSpec: {
+              primarySubject: '潜艇舷窗',
+              promptBlueprint: {
+                action: ['窗外水流缓慢掠过'],
+                camera: ['固定机位轻微呼吸感'],
+                negative: ['禁止新增人物'],
+              },
+            },
+          },
+        },
+      },
+    })
+    const prompt = compilePanelVideoPrompt(spec, 'zh')
+
+    expect(spec.primaryMotion).toBe('窗外水流缓慢掠过')
+    expect(spec.cameraMotion).toBe('固定机位轻微呼吸感')
+    expect(prompt).toContain('禁止新增人物')
+  })
 })

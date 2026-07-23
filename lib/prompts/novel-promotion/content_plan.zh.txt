@@ -20,7 +20,15 @@ VideoProfile：
     "targetDurationSec": 90,
     "tone": ["语气"],
     "mustInclude": ["必须包含"],
-    "mustAvoid": ["必须避免"]
+    "mustAvoid": ["必须避免"],
+    "hookCandidates": [{
+      "id": "hook_1",
+      "pattern": "contrast|reversal|question|visual_wonder|identity_filter",
+      "line": "可直接配音的一句开场",
+      "promise": "这句开场给观众的具体承诺",
+      "sourceBoundary": "这句开场基于哪些原文信息，不能越过什么边界",
+      "riskFlags": [{"code": "source_gap|fact_claim|spoiler_risk|overclaim|visualization_gap|duration_risk|structure_drift", "severity": "info|warning|critical", "message": "风险说明"}]
+    }]
   },
   "contentPlan": {}
 }
@@ -49,6 +57,18 @@ VideoProfile：
     "summary": "内容摘要",
     "estimatedDurationSec": 15,
     "sourceAnchor": {"label": "可选来源位置", "quote": "可选原文"},
+    "voiceRhythm": {
+      "role": "opening_question|promise|setup|conflict|turn|evidence|payoff|closing",
+      "voiceIntent": "这一节口播要让观众产生的理解或情绪变化",
+      "emotion": "本节情绪",
+      "pacing": "fast|steady|slow",
+      "pauseAfterSec": 0.4
+    },
+    "sourceBoundary": {
+      "factualBasis": "verified|user_provided|model_knowledge|interpretation",
+      "allowedExpression": "允许怎样重组表达",
+      "forbiddenExpression": ["禁止新增的事实、反应或结论"]
+    },
     "riskFlags": [{"code": "source_gap|fact_claim|spoiler_risk|overclaim|visualization_gap|duration_risk|structure_drift", "severity": "info|warning|critical", "message": "本节拍风险"}]
   }]
 }
@@ -82,6 +102,18 @@ VideoProfile：
     "estimatedDurationSec": 20,
     "spoilerLevel": "none|light|full",
     "sourceAnchor": {"label": "章节或位置", "quote": "已验证原文依据，可选", "chapter": "章节", "sourceType": "verified_source|user_source|model_knowledge|reference_summary", "confidence": 0.7},
+    "voiceRhythm": {
+      "role": "opening_question|promise|setup|conflict|turn|evidence|payoff|closing",
+      "voiceIntent": "这一段口播要让观众产生的理解或情绪变化",
+      "emotion": "本段情绪",
+      "pacing": "fast|steady|slow",
+      "pauseAfterSec": 0.4
+    },
+    "sourceBoundary": {
+      "factualBasis": "verified|user_provided|model_knowledge|interpretation",
+      "allowedExpression": "允许怎样重组表达",
+      "forbiddenExpression": ["禁止新增的事实、归因、评价或剧透"]
+    },
     "riskFlags": [{"code": "source_gap|fact_claim|spoiler_risk|overclaim|visualization_gap|duration_risk|structure_drift", "severity": "info|warning|critical", "message": "本段风险"}]
   }]
 }
@@ -90,10 +122,14 @@ VideoProfile：
 - 旁白不是把目标时长全部填满。按中文口播约 3.5～4.2 字/秒估算，segments 或 beats 的预计总时长应控制在 targetDurationSec 的 85%～92%，至少预留 8% 给停顿、转场、片头片尾和剪辑调整。
 - 每个 segment 或 beat 只承担一个核心问题、判断或剧情推进，不在同一单元塞入多个平行结论。
 - 开头 5～12 秒必须建立一个明确问题、反差或承诺，但禁止连续堆叠多个未经支持的“爆点”。
+- creativeBrief.hookCandidates 必须给 2～3 个候选，只能选择有来源边界的开场句。最终 hookPattern 必须与第一段或第一节拍一致。
 - hookPattern 必须只选一种，且要与第一段内容一致：contrast 表示对比，reversal 表示反转，question 表示问题，visual_wonder 表示强视觉奇观，identity_filter 表示身份代入。
 - sourceLedger 是全片事实账本。任何高风险事实、作者归因、作品细节、主题判断都要能在 sourceLedger 或 sourceAnchor 中找到边界；无法验证时用 model_knowledge 或 source_gap 标记。
 - riskFlags 必须真实暴露风险，不要为了通过评审而留空。只有确认无明显风险时才返回空数组。
-- narration 必须口语自然、短句优先、可直接配音；避免“天花板、全部实现、绝对不会、全球前十”等无来源的绝对化宣传语。
+- narration 或 summary 必须先服务“可配音推广表达”：短句、有节奏、有停顿点、有情绪推进；可以重组表达顺序和句式，但不得新增原文之外的事件、对话、角色反应、事实归因或结论。
+- voiceRhythm 必须写清每个单元的口播功能、情绪和节奏；不要所有段落都写 steady，也不要每段都写同一种 role。
+- sourceBoundary 必须写明本单元哪些只是表达重组，哪些事实不能被扩展；这是后续剧本、分镜和提示词的边界。
+- 避免“天花板、全部实现、绝对不会、全球前十”等无来源的绝对化宣传语。
 - visualPurpose 只说明画面的信息职责；visualHints 必须是单一时空中可拍摄或可生成的具体画面，不得要求一张图片完成新闻混剪、多地点拼贴或多个连续动作。
 - 屏幕文字保持简短，准确文字只进入 onScreenText，不要求图片模型直接生成书名、年份、新闻标题或长句。
 - 导读不得虚构来源，每个 segment 必须有 sourceAnchor；不要把导读写成剧情复述。

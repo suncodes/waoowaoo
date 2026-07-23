@@ -10,11 +10,15 @@ import type {
   GuideContentPlan,
   GuideOutlineItem,
   GuideSegment,
+  HookCandidate,
   HookPattern,
   NarrativeBeat,
   NarrativeContentPlan,
   SourceAnchor,
+  SourceBoundary,
   SourceLedgerEntry,
+  VoiceBeatRole,
+  VoiceRhythm,
 } from './types'
 
 type JsonRecord = Record<string, unknown>
@@ -88,6 +92,39 @@ function readHookPattern(value: unknown, fallback: HookPattern): HookPattern {
   return fallback
 }
 
+function readVoiceBeatRole(value: unknown, fallback: VoiceBeatRole): VoiceBeatRole {
+  if (
+    value === 'opening_question' ||
+    value === 'promise' ||
+    value === 'setup' ||
+    value === 'conflict' ||
+    value === 'turn' ||
+    value === 'evidence' ||
+    value === 'payoff' ||
+    value === 'closing'
+  ) {
+    return value
+  }
+  return fallback
+}
+
+function readVoicePacing(value: unknown): VoiceRhythm['pacing'] {
+  if (value === 'fast' || value === 'slow') return value
+  return 'steady'
+}
+
+function readFactualBasis(value: unknown): SourceBoundary['factualBasis'] {
+  if (
+    value === 'verified' ||
+    value === 'user_provided' ||
+    value === 'model_knowledge' ||
+    value === 'interpretation'
+  ) {
+    return value
+  }
+  return 'interpretation'
+}
+
 function readRiskCode(value: unknown): ContentRiskCode {
   if (
     value === 'source_gap' ||
@@ -134,6 +171,56 @@ function parseRiskFlag(value: unknown, index: number, sourceId?: string): Conten
 function parseRiskFlags(value: unknown, sourceId?: string): ContentRiskFlag[] {
   if (!Array.isArray(value)) return []
   return value.map((item, index) => parseRiskFlag(item, index, sourceId))
+}
+
+function parseHookCandidate(value: unknown, index: number): HookCandidate | null {
+  if (!isRecord(value)) return null
+  const line = optionalString(value.line)
+  const promise = optionalString(value.promise)
+  const sourceBoundary = optionalString(value.sourceBoundary)
+  if (!line || !promise || !sourceBoundary) return null
+  const id = optionalString(value.id) || `hook_${index + 1}`
+  return {
+    id,
+    pattern: readHookPattern(value.pattern, 'question'),
+    line,
+    promise,
+    sourceBoundary,
+    riskFlags: parseRiskFlags(value.riskFlags, id),
+  }
+}
+
+function parseHookCandidates(value: unknown): HookCandidate[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item, index) => {
+    const parsed = parseHookCandidate(item, index)
+    return parsed ? [parsed] : []
+  })
+}
+
+function parseVoiceRhythm(value: unknown): VoiceRhythm | undefined {
+  if (!isRecord(value)) return undefined
+  const voiceIntent = optionalString(value.voiceIntent)
+  const emotion = optionalString(value.emotion)
+  if (!voiceIntent || !emotion) return undefined
+  return {
+    role: readVoiceBeatRole(value.role, 'setup'),
+    voiceIntent,
+    emotion,
+    pacing: readVoicePacing(value.pacing),
+    pauseAfterSec: boundedNumber(value.pauseAfterSec, 0.4, 0, 5),
+  }
+}
+
+function parseSourceBoundary(value: unknown): SourceBoundary | undefined {
+  if (!isRecord(value)) return undefined
+  const allowedExpression = optionalString(value.allowedExpression)
+  if (!allowedExpression) return undefined
+  return {
+    factualBasis: readFactualBasis(value.factualBasis),
+    allowedExpression,
+    forbiddenExpression: stringArray(value.forbiddenExpression),
+  }
 }
 
 function mergeRiskFlags(...groups: ContentRiskFlag[][]): ContentRiskFlag[] {
@@ -228,6 +315,7 @@ function parseSourceLedger(
 
 function parseCreativeBrief(value: unknown, profile: VideoProfile): CreativeBrief {
   if (!isRecord(value)) throw new Error('CONTENT_PLAN_INVALID: creativeBrief is required')
+  const hookCandidates = parseHookCandidates(value.hookCandidates)
   return {
     schemaVersion: 1,
     profilePreset: profile.preset,
@@ -243,6 +331,7 @@ function parseCreativeBrief(value: unknown, profile: VideoProfile): CreativeBrie
     tone: stringArray(value.tone),
     mustInclude: stringArray(value.mustInclude),
     mustAvoid: stringArray(value.mustAvoid),
+    ...(hookCandidates.length > 0 ? { hookCandidates } : {}),
   }
 }
 
@@ -251,6 +340,8 @@ function parseNarrativePlan(value: JsonRecord): NarrativeContentPlan {
   const beats: NarrativeBeat[] = rawBeats.map((item, index) => {
     if (!isRecord(item)) throw new Error(`CONTENT_PLAN_INVALID: beats.${index} must be object`)
     const sourceAnchor = parseSourceAnchor(item.sourceAnchor, `beats.${index}.sourceAnchor`, false)
+    const voiceRhythm = parseVoiceRhythm(item.voiceRhythm)
+    const sourceBoundary = parseSourceBoundary(item.sourceBoundary)
     return {
       id: optionalString(item.id) || `beat_${index + 1}`,
       title: requiredString(item.title, `beats.${index}.title`),
@@ -258,6 +349,8 @@ function parseNarrativePlan(value: JsonRecord): NarrativeContentPlan {
       summary: requiredString(item.summary, `beats.${index}.summary`),
       estimatedDurationSec: Math.round(boundedNumber(item.estimatedDurationSec, 15, 2, 600)),
       ...(sourceAnchor ? { sourceAnchor } : {}),
+      ...(voiceRhythm ? { voiceRhythm } : {}),
+      ...(sourceBoundary ? { sourceBoundary } : {}),
       riskFlags: parseRiskFlags(item.riskFlags, optionalString(item.id) || `beat_${index + 1}`),
     }
   })
@@ -302,6 +395,8 @@ function parseGuidePlan(value: JsonRecord): GuideContentPlan {
       ? item.spoilerLevel
       : 'light'
     const onScreenText = optionalString(item.onScreenText)
+    const voiceRhythm = parseVoiceRhythm(item.voiceRhythm)
+    const sourceBoundary = parseSourceBoundary(item.sourceBoundary)
     return {
       id: optionalString(item.id) || `segment_${index + 1}`,
       outlineId,
@@ -313,6 +408,8 @@ function parseGuidePlan(value: JsonRecord): GuideContentPlan {
       estimatedDurationSec: Math.round(boundedNumber(item.estimatedDurationSec, 20, 3, 600)),
       spoilerLevel,
       sourceAnchor: parseSourceAnchor(item.sourceAnchor, `segments.${index}.sourceAnchor`, true)!,
+      ...(voiceRhythm ? { voiceRhythm } : {}),
+      ...(sourceBoundary ? { sourceBoundary } : {}),
       riskFlags: parseRiskFlags(item.riskFlags, optionalString(item.id) || `segment_${index + 1}`),
     }
   })

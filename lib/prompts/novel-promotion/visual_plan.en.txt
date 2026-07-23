@@ -98,7 +98,16 @@ Return JSON only:
       "colorGrade": "grade",
       "dialogueAudio": "narration, dialogue, or ambience",
       "constraints": ["constraint"],
-      "durationIntent": "duration rationale"
+      "durationIntent": "duration rationale",
+      "promptBlueprint": {
+        "subject": ["subject identity and appearance anchors required in the final image prompt"],
+        "environment": ["scene space and anchor objects required in the final image prompt"],
+        "action": ["single action or state required in image/video prompts"],
+        "camera": ["shot size, angle, composition, and camera movement"],
+        "lighting": ["light direction, quality, and color continuity"],
+        "style": ["style applies only to line, material, palette, and lighting"],
+        "negative": ["forbidden text, watermark, extra subject, multi-scene, or unreferenced assets"]
+      }
     }
   }]
 }
@@ -111,5 +120,9 @@ Shot-planning standards:
 - shotSpec.visibleAssets must stay consistent with visualUnit.assetRefs. If a locked asset appears, do not mention it only in description.
 - continuity must state what the shot inherits from the previous shot and hands to the next shot; do not write only "natural transition".
 - If singleImageFeasibility.status is not feasible, imagePrompt must downgrade according to text_card or composite responsibilities, or the content must be split into multiple visualUnits.
+- promptBlueprint is the skeleton of the final professional prompt. It must contain concrete executable visual elements, not generic terms like cinematic, beautiful, or high quality alone.
+- imagePrompt must synthesize promptBlueprint subject/environment/action/camera/lighting/style into a natural complete prompt, not merely repeat the storyboard description.
+- videoPrompt must derive from startState, actionBeats, endState, and promptBlueprint action/camera, describing controlled motion after the first frame without redesigning static appearance.
+- If ContentPlan or screenplay includes voiceRhythm, sourceBoundary, promotion_voiceover, or visual_beats, use them to determine shot function and information density before considering text length.
 
 A guide must cover every clip and choose among book cover, quote card, diagram, illustration, and kinetic text according to information purpose. Do not make every unit a character illustration. When several sources or locations are needed, split them into several visualUnits instead of packing them into one imagePrompt. Fiction must also cover every clip and may provide compact global recommendations per clip; detailed storyboard generation must still obey the Treatment and Bible.

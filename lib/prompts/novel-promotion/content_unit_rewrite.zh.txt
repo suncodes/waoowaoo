@@ -29,7 +29,19 @@ VideoProfile：
     "onScreenText": "可选短文字",
     "estimatedDurationSec": 20,
     "spoilerLevel": "none|light|full",
-    "sourceAnchor": {"label": "章节或位置", "quote": "有依据时填写", "chapter": "章节"}
+    "sourceAnchor": {"label": "章节或位置", "quote": "有依据时填写", "chapter": "章节"},
+    "voiceRhythm": {
+      "role": "opening_question|promise|setup|conflict|turn|evidence|payoff|closing",
+      "voiceIntent": "口播表达意图",
+      "emotion": "本段情绪",
+      "pacing": "fast|steady|slow",
+      "pauseAfterSec": 0.4
+    },
+    "sourceBoundary": {
+      "factualBasis": "verified|user_provided|model_knowledge|interpretation",
+      "allowedExpression": "允许怎样重组表达",
+      "forbiddenExpression": ["禁止新增的事实、归因、评价或剧透"]
+    }
   }
 }
 
@@ -39,6 +51,15 @@ VideoProfile：
     "summary": "片段摘要",
     "content": "片段正文",
     "screenplay": {
+      "promotion_voiceover": {
+        "opening_line": "可直接配音的一句开场或承接句",
+        "core_promise": "本片段看点",
+        "voice_intent": "疑问/反差/选择/后果/铺垫",
+        "source_boundary": "不新增事实，只重组原文信息",
+        "lines": [{"role": "opening_question|promise|setup|conflict|turn|evidence|payoff|closing", "text": "可配音短句", "source": "original|interpretation", "visualBeat": "对应画面"}]
+      },
+      "emotion_curve": ["情绪节点"],
+      "visual_beats": [{"id": "visual_1", "purpose": "画面功能", "subject": "唯一主体", "actionState": "单一动作或状态", "sourceText": "对应原文"}],
       "scenes": [{
         "scene_number": 1,
         "heading": {"int_ext": "内景或外景", "location": "地点", "time": "时间"},
@@ -49,4 +70,4 @@ VideoProfile：
   }
 }
 
-要求：保持当前单元的叙事职责和前后衔接；导读必须保留可靠来源并遵守剧透策略；剧本只调整当前片段；没有明确要求时优先精简、提升口语自然度和画面可执行性。
+要求：保持当前单元的叙事职责和前后衔接；导读必须保留可靠来源并遵守剧透策略；剧本只调整当前片段；没有明确要求时优先精简、提升口语自然度、节奏变化和画面可执行性。可以优化表达顺序和句式，但禁止新增原始材料中没有的事件、对话、角色反应、事实归因或结论。

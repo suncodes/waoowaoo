@@ -29,7 +29,19 @@ For unit_type=guide_segment return:
     "onScreenText": "optional short text",
     "estimatedDurationSec": 20,
     "spoilerLevel": "none|light|full",
-    "sourceAnchor": {"label": "chapter or location", "quote": "include only when supported", "chapter": "chapter"}
+    "sourceAnchor": {"label": "chapter or location", "quote": "include only when supported", "chapter": "chapter"},
+    "voiceRhythm": {
+      "role": "opening_question|promise|setup|conflict|turn|evidence|payoff|closing",
+      "voiceIntent": "voiceover intent",
+      "emotion": "segment emotion",
+      "pacing": "fast|steady|slow",
+      "pauseAfterSec": 0.4
+    },
+    "sourceBoundary": {
+      "factualBasis": "verified|user_provided|model_knowledge|interpretation",
+      "allowedExpression": "how wording may be reorganized",
+      "forbiddenExpression": ["unsupported facts, attribution, evaluation, or spoilers"]
+    }
   }
 }
 
@@ -39,6 +51,15 @@ For unit_type=script_clip return:
     "summary": "clip summary",
     "content": "clip content",
     "screenplay": {
+      "promotion_voiceover": {
+        "opening_line": "voice-ready opening or bridge line",
+        "core_promise": "clip attraction",
+        "voice_intent": "question, contrast, choice, consequence, or setup",
+        "source_boundary": "reorganize expression without adding facts",
+        "lines": [{"role": "opening_question|promise|setup|conflict|turn|evidence|payoff|closing", "text": "voice-ready short line", "source": "original|interpretation", "visualBeat": "paired visual"}]
+      },
+      "emotion_curve": ["emotion node"],
+      "visual_beats": [{"id": "visual_1", "purpose": "visual function", "subject": "single subject", "actionState": "single action or state", "sourceText": "source text"}],
       "scenes": [{
         "scene_number": 1,
         "heading": {"int_ext": "INT or EXT", "location": "location", "time": "time"},
@@ -49,4 +70,4 @@ For unit_type=script_clip return:
   }
 }
 
-Keep the current unit's narrative purpose and continuity. A guide must retain reliable source support and spoiler policy. A script rewrite must affect only the selected clip. Unless instructed otherwise, favor concise, natural spoken language and executable visuals.
+Keep the current unit's narrative purpose and continuity. A guide must retain reliable source support and spoiler policy. A script rewrite must affect only the selected clip. Unless instructed otherwise, favor concise, natural spoken language, rhythm variation, and executable visuals. You may reorganize wording and order, but must not add source-absent events, dialogue, reactions, factual attribution, or conclusions.

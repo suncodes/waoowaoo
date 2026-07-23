@@ -55,6 +55,40 @@ export interface CreativeBrief {
   tone: string[]
   mustInclude: string[]
   mustAvoid: string[]
+  hookCandidates?: HookCandidate[]
+}
+
+export type VoiceBeatRole =
+  | 'opening_question'
+  | 'promise'
+  | 'setup'
+  | 'conflict'
+  | 'turn'
+  | 'evidence'
+  | 'payoff'
+  | 'closing'
+
+export interface HookCandidate {
+  id: string
+  pattern: HookPattern
+  line: string
+  promise: string
+  sourceBoundary: string
+  riskFlags: ContentRiskFlag[]
+}
+
+export interface VoiceRhythm {
+  role: VoiceBeatRole
+  voiceIntent: string
+  emotion: string
+  pacing: 'fast' | 'steady' | 'slow'
+  pauseAfterSec: number
+}
+
+export interface SourceBoundary {
+  factualBasis: 'verified' | 'user_provided' | 'model_knowledge' | 'interpretation'
+  allowedExpression: string
+  forbiddenExpression: string[]
 }
 
 export interface NarrativeBeat {
@@ -64,6 +98,8 @@ export interface NarrativeBeat {
   summary: string
   estimatedDurationSec: number
   sourceAnchor?: SourceAnchor
+  voiceRhythm?: VoiceRhythm
+  sourceBoundary?: SourceBoundary
   riskFlags: ContentRiskFlag[]
 }
 
@@ -97,6 +133,8 @@ export interface GuideSegment {
   estimatedDurationSec: number
   spoilerLevel: SpoilerLevel
   sourceAnchor: SourceAnchor
+  voiceRhythm?: VoiceRhythm
+  sourceBoundary?: SourceBoundary
   riskFlags: ContentRiskFlag[]
 }
 

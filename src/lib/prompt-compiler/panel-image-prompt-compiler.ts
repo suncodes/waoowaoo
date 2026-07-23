@@ -36,6 +36,15 @@ export interface PanelImagePromptSpec {
   qualityTerms: string[]
   textPolicy: 'no_text' | 'safe_area_only'
   negativeConstraints: string[]
+  promptBlueprint: {
+    subject: string[]
+    environment: string[]
+    action: string[]
+    camera: string[]
+    lighting: string[]
+    style: string[]
+    negative: string[]
+  }
   continuity: {
     fromPrevious: string
     toNext: string
@@ -252,6 +261,41 @@ function resolveSingleImageFeasibility(
   }
 }
 
+function resolvePromptBlueprint(
+  context: PanelImagePromptCompilerContext,
+  primarySubject: string,
+  styleText: string,
+): PanelImagePromptSpec['promptBlueprint'] {
+  const shotSpec = readShotSpec(context)
+  const raw = asRecord(shotSpec.promptBlueprint)
+  const subject = stringArray(raw.subject)
+  const environment = stringArray(raw.environment)
+  const action = stringArray(raw.action)
+  const camera = stringArray(raw.camera)
+  const lighting = stringArray(raw.lighting)
+  const style = stringArray(raw.style)
+  const negative = stringArray(raw.negative)
+  const fallbackArray = (values: string[], fallback: string): string[] =>
+    values.length > 0 ? values : (fallback ? [fallback] : [])
+  return {
+    subject: fallbackArray(subject, primarySubject),
+    environment: fallbackArray(environment, firstNonEmpty(context.context.location_reference?.description, context.context.location_reference?.name, context.panel.location)),
+    action: fallbackArray(action, resolveActionState(context)),
+    camera: fallbackArray(camera, resolveCameraAngle(context)),
+    lighting: fallbackArray(lighting, resolveLightingAndColor(context)),
+    style: fallbackArray(style, styleText),
+    negative: negative.length > 0
+      ? negative
+      : [
+          '无文字',
+          '无水印',
+          '无标志',
+          '无多格拼图',
+          '无未指定角色',
+        ],
+  }
+}
+
 export function buildPanelImagePromptSpec(params: {
   context: PanelImagePromptCompilerContext
   aspectRatio: string
@@ -267,6 +311,7 @@ export function buildPanelImagePromptSpec(params: {
   )
   const location = params.context.context.location_reference
   const propNames = (params.context.context.prop_references || []).map((item) => item.name).filter(Boolean)
+  const promptBlueprint = resolvePromptBlueprint(params.context, primarySubject, params.styleText)
   return {
     schemaVersion: CREATIVE_QUALITY_SCHEMA_VERSION,
     panelId: params.context.panel.panel_id,
@@ -302,7 +347,7 @@ export function buildPanelImagePromptSpec(params: {
       '画面比例正确',
     ],
     textPolicy: params.context.panel.on_screen_text_for_downstream_composition ? 'safe_area_only' : 'no_text',
-    negativeConstraints: [
+    negativeConstraints: Array.from(new Set([
       '无文字',
       '无水印',
       '无标志',
@@ -310,7 +355,9 @@ export function buildPanelImagePromptSpec(params: {
       '无混剪画面',
       '无未指定角色',
       '无风格关联 IP 角色',
-    ],
+      ...promptBlueprint.negative,
+    ])),
+    promptBlueprint,
     continuity: resolveContinuity(params.context),
     singleImageFeasibility: resolveSingleImageFeasibility(params.context),
   }

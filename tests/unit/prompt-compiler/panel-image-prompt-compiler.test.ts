@@ -38,6 +38,15 @@ function buildContext(): PanelImagePromptCompilerContext {
             reason: 'one object action at one vault door',
             riskFlags: [],
           },
+          promptBlueprint: {
+            subject: ['brass key identity locked to prop reference'],
+            environment: ['vault corridor metal door'],
+            action: ['key held still at the lock'],
+            camera: ['low angle close-up'],
+            lighting: ['hard side light'],
+            style: ['cinematic ink illustration'],
+            negative: ['no extra hands'],
+          },
         },
       },
       acting_notes: null,
@@ -97,6 +106,8 @@ describe('panel image prompt compiler', () => {
     expect(spec.composition.midground).toContain('brass key')
     expect(spec.continuity.fromPrevious).toBe('Hero has reached the vault door.')
     expect(spec.singleImageFeasibility.reason).toBe('one object action at one vault door')
+    expect(spec.promptBlueprint.subject).toEqual(['brass key identity locked to prop reference'])
+    expect(spec.negativeConstraints).toContain('no extra hands')
     expect(spec.negativeConstraints).toContain('无水印')
   })
 

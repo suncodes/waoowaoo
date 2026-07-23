@@ -10,8 +10,10 @@ Rules:
 3. Support both human and non-human characters.
 4. Respect era_period and costume_tier.
 5. If primary_identifier exists, include it clearly in each main description.
-6. Do not include expression, action, background, or plot narration.
-7. Do not include skin color, eye color, or lip color.
+6. If identity_locks, silhouette_locks, costume_locks, color_locks, forbidden_variants, or continuity_notes exist, treat them as high-priority consistency constraints across every main description.
+7. Never violate forbidden_variants, never introduce unsupported weapons, logos, franchise motifs, species traits, or anachronistic outfits.
+8. Do not include expression, action, background, or plot narration.
+9. Do not include skin color, eye color, or lip color.
 
 Appearance strategy:
 - Initial appearance should be complete and self-contained.

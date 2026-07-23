@@ -197,6 +197,12 @@ D级（群众演员）：
       "suggested_colors": ["深蓝", "金色"],
       "primary_identifier": "眼角泪痣（仅S/A级需要）",
       "visual_keywords": ["精英气质", "禁欲系"],
+      "identity_locks": ["跨镜必须保持不变的身份锚点，如脸型、发型、标志物、核心服饰"],
+      "silhouette_locks": ["身形轮廓、发型轮廓、非人类角色物种轮廓等"],
+      "costume_locks": ["时代服装、固定外套、制服结构、鞋靴等"],
+      "color_locks": ["主色", "辅色", "点缀色"],
+      "forbidden_variants": ["禁止变成另一个角色", "禁止改变时代服饰", "禁止添加无来源武器"],
+      "continuity_notes": ["跨场景保持一致的称呼、身份、关系或外观约束"],
       "expected_appearances": [
         {"id": 1, "change_reason": "初始形象"},
         {"id": 2, "change_reason": "换装/特殊状态的原因（如有）"}
@@ -240,6 +246,8 @@ D级（群众演员）：
 10. expected_appearances 必填，至少包含 id=1 的初始形象
 11. 只有持续性视觉变化才添加子形象，临时特效/情绪/动作不添加
 12. 输出必须是**严格合法的JSON**：字符串中不能出现原始换行/回车/制表符
+13. identity_locks、silhouette_locks、costume_locks、color_locks、forbidden_variants、continuity_notes 必填；这些字段是后续资产图、分镜图和视频提示词的一致性依据，不要写空泛词。
+14. 所有锁定字段必须来自原文、角色介绍或合理的时代身份推断；不能为了“好看”添加无来源的武器、徽标、种族特征、IP 标志物或不合时代的服饰。
 
 ⚠️⚠️⚠️【JSON安全输出 - 最高优先级】⚠️⚠️⚠️
 - 原文中的所有引号（""''「」『』等）在 JSON 字符串值中必须统一替换为日式方括号引号「」

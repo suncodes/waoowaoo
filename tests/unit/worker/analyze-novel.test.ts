@@ -17,7 +17,10 @@ const prismaMock = vi.hoisted(() => ({
     findUnique: vi.fn(),
     update: vi.fn(async () => ({})),
   },
-  novelPromotionCharacter: { create: vi.fn(async () => ({ id: 'char-new-1' })) },
+  novelPromotionCharacter: {
+    create: vi.fn(async () => ({ id: 'char-new-1' })),
+    update: vi.fn(async () => ({})),
+  },
   novelPromotionLocation: { create: vi.fn(async () => ({ id: 'loc-new-1' })) },
   locationImage: {
     create: vi.fn(async () => ({})),
@@ -304,6 +307,41 @@ describe('worker analyze-novel behavior', () => {
         stepId: 'analyze_locations',
         done: true,
         output: expect.stringContaining('"locations"'),
+      }),
+    )
+  })
+
+  it('accepts zh character extraction shape and persists introduction', async () => {
+    llmMock.getCompletionContent
+      .mockReset()
+      .mockReturnValueOnce(JSON.stringify({
+        new_characters: [
+          {
+            name: '林墨',
+            aliases: ['我', '老公'],
+            introduction: '故事主角，第一人称「我」对应林墨。',
+            role_level: 'S',
+            personality_tags: ['冷静', '克制'],
+            visual_keywords: ['黑发', '深色外套'],
+            identity_locks: ['剑眉', '深色外套'],
+            forbidden_variants: ['禁止换成古装'],
+          },
+        ],
+        updated_characters: [],
+      }))
+      .mockReturnValueOnce(JSON.stringify({ locations: [] }))
+      .mockReturnValueOnce(JSON.stringify({ props: [] }))
+
+    await handleAnalyzeNovelTask(buildJob())
+
+    expect(prismaMock.novelPromotionCharacter.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          name: '林墨',
+          aliases: JSON.stringify(['我', '老公']),
+          introduction: '故事主角，第一人称「我」对应林墨。',
+          profileData: expect.stringContaining('identity_locks'),
+        }),
       }),
     )
   })

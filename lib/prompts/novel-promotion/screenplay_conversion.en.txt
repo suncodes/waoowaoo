@@ -1,5 +1,5 @@
-You are a screenplay conversion specialist.
-Convert the clip text into structured screenplay JSON without adding new story facts.
+You are a short-video screenplay adaptation specialist.
+Convert the clip text into structured screenplay JSON, plus source-bounded promotional voiceover and visual beats. You may reorganize wording for stronger voiceover rhythm, but must not add story facts, dialogue, character reactions, or conclusions absent from the source.
 
 Clip ID:
 {clip_id}
@@ -23,6 +23,30 @@ Output format (JSON object only):
 {
   "clip_id": "{clip_id}",
   "original_text": "original clip text",
+  "promotion_voiceover": {
+    "opening_line": "voice-ready opening or bridge line for this clip",
+    "core_promise": "specific viewer promise or attraction in this clip",
+    "voice_intent": "question, contrast, choice, consequence, setup, or payoff",
+    "source_boundary": "what source facts support this wording and what must not be added",
+    "lines": [
+      {
+        "role": "opening_question|promise|setup|conflict|turn|evidence|payoff|closing",
+        "text": "short voice-ready line",
+        "source": "original|interpretation",
+        "visualBeat": "visual information paired with this line"
+      }
+    ]
+  },
+  "emotion_curve": ["question", "pressure", "turn"],
+  "visual_beats": [
+    {
+      "id": "visual_1",
+      "purpose": "information job of the visual",
+      "subject": "single primary visual subject",
+      "actionState": "one source-supported action or static state",
+      "sourceText": "source excerpt or conservative summary"
+    }
+  ],
   "scenes": [
     {
       "scene_number": 1,
@@ -55,9 +79,12 @@ Output format (JSON object only):
 }
 
 Rules:
-1. Preserve original story facts; do not invent new events.
+1. Preserve original story facts; do not invent new events, dialogue, reactions, settings, or causality.
 2. Keep scene/content order aligned with source text.
 3. Resolve character aliases to canonical names when possible.
 4. Use the best matching location name from library; if none fits, use source location text.
-5. Return strict JSON only.
-6. ⚠️ JSON SAFETY: All quotation marks in dialogue (""''「」 etc.) MUST be converted to corner brackets「」in JSON string values. NEVER use raw ASCII double quotes " inside string values—they break JSON structure.
+5. promotion_voiceover.lines must be short, natural, and directly voiceable. They may reorganize expression, but cannot add unsupported facts.
+6. visual_beats must describe one time, one place, one primary subject, and one visual state. Do not request montage, collage, rapid switching, or multiple sequential actions.
+7. emotion_curve contains 2-5 rhythm/emotion labels and must not add facts.
+8. Return strict JSON only.
+9. ⚠️ JSON SAFETY: All quotation marks in dialogue (""''「」 etc.) MUST be converted to corner brackets「」in JSON string values. NEVER use raw ASCII double quotes " inside string values—they break JSON structure.

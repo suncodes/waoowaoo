@@ -67,11 +67,44 @@ describe('video quality workflow contracts', () => {
   it('parses a source-anchored book guide and rejects missing anchors', () => {
     const profile = resolveVideoProfile('book_guide')
     const payload = buildGuidePlanPayload()
+    ;(payload.creativeBrief as Record<string, unknown>).hookCandidates = [{
+      id: 'hook-1',
+      pattern: 'question',
+      line: '为什么这件事总是靠意志力失败？',
+      promise: '用一个简单框架看懂行为改变',
+      sourceBoundary: '基于用户提供的章节摘录，不新增作者未说过的结论',
+      riskFlags: [],
+    }]
+    ;(payload.contentPlan.segments[0] as Record<string, unknown>).voiceRhythm = {
+      role: 'opening_question',
+      voiceIntent: '先抛出观众熟悉的问题',
+      emotion: '好奇',
+      pacing: 'fast',
+      pauseAfterSec: 0.5,
+    }
+    ;(payload.contentPlan.segments[0] as Record<string, unknown>).sourceBoundary = {
+      factualBasis: 'verified',
+      allowedExpression: '可以改写为口语短句',
+      forbiddenExpression: ['禁止新增作者排名'],
+    }
     const result = parseContentPlanResult(payload, buildReviewPayload(), profile)
 
     expect(result.contentPlan.planType).toBe('guide')
+    expect(result.creativeBrief.hookCandidates?.[0]).toMatchObject({
+      id: 'hook-1',
+      pattern: 'question',
+      line: '为什么这件事总是靠意志力失败？',
+    })
     if (result.contentPlan.planType === 'guide') {
       expect(result.contentPlan.segments[0].sourceAnchor.label).toBe('第一章')
+      expect(result.contentPlan.segments[0].voiceRhythm).toMatchObject({
+        role: 'opening_question',
+        pacing: 'fast',
+      })
+      expect(result.contentPlan.segments[0].sourceBoundary).toMatchObject({
+        factualBasis: 'verified',
+        forbiddenExpression: ['禁止新增作者排名'],
+      })
       expect(result.contentPlan.hookPattern).toBe('question')
       expect(result.contentPlan.sourceLedger).toEqual([expect.objectContaining({
         label: '第一章',
@@ -125,17 +158,32 @@ describe('video quality workflow contracts', () => {
         imagePrompt: '清晰的行为循环信息图',
         videoPrompt: '镜头缓慢推进到循环中心',
         durationSec: 8,
+        shotSpec: {
+          narrativeIntent: '解释行为循环',
+          shotFunction: 'evidence',
+          primarySubject: '行为循环图',
+          promptBlueprint: {
+            subject: ['行为循环图主体'],
+            environment: ['干净纸面背景'],
+            action: ['图形中心轻微强调'],
+            camera: ['正视角中景'],
+            lighting: ['柔和自然光'],
+            style: ['编辑式插画'],
+            negative: ['禁止乱码文字'],
+          },
+        },
       }],
     }
 
     const result = parseVisualPlanResult(rawPlan, profile, ['clip-1'])
     expect(result.visualUnits[0].shotSpec.startState).toBe('stable opening state')
     expect(result.visualUnits[0].shotSpec.durationIntent).toBe('8 seconds')
-    expect(result.visualUnits[0].shotSpec.shotFunction).toBe('hook')
-    expect(result.visualUnits[0].shotSpec.primarySubject).toBe('展示行为循环图')
+    expect(result.visualUnits[0].shotSpec.shotFunction).toBe('evidence')
+    expect(result.visualUnits[0].shotSpec.primarySubject).toBe('行为循环图')
+    expect(result.visualUnits[0].shotSpec.promptBlueprint?.negative).toEqual(['禁止乱码文字'])
     expect(result.visualUnits[0].shotSpec.singleImageFeasibility.status).toBe('feasible')
     expect(result.shotPlan.shotBudget.totalShots).toBe(1)
-    expect(result.shotPlan.functionMix).toEqual([{ shotFunction: 'hook', count: 1 }])
+    expect(result.shotPlan.functionMix).toEqual([{ shotFunction: 'evidence', count: 1 }])
     expect(() => parseVisualPlanResult(rawPlan, profile, ['clip-other']))
       .toThrow('clipId does not exist')
     expect(() => parseVisualPlanResult(rawPlan, profile, ['clip-1', 'clip-2']))

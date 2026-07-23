@@ -79,6 +79,13 @@ export async function persistAnalyzeGlobalChunk(params: {
         visual_keywords: toStringArray(char.visual_keywords),
         gender: char.gender,
         age_range: char.age_range,
+        identity_locks: toStringArray(char.identity_locks),
+        silhouette_locks: toStringArray(char.silhouette_locks),
+        costume_locks: toStringArray(char.costume_locks),
+        color_locks: toStringArray(char.color_locks),
+        forbidden_variants: toStringArray(char.forbidden_variants),
+        continuity_notes: toStringArray(char.continuity_notes),
+        expected_appearances: Array.isArray(char.expected_appearances) ? char.expected_appearances : [],
       }
 
       const created = await prisma.novelPromotionCharacter.create({

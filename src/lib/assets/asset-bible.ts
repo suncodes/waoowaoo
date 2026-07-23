@@ -19,6 +19,10 @@ export interface AssetBibleItem {
   aliases: string[]
   role: AssetBibleRole
   narrativeFunction: string
+  timelineStage?: string
+  semanticIdentity?: string[]
+  usageIntents?: string[]
+  promptLocks?: string[]
   evidence: AssetBibleEvidence[]
   visualInvariants: string[]
   allowedVariants: string[]
@@ -162,6 +166,29 @@ function buildVisualInvariants(anchor: AssetBibleAnchorInput): string[] {
   ])
 }
 
+function inferTimelineStage(anchor: AssetBibleAnchorInput): string {
+  if (anchor.semanticKind === 'book_cover' || anchor.semanticKind === 'diagram') return 'conceptual_visual'
+  return anchor.sourceUnitIds?.[0] || 'project_baseline'
+}
+
+function buildUsageIntents(anchor: AssetBibleAnchorInput): string[] {
+  if (anchor.semanticKind === 'book_cover') return ['建立书籍对象认知', '避免伪造准确封面文字']
+  if (anchor.semanticKind === 'diagram') return ['承载抽象信息', '降低人物或场景误生成']
+  if (anchor.assetKind === 'location') return ['提供稳定空间锚点', '支持角色落位和光色连续性']
+  if (anchor.assetKind === 'prop') return ['保持关键物件外观一致', '支持跨镜识别']
+  return ['保持角色身份一致', '支持跨镜外貌连续性']
+}
+
+function buildPromptLocks(anchor: AssetBibleAnchorInput): string[] {
+  const aliases = assetAliases(anchor)
+  return uniqueStrings([
+    `canonicalName=${anchor.name}`,
+    aliases.length > 0 ? `aliases=${aliases.join('|')}` : '',
+    anchor.semanticKind ? `semanticKind=${anchor.semanticKind}` : '',
+    anchor.description ? `description=${anchor.description}` : '',
+  ])
+}
+
 function readUnitId(value: JsonRecord, fallbackIndex: number): string {
   return readString(value.id)
     || readString(value.panelId)
@@ -243,6 +270,10 @@ export function buildAssetBible(params: {
       narrativeFunction: anchor.description
         ? `${anchor.name}: ${anchor.description}`
         : `${anchor.name} used by ${sourceUnitIds.join(', ') || 'current project'}`,
+      timelineStage: inferTimelineStage(anchor),
+      semanticIdentity: uniqueStrings([normalizeKind(anchor), roleForAnchor(anchor), anchor.semanticKind || '']),
+      usageIntents: buildUsageIntents(anchor),
+      promptLocks: buildPromptLocks(anchor),
       evidence: buildEvidence(sourceUnitIds, sourceTextById),
       visualInvariants: buildVisualInvariants(anchor),
       allowedVariants: [],

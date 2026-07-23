@@ -44,6 +44,12 @@ Output format (JSON only):
       "suggested_colors": ["color1", "color2"],
       "primary_identifier": "signature visual marker",
       "visual_keywords": ["keyword1", "keyword2"],
+      "identity_locks": ["identity anchors that must remain stable across shots"],
+      "silhouette_locks": ["body, hair, species, or profile-shape anchors"],
+      "costume_locks": ["era-specific outfit, fixed garment structure, shoes or boots"],
+      "color_locks": ["main color", "supporting color", "accent color"],
+      "forbidden_variants": ["forbid changing into another character", "forbid unsupported weapons or symbols"],
+      "continuity_notes": ["relationship, naming, or visual continuity notes"],
       "expected_appearances": [
         { "id": 1, "change_reason": "initial appearance" }
       ]
@@ -66,6 +72,12 @@ Output format (JSON only):
       "suggested_colors": ["color1", "color2"],
       "primary_identifier": "signature visual marker",
       "visual_keywords": ["keyword1", "keyword2"],
+      "identity_locks": ["identity anchors that must remain stable across shots"],
+      "silhouette_locks": ["body, hair, species, or profile-shape anchors"],
+      "costume_locks": ["era-specific outfit, fixed garment structure, shoes or boots"],
+      "color_locks": ["main color", "supporting color", "accent color"],
+      "forbidden_variants": ["forbid changing into another character", "forbid unsupported weapons or symbols"],
+      "continuity_notes": ["relationship, naming, or visual continuity notes"],
       "expected_appearances": [
         { "id": 1, "change_reason": "initial appearance" }
       ]
@@ -84,4 +96,6 @@ Strict constraints:
 1. JSON only.
 2. If no valid character is found, return empty arrays.
 3. Keep all strings in English.
-4. ⚠️ JSON SAFETY: All quotation marks in text (""''「」 etc.) MUST be converted to corner brackets「」in JSON string values. NEVER use raw ASCII double quotes " inside string values.
+4. identity_locks, silhouette_locks, costume_locks, color_locks, forbidden_variants, and continuity_notes are required for every new character; they drive downstream asset, storyboard, and video prompt consistency.
+5. Lock fields must come from the source, character introduction, or conservative era/social-identity inference. Do not add unsupported weapons, logos, species traits, franchise motifs, or anachronistic outfits.
+6. ⚠️ JSON SAFETY: All quotation marks in text (""''「」 etc.) MUST be converted to corner brackets「」in JSON string values. NEVER use raw ASCII double quotes " inside string values.

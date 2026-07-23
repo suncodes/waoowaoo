@@ -49,6 +49,43 @@ function toStringArray(value: unknown): string[] {
     .filter(Boolean)
 }
 
+function readObjectArray(value: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is Record<string, unknown> =>
+    item !== null && typeof item === 'object' && !Array.isArray(item),
+  )
+}
+
+function readCharacterItems(charactersData: Record<string, unknown>): Array<Record<string, unknown>> {
+  const direct = readObjectArray(charactersData.characters)
+  const created = readObjectArray(charactersData.new_characters)
+  return direct.length > 0 ? direct : created
+}
+
+function buildCharacterProfileData(item: Record<string, unknown>): Record<string, unknown> {
+  return {
+    role_level: item.role_level,
+    archetype: item.archetype,
+    personality_tags: toStringArray(item.personality_tags),
+    era_period: item.era_period,
+    social_class: item.social_class,
+    occupation: item.occupation,
+    costume_tier: item.costume_tier,
+    suggested_colors: toStringArray(item.suggested_colors),
+    primary_identifier: item.primary_identifier,
+    visual_keywords: toStringArray(item.visual_keywords),
+    gender: item.gender,
+    age_range: item.age_range,
+    identity_locks: toStringArray(item.identity_locks),
+    silhouette_locks: toStringArray(item.silhouette_locks),
+    costume_locks: toStringArray(item.costume_locks),
+    color_locks: toStringArray(item.color_locks),
+    forbidden_variants: toStringArray(item.forbidden_variants),
+    continuity_notes: toStringArray(item.continuity_notes),
+    expected_appearances: readObjectArray(item.expected_appearances),
+  }
+}
+
 /** 按别名匹配：按 '/' 拆分后任一别名精确匹配即为命中 */
 function nameMatchesWithAlias(existingName: string, newName: string): boolean {
   const a = existingName.toLowerCase().trim()
@@ -57,6 +94,28 @@ function nameMatchesWithAlias(existingName: string, newName: string): boolean {
   const aliasesA = a.split('/').map(s => s.trim()).filter(Boolean)
   const aliasesB = b.split('/').map(s => s.trim()).filter(Boolean)
   return aliasesB.some(alias => aliasesA.includes(alias))
+}
+
+function parseJsonStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) return toStringArray(value)
+  if (typeof value !== 'string' || !value.trim()) return []
+  try {
+    return toStringArray(JSON.parse(value))
+  } catch {
+    return []
+  }
+}
+
+function characterMatchesWithAliases(
+  character: { name: string; aliases?: string | null },
+  name: string,
+  aliases: string[],
+): boolean {
+  const candidates = [name, ...aliases]
+  const existingNames = [character.name, ...parseJsonStringArray(character.aliases)]
+  return candidates.some((candidate) =>
+    existingNames.some((existing) => nameMatchesWithAlias(existing, candidate)),
+  )
 }
 
 function parseJsonResponse(responseText: string): Record<string, unknown> {
@@ -462,9 +521,7 @@ export async function handleAnalyzeNovelTask(job: Job<TaskJobData>) {
   const charactersData = parseJsonResponse(characterResponseText)
   const locationsData = parseJsonResponse(locationResponseText)
   const propsData = parseJsonResponse(propResponseText)
-  const parsedCharacters = Array.isArray(charactersData.characters)
-    ? (charactersData.characters as Array<Record<string, unknown>>)
-    : []
+  const parsedCharacters = readCharacterItems(charactersData)
   const parsedLocations = Array.isArray(locationsData.locations)
     ? (locationsData.locations as Array<Record<string, unknown>>)
     : []
@@ -483,38 +540,49 @@ export async function handleAnalyzeNovelTask(job: Job<TaskJobData>) {
   for (const item of parsedCharacters) {
     const name = readText(item.name).trim()
     if (!name) continue
+    const aliases = toStringArray(item.aliases)
 
     const existsInLibrary = (novelData.characters || []).some(
-      (character) => nameMatchesWithAlias(character.name, name),
+      (character) => characterMatchesWithAliases(character, name, aliases),
     )
     if (existsInLibrary) continue
 
-    const profileData = {
-      role_level: item.role_level,
-      archetype: item.archetype,
-      personality_tags: toStringArray(item.personality_tags),
-      era_period: item.era_period,
-      social_class: item.social_class,
-      occupation: item.occupation,
-      costume_tier: item.costume_tier,
-      suggested_colors: toStringArray(item.suggested_colors),
-      primary_identifier: item.primary_identifier,
-      visual_keywords: toStringArray(item.visual_keywords),
-      gender: item.gender,
-      age_range: item.age_range,
-    }
+    const profileData = buildCharacterProfileData(item)
 
     const created = await prisma.novelPromotionCharacter.create({
       data: {
         novelPromotionProjectId: novelData.id,
         name,
-        aliases: JSON.stringify(toStringArray(item.aliases)),
+        aliases: JSON.stringify(aliases),
+        introduction: readText(item.introduction) || null,
         profileData: JSON.stringify(profileData),
         profileConfirmed: false,
       },
       select: { id: true },
     })
     createdCharacters.push(created)
+  }
+
+  for (const item of readObjectArray(charactersData.updated_characters)) {
+    const name = readText(item.name).trim()
+    if (!name) continue
+    const existing = (novelData.characters || []).find(
+      (character) => character.name.toLowerCase() === name.toLowerCase(),
+    )
+    if (!existing) continue
+    const updatedIntroduction = readText(item.updated_introduction).trim()
+    const updatedAliases = toStringArray(item.updated_aliases)
+    const existingAliases = parseJsonStringArray(existing.aliases)
+    const mergedAliases = Array.from(new Set([...existingAliases, ...updatedAliases].filter(Boolean)))
+    const updateData: Record<string, unknown> = {}
+    if (updatedIntroduction) updateData.introduction = updatedIntroduction
+    if (mergedAliases.length > existingAliases.length) updateData.aliases = JSON.stringify(mergedAliases)
+    if (Object.keys(updateData).length > 0) {
+      await prisma.novelPromotionCharacter.update({
+        where: { id: existing.id },
+        data: updateData,
+      })
+    }
   }
 
   const createdLocations: Array<{ id: string }> = []
