@@ -220,6 +220,14 @@ function normalizeOptionalString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null
 }
 
+function normalizeAppearanceTargetId(value: unknown): string | null {
+  const normalized = normalizeOptionalString(value)
+  if (!normalized) return null
+  const lower = normalized.toLowerCase()
+  if (lower === 'nan' || lower === 'null' || lower === 'undefined') return null
+  return normalized
+}
+
 function resolveGenerateOverlayTarget(
   input: AssetActionScopeInput,
   payload: Record<string, unknown>,
@@ -245,11 +253,14 @@ function resolveGenerateOverlayTarget(
   }
 
   if (input.kind === 'character') {
-    const appearanceId = normalizeOptionalString(payload.appearanceId)
+    const appearanceId = normalizeAppearanceTargetId(payload.appearanceId)
+    if (!appearanceId) {
+      return null
+    }
     return {
       projectId,
       targetType: 'CharacterAppearance',
-      targetId: appearanceId ?? assetId,
+      targetId: appearanceId,
     }
   }
 

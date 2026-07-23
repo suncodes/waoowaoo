@@ -8,13 +8,13 @@ import {
 interface CharacterEditModalProps {
   characterId: string
   characterName: string
-  appearanceId: number
+  appearanceId: string
   description: string
   introduction?: string | null
   descriptionIndex?: number
   projectId: string
   onClose: () => void
-  onSave: (characterId: string, appearanceId: number) => void
+  onSave: (characterId: string, appearanceId: string) => void
   onUpdate: (newDescription: string) => void
   onIntroductionUpdate?: (newIntroduction: string) => void
   onNameUpdate?: (newName: string) => void
@@ -40,7 +40,7 @@ export default function CharacterEditModal({
     nextCharacterId,
     nextAppearanceId,
   ) => {
-    onSave(nextCharacterId, Number(nextAppearanceId))
+    onSave(nextCharacterId, nextAppearanceId)
   }
 
   return (
@@ -48,7 +48,7 @@ export default function CharacterEditModal({
       mode="project"
       characterId={characterId}
       characterName={characterName}
-      appearanceId={String(appearanceId)}
+      appearanceId={appearanceId}
       description={description}
       introduction={introduction}
       descriptionIndex={descriptionIndex}

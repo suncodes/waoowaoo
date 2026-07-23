@@ -265,12 +265,37 @@ async function resolveProjectCharacterAppearanceId(input: {
   projectId: string
   characterId: string
   appearanceId: string
+  appearanceIndex: number | null
 }): Promise<string> {
-  if (input.appearanceId) {
+  const appearanceId = input.appearanceId.trim()
+  const appearanceIdLower = appearanceId.toLowerCase()
+  const hasAppearanceId = appearanceId.length > 0
+    && appearanceIdLower !== 'nan'
+    && appearanceIdLower !== 'null'
+    && appearanceIdLower !== 'undefined'
+
+  if (hasAppearanceId) {
     const appearance = await prisma.characterAppearance.findFirst({
       where: {
-        id: input.appearanceId,
+        id: appearanceId,
         characterId: input.characterId,
+        character: {
+          novelPromotionProject: { projectId: input.projectId },
+        },
+      },
+      select: { id: true },
+    })
+    if (!appearance) {
+      throw new ApiError('NOT_FOUND')
+    }
+    return appearance.id
+  }
+
+  if (typeof input.appearanceIndex === 'number') {
+    const appearance = await prisma.characterAppearance.findFirst({
+      where: {
+        characterId: input.characterId,
+        appearanceIndex: input.appearanceIndex,
         character: {
           novelPromotionProject: { projectId: input.projectId },
         },
@@ -312,6 +337,7 @@ async function submitProjectAssetGenerateTask(input: AssetGenerateInput) {
     : normalizeImageGenerationCount('location', input.body.count)
   const artStyle = resolveOptionalArtStyle(input.body)
   const appearanceId = normalizeString(input.body.appearanceId)
+  const appearanceIndex = toNumber(input.body.appearanceIndex)
   const imageIndex = toNumber(input.body.imageIndex)
 
   if (normalizedKind === 'location' && imageIndex === null) {
@@ -349,6 +375,7 @@ async function submitProjectAssetGenerateTask(input: AssetGenerateInput) {
       projectId,
       characterId: input.assetId,
       appearanceId,
+      appearanceIndex,
     })
     : ''
   const taskType = normalizedKind === 'character' ? TASK_TYPE.IMAGE_CHARACTER : TASK_TYPE.IMAGE_LOCATION
@@ -361,7 +388,7 @@ async function submitProjectAssetGenerateTask(input: AssetGenerateInput) {
     ? await hasCharacterAppearanceOutput({
       appearanceId: targetId,
       characterId: input.assetId,
-      appearanceIndex: toNumber(input.body.appearanceIndex),
+      appearanceIndex,
     })
     : await hasLocationImageOutput({
       locationId: input.assetId,

@@ -89,6 +89,39 @@ describe('useAssetActions.generate optimistic overlay', () => {
     expect(overlay?.intent).toBe('generate')
   })
 
+  it('targets project character generation overlay at the appearance id', async () => {
+    const queryClient = new QueryClient()
+    useQueryClientMock.mockReturnValue(queryClient)
+
+    const actions = useAssetActions({
+      scope: 'project',
+      projectId: 'project-1',
+      kind: 'character',
+    })
+    await actions.generate({ id: 'character-1', appearanceId: 'appearance-1' })
+
+    const appearanceOverlay = getOverlay(queryClient, 'project-1', 'CharacterAppearance:appearance-1')
+    const characterIdOverlay = getOverlay(queryClient, 'project-1', 'CharacterAppearance:character-1')
+    expect(appearanceOverlay?.phase).toBe('queued')
+    expect(appearanceOverlay?.intent).toBe('generate')
+    expect(characterIdOverlay).toBeNull()
+  })
+
+  it('does not create a project character overlay without a valid appearance id', async () => {
+    const queryClient = new QueryClient()
+    useQueryClientMock.mockReturnValue(queryClient)
+
+    const actions = useAssetActions({
+      scope: 'project',
+      projectId: 'project-1',
+      kind: 'character',
+    })
+    await actions.generate({ id: 'character-1', appearanceId: 'NaN' })
+
+    expect(getOverlay(queryClient, 'project-1', 'CharacterAppearance:character-1')).toBeNull()
+    expect(getOverlay(queryClient, 'project-1', 'CharacterAppearance:NaN')).toBeNull()
+  })
+
   it('clears the overlay when prop generation submission fails', async () => {
     const queryClient = new QueryClient()
     useQueryClientMock.mockReturnValue(queryClient)

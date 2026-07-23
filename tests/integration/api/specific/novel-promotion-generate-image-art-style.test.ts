@@ -173,6 +173,45 @@ describe('api specific - novel promotion generate image art style', () => {
     expect(submitArg?.dedupeKey).toBe('image_character:appearance-primary:2')
   })
 
+  it('resolves appearanceIndex when legacy callers send an invalid appearanceId sentinel', async () => {
+    prismaMock.characterAppearance.findFirst.mockResolvedValueOnce({ id: 'appearance-index-2' })
+
+    const mod = await import('@/app/api/novel-promotion/[projectId]/generate-image/route')
+    const req = buildMockRequest({
+      path: '/api/novel-promotion/project-1/generate-image',
+      method: 'POST',
+      body: {
+        type: 'character',
+        id: 'character-1',
+        appearanceId: 'NaN',
+        appearanceIndex: 2,
+        count: 1,
+      },
+    })
+
+    const res = await mod.POST(req, { params: Promise.resolve({ projectId: 'project-1' }) })
+    expect(res.status).toBe(200)
+
+    const submitArg = submitTaskMock.mock.calls[0]?.[0] as {
+      targetId?: string
+      payload?: Record<string, unknown>
+      dedupeKey?: string
+    } | undefined
+    expect(prismaMock.characterAppearance.findFirst).toHaveBeenCalledWith({
+      where: {
+        characterId: 'character-1',
+        appearanceIndex: 2,
+        character: {
+          novelPromotionProject: { projectId: 'project-1' },
+        },
+      },
+      select: { id: true },
+    })
+    expect(submitArg?.targetId).toBe('appearance-index-2')
+    expect(submitArg?.payload?.appearanceId).toBe('appearance-index-2')
+    expect(submitArg?.dedupeKey).toBe('image_character:appearance-index-2:1')
+  })
+
   it('rejects character generation when appearanceId does not belong to the character', async () => {
     prismaMock.characterAppearance.findFirst.mockResolvedValueOnce(null)
 
