@@ -1,3 +1,4 @@
+import * as React from 'react'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
@@ -23,6 +24,7 @@ vi.mock('@/components/shared/assets/CharacterEditModal', () => ({
 
 describe('project CharacterEditModal wrapper', () => {
   it('keeps project appearance id as uuid string when generating candidates', async () => {
+    Reflect.set(globalThis, 'React', React)
     const ProjectCharacterEditModal = (await import(
       '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/assets/CharacterEditModal'
     )).default

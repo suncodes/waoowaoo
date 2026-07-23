@@ -115,6 +115,73 @@ function toNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+function parseJsonRecord(value: string | null | undefined): Record<string, unknown> {
+  if (!value) return {}
+  try {
+    const parsed = JSON.parse(value) as unknown
+    return toObject(parsed)
+  } catch {
+    return {}
+  }
+}
+
+function readProfileStringList(profile: Record<string, unknown>, key: string): string[] {
+  const value = profile[key]
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => normalizeString(item))
+    .filter(Boolean)
+}
+
+function buildDefaultProjectAppearanceDescription(input: {
+  name: string
+  introduction: string | null
+  profileData: string | null
+  body: Record<string, unknown>
+}) {
+  const directDescription = normalizeString(input.body.description)
+    || normalizeString(input.body.currentDescription)
+    || normalizeString(input.body.customDescription)
+  if (directDescription) return directDescription
+
+  const profile = parseJsonRecord(input.profileData)
+  const profileFields = [
+    normalizeString(profile.gender),
+    normalizeString(profile.age_range),
+    normalizeString(profile.archetype),
+    normalizeString(profile.era_period),
+    normalizeString(profile.social_class),
+    normalizeString(profile.occupation),
+  ].filter(Boolean)
+  const visualKeywords = readProfileStringList(profile, 'visual_keywords').slice(0, 6)
+  const locks = [
+    ...readProfileStringList(profile, 'identity_locks'),
+    ...readProfileStringList(profile, 'silhouette_locks'),
+    ...readProfileStringList(profile, 'costume_locks'),
+    ...readProfileStringList(profile, 'color_locks'),
+  ].slice(0, 8)
+  const parts = [
+    normalizeString(input.introduction),
+    profileFields.join('，'),
+    visualKeywords.length ? `视觉关键词：${visualKeywords.join('、')}` : '',
+    locks.length ? `一致性约束：${locks.join('、')}` : '',
+  ].filter(Boolean)
+  return parts.length > 0 ? parts.join('，') : `${input.name}的角色设定`
+}
+
+function isRecoverableProjectAppearanceId(input: {
+  appearanceId: string
+  characterId: string
+}) {
+  const appearanceId = input.appearanceId.trim()
+  if (!appearanceId) return true
+  const lower = appearanceId.toLowerCase()
+  return lower === 'nan'
+    || lower === 'null'
+    || lower === 'undefined'
+    || lower === input.characterId.trim().toLowerCase()
+}
+
 function resolveOptionalArtStyle(body: Record<string, unknown>): ArtStyleValue | undefined {
   if (!Object.prototype.hasOwnProperty.call(body, 'artStyle')) {
     return undefined
@@ -266,6 +333,7 @@ async function resolveProjectCharacterAppearanceId(input: {
   characterId: string
   appearanceId: string
   appearanceIndex: number | null
+  body: Record<string, unknown>
 }): Promise<string> {
   const appearanceId = input.appearanceId.trim()
   const appearanceIdLower = appearanceId.toLowerCase()
@@ -286,9 +354,15 @@ async function resolveProjectCharacterAppearanceId(input: {
       select: { id: true },
     })
     if (!appearance) {
-      throw new ApiError('NOT_FOUND')
+      if (typeof input.appearanceIndex !== 'number' && !isRecoverableProjectAppearanceId(input)) {
+        throw new ApiError('NOT_FOUND', {
+          message: 'Character appearance not found for this character',
+          reason: 'APPEARANCE_NOT_FOUND',
+        })
+      }
+    } else {
+      return appearance.id
     }
-    return appearance.id
   }
 
   if (typeof input.appearanceIndex === 'number') {
@@ -303,9 +377,15 @@ async function resolveProjectCharacterAppearanceId(input: {
       select: { id: true },
     })
     if (!appearance) {
-      throw new ApiError('NOT_FOUND')
+      if (!isRecoverableProjectAppearanceId(input)) {
+        throw new ApiError('NOT_FOUND', {
+          message: 'Character appearance not found for this character',
+          reason: 'APPEARANCE_NOT_FOUND',
+        })
+      }
+    } else {
+      return appearance.id
     }
-    return appearance.id
   }
 
   const character = await prisma.novelPromotionCharacter.findFirst({
@@ -314,6 +394,10 @@ async function resolveProjectCharacterAppearanceId(input: {
       novelPromotionProject: { projectId: input.projectId },
     },
     select: {
+      id: true,
+      name: true,
+      introduction: true,
+      profileData: true,
       appearances: {
         orderBy: { appearanceIndex: 'asc' },
         take: 1,
@@ -323,7 +407,38 @@ async function resolveProjectCharacterAppearanceId(input: {
   })
   const appearance = character?.appearances[0]
   if (!appearance) {
-    throw new ApiError('NOT_FOUND')
+    if (!character) {
+      throw new ApiError('NOT_FOUND', {
+        message: 'Project character not found',
+        reason: 'CHARACTER_NOT_FOUND',
+      })
+    }
+    const description = buildDefaultProjectAppearanceDescription({
+      name: character.name,
+      introduction: character.introduction,
+      profileData: character.profileData,
+      body: input.body,
+    })
+    const created = await prisma.characterAppearance.upsert({
+      where: {
+        characterId_appearanceIndex: {
+          characterId: character.id,
+          appearanceIndex: PRIMARY_APPEARANCE_INDEX,
+        },
+      },
+      create: {
+        characterId: character.id,
+        appearanceIndex: PRIMARY_APPEARANCE_INDEX,
+        changeReason: '初始形象',
+        description,
+        descriptions: JSON.stringify([description]),
+        imageUrls: encodeImageUrls([]),
+        previousImageUrls: encodeImageUrls([]),
+      },
+      update: {},
+      select: { id: true },
+    })
+    return created.id
   }
   return appearance.id
 }
@@ -376,6 +491,7 @@ async function submitProjectAssetGenerateTask(input: AssetGenerateInput) {
       characterId: input.assetId,
       appearanceId,
       appearanceIndex,
+      body: input.body,
     })
     : ''
   const taskType = normalizedKind === 'character' ? TASK_TYPE.IMAGE_CHARACTER : TASK_TYPE.IMAGE_LOCATION

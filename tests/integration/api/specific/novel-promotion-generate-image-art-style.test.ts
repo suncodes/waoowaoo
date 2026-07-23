@@ -48,6 +48,7 @@ const hasOutputMock = vi.hoisted(() => ({
 const prismaMock = vi.hoisted(() => ({
   characterAppearance: {
     findFirst: vi.fn(),
+    upsert: vi.fn(),
   },
   novelPromotionCharacter: {
     findFirst: vi.fn(),
@@ -75,6 +76,7 @@ describe('api specific - novel promotion generate image art style', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     prismaMock.characterAppearance.findFirst.mockResolvedValue({ id: 'appearance-1' })
+    prismaMock.characterAppearance.upsert.mockResolvedValue({ id: 'created-primary-appearance' })
     prismaMock.novelPromotionCharacter.findFirst.mockResolvedValue({
       appearances: [{ id: 'appearance-1' }],
     })
@@ -232,5 +234,62 @@ describe('api specific - novel promotion generate image art style', () => {
     expect(res.status).toBe(404)
     expect(body.error.code).toBe('NOT_FOUND')
     expect(submitTaskMock).not.toHaveBeenCalled()
+  })
+
+  it('creates a primary appearance when project character exists without appearance rows', async () => {
+    prismaMock.characterAppearance.findFirst.mockResolvedValueOnce(null)
+    prismaMock.novelPromotionCharacter.findFirst.mockResolvedValueOnce({
+      id: 'character-1',
+      name: '女主角',
+      introduction: '冷静敏锐的调查员',
+      profileData: JSON.stringify({
+        gender: '女性',
+        age_range: '25岁左右',
+        archetype: '调查员',
+        era_period: '现代',
+        social_class: '专业人士',
+        visual_keywords: ['短发', '风衣', '警觉眼神'],
+        identity_locks: ['短发轮廓稳定'],
+      }),
+      appearances: [],
+    })
+
+    const mod = await import('@/app/api/novel-promotion/[projectId]/generate-image/route')
+    const req = buildMockRequest({
+      path: '/api/novel-promotion/project-1/generate-image',
+      method: 'POST',
+      body: {
+        type: 'character',
+        id: 'character-1',
+        appearanceId: 'character-1',
+        count: 2,
+      },
+    })
+
+    const res = await mod.POST(req, { params: Promise.resolve({ projectId: 'project-1' }) })
+    expect(res.status).toBe(200)
+
+    expect(prismaMock.characterAppearance.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        characterId_appearanceIndex: {
+          characterId: 'character-1',
+          appearanceIndex: 0,
+        },
+      },
+      create: expect.objectContaining({
+        characterId: 'character-1',
+        appearanceIndex: 0,
+        changeReason: '初始形象',
+      }),
+      select: { id: true },
+    }))
+    const submitArg = submitTaskMock.mock.calls[0]?.[0] as {
+      targetId?: string
+      payload?: Record<string, unknown>
+      dedupeKey?: string
+    } | undefined
+    expect(submitArg?.targetId).toBe('created-primary-appearance')
+    expect(submitArg?.payload?.appearanceId).toBe('created-primary-appearance')
+    expect(submitArg?.dedupeKey).toBe('image_character:created-primary-appearance:2')
   })
 })
