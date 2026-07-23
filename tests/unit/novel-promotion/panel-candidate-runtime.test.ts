@@ -69,6 +69,23 @@ describe('panel candidate runtime', () => {
     expect(result?.candidates).toEqual(['candidate-1.png', 'candidate-2.png'])
   })
 
+  it('uses the machine-recommended candidate as preview without treating it as confirmed', () => {
+    const result = getPanelCandidatesFromRuntime(panel({
+      imageUrl: 'candidate-1.png',
+      candidateImages: JSON.stringify(['candidate-1.png', 'candidate-2.png']),
+      visualQualityState: createVisualQualityState({
+        mode: 'auto',
+        status: 'approved',
+        versionHash: 'version-1',
+        candidateUrls: ['candidate-1.png', 'candidate-2.png'],
+        activeCandidateUrl: 'candidate-2.png',
+      }),
+    }), candidateSystem)
+
+    expect(result?.candidates).toEqual(['candidate-1.png', 'candidate-2.png'])
+    expect(result?.selectedIndex).toBe(1)
+  })
+
   it('restores the confirmed candidate index after media URLs are signed', () => {
     let initializedIndex = -1
     const runtime = {

@@ -77,9 +77,8 @@ function BoardDetailPanel({
   const confirmedCandidateIndex = candidates
     ? resolveConfirmedCandidateIndex(item.sourcePanel, candidates.candidates)
     : -1
-  const hasFinalCandidate = hasConfirmedCandidate || qualityState?.status === 'approved'
   const selectedIsCurrent = !!selectedCandidateUrl && (
-    hasFinalCandidate
+    hasConfirmedCandidate
       ? confirmedCandidateIndex >= 0
         ? candidates?.selectedIndex === confirmedCandidateIndex
         : selectedCandidateUrl === item.panel.imageUrl
@@ -202,6 +201,9 @@ function BoardDetailPanel({
                     {group.cards.map((card) => {
                       const pending = card.candidateUrl.startsWith('PENDING:')
                       const selected = card.index === candidates.selectedIndex
+                      const confirmed = hasConfirmedCandidate
+                        ? card.candidateUrl === item.panel.imageUrl
+                        : !qualityState && card.candidateUrl === item.panel.imageUrl
                       return (
                         <button
                           key={`${card.candidateUrl}:${card.index}`}
@@ -229,12 +231,12 @@ function BoardDetailPanel({
                           {!pending ? (
                             <span className={`absolute left-1 top-1 rounded px-1.5 py-0.5 text-[10px] font-semibold ${selected ? 'bg-[#f3e9cf] text-[#161512]' : 'bg-black/65 text-stone-100'}`}>{card.displayName}</span>
                           ) : null}
-                          {!pending && (card.sourceLabel || card.candidateUrl === item.panel.imageUrl) ? (
+                          {!pending && (card.sourceLabel || confirmed) ? (
                             <div className="absolute inset-x-1 bottom-1 flex flex-wrap items-end gap-1">
                               {card.sourceLabel ? (
                                 <span className="max-w-full truncate rounded bg-black/65 px-1.5 py-0.5 text-[10px] font-medium text-cyan-100">{card.sourceLabel}</span>
                               ) : null}
-                              {card.candidateUrl === item.panel.imageUrl ? (
+                              {confirmed ? (
                                 <span className="ml-auto rounded bg-emerald-600/90 px-1.5 py-0.5 text-[10px] font-semibold text-white">当前定稿</span>
                               ) : null}
                             </div>
@@ -498,7 +500,7 @@ function StudioBoardRuntime({
           <>
             <div className="grid gap-4 border-b border-white/10 px-6 py-4 sm:grid-cols-4">
               <StudioMetric label="镜头" value={items.length} />
-              <StudioMetric label="图片完成" value={`${items.filter((item) => item.panel.imageUrl).length}/${items.length}`} />
+              <StudioMetric label="图片完成" value={`${items.filter(itemReadyForProduction).length}/${items.length}`} />
               <StudioMetric label="生成中" value={controller.runningCount} />
               <StudioMetric label="待生成" value={controller.pendingPanelCount} />
             </div>

@@ -96,6 +96,7 @@ function buildJob(): Job<TaskJobData> {
 describe('worker visual-quality-review behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    visualMock.review.candidates[0].passed = true
     prismaMock.novelPromotionPanel.findUnique.mockResolvedValue({
       id: 'panel-1',
       imageUrl: null,
@@ -121,7 +122,7 @@ describe('worker visual-quality-review behavior', () => {
     })
   })
 
-  it('commits an approved candidate only after the review decision', async () => {
+  it('records an approved candidate as recommendation without committing the final image', async () => {
     visualMock.decideVisualRepair.mockReturnValue({
       action: 'approve',
       candidateIndex: 0,
@@ -138,7 +139,6 @@ describe('worker visual-quality-review behavior', () => {
         updatedAt: new Date('2026-01-01T00:00:00.000Z'),
       },
       data: expect.objectContaining({
-        imageUrl: 'candidate-1.png',
         visualQualityState: expect.objectContaining({ status: 'approved', activeCandidateUrl: 'candidate-1.png' }),
       }),
     })
@@ -157,6 +157,7 @@ describe('worker visual-quality-review behavior', () => {
       candidateUrls: ['candidate-1.png'],
       activeCandidateUrl: 'candidate-1.png',
       lastAction: 'select_candidate',
+      humanConfirmedAt: '2026-07-22T10:00:00.000Z',
     })
     prismaMock.novelPromotionPanel.findUnique
       .mockResolvedValueOnce({
@@ -189,6 +190,7 @@ describe('worker visual-quality-review behavior', () => {
   })
 
   it('routes a repairable failure into a separate bounded repair task', async () => {
+    visualMock.review.candidates[0].passed = false
     visualMock.decideVisualRepair.mockReturnValue({
       action: 'regenerate',
       candidateIndex: 0,
@@ -206,7 +208,7 @@ describe('worker visual-quality-review behavior', () => {
         action: 'regenerate',
         attempt: 1,
         versionHash: 'version-1',
-        candidateCount: 3,
+        candidateCount: 2,
       }),
     }))
   })

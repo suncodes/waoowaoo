@@ -42,6 +42,9 @@ export function useRegenerateProjectPanelImage(projectId: string) {
                 targetType: 'NovelPromotionPanel',
                 targetId: panelId,
                 intent: 'regenerate',
+                runningTaskType: 'image_panel',
+                stage: 'panel_image_submit',
+                stageLabel: '提交中',
             })
         },
         onError: (_error, { panelId }) => {

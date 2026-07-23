@@ -456,7 +456,7 @@ export async function handleVisualQualityReviewTask(job: Job<TaskJobData>) {
     versionHash,
     candidateUrls,
     candidateGroups,
-    activeCandidateUrl: nextStatus === 'approved' ? selectedUrl : panel.imageUrl,
+    activeCandidateUrl: selectedUrl || panel.imageUrl,
     attempt,
     maxAttempts,
     lastAction: decision.action,
@@ -477,10 +477,6 @@ export async function handleVisualQualityReviewTask(job: Job<TaskJobData>) {
       updatedAt: reviewingPanel.updatedAt,
     },
     data: {
-      ...(nextStatus === 'approved' && selectedUrl ? {
-        previousImageUrl: panel.imageUrl && panel.imageUrl !== selectedUrl ? panel.imageUrl : panel.previousImageUrl,
-        imageUrl: selectedUrl,
-      } : {}),
       visualQualityState: asInputJson(nextQualityState),
     },
   })

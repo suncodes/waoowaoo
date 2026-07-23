@@ -3,6 +3,7 @@ import { logInfo as _ulogInfo, logWarn as _ulogWarn } from '@/lib/logging/core'
 
 import { useCallback } from 'react'
 import type { NovelPromotionStoryboard } from '@/types/project'
+import { resolveVisualCandidateUrls } from '@/lib/quality-workflow'
 import {
   StoryboardImageMutationResult,
   getStoryboardPanels,
@@ -35,6 +36,14 @@ export function usePanelImageRegeneration({
   regeneratePanelMutation,
   selectPanelCandidateIndex,
 }: UsePanelImageRegenerationParams) {
+  const hasConfirmedOrCandidateImage = useCallback((panel: ReturnType<typeof getStoryboardPanels>[number]) => {
+    if (panel.imageUrl) return true
+    return resolveVisualCandidateUrls({
+      visualQualityState: panel.visualQualityState,
+      candidateImages: panel.candidateImages,
+    }).some((candidate) => !candidate.startsWith('PENDING:'))
+  }, [])
+
   const regeneratePanelImage = useCallback(
     async (panelId: string, count?: number, force: boolean = false) => {
       if (!force && submittingPanelImageIds.has(panelId)) return
@@ -96,12 +105,12 @@ export function usePanelImageRegeneration({
     if (panels.length === 0) return
 
     const panelsToGenerate = panels.filter(
-      (panel) => !panel.imageUrl && !panel.imageTaskRunning && !submittingPanelImageIds.has(panel.id),
+      (panel) => !hasConfirmedOrCandidateImage(panel) && !panel.imageTaskRunning && !submittingPanelImageIds.has(panel.id),
     )
     if (panelsToGenerate.length === 0) return
 
     await Promise.all(panelsToGenerate.map((panel) => regeneratePanelImage(panel.id)))
-  }, [localStoryboards, regeneratePanelImage, submittingPanelImageIds])
+  }, [hasConfirmedOrCandidateImage, localStoryboards, regeneratePanelImage, submittingPanelImageIds])
 
   return {
     regeneratePanelImage,

@@ -31,6 +31,7 @@ import {
   panelVideoError,
   panelVideoModel,
   panelVideoUrl,
+  resolveImageStatus,
   resolveVideoStatus,
   toVideoPanels,
   type ProduceItem,
@@ -514,7 +515,7 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
 
         <div className="grid gap-4 border-b border-white/10 px-6 py-4 sm:grid-cols-4">
           <StudioMetric label="镜头" value={items.length} />
-          <StudioMetric label="图片完成" value={items.filter((item) => item.panel.imageUrl).length} />
+          <StudioMetric label="图片完成" value={items.filter((item) => resolveImageStatus(item.panel) === 'locked').length} />
           <StudioMetric label="视频完成" value={items.filter((item) => panelVideoUrl(item.panel)).length} />
           <StudioMetric label="首尾帧连接" value={[...linkedPanels.values()].filter(Boolean).length} />
         </div>
@@ -527,6 +528,8 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
                 const key = `${item.storyboard.id}-${item.panel.panelIndex}`
                 const linked = linkedPanels.get(key) || false
                 const followingItem = items[index + 1]
+                const currentImageReady = isPanelVisualReadyForVideo(item.panel)
+                const followingImageReady = followingItem ? isPanelVisualReadyForVideo(followingItem.panel) : false
                 return (
                   <div key={item.id}>
                     <StudioProduceQueueRow item={item} linked={linked} selected={selectedItem?.id === item.id} onSelect={() => setSelectedId(item.id)} />
@@ -535,9 +538,9 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
                         <button
                           type="button"
                           onClick={() => { void toggleLink(item) }}
-                          disabled={linkSavingKey === key || !item.panel.imageUrl || !followingItem.panel.imageUrl}
+                          disabled={linkSavingKey === key || !currentImageReady || !followingImageReady}
                           className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${linked ? 'border-cyan-400/40 bg-cyan-400/10 text-cyan-100' : 'border-white/10 bg-[#0f100e] text-stone-500 hover:border-white/25 hover:text-stone-200'}`}
-                          title={!item.panel.imageUrl || !followingItem.panel.imageUrl ? '上下两个镜头都需要先确认图片' : linked ? '断开首尾帧连接' : '连接上下镜头为首尾帧'}
+                          title={!currentImageReady || !followingImageReady ? '上下两个镜头都需要先确认图片' : linked ? '断开首尾帧连接' : '连接上下镜头为首尾帧'}
                         >
                           <AppIcon name={linkSavingKey === key ? 'loader' : linked ? 'unplug' : 'link'} className={`h-3.5 w-3.5 ${linkSavingKey === key ? 'animate-spin' : ''}`} />
                           {linked ? '断开与下一镜头的首尾帧连接' : '连接上下镜头为首尾帧'}

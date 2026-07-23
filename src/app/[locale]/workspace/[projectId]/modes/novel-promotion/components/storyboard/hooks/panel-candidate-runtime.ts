@@ -73,15 +73,19 @@ export function resolveConfirmedCandidateIndex(
   panel: Pick<NovelPromotionPanel, 'imageUrl' | 'visualQualityState'>,
   candidates: string[],
 ): number {
-  const directIndex = candidates.findIndex((candidate) => candidate === panel.imageUrl)
-  if (directIndex >= 0) return directIndex
-
   const qualityState = parseVisualQualityState(panel.visualQualityState)
-  if (!qualityState?.activeCandidateUrl) return -1
-  const stateIndex = qualityState.candidateUrls.findIndex(
-    (candidate) => candidate === qualityState.activeCandidateUrl,
-  )
-  return stateIndex >= 0 && stateIndex < candidates.length ? stateIndex : -1
+  if (qualityState?.humanConfirmedAt) {
+    const directIndex = candidates.findIndex((candidate) => candidate === panel.imageUrl)
+    if (directIndex >= 0) return directIndex
+  }
+
+  if (qualityState?.activeCandidateUrl) {
+    const activeIndex = candidates.findIndex((candidate) => candidate === qualityState.activeCandidateUrl)
+    if (activeIndex >= 0) return activeIndex
+  }
+
+  const directIndex = candidates.findIndex((candidate) => candidate === panel.imageUrl)
+  return directIndex >= 0 ? directIndex : -1
 }
 
 function clearIfExists(system: PanelCandidateSystemLike, panelId: string) {

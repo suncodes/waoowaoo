@@ -58,6 +58,7 @@ export type ResolveVisualWorkflowInput = {
   candidateCount?: number
   hasPrimaryImage?: boolean
   hasDraft?: boolean
+  allowDraftStatus?: boolean
   hasError?: boolean
   emptyLabel?: string
   draftLabel?: string
@@ -278,14 +279,20 @@ export function resolveVisualWorkflowPresentation(input: ResolveVisualWorkflowIn
   const qualityState = parseVisualQualityState(input.visualQualityState)
   const candidateCount = input.candidateCount ?? (input.hasCandidates ? 1 : 0)
   const humanConfirmed = !!qualityState?.humanConfirmedAt
-  const autoApproved = qualityState?.status === 'approved'
-  const confirmed = humanConfirmed || (autoApproved && candidateCount <= 1)
-  const terminalQualityState = humanConfirmed || autoApproved
+  const machineRecommended = qualityState?.mode === 'auto' && qualityState.status === 'approved'
+  const confirmed = humanConfirmed || (!!input.hasPrimaryImage && (!qualityState || qualityState.mode === 'shadow'))
+  const settledQualityState = !!qualityState && (
+    humanConfirmed
+    || qualityState.status === 'approved'
+    || qualityState.status === 'human_required'
+    || qualityState.status === 'failed'
+    || qualityState.status === 'shadow_completed'
+  )
   const taskStates = (input.taskStates || []).filter(Boolean)
   const activeTask = selectActiveTaskState(taskStates)
   if (activeTask) {
     const activeTaskType = taskTypeOf(activeTask)
-    if (!terminalQualityState || !VISUAL_QUALITY_TASK_TYPES.has(activeTaskType)) {
+    if (!settledQualityState || !VISUAL_QUALITY_TASK_TYPES.has(activeTaskType)) {
       return presentationFromActiveTask(activeTask, labels)
     }
   }
@@ -323,17 +330,17 @@ export function resolveVisualWorkflowPresentation(input: ResolveVisualWorkflowIn
     if (qualityState.status === 'failed' && !input.hasCandidates && !input.hasPrimaryImage) {
       return buildPresentation({ ...labels, phase: 'failed' })
     }
-    if (qualityState.status === 'human_required' || qualityState.status === 'failed') {
+    if (machineRecommended || qualityState.status === 'human_required' || qualityState.status === 'failed') {
       return buildPresentation({ ...labels, phase: 'human_required' })
     }
   }
 
   const now = input.now ?? Date.now()
   const recentHandoffMs = input.recentHandoffMs ?? DEFAULT_RECENT_HANDOFF_MS
-  if (!terminalQualityState && isRecentCompletedTask(selectedTask, IMAGE_GENERATION_TASK_TYPES, now, recentHandoffMs)) {
+  if (!settledQualityState && isRecentCompletedTask(selectedTask, IMAGE_GENERATION_TASK_TYPES, now, recentHandoffMs)) {
     return buildPresentation({ ...labels, phase: 'waiting_review', progress: selectedTask?.progress ?? null })
   }
-  if (!terminalQualityState && isRecentCompletedTask(selectedTask, new Set(['visual_auto_repair']), now, recentHandoffMs)) {
+  if (!settledQualityState && isRecentCompletedTask(selectedTask, new Set(['visual_auto_repair']), now, recentHandoffMs)) {
     const attempt = selectedTask?.attempt ?? qualityState?.attempt ?? null
     const maxAttempts = selectedTask?.maxAttempts ?? qualityState?.maxAttempts ?? null
     return buildPresentation({
@@ -351,7 +358,7 @@ export function resolveVisualWorkflowPresentation(input: ResolveVisualWorkflowIn
   if (confirmed || input.hasPrimaryImage) {
     return buildPresentation({ ...labels, phase: 'approved', progress: selectedTask?.progress ?? null })
   }
-  if (input.hasDraft) {
+  if (input.allowDraftStatus !== false && input.hasDraft) {
     return buildPresentation({ ...labels, phase: 'drafting', progress: selectedTask?.progress ?? null })
   }
   return buildPresentation({ ...labels, phase: 'idle', progress: selectedTask?.progress ?? null })

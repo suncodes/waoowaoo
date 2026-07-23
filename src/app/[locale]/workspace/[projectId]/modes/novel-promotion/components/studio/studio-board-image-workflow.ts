@@ -58,7 +58,9 @@ export function resolvePanelImageWorkflowPresentation(params: {
     candidateCount: candidateUrls.length,
     hasPrimaryImage: !!params.panel.imageUrl,
     hasDraft: !!(params.panel.description || params.panel.imagePrompt),
+    allowDraftStatus: false,
     hasError: !!params.panel.imageErrorMessage,
+    emptyLabel: '未生成',
   }) as PanelImageWorkflowPresentation
 }
 

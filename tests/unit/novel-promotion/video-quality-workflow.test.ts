@@ -54,14 +54,14 @@ describe('video quality workflow contracts', () => {
   it('keeps legacy projects on the AI comic shadow-review default', () => {
     const profile = resolveVideoProfile(undefined)
     expect(profile.preset).toBe('ai_comic')
-    expect(profile.qualityPolicy).toMatchObject({ mode: 'shadow', maxRepairAttempts: 2 })
+    expect(profile.qualityPolicy).toMatchObject({ mode: 'shadow', maxRepairAttempts: 1 })
 
     const autoGuide = resolveVideoProfile({
       preset: 'book_guide',
       qualityPolicy: { mode: 'auto', maxRepairAttempts: 99 },
     })
     expect(autoGuide.contentDomain).toBe('book')
-    expect(autoGuide.qualityPolicy).toMatchObject({ mode: 'auto', maxRepairAttempts: 2 })
+    expect(autoGuide.qualityPolicy).toMatchObject({ mode: 'auto', maxRepairAttempts: 1 })
   })
 
   it('parses a source-anchored book guide and rejects missing anchors', () => {
@@ -204,7 +204,7 @@ describe('video quality workflow contracts', () => {
     }))).toMatchObject({ ready: false, status: 'pending' })
     expect(evaluateVisualReadiness(createVisualQualityState({
       mode: 'auto', status: 'approved', versionHash: left, candidateUrls: ['a.png'],
-    }))).toMatchObject({ ready: true, status: 'ready' })
+    }))).toMatchObject({ ready: false, status: 'blocked', reasons: ['awaiting_human_confirmation'] })
 
     const humanApproved = approveSelectedVisualCandidate(createVisualQualityState({
       mode: 'auto', status: 'human_required', versionHash: left, candidateUrls: ['a.png'],
@@ -214,6 +214,7 @@ describe('video quality workflow contracts', () => {
       activeCandidateUrl: 'a.png',
       lastAction: 'select_candidate',
     })
+    expect(evaluateVisualReadiness(humanApproved)).toMatchObject({ ready: true, status: 'ready' })
   })
 
   it('accepts only cataloged LLM models with explicit vision input support', () => {

@@ -49,7 +49,7 @@ describe('studio storyboard readiness', () => {
     })).toBe(false)
   })
 
-  it('allows an approved panel to enter production', () => {
+  it('keeps a machine-approved panel blocked until human confirmation', () => {
     const source = sourcePanel('approved')
 
     expect(resolvePanelStatus({
@@ -58,14 +58,14 @@ describe('studio storyboard readiness', () => {
       hasCandidates: false,
       submitting: false,
       modifying: false,
-    })).toBe('locked')
+    })).toBe('needs_review')
     expect(isPanelReadyForProduction({
       panel,
       sourcePanel: source,
       hasCandidates: false,
       submitting: false,
       modifying: false,
-    })).toBe(true)
+    })).toBe(false)
   })
 
   it('keeps retained candidates switchable without blocking a human-confirmed panel', () => {

@@ -4,6 +4,7 @@ import { useCallback, useMemo } from 'react'
 import { useTranslations } from 'next-intl'
 import { logInfo as _ulogInfo, logError as _ulogError } from '@/lib/logging/core'
 import type { NovelPromotionStoryboard } from '@/types/project'
+import { resolveVisualCandidateUrls } from '@/lib/quality-workflow'
 import type { StoryboardPanel } from './useStoryboardState'
 import { getErrorMessage } from './storyboard-panel-asset-utils'
 
@@ -13,6 +14,14 @@ interface UseStoryboardBatchPanelGenerationProps {
   getTextPanels: (storyboard: NovelPromotionStoryboard) => StoryboardPanel[]
   regeneratePanelImage: (panelId: string, count?: number, force?: boolean) => Promise<void>
   setIsEpisodeBatchSubmitting: (value: boolean) => void
+}
+
+function hasConfirmedOrCandidateImage(panel: StoryboardPanel) {
+  if (panel.imageUrl) return true
+  return resolveVisualCandidateUrls({
+    visualQualityState: panel.visualQualityState,
+    candidateImages: panel.candidateImages,
+  }).some((candidate) => !candidate.startsWith('PENDING:'))
 }
 
 export function useStoryboardBatchPanelGeneration({
@@ -36,7 +45,7 @@ export function useStoryboardBatchPanelGeneration({
       return (
         count +
         panels.filter(
-          (panel) => !panel.imageUrl && !panel.imageTaskRunning && !submittingPanelImageIds.has(panel.id),
+          (panel) => !hasConfirmedOrCandidateImage(panel) && !panel.imageTaskRunning && !submittingPanelImageIds.has(panel.id),
         ).length
       )
     }, 0)
@@ -52,7 +61,7 @@ export function useStoryboardBatchPanelGeneration({
           const isTaskRunning =
             Boolean((panel as { imageTaskRunning?: boolean }).imageTaskRunning) ||
             submittingPanelImageIds.has(panel.id)
-          if (!panel.imageUrl && !isTaskRunning) {
+          if (!hasConfirmedOrCandidateImage(panel) && !isTaskRunning) {
             panelsToGenerate.push(panel.id)
           }
         })
