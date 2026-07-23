@@ -9,6 +9,7 @@ import {
 type CharacterAssetInput = {
   id: string
   name: string
+  aliases?: string | string[] | null
   introduction?: string | null
 }
 
@@ -49,7 +50,7 @@ function resolveUnitAssetRefs(unit: VisualUnitInput, anchors: VisualAnchor[]): V
   const inferred = anchors
     .filter((anchor) => (
       anchor.sourceUnitIds.includes(unit.clipId)
-      || textMentionsAsset(unitText, anchor.name)
+      || textMentionsAsset(unitText, anchor.name, anchor.aliases)
     ))
     .map((anchor) => ({
       id: anchor.assetId,
@@ -90,16 +91,42 @@ function readStoredAssetRefs(value: unknown): VisualUnitAssetRef[] {
   })
 }
 
-function assetAliases(name: string): string[] {
-  return name
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values.map((item) => item.trim()).filter(Boolean)))
+}
+
+function parseAliasValues(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return uniqueStrings(value.flatMap((item) => typeof item === 'string' ? splitAliasText(item) : []))
+  }
+  if (typeof value !== 'string' || !value.trim()) return []
+  try {
+    const parsed = JSON.parse(value) as unknown
+    if (Array.isArray(parsed)) return parseAliasValues(parsed)
+  } catch {
+    // Plain alias strings are allowed.
+  }
+  return splitAliasText(value)
+}
+
+function splitAliasText(value: string): string[] {
+  return value
+    .split(/[\/|,，、]/)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 2)
+}
+
+function assetAliases(...values: string[]): string[] {
+  return uniqueStrings(values)
+    .join('/')
     .toLowerCase()
     .split(/[\/|,，、]/)
     .map((item) => item.trim())
     .filter((item) => item.length >= 2)
 }
 
-function textMentionsAsset(text: string, name: string): boolean {
-  return assetAliases(name).some((alias) => text.includes(alias))
+function textMentionsAsset(text: string, name: string, aliases: string[] = []): boolean {
+  return assetAliases(name, ...aliases).some((alias) => text.includes(alias))
 }
 
 function readPlanUnits(contentPlan: unknown): UnitText[] {
@@ -148,11 +175,13 @@ function buildAnchor(params: {
   name: string
   description: string
   kind: VisualAnchorKind
+  aliases?: string[]
   unitTexts: UnitText[]
   forceInclude: boolean
 }): VisualAnchor | null {
+  const aliases = uniqueStrings(params.aliases || [])
   const sourceUnitIds = params.unitTexts
-    .filter((unit) => textMentionsAsset(unit.text, params.name))
+    .filter((unit) => textMentionsAsset(unit.text, params.name, aliases))
     .map((unit) => unit.id)
   if (!params.forceInclude && sourceUnitIds.length === 0) return null
   const resolvedSemanticKind = semanticKind(params.kind, params.name, params.description)
@@ -162,6 +191,7 @@ function buildAnchor(params: {
     assetKind: params.kind,
     semanticKind: resolvedSemanticKind,
     name: params.name,
+    aliases,
     description: params.description,
     importance: params.kind === 'character'
       || resolvedSemanticKind === 'vehicle'
@@ -189,6 +219,7 @@ export function buildVisualAnchors(params: {
       name: character.name,
       description: character.introduction || '',
       kind: 'character',
+      aliases: parseAliasValues(character.aliases),
       unitTexts,
       forceInclude: forcedIds.has(character.id),
     })

@@ -1,5 +1,9 @@
 import type { Job } from 'bullmq'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  createContentArtifactMeta,
+  withContentArtifactMeta,
+} from '@/lib/creation-workspace/artifact-state'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 
 const prismaMock = vi.hoisted(() => ({
@@ -30,9 +34,17 @@ const workerMock = vi.hoisted(() => ({
   reportTaskProgress: vi.fn(async () => undefined),
   assertTaskActive: vi.fn(async () => undefined),
 }))
+const artifactMock = vi.hoisted(() => ({
+  createArtifact: vi.fn(async () => undefined),
+}))
+const modelMock = vi.hoisted(() => ({
+  resolveAnalysisModel: vi.fn(async () => 'llm::analysis-1'),
+}))
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('@/lib/llm-client', () => llmMock)
+vi.mock('@/lib/run-runtime/service', () => artifactMock)
+vi.mock('@/lib/workers/handlers/resolve-analysis-model', () => modelMock)
 vi.mock('@/lib/llm-observe/internal-stream-context', () => ({
   withInternalLLMStreamCallbacks: vi.fn(async (_callbacks: unknown, fn: () => Promise<unknown>) => await fn()),
 }))
@@ -82,6 +94,61 @@ function buildJob(): Job<TaskJobData> {
       userId: 'user-1',
     },
   } as unknown as Job<TaskJobData>
+}
+
+function approvedAssetContentPlan() {
+  const meta = createContentArtifactMeta('2026-07-20T00:00:00.000Z', 'user')
+  meta.status = 'approved'
+  meta.revision = 2
+  meta.approvedRevision = 2
+  meta.assetRequirements = {
+    status: 'approved',
+    analyzedRevision: 2,
+    analyzedAt: '2026-07-20T00:05:00.000Z',
+    approvedAt: '2026-07-20T00:10:00.000Z',
+    assetIds: ['char-nemo'],
+    assetBible: [{
+      id: 'char-nemo',
+      kind: 'character',
+      canonicalName: '尼摩船长',
+      aliases: ['尼摩船长'],
+      role: 'primary',
+      narrativeFunction: '核心人物',
+      evidence: [{ sourceId: 'segment-1', text: '尼摩船长驾驶潜艇', confidence: 0.9 }],
+      visualInvariants: ['尼摩船长的稳定形象'],
+      allowedVariants: [],
+      forbiddenVariants: ['不要与其他角色混淆'],
+      firstAppearance: 'segment-1',
+      usedByPanels: ['visual-1'],
+      priority: 'must_lock',
+      generationNeed: 'reference_required',
+    }],
+    review: {
+      schemaVersion: 1,
+      targetId: 'episode-1',
+      targetType: 'asset',
+      reviewKind: 'asset_bible',
+      specVersion: 'asset-bible-review.v1',
+      score: 91,
+      confidence: 0.88,
+      status: 'passed',
+      dimensions: [],
+      criticalIssues: [],
+      route: 'NONE',
+      evidence: [],
+      assetCount: 1,
+      mustLockCount: 1,
+      reviewedAt: '2026-07-20T00:05:00.000Z',
+    },
+  }
+  return withContentArtifactMeta({
+    planType: 'guide',
+    title: '海底两万里导读',
+    thesis: '理解科学想象',
+    recommendationAngle: '冒险与技术',
+    outline: [],
+    segments: [],
+  }, meta)
 }
 
 describe('worker analyze-novel behavior', () => {
@@ -241,6 +308,55 @@ describe('worker analyze-novel behavior', () => {
     )
   })
 
+  it('reuses approved asset requirements without rerunning analysis or overwriting AssetBible', async () => {
+    prismaMock.novelPromotionEpisode.findUnique.mockResolvedValue({
+      id: 'episode-1',
+      novelPromotionProjectId: 'np-project-1',
+      novelText: '首集内容',
+      contentPlan: approvedAssetContentPlan(),
+      productionBible: null,
+      clips: [],
+    })
+    const job = buildJob()
+    job.data.payload = { runId: 'run-asset-1' }
+
+    const result = await handleAnalyzeNovelTask(job)
+
+    expect(result).toMatchObject({
+      success: true,
+      reused: true,
+      reuseReason: 'approved_asset_requirements_reused',
+      episodeId: 'episode-1',
+      contentRevision: 2,
+      analyzedRevision: 2,
+      assetIds: ['char-nemo'],
+      assetCount: 1,
+      reviewStatus: 'passed',
+      reviewScore: 91,
+      characterCount: 0,
+      locationCount: 0,
+      propCount: 0,
+    })
+    expect(modelMock.resolveAnalysisModel).not.toHaveBeenCalled()
+    expect(llmMock.chatCompletion).not.toHaveBeenCalled()
+    expect(prismaMock.novelPromotionCharacter.create).not.toHaveBeenCalled()
+    expect(prismaMock.novelPromotionLocation.create).not.toHaveBeenCalled()
+    expect(prismaMock.novelPromotionEpisode.update).not.toHaveBeenCalled()
+    expect(artifactMock.createArtifact).toHaveBeenCalledWith(expect.objectContaining({
+      runId: 'run-asset-1',
+      stepKey: 'asset_bible_reuse',
+      artifactType: 'asset.bible.reuse',
+      refId: 'episode-1',
+      payload: expect.objectContaining({
+        reason: 'approved_asset_requirements_reused',
+        contentRevision: 2,
+        analyzedRevision: 2,
+        assetCount: 1,
+        reviewStatus: 'passed',
+      }),
+    }))
+  })
+
   it('persists a reviewable empty visual requirement result', async () => {
     prismaMock.novelPromotionEpisode.findUnique.mockResolvedValue({
       id: 'episode-1',
@@ -353,7 +469,12 @@ describe('worker analyze-novel behavior', () => {
       .mockResolvedValueOnce({
         id: 'np-project-1',
         characters: [{ id: 'char-nemo', name: '尼摩船长', introduction: '神秘的潜艇指挥者' }],
-        locations: [{ id: 'prop-nautilus', name: '鹦鹉螺号潜水艇', summary: '核心潜艇道具', assetKind: 'prop' }],
+        locations: [{
+          id: 'prop-nautilus',
+          name: '鹦鹉螺号潜水艇',
+          summary: '十九世纪幻想工业风深海潜艇，金属船体、圆形舷窗和坚固船首撞角',
+          assetKind: 'prop',
+        }],
       })
     prismaMock.novelPromotionEpisode.findUnique.mockResolvedValue({
       id: 'episode-1',

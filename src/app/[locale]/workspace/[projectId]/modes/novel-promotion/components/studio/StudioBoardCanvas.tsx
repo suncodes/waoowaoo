@@ -594,12 +594,15 @@ function StudioBoardRuntime({
           isOpen={true}
           onClose={modalRuntime.closeAIDataModal}
           syncKey={modalRuntime.aiDataRuntime.panel.id}
+          projectId={projectId}
+          panelId={modalRuntime.aiDataRuntime.panel.id}
           panelNumber={modalRuntime.aiDataRuntime.panelData.panelNumber || modalRuntime.aiDataPanel.panelIndex + 1}
           shotType={modalRuntime.aiDataRuntime.panelData.shotType}
           cameraMove={modalRuntime.aiDataRuntime.panelData.cameraMove}
           description={modalRuntime.aiDataRuntime.panelData.description}
           location={modalRuntime.aiDataRuntime.panelData.location}
           characters={modalRuntime.aiDataRuntime.characters}
+          imagePrompt={modalRuntime.aiDataRuntime.panelData.imagePrompt || null}
           videoPrompt={modalRuntime.aiDataRuntime.panelData.videoPrompt}
           photographyRules={modalRuntime.aiDataRuntime.photographyRules}
           actingNotes={modalRuntime.aiDataRuntime.actingNotes}

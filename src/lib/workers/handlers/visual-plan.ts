@@ -1,4 +1,5 @@
 import type { Job } from 'bullmq'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { createArtifact } from '@/lib/run-runtime/service'
 import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
@@ -9,14 +10,19 @@ import type { TaskJobData } from '@/lib/task/types'
 import { reportTaskProgress } from '@/lib/workers/shared'
 import { assertTaskActive } from '@/lib/workers/utils'
 import { resolveAnalysisModel } from './resolve-analysis-model'
-import { persistVisualPlan } from './visual-plan-persist'
+import { materializeGuideStoryboards, persistVisualPlan } from './visual-plan-persist'
 import {
   bindVisualUnitsToAnchors,
   buildVisualAnchors,
 } from '@/lib/creation-workspace/visual-anchors'
 import {
+  cloneWorkspaceValue,
   readContentArtifactMeta,
+  readReusableApprovedVisualPlanState,
+  readVisualArtifactMeta,
   stripWorkspaceArtifactMeta,
+  withContentArtifactMeta,
+  withVisualArtifactMeta,
 } from '@/lib/creation-workspace/artifact-state'
 import { isWorkspaceClipActive } from '@/lib/creation-workspace/guide-clips'
 import {
@@ -30,6 +36,21 @@ const MAX_VISUAL_PLAN_OUTPUT_ATTEMPTS = 3
 
 function readText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+function asInputJson(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
+}
+
+function readBooleanFlag(value: unknown): boolean {
+  return value === true || value === 'true' || value === 1 || value === '1'
+}
+
+function shouldBypassApprovedVisualPlanReuse(payload: Record<string, unknown>): boolean {
+  return readBooleanFlag(payload.forceRegenerate)
+    || readBooleanFlag(payload.force)
+    || readBooleanFlag(payload.ignoreLock)
+    || !!readText(payload.instruction)
 }
 
 function readErrorMessage(error: unknown): string {
@@ -118,6 +139,55 @@ async function generateValidatedVisualPlan(params: {
   throw new Error('VISUAL_PLAN_INVALID: no valid result after repair')
 }
 
+async function materializeReusableApprovedVisualPlan(params: {
+  episodeId: string
+  result: VisualPlanResult
+  narratorLabel: string
+}) {
+  await prisma.$transaction(async (tx) => {
+    await materializeGuideStoryboards(tx, {
+      episodeId: params.episodeId,
+      result: params.result,
+      narratorLabel: params.narratorLabel,
+    })
+    const current = await tx.novelPromotionEpisode.findUnique({
+      where: { id: params.episodeId },
+      select: { contentPlan: true, productionBible: true },
+    })
+    if (!current?.productionBible) throw new Error('VISUAL_PLAN_REQUIRED')
+    const now = new Date().toISOString()
+    const visualMeta = readVisualArtifactMeta(current.productionBible)
+    const contentMeta = readContentArtifactMeta(current.contentPlan)
+    const productionBible = visualMeta
+      ? withVisualArtifactMeta(current.productionBible, {
+          ...cloneWorkspaceValue(visualMeta),
+          updatedAt: now,
+          downstream: {
+            ...visualMeta.downstream,
+            storyboard: false,
+          },
+        })
+      : current.productionBible
+    const contentPlan = contentMeta
+      ? withContentArtifactMeta(current.contentPlan, {
+          ...cloneWorkspaceValue(contentMeta),
+          updatedAt: now,
+          downstream: {
+            ...contentMeta.downstream,
+            storyboard: false,
+          },
+        })
+      : current.contentPlan
+    await tx.novelPromotionEpisode.update({
+      where: { id: params.episodeId },
+      data: {
+        contentPlan: contentPlan ? asInputJson(contentPlan) : undefined,
+        productionBible: asInputJson(productionBible),
+      },
+    })
+  }, { timeout: 30000 })
+}
+
 export async function handleVisualPlanTask(job: Job<TaskJobData>) {
   const payload = (job.data.payload || {}) as Record<string, unknown>
   const episodeId = readText(payload.episodeId) || readText(job.data.episodeId)
@@ -126,14 +196,17 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
   const novelData = await prisma.novelPromotionProject.findUnique({
     where: { projectId: job.data.projectId },
     include: {
-      characters: { select: { id: true, name: true, introduction: true } },
+      characters: { select: { id: true, name: true, aliases: true, introduction: true } },
       locations: { select: { id: true, name: true, summary: true, assetKind: true } },
     },
   })
   if (!novelData) throw new Error('Novel promotion data not found')
   const episode = await prisma.novelPromotionEpisode.findUnique({
     where: { id: episodeId },
-    include: { clips: { orderBy: { createdAt: 'asc' } } },
+    include: {
+      clips: { orderBy: { createdAt: 'asc' } },
+      storyboards: { select: { id: true } },
+    },
   })
   if (!episode || episode.novelPromotionProjectId !== novelData.id) throw new Error('Episode not found')
   if (!episode.creativeBrief || !episode.contentPlan) throw new Error('CONTENT_PLAN_REQUIRED')
@@ -141,7 +214,8 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
   if (activeClips.length === 0) throw new Error('No clips found')
 
   const profile = resolveVideoProfile(payload.videoProfile ?? novelData.videoProfile)
-  const model = await resolveAnalysisModel({
+  const deferStoryboard = payload.deferStoryboard === true
+  const resolveTaskModel = () => resolveAnalysisModel({
     userId: job.data.userId,
     inputModel: payload.model,
     projectAnalysisModel: novelData.analysisModel,
@@ -182,6 +256,72 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     throw new Error(`VISUAL_ASSET_REQUIREMENTS_INVALID:${missingRequiredAssetIds.join(',')}`)
   }
 
+  const reusableVisualPlanState = shouldBypassApprovedVisualPlanReuse(payload)
+    ? null
+    : readReusableApprovedVisualPlanState(episode.productionBible)
+  if (reusableVisualPlanState && episode.directorTreatment && episode.productionBible) {
+    const reusedResult = parseVisualPlanResult({
+      directorTreatment: episode.directorTreatment,
+      productionBible: stripWorkspaceArtifactMeta(episode.productionBible),
+      shotPlan: reusableVisualPlanState.plan.shotPlan,
+      visualUnits: reusableVisualPlanState.plan.visualUnits,
+    }, profile, clips.map((clip) => clip.id), visualAssets)
+    const storyboardReview = reviewVisualPlanStoryboard({
+      targetId: episodeId,
+      result: reusedResult,
+      profile,
+    })
+    if (storyboardReview.status !== 'passed') {
+      throw new Error(`VISUAL_PLAN_REUSE_INVALID:${storyboardReview.score}:${storyboardReview.evidence.slice(0, 5).join(' | ')}`)
+    }
+    const storyboardCount = Array.isArray(episode.storyboards) ? episode.storyboards.length : 0
+    const shouldMaterializeStoryboard = isBookGuideProfile(profile)
+      && !deferStoryboard
+      && (storyboardCount === 0 || reusableVisualPlanState.downstream.storyboard)
+
+    await reportTaskProgress(job, 90, { stage: 'visual_plan_reuse', displayMode: 'detail' })
+    await assertTaskActive(job, 'visual_plan_reuse')
+    if (shouldMaterializeStoryboard) {
+      await materializeReusableApprovedVisualPlan({
+        episodeId,
+        result: reusedResult,
+        narratorLabel: job.data.locale === 'en' ? 'Narrator' : '旁白',
+      })
+    }
+    await createArtifact({
+      runId: readTaskRunId(job),
+      stepKey: 'visual_plan_reuse',
+      artifactType: 'visual.plan.reuse',
+      refId: episodeId,
+      payload: toJsonRecord({
+        reason: 'approved_visual_plan_reused',
+        profilePreset: profile.preset,
+        revision: reusableVisualPlanState.revision,
+        approvedRevision: reusableVisualPlanState.approvedRevision,
+        approvedUpdatedAt: reusableVisualPlanState.updatedAt,
+        visualUnitCount: reusedResult.visualUnits.length,
+        anchorCount: reusableVisualPlanState.anchorCount,
+        storyboardReviewScore: storyboardReview.score,
+        storyboardReviewStatus: storyboardReview.status,
+        storyboardMaterialized: shouldMaterializeStoryboard,
+      }),
+    })
+    return {
+      episodeId,
+      profilePreset: profile.preset,
+      visualUnitCount: reusedResult.visualUnits.length,
+      reused: true,
+      reuseReason: 'approved_visual_plan_reused',
+      visualPlanRevision: reusableVisualPlanState.revision,
+      approvedRevision: reusableVisualPlanState.approvedRevision,
+      storyboardReviewScore: storyboardReview.score,
+      storyboardReviewStatus: storyboardReview.status,
+      storyboardPersisted: isBookGuideProfile(profile) && !deferStoryboard,
+      storyboardMaterialized: shouldMaterializeStoryboard,
+    }
+  }
+
+  const model = await resolveTaskModel()
   await reportTaskProgress(job, 18, { stage: 'visual_plan_prepare', displayMode: 'detail' })
   await assertTaskActive(job, 'visual_plan_prepare')
   const clipsJson = JSON.stringify(clips, null, 2)
@@ -239,8 +379,6 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     profile,
     reviewedAt: initialStoryboardReview.reviewedAt,
   })
-  const deferStoryboard = payload.deferStoryboard === true
-
   await reportTaskProgress(job, 82, { stage: 'visual_plan_persist', displayMode: 'detail' })
   await assertTaskActive(job, 'visual_plan_persist')
   await persistVisualPlan({

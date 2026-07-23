@@ -8,12 +8,19 @@ export interface DiagnosticQualityArchiveSummary {
   missingFiles: string[]
   assetBible: JsonRecord[]
   assetBibleReviews: JsonRecord[]
+  assetBibleReuses: JsonRecord[]
   contentQualityReviews: JsonRecord[]
+  contentPlanReuses: JsonRecord[]
+  scriptReviews: JsonRecord[]
   storyboardQualityReviews: JsonRecord[]
   promptSnapshots: JsonRecord[]
+  promptQualityReviews: JsonRecord[]
   visualQualityReviews: JsonRecord[]
+  visualPlanReuses: JsonRecord[]
   visualAutoRepairs: JsonRecord[]
   visualRepairLineage: JsonRecord[]
+  roughCutReviews: JsonRecord[]
+  pickupList: JsonRecord[]
 }
 
 export interface DiagnosticQualityComparison {
@@ -23,18 +30,28 @@ export interface DiagnosticQualityComparison {
   deltas: {
     assetBibleCount: number
     assetBibleReviewCount: number
+    assetBibleReuseCount: number
     contentQualityReviewCount: number
+    contentPlanReuseCount: number
+    scriptReviewCount: number
     storyboardQualityReviewCount: number
     promptSnapshotCount: number
+    promptQualityReviewCount: number
     visualQualityReviewCount: number
+    visualPlanReuseCount: number
     visualAutoRepairCount: number
     acceptedRepairCount: number
+    roughCutReviewCount: number
+    pickupItemCount: number
   }
   scoreAverages: {
     assetBibleReview: { left: number | null; right: number | null; delta: number | null }
     contentQualityReview: { left: number | null; right: number | null; delta: number | null }
+    scriptReview: { left: number | null; right: number | null; delta: number | null }
     storyboardQualityReview: { left: number | null; right: number | null; delta: number | null }
+    promptQualityReview: { left: number | null; right: number | null; delta: number | null }
     visualQualityReview: { left: number | null; right: number | null; delta: number | null }
+    roughCutReview: { left: number | null; right: number | null; delta: number | null }
     repairImprovement: { left: number | null; right: number | null; delta: number | null }
   }
   promptHashChanges: {
@@ -53,12 +70,19 @@ export interface DiagnosticQualityComparison {
 const QUALITY_FILES = {
   assetBible: 'quality/asset-bible.jsonl',
   assetBibleReviews: 'quality/asset-bible-reviews.jsonl',
+  assetBibleReuses: 'quality/asset-bible-reuse.jsonl',
   contentQualityReviews: 'quality/content-quality-reviews.jsonl',
+  contentPlanReuses: 'quality/content-plan-reuse.jsonl',
+  scriptReviews: 'quality/script-reviews.jsonl',
   storyboardQualityReviews: 'quality/storyboard-quality-reviews.jsonl',
   promptSnapshots: 'quality/prompt-snapshots.jsonl',
+  promptQualityReviews: 'quality/prompt-quality-reviews.jsonl',
   visualQualityReviews: 'quality/visual-quality-reviews.jsonl',
+  visualPlanReuses: 'quality/visual-plan-reuse.jsonl',
   visualAutoRepairs: 'quality/visual-auto-repairs.jsonl',
   visualRepairLineage: 'quality/visual-repair-lineage.jsonl',
+  roughCutReviews: 'quality/rough-cut-reviews.jsonl',
+  pickupList: 'quality/pickup-list.jsonl',
 } as const
 
 function asRecord(value: unknown): JsonRecord {
@@ -180,11 +204,18 @@ function diffManifestCounts(left: DiagnosticQualityArchiveSummary, right: Diagno
     'modelInvocations',
     'artifacts',
     'assetBibleRecords',
+    'assetBibleReuses',
     'contentQualityReviews',
+    'contentPlanReuses',
+    'scriptReviews',
     'storyboardQualityReviews',
     'promptSnapshots',
+    'promptQualityReviews',
     'visualQualityReviews',
+    'visualPlanReuses',
     'visualAutoRepairs',
+    'roughCutReviews',
+    'pickupItems',
   ]
   return Object.fromEntries(keys.map((key) => {
     const leftValue = manifestCount(left, key)
@@ -241,11 +272,17 @@ function buildFindings(params: {
   const findings: string[] = []
   const storyboardDelta = params.scoreAverages.storyboardQualityReview.delta
   const contentDelta = params.scoreAverages.contentQualityReview.delta
+  const scriptDelta = params.scoreAverages.scriptReview.delta
   const visualDelta = params.scoreAverages.visualQualityReview.delta
+  const promptDelta = params.scoreAverages.promptQualityReview.delta
+  const roughCutDelta = params.scoreAverages.roughCutReview.delta
   const repairDelta = params.scoreAverages.repairImprovement.delta
   if (contentDelta !== null) findings.push(`content_quality_review 平均分变化 ${contentDelta}`)
+  if (scriptDelta !== null) findings.push(`script_review 平均分变化 ${scriptDelta}`)
   if (storyboardDelta !== null) findings.push(`storyboard_review 平均分变化 ${storyboardDelta}`)
+  if (promptDelta !== null) findings.push(`prompt_quality_review 平均分变化 ${promptDelta}`)
   if (visualDelta !== null) findings.push(`visual_quality_review 平均分变化 ${visualDelta}`)
+  if (roughCutDelta !== null) findings.push(`rough_cut_review 平均分变化 ${roughCutDelta}`)
   if (repairDelta !== null) findings.push(`auto_repair 平均提分变化 ${repairDelta}`)
   if (params.promptHashChanges.changedTargets.length > 0) {
     findings.push(`${params.promptHashChanges.changedTargets.length} 个目标的 compiled prompt hash 发生变化`)
@@ -253,8 +290,16 @@ function buildFindings(params: {
   if (params.assetBibleChanges.addedAssetIds.length > 0 || params.assetBibleChanges.removedAssetIds.length > 0) {
     findings.push(`AssetBible 资产集合变化：新增 ${params.assetBibleChanges.addedAssetIds.length}，移除 ${params.assetBibleChanges.removedAssetIds.length}`)
   }
+  const assetReuseDelta = params.manifestCountDeltas.assetBibleReuses?.delta
+  if (assetReuseDelta !== null && assetReuseDelta !== undefined) findings.push(`assetBibleReuses 变化 ${assetReuseDelta}`)
   const invocationDelta = params.manifestCountDeltas.modelInvocations?.delta
   if (invocationDelta !== null && invocationDelta !== undefined) findings.push(`modelInvocations 变化 ${invocationDelta}`)
+  const pickupDelta = params.manifestCountDeltas.pickupItems?.delta
+  if (pickupDelta !== null && pickupDelta !== undefined) findings.push(`pickupItems 变化 ${pickupDelta}`)
+  const reuseDelta = params.manifestCountDeltas.contentPlanReuses?.delta
+  if (reuseDelta !== null && reuseDelta !== undefined) findings.push(`contentPlanReuses 变化 ${reuseDelta}`)
+  const visualReuseDelta = params.manifestCountDeltas.visualPlanReuses?.delta
+  if (visualReuseDelta !== null && visualReuseDelta !== undefined) findings.push(`visualPlanReuses 变化 ${visualReuseDelta}`)
   if (params.missingFiles.length > 0) findings.push(`存在缺失质量文件：${params.missingFiles.join(', ')}`)
   return findings
 }
@@ -268,12 +313,19 @@ export async function summarizeDiagnosticQualityArchive(buffer: Buffer): Promise
     missingFiles,
     assetBible: await readJsonLines(zip, QUALITY_FILES.assetBible, missingFiles),
     assetBibleReviews: await readJsonLines(zip, QUALITY_FILES.assetBibleReviews, missingFiles),
+    assetBibleReuses: await readJsonLines(zip, QUALITY_FILES.assetBibleReuses, missingFiles),
     contentQualityReviews: await readJsonLines(zip, QUALITY_FILES.contentQualityReviews, missingFiles),
+    contentPlanReuses: await readJsonLines(zip, QUALITY_FILES.contentPlanReuses, missingFiles),
+    scriptReviews: await readJsonLines(zip, QUALITY_FILES.scriptReviews, missingFiles),
     storyboardQualityReviews: await readJsonLines(zip, QUALITY_FILES.storyboardQualityReviews, missingFiles),
     promptSnapshots: await readJsonLines(zip, QUALITY_FILES.promptSnapshots, missingFiles),
+    promptQualityReviews: await readJsonLines(zip, QUALITY_FILES.promptQualityReviews, missingFiles),
     visualQualityReviews: await readJsonLines(zip, QUALITY_FILES.visualQualityReviews, missingFiles),
+    visualPlanReuses: await readJsonLines(zip, QUALITY_FILES.visualPlanReuses, missingFiles),
     visualAutoRepairs: await readJsonLines(zip, QUALITY_FILES.visualAutoRepairs, missingFiles),
     visualRepairLineage: await readJsonLines(zip, QUALITY_FILES.visualRepairLineage, missingFiles),
+    roughCutReviews: await readJsonLines(zip, QUALITY_FILES.roughCutReviews, missingFiles),
+    pickupList: await readJsonLines(zip, QUALITY_FILES.pickupList, missingFiles),
   }
 }
 
@@ -294,13 +346,25 @@ export async function compareDiagnosticQualityArchives(params: {
       average(left.contentQualityReviews.map(reviewScore)),
       average(right.contentQualityReviews.map(reviewScore)),
     ),
+    scriptReview: averagePair(
+      average(left.scriptReviews.map(reviewScore)),
+      average(right.scriptReviews.map(reviewScore)),
+    ),
     storyboardQualityReview: averagePair(
       average(left.storyboardQualityReviews.map(reviewScore)),
       average(right.storyboardQualityReviews.map(reviewScore)),
     ),
+    promptQualityReview: averagePair(
+      average(left.promptQualityReviews.map(reviewScore)),
+      average(right.promptQualityReviews.map(reviewScore)),
+    ),
     visualQualityReview: averagePair(
       average(left.visualQualityReviews.map(reviewScore)),
       average(right.visualQualityReviews.map(reviewScore)),
+    ),
+    roughCutReview: averagePair(
+      average(left.roughCutReviews.map(reviewScore)),
+      average(right.roughCutReviews.map(reviewScore)),
     ),
     repairImprovement: averagePair(
       repairImprovementAverage(left.visualRepairLineage),
@@ -318,12 +382,19 @@ export async function compareDiagnosticQualityArchives(params: {
     deltas: {
       assetBibleCount: countDelta(left.assetBible, right.assetBible),
       assetBibleReviewCount: countDelta(left.assetBibleReviews, right.assetBibleReviews),
+      assetBibleReuseCount: countDelta(left.assetBibleReuses, right.assetBibleReuses),
       contentQualityReviewCount: countDelta(left.contentQualityReviews, right.contentQualityReviews),
+      contentPlanReuseCount: countDelta(left.contentPlanReuses, right.contentPlanReuses),
+      scriptReviewCount: countDelta(left.scriptReviews, right.scriptReviews),
       storyboardQualityReviewCount: countDelta(left.storyboardQualityReviews, right.storyboardQualityReviews),
       promptSnapshotCount: countDelta(left.promptSnapshots, right.promptSnapshots),
+      promptQualityReviewCount: countDelta(left.promptQualityReviews, right.promptQualityReviews),
       visualQualityReviewCount: countDelta(left.visualQualityReviews, right.visualQualityReviews),
+      visualPlanReuseCount: countDelta(left.visualPlanReuses, right.visualPlanReuses),
       visualAutoRepairCount: countDelta(left.visualAutoRepairs, right.visualAutoRepairs),
       acceptedRepairCount: acceptedRepairCount(right.visualRepairLineage) - acceptedRepairCount(left.visualRepairLineage),
+      roughCutReviewCount: countDelta(left.roughCutReviews, right.roughCutReviews),
+      pickupItemCount: countDelta(left.pickupList, right.pickupList),
     },
     scoreAverages,
     promptHashChanges,

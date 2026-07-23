@@ -1,5 +1,9 @@
 import type { Job } from 'bullmq'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  createVisualArtifactMeta,
+  withVisualArtifactMeta,
+} from '@/lib/creation-workspace/artifact-state'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 
 const prismaMock = vi.hoisted(() => ({
@@ -109,6 +113,21 @@ function contentPlanWithApprovedAssets(assetIds: string[]) {
   }
 }
 
+function approvedProductionBible() {
+  const payload = visualPlanPayload()
+  const meta = createVisualArtifactMeta('2026-07-20T00:00:00.000Z', 'user')
+  meta.status = 'approved'
+  meta.revision = 4
+  meta.approvedRevision = 4
+  meta.plan = {
+    shotPlan: payload.shotPlan,
+    visualUnits: payload.visualUnits,
+    storyboardReview: { status: 'passed', score: 88 },
+  }
+  meta.anchors = []
+  return withVisualArtifactMeta(payload.productionBible, meta)
+}
+
 describe('worker visual-plan behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -158,6 +177,80 @@ describe('worker visual-plan behavior', () => {
     expect(artifactMock.createArtifact).toHaveBeenCalledWith(expect.objectContaining({
       artifactType: 'storyboard.quality.review',
       runId: 'run-visual-1',
+    }))
+  })
+
+  it('reuses an approved current visual plan without regenerating or overwriting it', async () => {
+    const payload = visualPlanPayload()
+    prismaMock.novelPromotionEpisode.findUnique.mockResolvedValue({
+      id: 'episode-1',
+      novelPromotionProjectId: 'novel-project-1',
+      creativeBrief: { objective: '导读' },
+      contentPlan: { planType: 'guide' },
+      directorTreatment: payload.directorTreatment,
+      productionBible: approvedProductionBible(),
+      clips: [{ id: 'clip-1', summary: '核心观点', content: '旁白内容', screenplay: '{}', duration: 24 }],
+      storyboards: [{ id: 'storyboard-1' }],
+    })
+    const job = buildJob()
+    job.data.payload = { ...job.data.payload, deferStoryboard: true }
+
+    const result = await handleVisualPlanTask(job)
+
+    expect(result).toMatchObject({
+      episodeId: 'episode-1',
+      profilePreset: 'book_guide',
+      visualUnitCount: 1,
+      reused: true,
+      reuseReason: 'approved_visual_plan_reused',
+      visualPlanRevision: 4,
+      approvedRevision: 4,
+      storyboardReviewStatus: 'passed',
+      storyboardPersisted: false,
+      storyboardMaterialized: false,
+    })
+    expect(planningMock.executePlanningJsonStep).not.toHaveBeenCalled()
+    expect(persistenceMock.persistVisualPlan).not.toHaveBeenCalled()
+    expect(artifactMock.createArtifact).toHaveBeenCalledWith(expect.objectContaining({
+      runId: 'run-visual-1',
+      artifactType: 'visual.plan.reuse',
+      refId: 'episode-1',
+      payload: expect.objectContaining({
+        reason: 'approved_visual_plan_reused',
+        revision: 4,
+        approvedRevision: 4,
+        visualUnitCount: 1,
+      }),
+    }))
+  })
+
+  it('regenerates an approved visual plan when forceRegenerate is explicit', async () => {
+    const payload = visualPlanPayload()
+    prismaMock.novelPromotionEpisode.findUnique.mockResolvedValue({
+      id: 'episode-1',
+      novelPromotionProjectId: 'novel-project-1',
+      creativeBrief: { objective: '导读' },
+      contentPlan: { planType: 'guide' },
+      directorTreatment: payload.directorTreatment,
+      productionBible: approvedProductionBible(),
+      clips: [{ id: 'clip-1', summary: '核心观点', content: '旁白内容', screenplay: '{}', duration: 24 }],
+      storyboards: [{ id: 'storyboard-1' }],
+    })
+    const job = buildJob()
+    job.data.payload = { ...job.data.payload, forceRegenerate: true }
+
+    const result = await handleVisualPlanTask(job)
+
+    expect(result).toMatchObject({
+      episodeId: 'episode-1',
+      visualUnitCount: 1,
+      storyboardReviewStatus: 'passed',
+    })
+    expect(result).not.toHaveProperty('reused')
+    expect(planningMock.executePlanningJsonStep).toHaveBeenCalledTimes(1)
+    expect(persistenceMock.persistVisualPlan).toHaveBeenCalledOnce()
+    expect(artifactMock.createArtifact).not.toHaveBeenCalledWith(expect.objectContaining({
+      artifactType: 'visual.plan.reuse',
     }))
   })
 

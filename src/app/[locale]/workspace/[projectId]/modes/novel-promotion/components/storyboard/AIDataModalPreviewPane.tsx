@@ -3,10 +3,12 @@
 import { useState } from 'react'
 import type { useTranslations } from 'next-intl'
 import { AppIcon } from '@/components/ui/icons'
+import type { AIDataPromptPreview } from './AIDataPromptPreview'
 
 interface AIDataModalPreviewPaneProps {
   t: ReturnType<typeof useTranslations<'storyboard'>>
   previewJson: Record<string, unknown>
+  promptPreview?: AIDataPromptPreview
 }
 
 export async function copyPreviewJsonText(text: string): Promise<void> {
@@ -41,6 +43,7 @@ export async function copyPreviewJsonText(text: string): Promise<void> {
 export default function AIDataModalPreviewPane({
   t,
   previewJson,
+  promptPreview,
 }: AIDataModalPreviewPaneProps) {
   const [copyState, setCopyState] = useState<'idle' | 'success' | 'error'>('idle')
 
@@ -78,7 +81,39 @@ export default function AIDataModalPreviewPane({
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+        {promptPreview ? (
+          <div className="space-y-3">
+            <section className="rounded-md border border-white/10 bg-white/[0.03] p-3">
+              <div className="mb-2 flex items-center justify-between gap-2 text-xs font-medium text-stone-400">
+                <span className="inline-flex items-center gap-2">
+                  <AppIcon name="image" className="h-3.5 w-3.5 text-[#e8d18a]" />
+                  {t('aiData.imagePromptPreview')}
+                </span>
+                <span className="rounded border border-white/10 px-1.5 py-0.5 text-[10px] text-stone-500">
+                  {t(promptPreview.imageSource === 'snapshot' ? 'aiData.promptPreviewSnapshot' : 'aiData.promptPreviewDraft')}
+                </span>
+              </div>
+              <p className="whitespace-pre-wrap break-words text-xs leading-5 text-stone-200">
+                {promptPreview.image}
+              </p>
+            </section>
+            <section className="rounded-md border border-white/10 bg-white/[0.03] p-3">
+              <div className="mb-2 flex items-center justify-between gap-2 text-xs font-medium text-stone-400">
+                <span className="inline-flex items-center gap-2">
+                  <AppIcon name="video" className="h-3.5 w-3.5 text-[#e8d18a]" />
+                  {t('aiData.videoPromptPreview')}
+                </span>
+                <span className="rounded border border-white/10 px-1.5 py-0.5 text-[10px] text-stone-500">
+                  {t(promptPreview.videoSource === 'snapshot' ? 'aiData.promptPreviewSnapshot' : 'aiData.promptPreviewDraft')}
+                </span>
+              </div>
+              <p className="whitespace-pre-wrap break-words text-xs leading-5 text-stone-200">
+                {promptPreview.video}
+              </p>
+            </section>
+          </div>
+        ) : null}
         <pre className="whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed text-stone-300">
           {JSON.stringify(previewJson, null, 2)}
         </pre>

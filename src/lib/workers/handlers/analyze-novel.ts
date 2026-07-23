@@ -15,6 +15,8 @@ import { normalizeLocationAvailableSlots } from '@/lib/location-available-slots'
 import { resolvePropVisualDescription } from '@/lib/assets/prop-description'
 import { buildAssetBible } from '@/lib/assets/asset-bible'
 import { reviewAssetBible } from '@/lib/assets/asset-bible-review'
+import { createArtifact } from '@/lib/run-runtime/service'
+import { readOptionalTaskRunId, toJsonRecord } from '@/lib/creative-quality/runtime-artifacts'
 import {
   bindStoredVisualUnitsToAnchors,
   buildVisualAnchors,
@@ -26,7 +28,10 @@ import {
   stripWorkspaceArtifactMeta,
   withVisualArtifactMeta,
 } from '@/lib/creation-workspace/artifact-state'
-import { markContentAssetRequirementsAnalyzed } from '@/lib/creation-workspace/content-artifacts'
+import {
+  markContentAssetRequirementsAnalyzed,
+  readReusableApprovedAssetRequirementsState,
+} from '@/lib/creation-workspace/content-artifacts'
 import type { Prisma } from '@prisma/client'
 
 function readAssetKind(value: Record<string, unknown>): string {
@@ -62,6 +67,16 @@ function asInputJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
 }
 
+function readBooleanFlag(value: unknown): boolean {
+  return value === true || value === 'true' || value === 1 || value === '1'
+}
+
+function shouldBypassApprovedAssetReuse(payload: Record<string, unknown>): boolean {
+  return readBooleanFlag(payload.forceRegenerate)
+    || readBooleanFlag(payload.force)
+    || readBooleanFlag(payload.ignoreLock)
+}
+
 async function syncEpisodeVisualAnchors(params: {
   projectInternalId: string
   episodeId: string
@@ -71,7 +86,7 @@ async function syncEpisodeVisualAnchors(params: {
     prisma.novelPromotionProject.findUnique({
       where: { id: params.projectInternalId },
       include: {
-        characters: { select: { id: true, name: true, introduction: true } },
+        characters: { select: { id: true, name: true, aliases: true, introduction: true } },
         locations: { select: { id: true, name: true, summary: true, assetKind: true } },
       },
     }),
@@ -104,16 +119,21 @@ async function syncEpisodeVisualAnchors(params: {
     locations: projectAssets.locations,
     includeAssetIds: params.includeAssetIds,
   })
+  const existingVisualMeta = episode.productionBible
+    ? readVisualArtifactMeta(episode.productionBible)
+    : null
   const assetBible = buildAssetBible({
     anchors,
     contentPlan: episode.contentPlan,
     clips: episode.clips,
+    visualUnits: existingVisualMeta?.plan?.visualUnits || [],
   })
   const now = new Date().toISOString()
   const assetBibleReview = reviewAssetBible({
     targetId: params.episodeId,
     assetBible,
     expectedAssetIds: anchors.map((anchor) => anchor.assetId),
+    requireUsagePlan: (existingVisualMeta?.plan?.visualUnits || []).length > 0,
     reviewedAt: now,
   })
   const contentPlan = markContentAssetRequirementsAnalyzed({
@@ -125,7 +145,7 @@ async function syncEpisodeVisualAnchors(params: {
   })
   let productionBible = episode.productionBible
   if (productionBible) {
-    const existingMeta = readVisualArtifactMeta(productionBible)
+    const existingMeta = existingVisualMeta
     const meta = cloneWorkspaceValue(existingMeta || createVisualArtifactMeta(now, 'ai'))
     meta.anchors = anchors
     if (meta.plan) {
@@ -170,11 +190,6 @@ export async function handleAnalyzeNovelTask(job: Job<TaskJobData>) {
   if (!novelData) {
     throw new Error('Novel promotion data not found')
   }
-  const analysisModel = await resolveAnalysisModel({
-    userId: job.data.userId,
-    inputModel: payload.model,
-    projectAnalysisModel: novelData.analysisModel,
-  })
 
   const requestedEpisodeId = readText(payload.episodeId) || readText(job.data.episodeId)
   const targetEpisode = requestedEpisodeId
@@ -226,6 +241,61 @@ export async function handleAnalyzeNovelTask(job: Job<TaskJobData>) {
   if (requestedEpisodeId && (!targetEpisode || targetEpisode.novelPromotionProjectId !== novelData.id)) {
     throw new Error('Episode not found')
   }
+
+  const reusableAssetState = !shouldBypassApprovedAssetReuse(payload) && targetEpisode?.contentPlan
+    ? readReusableApprovedAssetRequirementsState(targetEpisode.contentPlan)
+    : null
+  if (targetEpisode?.id && reusableAssetState) {
+    await reportTaskProgress(job, 92, {
+      stage: 'asset_bible_reuse',
+      stageLabel: '复用已批准资产需求',
+      displayMode: 'detail',
+    })
+    await assertTaskActive(job, 'asset_bible_reuse')
+    const runId = readOptionalTaskRunId(job)
+    if (runId) {
+      await createArtifact({
+        runId,
+        stepKey: 'asset_bible_reuse',
+        artifactType: 'asset.bible.reuse',
+        refId: targetEpisode.id,
+        payload: toJsonRecord({
+          reason: 'approved_asset_requirements_reused',
+          contentRevision: reusableAssetState.contentRevision,
+          analyzedRevision: reusableAssetState.analyzedRevision,
+          approvedAt: reusableAssetState.approvedAt,
+          assetIds: reusableAssetState.assetIds,
+          assetCount: reusableAssetState.assetBible.length,
+          reviewStatus: reusableAssetState.review?.status || null,
+          reviewScore: reusableAssetState.review?.score || null,
+        }),
+      })
+    }
+    return {
+      success: true,
+      reused: true,
+      reuseReason: 'approved_asset_requirements_reused',
+      episodeId: targetEpisode.id,
+      contentRevision: reusableAssetState.contentRevision,
+      analyzedRevision: reusableAssetState.analyzedRevision,
+      assetIds: reusableAssetState.assetIds,
+      assetCount: reusableAssetState.assetBible.length,
+      reviewStatus: reusableAssetState.review?.status || null,
+      reviewScore: reusableAssetState.review?.score || null,
+      characters: [],
+      locations: [],
+      props: [],
+      characterCount: 0,
+      locationCount: 0,
+      propCount: 0,
+    }
+  }
+
+  const analysisModel = await resolveAnalysisModel({
+    userId: job.data.userId,
+    inputModel: payload.model,
+    projectAnalysisModel: novelData.analysisModel,
+  })
 
   const analysisSources: string[] = []
   if (readText(targetEpisode?.novelText)) {

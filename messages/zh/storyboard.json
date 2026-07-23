@@ -361,7 +361,11 @@
         "aiRequired": "AI 必读",
         "characterDetails": "角色详情",
         "shotAndScene": "镜头 · 场景",
-        "jsonCheck": "JSON 核查"
+        "jsonCheck": "JSON 核查",
+        "imagePromptPreview": "图片提示词预览",
+        "videoPromptPreview": "视频提示词预览",
+        "promptPreviewSnapshot": "生成快照",
+        "promptPreviewDraft": "草稿预览"
     },
     "insertModal": {
         "insertBetween": "在 #{before} 和 #{after} 之间插入",

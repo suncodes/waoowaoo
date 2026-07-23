@@ -361,7 +361,11 @@
         "aiRequired": "AI Required",
         "characterDetails": "Character Details",
         "shotAndScene": "Shot · Scene",
-        "jsonCheck": "JSON Review"
+        "jsonCheck": "JSON Review",
+        "imagePromptPreview": "Image Prompt Preview",
+        "videoPromptPreview": "Video Prompt Preview",
+        "promptPreviewSnapshot": "Generation Snapshot",
+        "promptPreviewDraft": "Draft Preview"
     },
     "insertModal": {
         "insertBetween": "Insert between #{before} and #{after}",

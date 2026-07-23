@@ -53,6 +53,7 @@ function scoreDimension(name: string, issues: ReviewIssue[], penalty: number): Q
 
 function statusFrom(score: number, issues: ReviewIssue[]): AssetBibleReviewResult['status'] {
   if (issues.some((item) => item.severity === 'critical')) return 'human_required'
+  if (issues.length > 0) return 'repairable'
   if (score >= 80) return 'passed'
   if (score >= 65) return 'repairable'
   return 'human_required'
@@ -62,6 +63,7 @@ export function reviewAssetBible(params: {
   targetId: string
   assetBible: AssetBibleItem[]
   expectedAssetIds?: string[]
+  requireUsagePlan?: boolean
   reviewedAt?: string
 }): AssetBibleReviewResult {
   const expectedAssetIds = uniqueStrings(params.expectedAssetIds || [])
@@ -118,12 +120,21 @@ export function reviewAssetBible(params: {
     return issues
   })
 
+  const usageIssues = params.requireUsagePlan
+    ? params.assetBible.flatMap((item) => (
+      item.priority === 'must_lock' && item.usedByPanels.length === 0
+        ? [issue('usage_plan', 'warning', item.id, 'must_lock 资产缺少镜头使用计划')]
+        : []
+    ))
+    : []
+
   const dimensions = [
     scoreDimension('coverage', coverageIssues, 30),
     scoreDimension('dedupe', dedupeIssues, 35),
     scoreDimension('traceability', traceabilityIssues, 30),
     scoreDimension('visual_clarity', visualClarityIssues, 20),
     scoreDimension('stability', stabilityIssues, 15),
+    scoreDimension('usage_plan', usageIssues, 12),
   ]
   const score = Math.round(dimensions.reduce((sum, item) => sum + item.score, 0) / dimensions.length)
   const issues = [
@@ -132,6 +143,7 @@ export function reviewAssetBible(params: {
     ...traceabilityIssues,
     ...visualClarityIssues,
     ...stabilityIssues,
+    ...usageIssues,
   ]
   const criticalIssues = issues
     .filter((item) => item.severity === 'critical')

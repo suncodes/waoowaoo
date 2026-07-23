@@ -32,6 +32,8 @@ import { buildPrompt, getPromptTemplate, PROMPT_IDS } from '@/lib/prompt-i18n'
 import { resolveAnalysisModel } from './resolve-analysis-model'
 import { createArtifact } from '@/lib/run-runtime/service'
 import { assertWorkflowRunActive, withWorkflowRunLease } from '@/lib/run-runtime/workflow-lease'
+import { createCreativeQualityHash } from '@/lib/creative-quality/contracts'
+import { reviewScriptDraftQuality } from '@/lib/creative-quality/script-review'
 import {
   parseStoryboardRetryTarget,
   runScriptToStoryboardAtomicRetry,
@@ -553,6 +555,35 @@ export async function handleScriptToStoryboardTask(job: Job<TaskJobData>) {
         episodeId,
         clipPanels: orchestratorResult.clipPanels,
         voiceLineRows,
+      })
+      const persistedVoiceLines = Array.isArray(persisted.voiceLines) ? persisted.voiceLines : []
+      const scriptReview = reviewScriptDraftQuality({
+        episodeId,
+        clips: clips.map((clip) => ({
+          id: clip.id,
+          episodeId,
+          content: clip.content,
+          summary: clip.summary,
+          screenplay: clip.screenplay,
+        })),
+        voiceLines: persistedVoiceLines.map((line) => ({
+          id: line.id,
+          episodeId: line.episodeId,
+          lineIndex: line.lineIndex,
+          speaker: line.speaker,
+          content: line.content,
+          matchedPanelId: line.matchedPanelId,
+        })),
+      })
+      await createArtifact({
+        runId,
+        stepKey: 'script_quality_review',
+        artifactType: 'script.quality.review',
+        refId: episodeId,
+        versionHash: createCreativeQualityHash(scriptReview),
+        payload: {
+          review: scriptReview,
+        },
       })
 
       await reportTaskProgress(job, 96, {

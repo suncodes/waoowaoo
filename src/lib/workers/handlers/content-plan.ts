@@ -26,7 +26,10 @@ import { reportTaskProgress } from '@/lib/workers/shared'
 import { assertTaskActive } from '@/lib/workers/utils'
 import { resolveAnalysisModel } from './resolve-analysis-model'
 import { persistContentPlan } from './content-plan-helpers'
-import { storeContentUnitCandidate } from '@/lib/creation-workspace/content-artifacts'
+import {
+  readReusableApprovedContentPlanState,
+  storeContentUnitCandidate,
+} from '@/lib/creation-workspace/content-artifacts'
 import { cloneWorkspaceValue, asWorkspaceRecord } from '@/lib/creation-workspace/artifact-state'
 import {
   executePlanningJsonStep,
@@ -51,6 +54,16 @@ function readStringArray(value: unknown): string[] {
 function readSourceMode(value: unknown): BookGuideSourceMode {
   if (value === 'verified_source' || value === 'user_source') return value
   return 'model_knowledge'
+}
+
+function readBooleanFlag(value: unknown): boolean {
+  return value === true || value === 'true' || value === 1 || value === '1'
+}
+
+function shouldBypassApprovedContentPlanReuse(payload: Record<string, unknown>): boolean {
+  return readBooleanFlag(payload.forceRegenerate)
+    || readBooleanFlag(payload.force)
+    || readBooleanFlag(payload.ignoreLock)
 }
 
 function readBookGuideSeed(value: unknown): BookGuideSeed | null {
@@ -230,7 +243,7 @@ export async function handleContentPlanTask(job: Job<TaskJobData>) {
     ? readBookGuideSeed(payload.bookGuideSeed) || resolveBookGuideSeed(sourceText)
     : null
   const bookSeedContext = buildBookSeedContext(bookGuideSeed)
-  const model = await resolveAnalysisModel({
+  const resolveTaskModel = () => resolveAnalysisModel({
     userId: job.data.userId,
     inputModel: payload.model,
     projectAnalysisModel: novelData.analysisModel,
@@ -238,6 +251,7 @@ export async function handleContentPlanTask(job: Job<TaskJobData>) {
   const profileJson = JSON.stringify(profile, null, 2)
 
   if (payload.mode === 'rewrite_unit') {
+    const model = await resolveTaskModel()
     const targetUnitId = readText(payload.targetUnitId)
     if (!targetUnitId || !episode.contentPlan) throw new Error('targetUnitId is required')
     const currentPlan = parseContentPlan(episode.contentPlan, profile)
@@ -344,6 +358,47 @@ export async function handleContentPlanTask(job: Job<TaskJobData>) {
     }
   }
 
+  const reusablePlanState = shouldBypassApprovedContentPlanReuse(payload)
+    ? null
+    : readReusableApprovedContentPlanState(episode.contentPlan)
+  if (reusablePlanState) {
+    const approvedPlan = parseContentPlan(episode.contentPlan, profile)
+    const storedReview = asWorkspaceRecord(episode.contentReview)
+    await reportTaskProgress(job, 90, { stage: 'content_plan_reuse', displayMode: 'detail' })
+    await assertTaskActive(job, 'content_plan_reuse')
+    await createArtifact({
+      runId: readTaskRunId(job),
+      stepKey: 'content_plan_reuse',
+      artifactType: 'content.plan.reuse',
+      refId: episodeId,
+      payload: toJsonRecord({
+        reason: 'approved_content_plan_reused',
+        profilePreset: profile.preset,
+        planType: approvedPlan.planType,
+        revision: reusablePlanState.revision,
+        approvedRevision: reusablePlanState.approvedRevision,
+        approvedUpdatedAt: reusablePlanState.updatedAt,
+        assetRequirementStatus: reusablePlanState.assetRequirementStatus,
+        unitCount: reusablePlanState.unitCount,
+        lockedUnitCount: reusablePlanState.lockedUnitCount,
+        reviewStatus: readText(storedReview?.status) || 'approved',
+        reviewScore: typeof storedReview?.score === 'number' ? storedReview.score : null,
+      }),
+    })
+    return {
+      episodeId,
+      profilePreset: profile.preset,
+      planType: approvedPlan.planType,
+      reused: true,
+      reuseReason: 'approved_content_plan_reused',
+      reviewStatus: readText(storedReview?.status) || 'approved',
+      reviewScore: typeof storedReview?.score === 'number' ? storedReview.score : null,
+      contentPlanRevision: reusablePlanState.revision,
+      approvedRevision: reusablePlanState.approvedRevision,
+    }
+  }
+
+  const model = await resolveTaskModel()
   await reportTaskProgress(job, 15, { stage: 'content_plan_prepare', displayMode: 'detail' })
   await assertTaskActive(job, 'content_plan_prepare')
   const planPayload = await executePlanningJsonStep({

@@ -5,6 +5,7 @@ export const CREATIVE_QUALITY_SCHEMA_VERSION = 1
 
 export type CreativeQualityTargetType =
   | 'content'
+  | 'script'
   | 'asset'
   | 'storyboard'
   | 'panel'
@@ -30,10 +31,13 @@ export interface QualityReviewContract {
   route:
     | 'NONE'
     | 'CONTENT_REVISE'
+    | 'SCRIPT_REVISE'
     | 'ASSET_REPAIR'
     | 'SHOT_REPLAN'
     | 'PROMPT_RECOMPILE'
     | 'REGENERATE'
+    | 'VIDEO_REGENERATE'
+    | 'VOICE_REGENERATE'
     | 'HUMAN_REQUIRED'
   evidence: string[]
 }

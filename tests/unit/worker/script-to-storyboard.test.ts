@@ -50,6 +50,7 @@ const runScriptToStoryboardOrchestratorMock = vi.hoisted(() =>
 )
 const parseVoiceLinesJsonMock = vi.hoisted(() => vi.fn())
 const persistStoryboardOutputsMock = vi.hoisted(() => vi.fn())
+const createArtifactMock = vi.hoisted(() => vi.fn(async () => undefined))
 const parseStoryboardRetryTargetMock = vi.hoisted(() => vi.fn())
 const runScriptToStoryboardAtomicRetryMock = vi.hoisted(() => vi.fn())
 const workflowLeaseMock = vi.hoisted(() => ({
@@ -175,6 +176,9 @@ vi.mock('@/lib/workers/handlers/script-to-storyboard-atomic-retry', () => ({
   runScriptToStoryboardAtomicRetry: runScriptToStoryboardAtomicRetryMock,
 }))
 vi.mock('@/lib/run-runtime/workflow-lease', () => workflowLeaseMock)
+vi.mock('@/lib/run-runtime/service', () => ({
+  createArtifact: createArtifactMock,
+}))
 
 import { handleScriptToStoryboardTask } from '@/lib/workers/handlers/script-to-storyboard'
 
@@ -251,7 +255,14 @@ describe('worker script-to-storyboard behavior', () => {
           content: 'clip content',
           characters: JSON.stringify(['Narrator']),
           location: 'Office',
-          screenplay: 'Screenplay text',
+          screenplay: JSON.stringify({
+            original_text: 'clip content',
+            scenes: [{
+              scene: 'Office',
+              action: 'Narrator looks across the room.',
+              dialogue: 'Hello world',
+            }],
+          }),
         },
       ],
     })
@@ -289,6 +300,14 @@ describe('worker script-to-storyboard behavior', () => {
           },
         ],
         voiceLineCount: rows.length,
+        voiceLines: rows.map((row, index) => ({
+          id: `voice-${index + 1}`,
+          episodeId: 'episode-1',
+          lineIndex: row.lineIndex,
+          speaker: row.speaker,
+          content: row.content,
+          matchedPanelId: 'panel-1',
+        })),
       }
     })
 
@@ -329,6 +348,21 @@ describe('worker script-to-storyboard behavior', () => {
         notIn: [1],
       },
     })
+    expect(createArtifactMock).toHaveBeenCalledWith(expect.objectContaining({
+      runId: 'run-test-storyboard',
+      stepKey: 'script_quality_review',
+      artifactType: 'script.quality.review',
+      refId: 'episode-1',
+      versionHash: expect.any(String),
+      payload: {
+        review: expect.objectContaining({
+          targetId: 'episode-1',
+          targetType: 'script',
+          reviewKind: 'script_draft',
+          voiceLineCount: 1,
+        }),
+      },
+    }))
   })
 
   it('voice 解析失败后会重试一次再成功', async () => {

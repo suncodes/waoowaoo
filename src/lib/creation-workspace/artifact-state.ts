@@ -71,6 +71,7 @@ export interface VisualAnchor {
   assetKind: VisualAnchorKind
   semanticKind: VisualAnchorSemanticKind
   name: string
+  aliases?: string[]
   description: string
   importance: 'core' | 'supporting'
   sourceUnitIds: string[]
@@ -363,6 +364,35 @@ export function readVisualArtifactMeta(value: unknown): VisualArtifactMeta | nul
       storyboard: downstream?.storyboard === true,
       production: downstream?.production === true,
     },
+  }
+}
+
+export function readReusableApprovedVisualPlanState(value: unknown): {
+  revision: number
+  approvedRevision: number
+  updatedAt: string
+  plan: StoredVisualPlan
+  anchorCount: number
+  downstream: VisualArtifactMeta['downstream']
+} | null {
+  const meta = readVisualArtifactMeta(value)
+  const approvedRevision = meta?.approvedRevision
+  if (
+    !meta
+    || meta.status !== 'approved'
+    || approvedRevision === null
+    || approvedRevision !== meta.revision
+    || !meta.plan
+  ) {
+    return null
+  }
+  return {
+    revision: meta.revision,
+    approvedRevision,
+    updatedAt: meta.updatedAt,
+    plan: cloneWorkspaceValue(meta.plan),
+    anchorCount: meta.anchors.length,
+    downstream: cloneWorkspaceValue(meta.downstream),
   }
 }
 

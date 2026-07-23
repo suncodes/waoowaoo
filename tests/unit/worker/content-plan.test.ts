@@ -1,5 +1,9 @@
 import type { Job } from 'bullmq'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  createContentArtifactMeta,
+  withContentArtifactMeta,
+} from '@/lib/creation-workspace/artifact-state'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 
 const prismaMock = vi.hoisted(() => ({
@@ -117,6 +121,34 @@ function reviewPayload(status: 'approved' | 'blocked' = 'approved') {
   }
 }
 
+function approvedNarrativeContentPlan() {
+  const meta = createContentArtifactMeta('2026-07-20T00:00:00.000Z', 'user')
+  meta.status = 'approved'
+  meta.revision = 3
+  meta.approvedRevision = 3
+  meta.units = {
+    beat_1: { locked: true, revision: 1 },
+  }
+  return withContentArtifactMeta({
+    schemaVersion: 1,
+    planType: 'narrative',
+    title: '雨夜抉择',
+    logline: '主人公在雨夜作出关键选择',
+    hookPattern: 'contrast',
+    themes: ['选择'],
+    sourceLedger: [],
+    riskFlags: [],
+    beats: [{
+      id: 'beat_1',
+      title: '冲突',
+      purpose: '建立抉择',
+      summary: '主人公面对两难',
+      estimatedDurationSec: 30,
+      riskFlags: [],
+    }],
+  }, meta)
+}
+
 describe('worker content-plan behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -176,6 +208,72 @@ describe('worker content-plan behavior', () => {
     expect(persistenceMock.persistContentPlan).toHaveBeenCalledWith(expect.objectContaining({
       commitGuideClips: false,
       result: expect.objectContaining({ contentReview: expect.objectContaining({ status: 'blocked' }) }),
+    }))
+  })
+
+  it('reuses an approved current content plan without regenerating or overwriting it', async () => {
+    prismaMock.novelPromotionEpisode.findUnique.mockResolvedValue({
+      id: 'episode-1',
+      novelPromotionProjectId: 'novel-project-1',
+      novelText: '数据库原文',
+      contentPlan: approvedNarrativeContentPlan(),
+      contentReview: reviewPayload(),
+      clips: [],
+    })
+
+    const result = await handleContentPlanTask(buildJob())
+
+    expect(result).toMatchObject({
+      episodeId: 'episode-1',
+      planType: 'narrative',
+      reused: true,
+      reuseReason: 'approved_content_plan_reused',
+      contentPlanRevision: 3,
+      approvedRevision: 3,
+      reviewStatus: 'approved',
+      reviewScore: 90,
+    })
+    expect(planningMock.executePlanningJsonStep).not.toHaveBeenCalled()
+    expect(persistenceMock.persistContentPlan).not.toHaveBeenCalled()
+    expect(artifactMock.createArtifact).toHaveBeenCalledWith(expect.objectContaining({
+      runId: 'run-content-1',
+      artifactType: 'content.plan.reuse',
+      refId: 'episode-1',
+      payload: expect.objectContaining({
+        reason: 'approved_content_plan_reused',
+        revision: 3,
+        approvedRevision: 3,
+        lockedUnitCount: 1,
+      }),
+    }))
+  })
+
+  it('regenerates an approved content plan when forceRegenerate is explicit', async () => {
+    prismaMock.novelPromotionEpisode.findUnique.mockResolvedValue({
+      id: 'episode-1',
+      novelPromotionProjectId: 'novel-project-1',
+      novelText: '数据库原文',
+      contentPlan: approvedNarrativeContentPlan(),
+      contentReview: reviewPayload(),
+      clips: [],
+    })
+    planningMock.executePlanningJsonStep
+      .mockResolvedValueOnce(planPayload())
+      .mockResolvedValueOnce(reviewPayload())
+
+    const job = buildJob()
+    job.data.payload = { ...job.data.payload, forceRegenerate: true }
+    const result = await handleContentPlanTask(job)
+
+    expect(result).toMatchObject({
+      episodeId: 'episode-1',
+      reviewStatus: 'approved',
+    })
+    expect(result).not.toHaveProperty('reused')
+    expect(planningMock.executePlanningJsonStep).toHaveBeenCalledTimes(2)
+    expect(persistenceMock.persistContentPlan).toHaveBeenCalled()
+    expect(artifactMock.createArtifact).not.toHaveBeenCalledWith(expect.objectContaining({
+      artifactType: 'content.plan.reuse',
     }))
   })
 

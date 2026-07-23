@@ -34,6 +34,7 @@ export interface AssetBibleAnchorInput {
   assetKind: 'character' | 'location' | 'prop'
   semanticKind?: string
   name: string
+  aliases?: string[]
   description?: string
   importance?: 'core' | 'supporting'
   sourceUnitIds?: string[]
@@ -74,6 +75,13 @@ function compactText(value: unknown, maxLength = 180): string {
 
 function splitAliases(name: string): string[] {
   return uniqueStrings(name.split(/[\/|,，、]/g))
+}
+
+function assetAliases(anchor: AssetBibleAnchorInput): string[] {
+  return uniqueStrings([
+    ...splitAliases(anchor.name),
+    ...(anchor.aliases || []),
+  ])
 }
 
 function normalizeKind(anchor: AssetBibleAnchorInput): AssetBibleKind {
@@ -149,7 +157,63 @@ function buildEvidence(
 function buildVisualInvariants(anchor: AssetBibleAnchorInput): string[] {
   return uniqueStrings([
     anchor.name,
+    ...(anchor.aliases || []),
     anchor.description || '',
+  ])
+}
+
+function readUnitId(value: JsonRecord, fallbackIndex: number): string {
+  return readString(value.id)
+    || readString(value.panelId)
+    || readString(value.clipId)
+    || `visual_unit_${fallbackIndex + 1}`
+}
+
+function buildAssetUsageMap(visualUnits: unknown[] = []): Map<string, string[]> {
+  const usage = new Map<string, string[]>()
+  visualUnits.forEach((value, index) => {
+    const unit = asRecord(value)
+    if (!unit || !Array.isArray(unit.assetRefs)) return
+    const unitId = readUnitId(unit, index)
+    for (const ref of unit.assetRefs) {
+      const record = asRecord(ref)
+      const assetId = record ? readString(record.id) : ''
+      if (!assetId) continue
+      const existing = usage.get(assetId) || []
+      existing.push(unitId)
+      usage.set(assetId, uniqueStrings(existing))
+    }
+  })
+  return usage
+}
+
+function textMentionsAsset(value: unknown, aliases: string[]): boolean {
+  if (aliases.length === 0) return false
+  const text = compactText(
+    typeof value === 'string'
+      ? value
+      : JSON.stringify(value),
+    2000,
+  ).toLowerCase()
+  return aliases
+    .map((alias) => alias.toLowerCase())
+    .some((alias) => alias.length >= 2 && text.includes(alias))
+}
+
+function buildUsedByPanels(
+  anchor: AssetBibleAnchorInput,
+  visualUnits: unknown[],
+  usageByAssetId: ReadonlyMap<string, string[]>,
+): string[] {
+  const aliases = assetAliases(anchor)
+  const inferred = visualUnits.flatMap((value, index) => {
+    const unit = asRecord(value)
+    if (!unit || !textMentionsAsset(unit, aliases)) return []
+    return [readUnitId(unit, index)]
+  })
+  return uniqueStrings([
+    ...(usageByAssetId.get(anchor.assetId) || []),
+    ...inferred,
   ])
 }
 
@@ -157,20 +221,24 @@ export function buildAssetBible(params: {
   anchors: AssetBibleAnchorInput[]
   contentPlan: unknown
   clips: ContentClipInput[]
+  visualUnits?: unknown[]
 }): AssetBibleItem[] {
+  const visualUnits = params.visualUnits || []
   const contentUnitText = unitTextFromContentPlan(params.contentPlan)
   const clipUnitText = unitTextFromClips(params.clips)
   const sourceTextById = new Map([...contentUnitText, ...clipUnitText])
+  const usageByAssetId = buildAssetUsageMap(visualUnits)
 
   return params.anchors.map((anchor) => {
     const sourceUnitIds = uniqueStrings(anchor.sourceUnitIds || [])
     const kind = normalizeKind(anchor)
     const priority = priorityForAnchor(anchor)
+    const aliases = assetAliases(anchor)
     return {
       id: anchor.assetId,
       kind,
       canonicalName: anchor.name,
-      aliases: splitAliases(anchor.name),
+      aliases,
       role: roleForAnchor(anchor),
       narrativeFunction: anchor.description
         ? `${anchor.name}: ${anchor.description}`
@@ -183,7 +251,7 @@ export function buildAssetBible(params: {
         '不要被艺术风格替换成已有 IP 主体',
       ],
       firstAppearance: sourceUnitIds[0] || '',
-      usedByPanels: [],
+      usedByPanels: buildUsedByPanels(anchor, visualUnits, usageByAssetId),
       priority,
       generationNeed: generationNeedForAnchor(anchor),
     }

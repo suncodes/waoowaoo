@@ -40,6 +40,16 @@ function issueText(item: ReviewIssue): string {
   return item.unitId ? `${item.unitId}: ${item.message}` : item.message
 }
 
+function uniqueIssues(issues: ReviewIssue[]): ReviewIssue[] {
+  const seen = new Set<string>()
+  return issues.filter((item) => {
+    const key = `${item.dimension}:${item.severity}:${item.unitId || ''}:${item.message}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 function scoreDimension(name: string, issues: ReviewIssue[], penalty: number): QualityReviewDimension {
   return {
     name,
@@ -77,10 +87,12 @@ function riskIssues(riskFlags: ContentRiskFlag[], unitId: string | null): Review
   return riskFlags.flatMap((risk): ReviewIssue[] => {
     const severity: IssueSeverity = risk.severity === 'critical' ? 'critical' : 'warning'
     if (risk.code === 'source_gap') return [issue('source', severity, unitId, risk.message)]
-    if (risk.code === 'overclaim' || risk.code === 'fact_claim') return [issue('source', severity, unitId, risk.message)]
+    if (risk.code === 'overclaim' || risk.code === 'fact_claim' || risk.code === 'spoiler_risk') {
+      return [issue('source', severity, unitId, risk.message)]
+    }
     if (risk.code === 'visualization_gap') return [issue('visualization', severity, unitId, risk.message)]
     if (risk.code === 'duration_risk') return [issue('pacing', severity, unitId, risk.message)]
-    if (risk.code === 'structure_drift') return [issue('structure', severity, unitId, risk.message)]
+    if (risk.code === 'structure_drift') return [issue('stability', severity, unitId, risk.message)]
     return []
   })
 }
@@ -240,18 +252,31 @@ export function reviewContentPlanQuality(params: {
   reviewedAt?: string
 }): ContentQualityReviewResult {
   const plan = params.result.contentPlan
+  const planRiskIssues = riskIssues(plan.riskFlags, null)
   const structureIssues = plan.planType === 'guide'
     ? reviewGuideStructure(plan)
     : reviewNarrativeStructure(plan)
-  const sourceIssues = reviewSourceLedger(plan.sourceLedger, params.profile.sourcePolicy.requireAnchors)
-  const hookIssues = structureIssues.filter((item) => item.dimension === 'hook')
-  const pureStructureIssues = structureIssues.filter((item) => item.dimension !== 'hook')
-  const visualizationIssues = reviewVisualization(plan)
-  const pacingIssues = reviewPacing(params.result, params.profile)
-  const stabilityIssues = [
+  const sourceIssues = uniqueIssues([
+    ...reviewSourceLedger(plan.sourceLedger, params.profile.sourcePolicy.requireAnchors),
+    ...planRiskIssues.filter((item) => item.dimension === 'source'),
+  ])
+  const hookIssues = uniqueIssues(structureIssues.filter((item) => item.dimension === 'hook'))
+  const pureStructureIssues = uniqueIssues([
+    ...structureIssues.filter((item) => item.dimension !== 'hook'),
+    ...planRiskIssues.filter((item) => item.dimension === 'structure'),
+  ])
+  const visualizationIssues = uniqueIssues([
+    ...reviewVisualization(plan),
+    ...planRiskIssues.filter((item) => item.dimension === 'visualization'),
+  ])
+  const pacingIssues = uniqueIssues([
+    ...reviewPacing(params.result, params.profile),
+    ...planRiskIssues.filter((item) => item.dimension === 'pacing'),
+  ])
+  const stabilityIssues = uniqueIssues([
     ...reviewRepetition(plan),
-    ...riskIssues(plan.riskFlags, null).filter((item) => item.dimension === 'structure'),
-  ]
+    ...planRiskIssues.filter((item) => item.dimension === 'stability'),
+  ])
   const dimensions = [
     scoreDimension('structure', pureStructureIssues, 25),
     scoreDimension('hook', hookIssues, 12),

@@ -65,4 +65,40 @@ describe('visual anchors', () => {
       }),
     ])
   })
+
+  it('uses stored character aliases when detecting and binding visual anchors', () => {
+    const anchors = buildVisualAnchors({
+      contentPlan: {
+        planType: 'guide',
+        segments: [{ id: 'segment-1', narration: '船长第一次走进深海指挥室。' }],
+      },
+      clips: [{ id: 'clip-1', content: '船长盯着仪表盘，没有说话。' }],
+      characters: [{
+        id: 'char-nemo',
+        name: '尼摩船长',
+        aliases: JSON.stringify(['船长', 'Nemo']),
+        introduction: '神秘的潜艇指挥者',
+      }],
+      locations: [],
+    })
+
+    expect(anchors).toEqual([
+      expect.objectContaining({
+        assetId: 'char-nemo',
+        aliases: ['船长', 'Nemo'],
+        sourceUnitIds: ['segment-1', 'clip-1'],
+      }),
+    ])
+
+    const units = bindVisualUnitsToAnchors([{
+      id: 'unit-1',
+      clipId: 'clip-2',
+      description: 'Nemo 转身看向舷窗',
+    }], anchors)
+    expect(units[0].assetRefs).toEqual([{
+      id: 'char-nemo',
+      kind: 'character',
+      name: '尼摩船长',
+    }])
+  })
 })

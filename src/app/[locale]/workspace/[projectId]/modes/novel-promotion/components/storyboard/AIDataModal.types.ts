@@ -48,12 +48,15 @@ export interface AIDataModalProps {
   isOpen: boolean
   onClose: () => void
   syncKey?: string
+  projectId: string
+  panelId: string
   panelNumber: number
   shotType: string | null
   cameraMove: string | null
   description: string | null
   location: string | null
   characters: AIDataCharacter[]
+  imagePrompt: string | null
   videoPrompt: string | null
   photographyRules: PhotographyRules | null
   actingNotes: ActingNotes | ActingCharacter[] | null

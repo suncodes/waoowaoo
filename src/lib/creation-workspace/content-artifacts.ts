@@ -254,6 +254,55 @@ export function approveContentArtifact(contentPlan: unknown, now: string): unkno
   return withContentArtifactMeta(contentPlan, meta)
 }
 
+export function readReusableApprovedContentPlanState(contentPlan: unknown): {
+  revision: number
+  approvedRevision: number
+  updatedAt: string
+  assetRequirementStatus: ContentArtifactMeta['assetRequirements']['status']
+  unitCount: number
+  lockedUnitCount: number
+} | null {
+  const meta = readContentArtifactMeta(contentPlan)
+  const approvedRevision = meta?.approvedRevision
+  if (!meta || meta.status !== 'approved' || approvedRevision === null || approvedRevision !== meta.revision) return null
+  return {
+    revision: meta.revision,
+    approvedRevision,
+    updatedAt: meta.updatedAt,
+    assetRequirementStatus: meta.assetRequirements.status,
+    unitCount: Object.keys(meta.units).length,
+    lockedUnitCount: Object.values(meta.units).filter((state) => state.locked).length,
+  }
+}
+
+export function readReusableApprovedAssetRequirementsState(contentPlan: unknown): {
+  contentRevision: number
+  analyzedRevision: number
+  approvedAt: string | null
+  assetIds: string[]
+  assetBible: AssetBibleItem[]
+  review: AssetBibleReviewResult | null
+} | null {
+  const meta = readContentArtifactMeta(contentPlan)
+  if (!meta) return null
+  const requirements = meta.assetRequirements
+  if (
+    requirements.status !== 'approved'
+    || requirements.analyzedRevision === null
+    || requirements.analyzedRevision !== meta.revision
+  ) {
+    return null
+  }
+  return {
+    contentRevision: meta.revision,
+    analyzedRevision: requirements.analyzedRevision,
+    approvedAt: requirements.approvedAt,
+    assetIds: cloneWorkspaceValue(requirements.assetIds),
+    assetBible: cloneWorkspaceValue(requirements.assetBible),
+    review: requirements.review ? cloneWorkspaceValue(requirements.review) : null,
+  }
+}
+
 export function markContentAssetRequirementsAnalyzed(params: {
   contentPlan: unknown
   assetIds: string[]

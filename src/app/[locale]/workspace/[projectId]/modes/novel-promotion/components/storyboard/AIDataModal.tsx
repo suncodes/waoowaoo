@@ -1,13 +1,18 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { AppIcon } from '@/components/ui/icons'
 import ProductModalShell from '@/components/product/ProductModalShell'
 import type { AIDataModalProps } from './AIDataModal.types'
 import { useAIDataModalState } from './hooks/useAIDataModalState'
+import { usePanelPromptSnapshots } from './hooks/usePanelPromptSnapshots'
 import AIDataModalFormPane from './AIDataModalFormPane'
 import AIDataModalPreviewPane from './AIDataModalPreviewPane'
+import {
+  applyPromptSnapshotsToPreview,
+  buildAIDataPromptPreview,
+} from './AIDataPromptPreview'
 
 export type {
   AIDataModalProps,
@@ -22,12 +27,15 @@ export default function AIDataModal({
   isOpen,
   onClose,
   syncKey,
+  projectId,
+  panelId,
   panelNumber,
   shotType: initialShotType,
   cameraMove: initialCameraMove,
   description: initialDescription,
   location,
   characters,
+  imagePrompt,
   videoPrompt: initialVideoPrompt,
   photographyRules: initialPhotographyRules,
   actingNotes: initialActingNotes,
@@ -36,6 +44,7 @@ export default function AIDataModal({
 }: AIDataModalProps) {
   const t = useTranslations('storyboard')
   const [activeCharIdx, setActiveCharIdx] = useState(0)
+  const promptSnapshots = usePanelPromptSnapshots({ isOpen, projectId, panelId })
 
   const {
     shotType,
@@ -76,11 +85,39 @@ export default function AIDataModal({
       description,
       location,
       characters,
+      image_prompt: imagePrompt,
       prompt_text: `A ${videoRatio} shot: ${description}. ${videoPrompt}`,
     },
     ...(photographyRules ? { photography_rules: photographyRules } : {}),
     ...(actingNotes.length > 0 ? { acting_notes: actingNotes } : {}),
   }
+  const promptPreview = useMemo(() => {
+    const draftPreview = buildAIDataPromptPreview({
+      videoRatio,
+      shotType,
+      cameraMove,
+      description,
+      location,
+      characters,
+      imagePrompt,
+      videoPrompt,
+      photographyRules,
+      actingNotes,
+    })
+    return applyPromptSnapshotsToPreview(draftPreview, promptSnapshots)
+  }, [
+    actingNotes,
+    cameraMove,
+    characters,
+    description,
+    imagePrompt,
+    location,
+    photographyRules,
+    promptSnapshots,
+    shotType,
+    videoPrompt,
+    videoRatio,
+  ])
 
   return (
     <ProductModalShell
@@ -132,6 +169,7 @@ export default function AIDataModal({
           <AIDataModalPreviewPane
             t={t}
             previewJson={previewJson}
+            promptPreview={promptPreview}
           />
         </div>
     </ProductModalShell>

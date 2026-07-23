@@ -133,7 +133,7 @@ describe('diagnostic export task contract', () => {
     const lines = (await zip.file('prompts/invocations.jsonl')!.async('string')).split('\n').filter(Boolean)
     const invocation = JSON.parse(lines[0]) as { input: { apiKey: string }; outputReasoning: string }
 
-    expect(manifest.schemaVersion).toBe(3)
+    expect(manifest.schemaVersion).toBe(7)
     expect(lines).toHaveLength(1)
     expect(invocation.input.apiKey).toBe('[REDACTED]')
     expect(invocation.outputReasoning).toBe('[OMITTED]')
@@ -400,6 +400,65 @@ describe('diagnostic export task contract', () => {
           createdAt: new Date('2026-01-01T00:00:00.250Z'),
         },
         {
+          id: 'artifact-asset-reuse',
+          runId: 'run-quality',
+          stepKey: 'asset_bible_reuse',
+          artifactType: 'asset.bible.reuse',
+          refId: 'episode-asset-bible',
+          versionHash: 'asset-reuse',
+          payload: {
+            reason: 'approved_asset_requirements_reused',
+            contentRevision: 2,
+            analyzedRevision: 2,
+            assetCount: 1,
+          },
+          createdAt: new Date('2026-01-01T00:00:00.260Z'),
+        },
+        {
+          id: 'artifact-content-reuse',
+          runId: 'run-quality',
+          stepKey: 'content_plan_reuse',
+          artifactType: 'content.plan.reuse',
+          refId: 'episode-asset-bible',
+          versionHash: 'content-reuse',
+          payload: {
+            reason: 'approved_content_plan_reused',
+            revision: 2,
+            approvedRevision: 2,
+          },
+          createdAt: new Date('2026-01-01T00:00:00.275Z'),
+        },
+        {
+          id: 'artifact-script-review',
+          runId: 'run-quality',
+          stepKey: 'script_quality_review',
+          artifactType: 'script.quality.review',
+          refId: 'episode-asset-bible',
+          versionHash: 'script-review',
+          payload: {
+            review: {
+              schemaVersion: 1,
+              targetId: 'episode-asset-bible',
+              targetType: 'script',
+              reviewKind: 'script_draft',
+              specVersion: 'script-draft-review.v1',
+              score: 92,
+              confidence: 0.88,
+              status: 'passed',
+              dimensions: [],
+              criticalIssues: [],
+              route: 'NONE',
+              evidence: [],
+              clipCount: 1,
+              screenplayCount: 1,
+              voiceLineCount: 1,
+              issues: [],
+              reviewedAt: '2026-01-01T00:00:00.300Z',
+            },
+          },
+          createdAt: new Date('2026-01-01T00:00:00.300Z'),
+        },
+        {
           id: 'artifact-storyboard-review',
           runId: 'run-quality',
           stepKey: 'storyboard_review',
@@ -425,6 +484,21 @@ describe('diagnostic export task contract', () => {
             },
           },
           createdAt: new Date('2026-01-01T00:00:00.500Z'),
+        },
+        {
+          id: 'artifact-visual-reuse',
+          runId: 'run-quality',
+          stepKey: 'visual_plan_reuse',
+          artifactType: 'visual.plan.reuse',
+          refId: 'episode-asset-bible',
+          versionHash: 'visual-reuse',
+          payload: {
+            reason: 'approved_visual_plan_reused',
+            revision: 3,
+            approvedRevision: 3,
+            visualUnitCount: 2,
+          },
+          createdAt: new Date('2026-01-01T00:00:00.750Z'),
         },
         {
           id: 'artifact-repair',
@@ -483,47 +557,81 @@ describe('diagnostic export task contract', () => {
     const promptLines = (await zip.file('quality/prompt-snapshots.jsonl')!.async('string')).split('\n').filter(Boolean)
     const assetBibleLines = (await zip.file('quality/asset-bible.jsonl')!.async('string')).split('\n').filter(Boolean)
     const assetReviewLines = (await zip.file('quality/asset-bible-reviews.jsonl')!.async('string')).split('\n').filter(Boolean)
+    const assetReuseLines = (await zip.file('quality/asset-bible-reuse.jsonl')!.async('string')).split('\n').filter(Boolean)
     const contentReviewLines = (await zip.file('quality/content-quality-reviews.jsonl')!.async('string')).split('\n').filter(Boolean)
+    const contentReuseLines = (await zip.file('quality/content-plan-reuse.jsonl')!.async('string')).split('\n').filter(Boolean)
+    const scriptReviewLines = (await zip.file('quality/script-reviews.jsonl')!.async('string')).split('\n').filter(Boolean)
     const storyboardReviewLines = (await zip.file('quality/storyboard-quality-reviews.jsonl')!.async('string')).split('\n').filter(Boolean)
     const reviewLines = (await zip.file('quality/visual-quality-reviews.jsonl')!.async('string')).split('\n').filter(Boolean)
+    const visualReuseLines = (await zip.file('quality/visual-plan-reuse.jsonl')!.async('string')).split('\n').filter(Boolean)
+    const promptQualityReviewLines = (await zip.file('quality/prompt-quality-reviews.jsonl')!.async('string')).split('\n').filter(Boolean)
     const repairLines = (await zip.file('quality/visual-auto-repairs.jsonl')!.async('string')).split('\n').filter(Boolean)
     const lineageLines = (await zip.file('quality/visual-repair-lineage.jsonl')!.async('string')).split('\n').filter(Boolean)
+    const roughCutLines = (await zip.file('quality/rough-cut-reviews.jsonl')!.async('string')).split('\n').filter(Boolean)
+    const pickupLines = (await zip.file('quality/pickup-list.jsonl')!.async('string')).split('\n').filter(Boolean)
     const assetBible = JSON.parse(assetBibleLines[0]) as { episodeId: string; canonicalName: string; contentRevision: number }
+    const scriptReview = JSON.parse(scriptReviewLines[0]) as { score: number; reviewSource: string; artifactId: string }
     const lineage = JSON.parse(lineageLines[0]) as { scoreAfter: number; accepted: boolean; artifactType: string }
 
     expect(promptLines).toHaveLength(2)
     expect(assetBibleLines).toHaveLength(1)
     expect(assetReviewLines).toHaveLength(1)
+    expect(assetReuseLines).toHaveLength(1)
     expect(contentReviewLines).toHaveLength(1)
+    expect(contentReuseLines).toHaveLength(1)
+    expect(scriptReviewLines).toHaveLength(1)
     expect(storyboardReviewLines).toHaveLength(1)
+    expect(promptQualityReviewLines).toHaveLength(2)
     expect(assetBible).toMatchObject({
       episodeId: 'episode-asset-bible',
       canonicalName: '尼摩船长',
       contentRevision: 2,
     })
+    expect(scriptReview).toMatchObject({
+      score: 92,
+      reviewSource: 'runtime_artifact',
+      artifactId: 'artifact-script-review',
+    })
     expect(reviewLines).toHaveLength(1)
+    expect(visualReuseLines).toHaveLength(1)
     expect(repairLines).toHaveLength(1)
     expect(lineageLines).toHaveLength(1)
+    expect(roughCutLines).toHaveLength(1)
+    expect(pickupLines.length).toBeGreaterThan(0)
     expect(lineage).toMatchObject({ scoreAfter: 91, accepted: true, artifactType: 'visual.quality.review' })
     expect(qualityIndex).toMatchObject({
       promptSnapshotCount: 2,
       assetBibleCount: 1,
       assetBibleReviewCount: 1,
+      assetBibleReuseCount: 1,
       contentQualityReviewCount: 1,
+      contentPlanReuseCount: 1,
+      scriptReviewCount: 1,
       storyboardQualityReviewCount: 1,
+      promptQualityReviewCount: 2,
       visualQualityReviewCount: 1,
+      visualPlanReuseCount: 1,
       visualAutoRepairCount: 1,
       visualRepairLineageCount: 1,
+      roughCutReviewCount: 1,
+      pickupItemCount: pickupLines.length,
     })
     expect(manifest.counts).toMatchObject({
       assetBibleRecords: 1,
       assetBibleReviews: 1,
+      assetBibleReuses: 1,
       contentQualityReviews: 1,
+      contentPlanReuses: 1,
+      scriptReviews: 1,
       storyboardQualityReviews: 1,
       promptSnapshots: 2,
+      promptQualityReviews: 2,
       visualQualityReviews: 1,
+      visualPlanReuses: 1,
       visualAutoRepairs: 1,
       visualRepairLineageRecords: 1,
+      roughCutReviews: 1,
+      pickupItems: pickupLines.length,
     })
   })
 })

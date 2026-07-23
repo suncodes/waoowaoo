@@ -24,6 +24,7 @@ export interface StoryboardPanel {
   location?: string
   srt_range?: string
   duration?: number
+  image_prompt?: string
   video_prompt?: string
   source_text?: string
   candidateImages?: string
@@ -143,6 +144,7 @@ export function useStoryboardState({
         characters,
         srt_range: p.srtStart && p.srtEnd ? `${p.srtStart}-${p.srtEnd}` : undefined,
         duration: p.duration ?? undefined,
+        image_prompt: p.imagePrompt || undefined,
         video_prompt: p.videoPrompt || undefined,
         source_text: p.srtSegment || undefined,
         candidateImages: p.candidateImages || undefined,
@@ -173,6 +175,7 @@ export function useStoryboardState({
       srtStart: null,
       srtEnd: null,
       duration: panel.duration || null,
+      imagePrompt: panel.image_prompt || null,
       videoPrompt: panel.video_prompt || null,
       photographyRules: panel.photographyRules ?? null,
       actingNotes: panel.actingNotes ?? null,

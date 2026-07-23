@@ -1,0 +1,494 @@
+{
+  "cases": [
+    {
+      "id": "sourced-guide-pass",
+      "profile": {
+        "preset": "book_guide",
+        "targetDurationSec": 60,
+        "sourcePolicy": {
+          "requireAnchors": true
+        }
+      },
+      "result": {
+        "creativeBrief": {
+          "schemaVersion": 1,
+          "profilePreset": "book_guide",
+          "objective": "导读",
+          "audience": "general_readers",
+          "audiencePromise": "理解作品为什么值得读",
+          "targetDurationSec": 60,
+          "tone": ["克制", "清晰"],
+          "mustInclude": ["主题", "视觉锚点"],
+          "mustAvoid": ["无来源断言"]
+        },
+        "contentPlan": {
+          "schemaVersion": 1,
+          "planType": "guide",
+          "title": "海底两万里导读",
+          "thesis": "科学想象让冒险具有思想重量",
+          "hookPattern": "question",
+          "recommendationAngle": "从深海探索切入经典价值",
+          "sourceLedger": [
+            {
+              "id": "source-1",
+              "label": "用户简介",
+              "sourceType": "user_source",
+              "usage": "主题和推荐角度",
+              "confidence": 0.86,
+              "riskFlags": []
+            }
+          ],
+          "riskFlags": [],
+          "outline": [
+            {
+              "id": "outline-1",
+              "title": "为什么值得读",
+              "question": "为什么一部老小说仍然有吸引力？",
+              "takeaway": "它把科学机器、未知深海和人物选择放在同一个冒险里。"
+            }
+          ],
+          "segments": [
+            {
+              "id": "segment-1",
+              "outlineId": "outline-1",
+              "title": "深海问题",
+              "narration": "如果未知的海底不是背景，而是一台推动人物选择的机器，这本书就不只是冒险。",
+              "visualPurpose": "建立深海尺度、潜艇和阅读承诺",
+              "visualHints": ["书封", "潜艇", "深海尺度"],
+              "estimatedDurationSec": 12,
+              "spoilerLevel": "light",
+              "sourceAnchor": {
+                "label": "用户简介",
+                "sourceType": "user_source",
+                "confidence": 0.86
+              },
+              "riskFlags": []
+            },
+            {
+              "id": "segment-2",
+              "outlineId": "outline-1",
+              "title": "推荐理由",
+              "narration": "它好看的地方，是把技术奇观和人物立场绑在一起，让每次前进都带着问题。",
+              "visualPurpose": "把抽象推荐理由转成潜艇、仪表和人物剪影",
+              "visualHints": ["仪表盘", "人物剪影", "海底光束"],
+              "estimatedDurationSec": 16,
+              "spoilerLevel": "light",
+              "sourceAnchor": {
+                "label": "用户简介",
+                "sourceType": "user_source",
+                "confidence": 0.82
+              },
+              "riskFlags": []
+            }
+          ]
+        },
+        "contentReview": {
+          "schemaVersion": 1,
+          "status": "approved",
+          "score": 90,
+          "profileFitScore": 90,
+          "sourceSupportScore": 90,
+          "tensionScore": 88,
+          "visualizationScore": 90,
+          "pacingScore": 92,
+          "stabilityScore": 88,
+          "issues": [],
+          "revisionInstructions": []
+        }
+      },
+      "expect": {
+        "status": "passed",
+        "route": "NONE",
+        "minScore": 80,
+        "requiredEvidenceIncludes": []
+      }
+    },
+    {
+      "id": "title-only-draft-source-gap",
+      "profile": {
+        "preset": "book_guide",
+        "targetDurationSec": 60,
+        "sourcePolicy": {
+          "requireAnchors": false
+        }
+      },
+      "result": {
+        "creativeBrief": {
+          "schemaVersion": 1,
+          "profilePreset": "book_guide",
+          "objective": "导读草稿",
+          "audience": "general_readers",
+          "audiencePromise": "先给出可编辑导读方向",
+          "targetDurationSec": 60,
+          "tone": ["保守"],
+          "mustInclude": ["资料不足标记"],
+          "mustAvoid": ["精确引用", "绝对化事实"]
+        },
+        "contentPlan": {
+          "schemaVersion": 1,
+          "planType": "guide",
+          "title": "只有书名的导读草稿",
+          "thesis": "这是基于书名和模型常识生成的可编辑方向",
+          "hookPattern": "question",
+          "recommendationAngle": "先建立保守问题，不伪造来源",
+          "sourceLedger": [
+            {
+              "id": "source-title",
+              "label": "书名",
+              "sourceType": "model_knowledge",
+              "usage": "仅用于生成可编辑方向",
+              "confidence": 0.66,
+              "riskFlags": [
+                {
+                  "code": "source_gap",
+                  "severity": "warning",
+                  "message": "只有书名输入，事实细节需要用户材料确认。",
+                  "sourceId": "source-title"
+                }
+              ]
+            }
+          ],
+          "riskFlags": [
+            {
+              "code": "source_gap",
+              "severity": "warning",
+              "message": "内容处于草稿模式，不应视为最终事实稿。",
+              "sourceId": "source-title"
+            }
+          ],
+          "outline": [
+            {
+              "id": "outline-1",
+              "title": "先提出阅读问题",
+              "question": "这本书可能值得从哪个问题进入？",
+              "takeaway": "用保守表达等待补充资料。"
+            }
+          ],
+          "segments": [
+            {
+              "id": "segment-1",
+              "outlineId": "outline-1",
+              "title": "草稿开场",
+              "narration": "如果只根据书名，我们可以先把它当成一个待确认的阅读问题，而不是直接给结论。",
+              "visualPurpose": "展示书名、资料缺口和待确认方向",
+              "visualHints": ["书名卡", "资料缺口提示", "问题符号"],
+              "estimatedDurationSec": 14,
+              "spoilerLevel": "none",
+              "sourceAnchor": {
+                "label": "书名",
+                "sourceType": "model_knowledge",
+                "confidence": 0.66
+              },
+              "riskFlags": [
+                {
+                  "code": "source_gap",
+                  "severity": "warning",
+                  "message": "该段不能生成精确情节或引用。",
+                  "sourceId": "source-title"
+                }
+              ]
+            }
+          ]
+        },
+        "contentReview": {
+          "schemaVersion": 1,
+          "status": "warning",
+          "score": 82,
+          "profileFitScore": 82,
+          "sourceSupportScore": 68,
+          "tensionScore": 78,
+          "visualizationScore": 84,
+          "pacingScore": 86,
+          "stabilityScore": 80,
+          "issues": [],
+          "revisionInstructions": []
+        }
+      },
+      "expect": {
+        "status": "passed",
+        "route": "NONE",
+        "minScore": 80,
+        "requiredEvidenceIncludes": ["只有书名输入", "草稿模式"]
+      }
+    },
+    {
+      "id": "unsupported-overlong-block",
+      "profile": {
+        "preset": "book_guide",
+        "targetDurationSec": 30,
+        "sourcePolicy": {
+          "requireAnchors": true
+        }
+      },
+      "result": {
+        "creativeBrief": {
+          "schemaVersion": 1,
+          "profilePreset": "book_guide",
+          "objective": "导读",
+          "audience": "general_readers",
+          "audiencePromise": "快速理解核心冲突",
+          "targetDurationSec": 30,
+          "tone": ["紧凑"],
+          "mustInclude": [],
+          "mustAvoid": ["超时", "低置信事实"]
+        },
+        "contentPlan": {
+          "schemaVersion": 1,
+          "planType": "guide",
+          "title": "低置信长文稿",
+          "thesis": "一个缺少来源支撑的判断",
+          "hookPattern": "contrast",
+          "recommendationAngle": "强行拔高主题",
+          "sourceLedger": [
+            {
+              "id": "source-low",
+              "label": "未校验材料",
+              "sourceType": "user_source",
+              "usage": "核心事实",
+              "confidence": 0.4,
+              "riskFlags": []
+            }
+          ],
+          "riskFlags": [],
+          "outline": [
+            {
+              "id": "outline-1",
+              "title": "全部信息",
+              "question": "如何一次讲完？",
+              "takeaway": "内容过长且来源不足。"
+            }
+          ],
+          "segments": [
+            {
+              "id": "segment-1",
+              "outlineId": "outline-1",
+              "title": "超长开场",
+              "narration": "这个开场塞入了大量未经确认的信息和结论，导致观众很难在短时间内抓住重点。",
+              "visualPurpose": "信息堆叠",
+              "visualHints": ["人物", "场景"],
+              "estimatedDurationSec": 70,
+              "spoilerLevel": "heavy",
+              "sourceAnchor": {
+                "label": "未校验材料",
+                "sourceType": "user_source",
+                "confidence": 0.4
+              },
+              "riskFlags": []
+            }
+          ]
+        },
+        "contentReview": {
+          "schemaVersion": 1,
+          "status": "approved",
+          "score": 88,
+          "profileFitScore": 88,
+          "sourceSupportScore": 88,
+          "tensionScore": 88,
+          "visualizationScore": 88,
+          "pacingScore": 88,
+          "stabilityScore": 88,
+          "issues": [],
+          "revisionInstructions": []
+        }
+      },
+      "expect": {
+        "status": "human_required",
+        "route": "CONTENT_REVISE",
+        "minScore": 0,
+        "requiredEvidenceIncludes": ["置信度过低", "明显超过目标"]
+      }
+    },
+    {
+      "id": "narrative-plan-pass",
+      "profile": {
+        "preset": "ai_comic",
+        "targetDurationSec": 80,
+        "sourcePolicy": {
+          "requireAnchors": true
+        }
+      },
+      "result": {
+        "creativeBrief": {
+          "schemaVersion": 1,
+          "profilePreset": "ai_comic",
+          "objective": "剧情推广",
+          "audience": "short_video_viewers",
+          "audiencePromise": "看见主角选择带来的代价",
+          "targetDurationSec": 80,
+          "tone": ["悬念", "克制"],
+          "mustInclude": ["冲突", "选择"],
+          "mustAvoid": ["无意义旁白"]
+        },
+        "contentPlan": {
+          "schemaVersion": 1,
+          "planType": "narrative",
+          "title": "选择的代价",
+          "logline": "主角在有限时间内必须选择保全秘密还是救下同伴。",
+          "hookPattern": "reversal",
+          "themes": ["选择", "代价"],
+          "sourceLedger": [
+            {
+              "id": "source-scene",
+              "label": "原文片段",
+              "sourceType": "user_source",
+              "usage": "剧情冲突和人物选择",
+              "confidence": 0.9,
+              "riskFlags": []
+            }
+          ],
+          "riskFlags": [],
+          "beats": [
+            {
+              "id": "beat-1",
+              "title": "倒计时",
+              "purpose": "建立压力和不可回避的选择",
+              "summary": "钟声逼近，主角发现救人会暴露隐藏多年的秘密。",
+              "estimatedDurationSec": 12,
+              "sourceAnchor": {
+                "label": "原文片段",
+                "sourceType": "user_source",
+                "confidence": 0.9
+              },
+              "riskFlags": []
+            },
+            {
+              "id": "beat-2",
+              "title": "做出选择",
+              "purpose": "完成爆点并交代情绪后果",
+              "summary": "主角把钥匙交出去，秘密被看见，但同伴获得逃生机会。",
+              "estimatedDurationSec": 18,
+              "sourceAnchor": {
+                "label": "原文片段",
+                "sourceType": "user_source",
+                "confidence": 0.88
+              },
+              "riskFlags": []
+            }
+          ]
+        },
+        "contentReview": {
+          "schemaVersion": 1,
+          "status": "approved",
+          "score": 91,
+          "profileFitScore": 91,
+          "sourceSupportScore": 92,
+          "tensionScore": 90,
+          "visualizationScore": 88,
+          "pacingScore": 91,
+          "stabilityScore": 90,
+          "issues": [],
+          "revisionInstructions": []
+        }
+      },
+      "expect": {
+        "status": "passed",
+        "route": "NONE",
+        "minScore": 80,
+        "requiredEvidenceIncludes": []
+      }
+    },
+    {
+      "id": "repetition-warning-visible",
+      "profile": {
+        "preset": "book_guide",
+        "targetDurationSec": 60,
+        "sourcePolicy": {
+          "requireAnchors": true
+        }
+      },
+      "result": {
+        "creativeBrief": {
+          "schemaVersion": 1,
+          "profilePreset": "book_guide",
+          "objective": "导读",
+          "audience": "general_readers",
+          "audiencePromise": "理解作品的一个核心价值",
+          "targetDurationSec": 60,
+          "tone": ["清晰"],
+          "mustInclude": [],
+          "mustAvoid": ["重复空转"]
+        },
+        "contentPlan": {
+          "schemaVersion": 1,
+          "planType": "guide",
+          "title": "重复结构样本",
+          "thesis": "重复表达会削弱导读节奏",
+          "hookPattern": "contrast",
+          "recommendationAngle": "用重复样本验证稳定性评分",
+          "sourceLedger": [
+            {
+              "id": "source-1",
+              "label": "用户简介",
+              "sourceType": "user_source",
+              "usage": "导读观点",
+              "confidence": 0.84,
+              "riskFlags": []
+            }
+          ],
+          "riskFlags": [],
+          "outline": [
+            {
+              "id": "outline-1",
+              "title": "重复风险",
+              "question": "重复会如何影响观看？",
+              "takeaway": "镜头和文稿都需要承担不同职责。"
+            }
+          ],
+          "segments": [
+            {
+              "id": "segment-1",
+              "outlineId": "outline-1",
+              "title": "重复段落",
+              "narration": "这本书的价值在于把人物选择和环境压力放在一起讲清楚。",
+              "visualPurpose": "展示人物选择与环境压力",
+              "visualHints": ["人物", "环境"],
+              "estimatedDurationSec": 12,
+              "spoilerLevel": "light",
+              "sourceAnchor": {
+                "label": "用户简介",
+                "sourceType": "user_source",
+                "confidence": 0.84
+              },
+              "riskFlags": []
+            },
+            {
+              "id": "segment-2",
+              "outlineId": "outline-1",
+              "title": "重复段落",
+              "narration": "这本书的价值在于把人物选择和环境压力放在一起讲清楚。",
+              "visualPurpose": "展示人物选择与环境压力",
+              "visualHints": ["人物", "环境"],
+              "estimatedDurationSec": 12,
+              "spoilerLevel": "light",
+              "sourceAnchor": {
+                "label": "用户简介",
+                "sourceType": "user_source",
+                "confidence": 0.84
+              },
+              "riskFlags": []
+            }
+          ]
+        },
+        "contentReview": {
+          "schemaVersion": 1,
+          "status": "approved",
+          "score": 90,
+          "profileFitScore": 90,
+          "sourceSupportScore": 90,
+          "tensionScore": 85,
+          "visualizationScore": 86,
+          "pacingScore": 88,
+          "stabilityScore": 80,
+          "issues": [],
+          "revisionInstructions": []
+        }
+      },
+      "expect": {
+        "status": "passed",
+        "route": "NONE",
+        "minScore": 80,
+        "requiredEvidenceIncludes": ["重复"]
+      }
+    }
+  ]
+}

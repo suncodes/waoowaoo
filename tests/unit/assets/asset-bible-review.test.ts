@@ -57,4 +57,22 @@ describe('asset bible review', () => {
       expect.stringContaining('存在重复名称或别名'),
     ]))
   })
+
+  it('flags missing usage plan only when visual usage is required', () => {
+    const review = reviewAssetBible({
+      targetId: 'episode-1',
+      assetBible: [asset({ usedByPanels: [] })],
+      expectedAssetIds: ['asset-1'],
+      requireUsagePlan: true,
+    })
+
+    expect(review.status).toBe('repairable')
+    expect(review.route).toBe('ASSET_REPAIR')
+    expect(review.dimensions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        name: 'usage_plan',
+        issues: [expect.stringContaining('must_lock 资产缺少镜头使用计划')],
+      }),
+    ]))
+  })
 })

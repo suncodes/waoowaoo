@@ -6,15 +6,32 @@ import { extractStorageKey, getObjectBuffer, uploadObject } from '@/lib/storage'
 import { readProjectLogs } from '@/lib/logging/file-writer'
 import type { TaskJobData } from '@/lib/task/types'
 import type { Job } from 'bullmq'
+import {
+  reviewRoughCutQuality,
+  type RoughCutPanelInput,
+  type RoughCutPromptSnapshotInput,
+  type RoughCutStoryboardInput,
+  type RoughCutVoiceLineInput,
+} from '@/lib/creative-quality/rough-cut-review'
+import {
+  reviewScriptDraftQuality,
+  type ScriptReviewClipInput,
+  type ScriptReviewVoiceLineInput,
+} from '@/lib/creative-quality/script-review'
+import { reviewPromptSnapshotQuality } from '@/lib/creative-quality/prompt-review'
 
 const DEFAULT_MAX_FILE_BYTES = 25 * 1024 * 1024
 const DEFAULT_MAX_ARCHIVE_BYTES = 400 * 1024 * 1024
-const DIAGNOSTIC_SCHEMA_VERSION = 3
+const DIAGNOSTIC_SCHEMA_VERSION = 7
 const PROMPT_SNAPSHOT_ARTIFACT_TYPES = new Set(['prompt.panel_image.snapshot', 'prompt.panel_video.snapshot', 'prompt.asset_image.snapshot'])
+const ASSET_BIBLE_REUSE_ARTIFACT_TYPES = new Set(['asset.bible.reuse'])
 const CONTENT_QUALITY_REVIEW_ARTIFACT_TYPES = new Set(['content.quality.review'])
+const CONTENT_PLAN_REUSE_ARTIFACT_TYPES = new Set(['content.plan.reuse'])
 const VISUAL_QUALITY_REVIEW_ARTIFACT_TYPES = new Set(['visual.quality.review', 'visual.asset.quality.review'])
+const VISUAL_PLAN_REUSE_ARTIFACT_TYPES = new Set(['visual.plan.reuse'])
 const VISUAL_AUTO_REPAIR_ARTIFACT_TYPES = new Set(['visual.repair.candidate', 'visual.asset.repair.candidate'])
 const STORYBOARD_QUALITY_REVIEW_ARTIFACT_TYPES = new Set(['storyboard.quality.review'])
+const SCRIPT_QUALITY_REVIEW_ARTIFACT_TYPES = new Set(['script.quality.review'])
 
 export type DiagnosticExportOptions = {
   episodeId?: string | null
@@ -303,25 +320,193 @@ function collectAssetBibleReviewRecords(episodes: AnyRecord[]): AnyRecord[] {
   return records
 }
 
+function readTimeMs(value: unknown): number {
+  if (value instanceof Date) return value.getTime()
+  if (typeof value !== 'string' || !value.trim()) return 0
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function extractScriptReviewArtifact(artifact: AnyRecord): AnyRecord | null {
+  const payload = asRecord(artifact.payload)
+  const nestedReview = asRecord(payload.review)
+  const review = Object.keys(nestedReview).length > 0 ? nestedReview : payload
+  if (review.targetType !== 'script' || typeof review.targetId !== 'string' || !review.targetId.trim()) {
+    return null
+  }
+  return {
+    ...review,
+    reviewSource: 'runtime_artifact',
+    artifactId: artifact.id || null,
+    artifactRunId: artifact.runId || null,
+    artifactStepKey: artifact.stepKey || null,
+    artifactCreatedAt: artifact.createdAt || null,
+  }
+}
+
+function buildLatestScriptReviewArtifactMap(artifacts: AnyRecord[]): Map<string, AnyRecord> {
+  const reviews = artifacts
+    .map(extractScriptReviewArtifact)
+    .filter((review): review is AnyRecord => review !== null)
+    .sort((left, right) => readTimeMs(left.artifactCreatedAt) - readTimeMs(right.artifactCreatedAt))
+  const byEpisodeId = new Map<string, AnyRecord>()
+  for (const review of reviews) {
+    byEpisodeId.set(String(review.targetId), review)
+  }
+  return byEpisodeId
+}
+
+function collectScriptReviewRecords(params: {
+  episodes: AnyRecord[]
+  clips: AnyRecord[]
+  voiceLines: AnyRecord[]
+  scriptQualityReviews: AnyRecord[]
+  generatedAt: Date
+}) {
+  const artifactReviewsByEpisodeId = buildLatestScriptReviewArtifactMap(params.scriptQualityReviews)
+  return params.episodes.map((episode) => {
+    const episodeId = String(episode.id || '')
+    const artifactReview = artifactReviewsByEpisodeId.get(episodeId)
+    if (artifactReview) return artifactReview
+    const clips = params.clips
+      .filter((clip) => clip.episodeId === episodeId)
+      .map((clip): ScriptReviewClipInput => ({
+        id: String(clip.id || ''),
+        episodeId,
+        content: typeof clip.content === 'string' ? clip.content : null,
+        summary: typeof clip.summary === 'string' ? clip.summary : null,
+        screenplay: typeof clip.screenplay === 'string' ? clip.screenplay : null,
+      }))
+    const voiceLines = params.voiceLines
+      .filter((line) => line.episodeId === episodeId)
+      .map((line): ScriptReviewVoiceLineInput => ({
+        id: String(line.id || ''),
+        episodeId,
+        lineIndex: typeof line.lineIndex === 'number' ? line.lineIndex : 0,
+        speaker: typeof line.speaker === 'string' ? line.speaker : null,
+        content: typeof line.content === 'string' ? line.content : '',
+        matchedPanelId: typeof line.matchedPanelId === 'string' ? line.matchedPanelId : null,
+      }))
+    return reviewScriptDraftQuality({
+      episodeId,
+      clips,
+      voiceLines,
+      reviewedAt: params.generatedAt.toISOString(),
+    })
+  }).map((review): AnyRecord => {
+    const record = review as AnyRecord
+    return record.reviewSource
+      ? record
+      : {
+        ...record,
+        reviewSource: 'export_fallback',
+      }
+  })
+}
+
+function collectRoughCutReviewRecords(params: {
+  episodes: AnyRecord[]
+  storyboards: AnyRecord[]
+  voiceLines: AnyRecord[]
+  promptSnapshots: AnyRecord[]
+  generatedAt: Date
+}) {
+  return params.episodes.map((episode) => {
+    const episodeId = String(episode.id || '')
+    const storyboards = params.storyboards.filter((storyboard) => storyboard.episodeId === episodeId)
+    const panelIds = new Set(storyboards.flatMap((storyboard) => {
+      const panels = Array.isArray(storyboard.panels) ? storyboard.panels as AnyRecord[] : []
+      return panels.flatMap((panel) => typeof panel.id === 'string' ? [panel.id] : [])
+    }))
+    const voiceLines = params.voiceLines.filter((line) => line.episodeId === episodeId)
+    const promptSnapshots = params.promptSnapshots.filter((snapshot) => (
+      typeof snapshot.refId === 'string' && panelIds.has(snapshot.refId)
+    ))
+    return reviewRoughCutQuality({
+      episodeId,
+      storyboards: storyboards.map((storyboard): RoughCutStoryboardInput => ({
+        id: String(storyboard.id || ''),
+        panels: (Array.isArray(storyboard.panels) ? storyboard.panels as AnyRecord[] : []).map((panel): RoughCutPanelInput => ({
+          id: String(panel.id || ''),
+          storyboardId: typeof panel.storyboardId === 'string' ? panel.storyboardId : null,
+          panelIndex: typeof panel.panelIndex === 'number' ? panel.panelIndex : 0,
+          panelNumber: typeof panel.panelNumber === 'number' ? panel.panelNumber : null,
+          description: typeof panel.description === 'string' ? panel.description : null,
+          imagePrompt: typeof panel.imagePrompt === 'string' ? panel.imagePrompt : null,
+          videoPrompt: typeof panel.videoPrompt === 'string' ? panel.videoPrompt : null,
+          imageUrl: typeof panel.imageUrl === 'string' ? panel.imageUrl : null,
+          videoUrl: typeof panel.videoUrl === 'string' ? panel.videoUrl : null,
+          lipSyncVideoUrl: typeof panel.lipSyncVideoUrl === 'string' ? panel.lipSyncVideoUrl : null,
+          duration: typeof panel.duration === 'number' ? panel.duration : null,
+          candidateImages: typeof panel.candidateImages === 'string' ? panel.candidateImages : null,
+          visualQualityState: panel.visualQualityState,
+        })),
+      })),
+      voiceLines: voiceLines.map((line): RoughCutVoiceLineInput => ({
+        id: String(line.id || ''),
+        lineIndex: typeof line.lineIndex === 'number' ? line.lineIndex : 0,
+        content: typeof line.content === 'string' ? line.content : '',
+        audioUrl: typeof line.audioUrl === 'string' ? line.audioUrl : null,
+        audioMediaId: typeof line.audioMediaId === 'string' ? line.audioMediaId : null,
+        audioDuration: typeof line.audioDuration === 'number' ? line.audioDuration : null,
+        matchedPanelId: typeof line.matchedPanelId === 'string' ? line.matchedPanelId : null,
+        matchedPanelIndex: typeof line.matchedPanelIndex === 'number' ? line.matchedPanelIndex : null,
+      })),
+      promptSnapshots: promptSnapshots.map((snapshot): RoughCutPromptSnapshotInput => ({
+        artifactType: typeof snapshot.artifactType === 'string' ? snapshot.artifactType : null,
+        refId: typeof snapshot.refId === 'string' ? snapshot.refId : null,
+        payload: snapshot.payload,
+      })),
+      reviewedAt: params.generatedAt.toISOString(),
+    })
+  })
+}
+
+function collectPromptQualityReviewRecords(params: {
+  promptSnapshots: AnyRecord[]
+  generatedAt: Date
+}) {
+  return params.promptSnapshots.map((artifact) => reviewPromptSnapshotQuality({
+    reviewedAt: params.generatedAt.toISOString(),
+    snapshot: {
+      artifactId: typeof artifact.id === 'string' ? artifact.id : null,
+      runId: typeof artifact.runId === 'string' ? artifact.runId : null,
+      stepKey: typeof artifact.stepKey === 'string' ? artifact.stepKey : null,
+      artifactType: typeof artifact.artifactType === 'string' ? artifact.artifactType : null,
+      refId: typeof artifact.refId === 'string' ? artifact.refId : null,
+      payload: artifact.payload,
+      createdAt: artifact.createdAt instanceof Date || typeof artifact.createdAt === 'string' ? artifact.createdAt : null,
+    },
+  }))
+}
+
 function stringifyJsonLines(records: AnyRecord[]): string {
   return records.map((item) => stringifyJsonLine(item)).join('\n')
 }
 
 function buildQualityArtifactViews(artifacts: AnyRecord[]) {
   const promptSnapshots = filterArtifactsByType(artifacts, PROMPT_SNAPSHOT_ARTIFACT_TYPES)
+  const assetBibleReuses = filterArtifactsByType(artifacts, ASSET_BIBLE_REUSE_ARTIFACT_TYPES)
   const contentQualityReviews = filterArtifactsByType(artifacts, CONTENT_QUALITY_REVIEW_ARTIFACT_TYPES)
+  const contentPlanReuses = filterArtifactsByType(artifacts, CONTENT_PLAN_REUSE_ARTIFACT_TYPES)
   const visualQualityReviews = filterArtifactsByType(artifacts, VISUAL_QUALITY_REVIEW_ARTIFACT_TYPES)
+  const visualPlanReuses = filterArtifactsByType(artifacts, VISUAL_PLAN_REUSE_ARTIFACT_TYPES)
   const visualAutoRepairs = filterArtifactsByType(artifacts, VISUAL_AUTO_REPAIR_ARTIFACT_TYPES)
   const storyboardQualityReviews = filterArtifactsByType(artifacts, STORYBOARD_QUALITY_REVIEW_ARTIFACT_TYPES)
+  const scriptQualityReviews = filterArtifactsByType(artifacts, SCRIPT_QUALITY_REVIEW_ARTIFACT_TYPES)
   const visualRepairLineage = collectRepairLineageRecords([
     ...visualQualityReviews,
     ...visualAutoRepairs,
   ])
   return {
     promptSnapshots,
+    assetBibleReuses,
     contentQualityReviews,
+    contentPlanReuses,
+    scriptQualityReviews,
     storyboardQualityReviews,
     visualQualityReviews,
+    visualPlanReuses,
     visualAutoRepairs,
     visualRepairLineage,
   }
@@ -547,6 +732,13 @@ function buildQualitySignals(params: {
   runs: AnyRecord[]
   invocations: AnyRecord[]
   mediaIndex: AnyRecord[]
+  assetBibleReuses: AnyRecord[]
+  contentPlanReuses: AnyRecord[]
+  visualPlanReuses: AnyRecord[]
+  scriptReviews: AnyRecord[]
+  promptQualityReviews: AnyRecord[]
+  roughCutReviews: AnyRecord[]
+  pickupList: AnyRecord[]
 }): AnyRecord {
   const failedTasks = params.tasks.filter((task) => task.status === 'failed').length
   const failedRuns = params.runs.filter((run) => run.status === 'failed').length
@@ -584,12 +776,130 @@ function buildQualitySignals(params: {
       interpretation: '模型调用输入输出未完整关联，不能直接判断提示词质量。',
     })
   }
+  if (params.assetBibleReuses.length > 0) {
+    signals.push({
+      code: 'asset_bible_reuse',
+      severity: 'info',
+      category: 'stability',
+      count: params.assetBibleReuses.length,
+      revisions: params.assetBibleReuses.map((artifact) => {
+        const payload = asRecord(artifact.payload)
+        return {
+          episodeId: artifact.refId || null,
+          contentRevision: payload.contentRevision || null,
+          analyzedRevision: payload.analyzedRevision || null,
+          assetCount: payload.assetCount || null,
+          reason: payload.reason || null,
+        }
+      }),
+      interpretation: '资产需求复用了已批准 AssetBible，本次未重新调用模型提取资产。',
+    })
+  }
+  if (params.contentPlanReuses.length > 0) {
+    signals.push({
+      code: 'content_plan_reuse',
+      severity: 'info',
+      category: 'stability',
+      count: params.contentPlanReuses.length,
+      revisions: params.contentPlanReuses.map((artifact) => {
+        const payload = asRecord(artifact.payload)
+        return {
+          episodeId: artifact.refId || null,
+          revision: payload.revision || null,
+          approvedRevision: payload.approvedRevision || null,
+          reason: payload.reason || null,
+        }
+      }),
+      interpretation: '内容计划复用了已批准版本，本次未重新调用模型生成 ContentPlan。',
+    })
+  }
+  if (params.visualPlanReuses.length > 0) {
+    signals.push({
+      code: 'visual_plan_reuse',
+      severity: 'info',
+      category: 'stability',
+      count: params.visualPlanReuses.length,
+      revisions: params.visualPlanReuses.map((artifact) => {
+        const payload = asRecord(artifact.payload)
+        return {
+          episodeId: artifact.refId || null,
+          revision: payload.revision || null,
+          approvedRevision: payload.approvedRevision || null,
+          visualUnitCount: payload.visualUnitCount || null,
+          reason: payload.reason || null,
+        }
+      }),
+      interpretation: '视觉计划复用了已批准版本，本次未重新调用模型生成 ShotPlan/VisualUnits。',
+    })
+  }
+  const scriptAttention = params.scriptReviews.filter((review) => (
+    review.status === 'repairable'
+    || review.status === 'human_required'
+    || review.status === 'failed'
+  ))
+  if (scriptAttention.length > 0) {
+    signals.push({
+      code: 'script_review_attention',
+      severity: scriptAttention.some((review) => review.status === 'human_required' || review.status === 'failed') ? 'high' : 'medium',
+      category: 'script',
+      count: scriptAttention.length,
+      reviewScores: scriptAttention.map((review) => ({
+        episodeId: review.targetId || null,
+        score: review.score || null,
+        status: review.status || null,
+      })),
+      interpretation: '最终文稿/剧本存在修订风险，请优先查看 quality/script-reviews.jsonl。',
+    })
+  }
+  const promptAttention = params.promptQualityReviews.filter((review) => (
+    review.status === 'repairable'
+    || review.status === 'human_required'
+    || review.status === 'failed'
+  ))
+  if (promptAttention.length > 0) {
+    signals.push({
+      code: 'prompt_review_attention',
+      severity: promptAttention.some((review) => review.status === 'human_required' || review.status === 'failed') ? 'high' : 'medium',
+      category: 'prompt',
+      count: promptAttention.length,
+      reviewScores: promptAttention.map((review) => ({
+        targetId: review.targetId || null,
+        snapshotType: review.snapshotType || null,
+        score: review.score || null,
+        status: review.status || null,
+      })),
+      interpretation: '最终 compiled prompt 存在结构或版本化风险，请优先查看 quality/prompt-quality-reviews.jsonl。',
+    })
+  }
+  const blockingPickupCount = params.pickupList.filter((item) => item.severity === 'blocking').length
+  if (params.pickupList.length > 0) {
+    signals.push({
+      code: 'rough_cut_pickups',
+      severity: blockingPickupCount > 0 ? 'high' : 'medium',
+      category: 'rough_cut',
+      count: params.pickupList.length,
+      blockingCount: blockingPickupCount,
+      reviewScores: params.roughCutReviews.map((review) => ({
+        episodeId: review.targetId || null,
+        score: review.score || null,
+        status: review.status || null,
+      })),
+      interpretation: '成片预演发现返工项，请优先查看 quality/pickup-list.jsonl。',
+    })
+  }
   return {
     generatedAt: new Date(),
     summary: {
       workflowFailureCount: failedTasks + failedRuns + failedAttempts,
       incompleteInvocationCount: incompleteInvocations,
       omittedMediaCount: omittedMedia,
+      assetBibleReuseCount: params.assetBibleReuses.length,
+      contentPlanReuseCount: params.contentPlanReuses.length,
+      visualPlanReuseCount: params.visualPlanReuses.length,
+      scriptReviewAttentionCount: scriptAttention.length,
+      promptReviewAttentionCount: promptAttention.length,
+      roughCutPickupCount: params.pickupList.length,
+      roughCutBlockingPickupCount: blockingPickupCount,
     },
     signals,
   }
@@ -614,6 +924,33 @@ async function createArchive(params: {
   const assetBibleRecords = collectAssetBibleRecords(data.domain.episodes as unknown as AnyRecord[])
   const assetBibleReviewRecords = collectAssetBibleReviewRecords(data.domain.episodes as unknown as AnyRecord[])
   const generatedAt = new Date()
+  const scriptReviewRecords = collectScriptReviewRecords({
+    episodes: data.domain.episodes as unknown as AnyRecord[],
+    clips: data.domain.clips as unknown as AnyRecord[],
+    voiceLines: data.domain.voiceLines as unknown as AnyRecord[],
+    scriptQualityReviews: qualityArtifacts.scriptQualityReviews,
+    generatedAt,
+  })
+  const roughCutReviewRecords = collectRoughCutReviewRecords({
+    episodes: data.domain.episodes as unknown as AnyRecord[],
+    storyboards: data.domain.storyboards as unknown as AnyRecord[],
+    voiceLines: data.domain.voiceLines as unknown as AnyRecord[],
+    promptSnapshots: qualityArtifacts.promptSnapshots,
+    generatedAt,
+  })
+  const promptQualityReviewRecords = collectPromptQualityReviewRecords({
+    promptSnapshots: qualityArtifacts.promptSnapshots,
+    generatedAt,
+  })
+  const pickupListRecords = roughCutReviewRecords.flatMap((review) => (
+    review.pickupItems.map((item) => ({
+      episodeId: review.targetId,
+      reviewScore: review.score,
+      reviewStatus: review.status,
+      reviewedAt: review.reviewedAt,
+      ...item,
+    }))
+  ))
   const archive = archiver('zip', { zlib: { level: 6 } })
   const output = new PassThrough()
   const chunks: Buffer[] = []
@@ -719,30 +1056,51 @@ async function createArchive(params: {
   archive.append(stringifyJson(artifactRecords), { name: 'snapshots/artifacts.json' })
   archive.append(stringifyJsonLines(assetBibleRecords), { name: 'quality/asset-bible.jsonl' })
   archive.append(stringifyJsonLines(assetBibleReviewRecords), { name: 'quality/asset-bible-reviews.jsonl' })
+  archive.append(stringifyJsonLines(qualityArtifacts.assetBibleReuses), { name: 'quality/asset-bible-reuse.jsonl' })
   archive.append(stringifyJsonLines(qualityArtifacts.contentQualityReviews), { name: 'quality/content-quality-reviews.jsonl' })
+  archive.append(stringifyJsonLines(qualityArtifacts.contentPlanReuses), { name: 'quality/content-plan-reuse.jsonl' })
+  archive.append(stringifyJsonLines(scriptReviewRecords as unknown as AnyRecord[]), { name: 'quality/script-reviews.jsonl' })
   archive.append(stringifyJsonLines(qualityArtifacts.storyboardQualityReviews), { name: 'quality/storyboard-quality-reviews.jsonl' })
   archive.append(stringifyJsonLines(qualityArtifacts.promptSnapshots), { name: 'quality/prompt-snapshots.jsonl' })
+  archive.append(stringifyJsonLines(promptQualityReviewRecords as unknown as AnyRecord[]), { name: 'quality/prompt-quality-reviews.jsonl' })
   archive.append(stringifyJsonLines(qualityArtifacts.visualQualityReviews), { name: 'quality/visual-quality-reviews.jsonl' })
+  archive.append(stringifyJsonLines(qualityArtifacts.visualPlanReuses), { name: 'quality/visual-plan-reuse.jsonl' })
   archive.append(stringifyJsonLines(qualityArtifacts.visualAutoRepairs), { name: 'quality/visual-auto-repairs.jsonl' })
   archive.append(stringifyJsonLines(qualityArtifacts.visualRepairLineage), { name: 'quality/visual-repair-lineage.jsonl' })
+  archive.append(stringifyJsonLines(roughCutReviewRecords as unknown as AnyRecord[]), { name: 'quality/rough-cut-reviews.jsonl' })
+  archive.append(stringifyJsonLines(pickupListRecords), { name: 'quality/pickup-list.jsonl' })
   archive.append(stringifyJson({
     promptSnapshotCount: qualityArtifacts.promptSnapshots.length,
     assetBibleCount: assetBibleRecords.length,
     assetBibleReviewCount: assetBibleReviewRecords.length,
+    assetBibleReuseCount: qualityArtifacts.assetBibleReuses.length,
     contentQualityReviewCount: qualityArtifacts.contentQualityReviews.length,
+    contentPlanReuseCount: qualityArtifacts.contentPlanReuses.length,
+    scriptReviewCount: scriptReviewRecords.length,
     storyboardQualityReviewCount: qualityArtifacts.storyboardQualityReviews.length,
     visualQualityReviewCount: qualityArtifacts.visualQualityReviews.length,
+    promptQualityReviewCount: promptQualityReviewRecords.length,
+    visualPlanReuseCount: qualityArtifacts.visualPlanReuses.length,
     visualAutoRepairCount: qualityArtifacts.visualAutoRepairs.length,
     visualRepairLineageCount: qualityArtifacts.visualRepairLineage.length,
+    roughCutReviewCount: roughCutReviewRecords.length,
+    pickupItemCount: pickupListRecords.length,
     files: {
       assetBible: 'quality/asset-bible.jsonl',
       assetBibleReviews: 'quality/asset-bible-reviews.jsonl',
+      assetBibleReuse: 'quality/asset-bible-reuse.jsonl',
       contentQualityReviews: 'quality/content-quality-reviews.jsonl',
+      contentPlanReuse: 'quality/content-plan-reuse.jsonl',
+      scriptReviews: 'quality/script-reviews.jsonl',
       storyboardQualityReviews: 'quality/storyboard-quality-reviews.jsonl',
       promptSnapshots: 'quality/prompt-snapshots.jsonl',
+      promptQualityReviews: 'quality/prompt-quality-reviews.jsonl',
       visualQualityReviews: 'quality/visual-quality-reviews.jsonl',
+      visualPlanReuse: 'quality/visual-plan-reuse.jsonl',
       visualAutoRepairs: 'quality/visual-auto-repairs.jsonl',
       visualRepairLineage: 'quality/visual-repair-lineage.jsonl',
+      roughCutReviews: 'quality/rough-cut-reviews.jsonl',
+      pickupList: 'quality/pickup-list.jsonl',
     },
   }), { name: 'quality/quality-index.json' })
   const validationChecks = buildValidationChecks(data.tasks as unknown as AnyRecord[], data.runs as unknown as AnyRecord[], mediaIndex)
@@ -752,6 +1110,13 @@ async function createArchive(params: {
     runs: data.runs as unknown as AnyRecord[],
     invocations: promptInvocations,
     mediaIndex,
+    assetBibleReuses: qualityArtifacts.assetBibleReuses,
+    contentPlanReuses: qualityArtifacts.contentPlanReuses,
+    visualPlanReuses: qualityArtifacts.visualPlanReuses,
+    scriptReviews: scriptReviewRecords as unknown as AnyRecord[],
+    promptQualityReviews: promptQualityReviewRecords as unknown as AnyRecord[],
+    roughCutReviews: roughCutReviewRecords as unknown as AnyRecord[],
+    pickupList: pickupListRecords,
   })), { name: 'summary/quality-signals.json' })
   const includedMedia = mediaIndex.filter((item) => item.included === true).length
   const manifest = {
@@ -771,12 +1136,19 @@ async function createArchive(params: {
       artifacts: artifactRecords.length,
       assetBibleRecords: assetBibleRecords.length,
       assetBibleReviews: assetBibleReviewRecords.length,
+      assetBibleReuses: qualityArtifacts.assetBibleReuses.length,
       contentQualityReviews: qualityArtifacts.contentQualityReviews.length,
+      contentPlanReuses: qualityArtifacts.contentPlanReuses.length,
+      scriptReviews: scriptReviewRecords.length,
       storyboardQualityReviews: qualityArtifacts.storyboardQualityReviews.length,
       promptSnapshots: qualityArtifacts.promptSnapshots.length,
+      promptQualityReviews: promptQualityReviewRecords.length,
       visualQualityReviews: qualityArtifacts.visualQualityReviews.length,
+      visualPlanReuses: qualityArtifacts.visualPlanReuses.length,
       visualAutoRepairs: qualityArtifacts.visualAutoRepairs.length,
       visualRepairLineageRecords: qualityArtifacts.visualRepairLineage.length,
+      roughCutReviews: roughCutReviewRecords.length,
+      pickupItems: pickupListRecords.length,
     },
     limits: {
       maxMediaFileBytes: maxFileBytes,
@@ -789,7 +1161,7 @@ async function createArchive(params: {
     '',
     'This package is intended for offline analysis of the complete creation workflow.',
     'It contains project snapshots, task and Graph events, correlated model invocation records, validation checks, media indexes and selected media files.',
-    'Quality-focused traces are also grouped under quality/: content, asset, storyboard and visual reviews, prompt snapshots, auto repairs and repair lineage.',
+    'Quality-focused traces are also grouped under quality/: content, script, asset, storyboard, prompt, visual and rough-cut reviews, prompt snapshots, asset/content/visual plan reuse, auto repairs, repair lineage and pickup lists.',
     'Use invocationId, runId, stepKey and artifact references to distinguish prompt/model issues from workflow/state issues.',
     'Secrets and credentials are redacted during export.',
     `Reasoning included: ${options.includeReasoning ? 'yes' : 'no'}.`,

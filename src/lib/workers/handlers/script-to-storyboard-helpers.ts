@@ -23,6 +23,15 @@ export type PersistedStoryboard = {
   }>
 }
 
+export type PersistedVoiceLine = {
+  id: string
+  episodeId: string
+  lineIndex: number
+  speaker: string
+  content: string
+  matchedPanelId: string | null
+}
+
 export function parseEffort(value: unknown): 'minimal' | 'low' | 'medium' | 'high' | null {
   if (value === 'minimal' || value === 'low' || value === 'medium' || value === 'high') return value
   return null
@@ -439,11 +448,11 @@ export async function persistStoryboardOutputs(params: {
     }
 
     const voiceLineModel = tx.novelPromotionVoiceLine as unknown as {
-      upsert?: (args: unknown) => Promise<{ id: string }>
-      create: (args: unknown) => Promise<{ id: string }>
+      upsert?: (args: unknown) => Promise<PersistedVoiceLine>
+      create: (args: unknown) => Promise<PersistedVoiceLine>
       deleteMany: (args: unknown) => Promise<unknown>
     }
-    const createdVoiceLines: Array<{ id: string }> = []
+    const createdVoiceLines: PersistedVoiceLine[] = []
     const voiceLineRows = params.voiceLineRows ?? []
 
     for (let i = 0; i < voiceLineRows.length; i += 1) {
@@ -516,7 +525,14 @@ export async function persistStoryboardOutputs(params: {
           matchedStoryboardId,
           matchedPanelIndex,
         },
-        select: { id: true },
+        select: {
+          id: true,
+          episodeId: true,
+          lineIndex: true,
+          speaker: true,
+          content: true,
+          matchedPanelId: true,
+        },
       }
       const createdRow = typeof voiceLineModel.upsert === 'function'
         ? await voiceLineModel.upsert(upsertArgs)
@@ -524,7 +540,14 @@ export async function persistStoryboardOutputs(params: {
           process.env.NODE_ENV === 'test'
             ? await voiceLineModel.create({
               data: upsertArgs.create,
-              select: { id: true },
+              select: {
+                id: true,
+                episodeId: true,
+                lineIndex: true,
+                speaker: true,
+                content: true,
+                matchedPanelId: true,
+              },
             })
             : (() => { throw new Error('novelPromotionVoiceLine.upsert unavailable') })()
         )
@@ -560,5 +583,6 @@ export async function persistStoryboardOutputs(params: {
   return {
     persistedStoryboards: persistedStoryboards.persistedStoryboards,
     voiceLineCount: persistedStoryboards.createdVoiceLines.length,
+    voiceLines: persistedStoryboards.createdVoiceLines,
   }
 }
