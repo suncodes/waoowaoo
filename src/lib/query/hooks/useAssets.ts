@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/api-fetch'
 import { resolveTaskResponse } from '@/lib/task/client'
 import { queryKeys } from '@/lib/query/keys'
-import { useTaskTargetStateMap } from '@/lib/query/hooks/useTaskTargetStateMap'
+import { useTaskTargetStateMap, type TaskTargetState } from '@/lib/query/hooks/useTaskTargetStateMap'
 import {
   clearTaskTargetOverlay,
   upsertTaskTargetOverlay,
@@ -24,6 +24,7 @@ import type {
   ReadAssetsResponse,
   VoiceAssetSummary,
 } from '@/lib/assets/contracts'
+import { createIdleTaskState } from '@/lib/assets/contracts'
 
 function flattenTaskRefs(assets: AssetSummary[]): AssetTaskRef[] {
   const refs: AssetTaskRef[] = []
@@ -45,37 +46,64 @@ function flattenTaskRefs(assets: AssetSummary[]): AssetTaskRef[] {
   return refs
 }
 
-function createTaskState(isRunning: boolean, lastError: { code: string; message: string } | null): AssetTaskState {
-  return {
-    isRunning,
-    lastError,
-  }
+function taskStateRank(state: TaskTargetState): number {
+  if (state.phase === 'processing') return 5
+  if (state.phase === 'queued') return 4
+  if (state.phase === 'failed') return 3
+  if (state.phase === 'completed') return 2
+  return 1
 }
 
-function resolveTaskState(refs: AssetTaskRef[], byKey: Map<string, { phase: string | null; lastError: { code: string; message: string } | null }>): AssetTaskState {
-  let isRunning = false
+function isNewerState(current: TaskTargetState, candidate: TaskTargetState) {
+  const currentTs = current.updatedAt ? Date.parse(current.updatedAt) : 0
+  const candidateTs = candidate.updatedAt ? Date.parse(candidate.updatedAt) : 0
+  return candidateTs > currentTs
+}
+
+function shouldUseTaskState(current: TaskTargetState | null, candidate: TaskTargetState) {
+  if (!current) return true
+  const currentRank = taskStateRank(current)
+  const candidateRank = taskStateRank(candidate)
+  if (candidateRank !== currentRank) return candidateRank > currentRank
+  return isNewerState(current, candidate)
+}
+
+function resolveTaskState(refs: AssetTaskRef[], byKey: Map<string, TaskTargetState>): AssetTaskState {
+  let selected: TaskTargetState | null = null
   let lastError: { code: string; message: string } | null = null
   for (const ref of refs) {
     const state = byKey.get(`${ref.targetType}:${ref.targetId}`)
     if (!state) continue
-    if (state.phase === 'queued' || state.phase === 'processing') {
-      isRunning = true
-    }
     if (!lastError && state.lastError) {
       lastError = state.lastError
     }
+    if (shouldUseTaskState(selected, state)) {
+      selected = state
+    }
   }
-  return createTaskState(isRunning, lastError)
+  if (!selected) return createIdleTaskState()
+  return {
+    isRunning: selected.phase === 'queued' || selected.phase === 'processing',
+    phase: selected.phase,
+    taskType: selected.runningTaskType,
+    progress: selected.progress,
+    stage: selected.stage,
+    stageLabel: selected.stageLabel,
+    attempt: selected.attempt,
+    maxAttempts: selected.maxAttempts,
+    updatedAt: selected.updatedAt,
+    lastError,
+  }
 }
 
-function withTaskState(render: AssetRenderSummary, byKey: Map<string, { phase: string | null; lastError: { code: string; message: string } | null }>): AssetRenderSummary {
+function withTaskState(render: AssetRenderSummary, byKey: Map<string, TaskTargetState>): AssetRenderSummary {
   return {
     ...render,
     taskState: resolveTaskState(render.taskRefs, byKey),
   }
 }
 
-function withTaskStateVariant(variant: AssetVariantSummary, byKey: Map<string, { phase: string | null; lastError: { code: string; message: string } | null }>): AssetVariantSummary {
+function withTaskStateVariant(variant: AssetVariantSummary, byKey: Map<string, TaskTargetState>): AssetVariantSummary {
   return {
     ...variant,
     renders: variant.renders.map((render) => withTaskState(render, byKey)),
@@ -83,7 +111,7 @@ function withTaskStateVariant(variant: AssetVariantSummary, byKey: Map<string, {
   }
 }
 
-function withTaskStateAsset(asset: AssetSummary, byKey: Map<string, { phase: string | null; lastError: { code: string; message: string } | null }>): AssetSummary {
+function withTaskStateAsset(asset: AssetSummary, byKey: Map<string, TaskTargetState>): AssetSummary {
   if (asset.kind === 'voice') {
     const voiceAsset: VoiceAssetSummary = {
       ...asset,
@@ -322,6 +350,9 @@ export function useAssetActions(input: AssetActionScopeInput) {
       upsertTaskTargetOverlay(queryClient, {
         ...overlayTarget,
         intent: 'generate',
+        runningTaskType: input.kind === 'character' ? 'image_character' : 'image_location',
+        stage: 'asset_image_submit',
+        stageLabel: '提交中',
       })
     }
 

@@ -25,6 +25,8 @@ export type TaskTargetState = {
   progress: number | null
   stage: string | null
   stageLabel: string | null
+  attempt?: number | null
+  maxAttempts?: number | null
   lastError: {
     code: string
     message: string
@@ -99,6 +101,8 @@ function buildIdleState(target: TaskTargetStateQuery): TaskTargetState {
     progress: null,
     stage: null,
     stageLabel: null,
+    attempt: null,
+    maxAttempts: null,
     lastError: null,
     updatedAt: null,
   }
@@ -410,7 +414,7 @@ export function useTaskTargetStateMap(
       }
     }
     return map
-  }, [normalizedTargets, overlayQuery.data, query.data])
+  }, [normalizedTargets, overlayQuery.data, projectId, query.data])
 
   const mergedData = useMemo(() => {
     return normalizedTargets.map((target) =>

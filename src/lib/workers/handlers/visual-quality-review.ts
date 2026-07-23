@@ -134,7 +134,12 @@ async function handleAssetVisualQualityReviewTask(job: Job<TaskJobData>) {
   const attempt = readNumber(payload.attempt, 0)
   const maxAttempts = profile.qualityPolicy.maxRepairAttempts
 
-  await reportTaskProgress(job, 18, { stage: 'visual_quality_prepare', displayMode: 'detail' })
+  await reportTaskProgress(job, 18, {
+    stage: 'visual_quality_prepare',
+    displayMode: 'detail',
+    attempt,
+    maxAttempts,
+  })
   await assertTaskActive(job, 'visual_quality_prepare')
   const checks = await inspectVisualCandidates(candidateUrls, targetSpec.aspectRatio)
   const model = await resolveAnalysisModel({
@@ -338,7 +343,12 @@ export async function handleVisualQualityReviewTask(job: Job<TaskJobData>) {
     throw new Error('VISUAL_VERSION_STALE')
   }
 
-  await reportTaskProgress(job, 18, { stage: 'visual_quality_prepare', displayMode: 'detail' })
+  await reportTaskProgress(job, 18, {
+    stage: 'visual_quality_prepare',
+    displayMode: 'detail',
+    attempt,
+    maxAttempts,
+  })
   await assertTaskActive(job, 'visual_quality_prepare')
   const checks = await inspectVisualCandidates(candidateUrls, targetSpec.aspectRatio)
   const model = await resolveAnalysisModel({
@@ -390,7 +400,12 @@ export async function handleVisualQualityReviewTask(job: Job<TaskJobData>) {
     editModelAvailable: Boolean(novelData.editModel),
   })
 
-  await reportTaskProgress(job, 82, { stage: 'visual_quality_route', displayMode: 'detail' })
+  await reportTaskProgress(job, 82, {
+    stage: 'visual_quality_route',
+    displayMode: 'detail',
+    attempt,
+    maxAttempts,
+  })
   await assertTaskActive(job, 'visual_quality_route')
   const selectedUrl = decision.candidateIndex === null ? null : candidateUrls[decision.candidateIndex] || null
   let nextStatus: 'shadow_completed' | 'approved' | 'repairing' | 'human_required'

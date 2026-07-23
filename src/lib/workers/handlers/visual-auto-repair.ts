@@ -105,6 +105,9 @@ async function handleAssetVisualAutoRepairTask(job: Job<TaskJobData>) {
   const attempt = typeof payload.attempt === 'number' && Number.isFinite(payload.attempt)
     ? Math.max(1, Math.floor(payload.attempt))
     : 1
+  const maxAttempts = typeof payload.maxAttempts === 'number' && Number.isFinite(payload.maxAttempts)
+    ? Math.max(1, Math.floor(payload.maxAttempts))
+    : null
   const imageModel = typeof payload.imageModel === 'string' ? payload.imageModel.trim() : ''
   const candidateCount = typeof payload.candidateCount === 'number' && Number.isFinite(payload.candidateCount)
     ? Math.min(4, Math.max(1, Math.floor(payload.candidateCount)))
@@ -128,6 +131,8 @@ async function handleAssetVisualAutoRepairTask(job: Job<TaskJobData>) {
     await reportTaskProgress(job, 20 + Math.floor((candidateIndex / candidateCount) * 58), {
       stage: 'visual_auto_repair_generate',
       displayMode: 'detail',
+      attempt,
+      maxAttempts,
       candidateIndex,
       candidateCount,
     })
@@ -149,7 +154,12 @@ async function handleAssetVisualAutoRepairTask(job: Job<TaskJobData>) {
     ))
   }
 
-  await reportTaskProgress(job, 84, { stage: 'visual_auto_repair_persist', displayMode: 'detail' })
+  await reportTaskProgress(job, 84, {
+    stage: 'visual_auto_repair_persist',
+    displayMode: 'detail',
+    attempt,
+    maxAttempts,
+  })
   await assertTaskActive(job, 'visual_auto_repair_persist')
   const assetKind = await persistAssetRepairCandidates({
     targetType: job.data.targetType,
@@ -168,7 +178,9 @@ async function handleAssetVisualAutoRepairTask(job: Job<TaskJobData>) {
       previousVersionHash: typeof payload.versionHash === 'string' ? payload.versionHash : null,
       candidateUrls,
       attempt,
+      maxAttempts,
       action,
+      sourceCandidateUrl,
       imageModel,
       promptPatch,
       assetKind,
@@ -191,10 +203,11 @@ async function handleAssetVisualAutoRepairTask(job: Job<TaskJobData>) {
       targetSpec,
       analysisModel: modelConfig.analysisModel,
       attempt,
+      maxAttempts,
     },
     dedupeKey: `visual_quality_review:${job.data.targetType}:${job.data.targetId}:${versionHash}`,
   })
-  return { targetType: job.data.targetType, targetId: job.data.targetId, candidateUrls, versionHash, attempt }
+  return { targetType: job.data.targetType, targetId: job.data.targetId, candidateUrls, versionHash, attempt, maxAttempts }
 }
 
 export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
@@ -228,6 +241,7 @@ export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
   const attempt = typeof payload.attempt === 'number' && Number.isFinite(payload.attempt)
     ? Math.max(1, Math.floor(payload.attempt))
     : state.attempt + 1
+  const maxAttempts = state.maxAttempts
   const imageModel = typeof payload.imageModel === 'string' ? payload.imageModel.trim() : ''
   const candidateCount = typeof payload.candidateCount === 'number' && Number.isFinite(payload.candidateCount)
     ? Math.min(4, Math.max(1, Math.floor(payload.candidateCount)))
@@ -256,6 +270,8 @@ export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
     await reportTaskProgress(job, 20 + Math.floor((candidateIndex / candidateCount) * 58), {
       stage: 'visual_auto_repair_generate',
       displayMode: 'detail',
+      attempt,
+      maxAttempts,
       candidateIndex,
       candidateCount,
     })
@@ -293,7 +309,12 @@ export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
   )
   const retainedCandidateUrls = flattenVisualCandidateGroups(candidateGroups)
 
-  await reportTaskProgress(job, 84, { stage: 'visual_auto_repair_persist', displayMode: 'detail' })
+  await reportTaskProgress(job, 84, {
+    stage: 'visual_auto_repair_persist',
+    displayMode: 'detail',
+    attempt,
+    maxAttempts,
+  })
   await assertTaskActive(job, 'visual_auto_repair_persist')
   try {
     await prisma.novelPromotionPanel.update({
@@ -338,6 +359,7 @@ export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
       candidateGroups,
       attempt,
       action,
+      sourceCandidateUrl,
       imageModel,
       promptPatch,
     }),
@@ -355,10 +377,12 @@ export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
     payload: {
       panelId: panel.id,
       candidateUrls,
-      versionHash,
-      analysisModel: modelConfig.analysisModel,
-    },
+        versionHash,
+        analysisModel: modelConfig.analysisModel,
+        attempt,
+        maxAttempts,
+      },
     dedupeKey: `visual_quality_review:${panel.id}:${versionHash}`,
   })
-  return { panelId: panel.id, candidateUrls, versionHash, attempt }
+  return { panelId: panel.id, candidateUrls, versionHash, attempt, maxAttempts }
 }

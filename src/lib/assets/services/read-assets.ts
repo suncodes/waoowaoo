@@ -10,11 +10,172 @@ import {
   mapProjectLocationToAsset,
   mapProjectPropToAsset,
 } from '@/lib/assets/mappers'
-import type { AssetKind, AssetQueryInput, AssetSummary } from '@/lib/assets/contracts'
+import type {
+  AssetCandidateGroupSummary,
+  AssetKind,
+  AssetQueryInput,
+  AssetSummary,
+  VisualAssetSummary,
+} from '@/lib/assets/contracts'
 import {
   listGlobalLocationBackedAssets,
   listProjectLocationBackedAssets,
 } from '@/lib/assets/services/location-backed-assets'
+
+type ProjectAssetRepairArtifact = {
+  id: string
+  refId: string
+  payload: unknown
+  createdAt: Date
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return Array.from(new Set(value
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter(Boolean)))
+}
+
+function readPositiveInteger(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
+  return Math.max(0, Math.floor(value))
+}
+
+function readRepairAction(value: unknown): 'edit' | 'regenerate' | null {
+  return value === 'edit' || value === 'regenerate' ? value : null
+}
+
+function collectVisualAssetImageUrls(asset: VisualAssetSummary): string[] {
+  const urls: string[] = []
+  const seen = new Set<string>()
+  for (const variant of asset.variants) {
+    for (const render of variant.renders) {
+      const imageUrl = render.imageUrl?.trim()
+      if (!imageUrl || seen.has(imageUrl)) continue
+      seen.add(imageUrl)
+      urls.push(imageUrl)
+    }
+  }
+  return urls
+}
+
+function collectVisualAssetTargetIds(asset: VisualAssetSummary): string[] {
+  return asset.variants.map((variant) => variant.id).filter(Boolean)
+}
+
+function buildVisualAssetCandidateGroups(
+  asset: VisualAssetSummary,
+  artifactsByRefId: Map<string, ProjectAssetRepairArtifact[]>,
+): AssetCandidateGroupSummary[] {
+  const targetIds = collectVisualAssetTargetIds(asset)
+  const artifacts = targetIds
+    .flatMap((targetId) => artifactsByRefId.get(targetId) || [])
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+  const allCandidateUrls = collectVisualAssetImageUrls(asset)
+  if (allCandidateUrls.length === 0) return []
+
+  const repairGroups = artifacts.flatMap((artifact) => {
+    const payload = asRecord(artifact.payload)
+    const candidateUrls = readStringArray(payload?.candidateUrls)
+    if (candidateUrls.length === 0) return []
+    const sourceCandidateUrl = typeof payload?.sourceCandidateUrl === 'string' && payload.sourceCandidateUrl.trim()
+      ? payload.sourceCandidateUrl.trim()
+      : null
+    return [{
+      id: artifact.id,
+      origin: 'repair' as const,
+      attempt: readPositiveInteger(payload?.attempt, 1),
+      action: readRepairAction(payload?.action),
+      candidateUrls,
+      sourceCandidateUrl,
+      createdAt: artifact.createdAt.toISOString(),
+    }]
+  })
+  const repairUrlSet = new Set(repairGroups.flatMap((group) => group.candidateUrls))
+  const originalCandidateUrls = allCandidateUrls.filter((url) => !repairUrlSet.has(url))
+  const initialGroup = originalCandidateUrls.length > 0
+    ? [{
+      id: `${asset.id}:initial`,
+      origin: 'initial' as const,
+      attempt: 0,
+      action: null,
+      candidateUrls: originalCandidateUrls,
+      sourceCandidateUrl: null,
+      createdAt: artifacts[0]?.createdAt.toISOString() || '',
+    }]
+    : []
+  return [...initialGroup, ...repairGroups]
+}
+
+function attachProjectCandidateGroups(
+  assets: AssetSummary[],
+  repairArtifacts: ProjectAssetRepairArtifact[],
+): AssetSummary[] {
+  const artifactsByRefId = new Map<string, ProjectAssetRepairArtifact[]>()
+  for (const artifact of repairArtifacts) {
+    const list = artifactsByRefId.get(artifact.refId)
+    if (list) {
+      list.push(artifact)
+    } else {
+      artifactsByRefId.set(artifact.refId, [artifact])
+    }
+  }
+  return assets.map((asset) => {
+    if (asset.family !== 'visual') return asset
+    return {
+      ...asset,
+      candidateGroups: buildVisualAssetCandidateGroups(asset, artifactsByRefId),
+    } as AssetSummary
+  })
+}
+
+function collectProjectRepairTargetIds(params: {
+  characters: Array<{ appearances: Array<{ id: string }> }>
+  locations: Array<{ images?: Array<{ id: string }> }>
+  props: Array<{ images?: Array<{ id: string }> }>
+}) {
+  const ids = new Set<string>()
+  for (const character of params.characters) {
+    for (const appearance of character.appearances || []) {
+      if (appearance.id) ids.add(appearance.id)
+    }
+  }
+  for (const asset of [...params.locations, ...params.props]) {
+    for (const image of asset.images || []) {
+      if (image.id) ids.add(image.id)
+    }
+  }
+  return Array.from(ids)
+}
+
+async function listProjectAssetRepairArtifacts(
+  projectId: string,
+  refIds: string[],
+): Promise<ProjectAssetRepairArtifact[]> {
+  const ids = Array.from(new Set(refIds.filter(Boolean)))
+  if (ids.length === 0) return []
+  return prisma.graphArtifact.findMany({
+    where: {
+      artifactType: 'visual.asset.repair.candidate',
+      refId: { in: ids },
+      run: { projectId },
+    },
+    select: {
+      id: true,
+      refId: true,
+      payload: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: 'asc' },
+  })
+}
 
 async function readProjectAssets(projectId: string): Promise<AssetSummary[]> {
   const project = await prisma.novelPromotionProject.findUnique({
@@ -39,11 +200,19 @@ async function readProjectAssets(projectId: string): Promise<AssetSummary[]> {
     listProjectLocationBackedAssets(project.id, 'location'),
     listProjectLocationBackedAssets(project.id, 'prop'),
   ])
-
-  const withMedia = await attachMediaFieldsToProject({
+  const repairTargetIds = collectProjectRepairTargetIds({
     characters: project.characters,
-    locations: [...locations, ...props],
+    locations,
+    props,
   })
+
+  const [withMedia, repairArtifacts] = await Promise.all([
+    attachMediaFieldsToProject({
+      characters: project.characters,
+      locations: [...locations, ...props],
+    }),
+    listProjectAssetRepairArtifacts(projectId, repairTargetIds),
+  ])
   const projectCharacters = (withMedia.characters as unknown as Parameters<typeof mapProjectCharacterToAsset>[0][])
     .map(mapProjectCharacterToAsset)
   const locationLikeAssets = withMedia.locations as Array<Record<string, unknown> & { assetKind?: string }>
@@ -53,7 +222,10 @@ async function readProjectAssets(projectId: string): Promise<AssetSummary[]> {
   const projectProps = locationLikeAssets
     .filter((asset) => asset.assetKind === 'prop')
     .map((asset) => mapProjectPropToAsset(asset as Parameters<typeof mapProjectPropToAsset>[0]))
-  return [...projectCharacters, ...projectLocations, ...projectProps]
+  return attachProjectCandidateGroups(
+    [...projectCharacters, ...projectLocations, ...projectProps],
+    repairArtifacts,
+  )
 }
 
 async function readGlobalAssets(input: { folderId?: string | null; userId: string }): Promise<AssetSummary[]> {

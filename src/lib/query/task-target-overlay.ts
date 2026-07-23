@@ -18,6 +18,8 @@ export type TaskTargetOverlayState = {
   progress: number | null
   stage: string | null
   stageLabel: string | null
+  attempt: number | null
+  maxAttempts: number | null
   updatedAt: string | null
   lastError: null
   expiresAt: number
@@ -63,6 +65,8 @@ export function upsertTaskTargetOverlay(
     progress?: number | null
     stage?: string | null
     stageLabel?: string | null
+    attempt?: number | null
+    maxAttempts?: number | null
     updatedAt?: string | null
   },
 ) {
@@ -89,6 +93,8 @@ export function upsertTaskTargetOverlay(
         progress: params.progress ?? null,
         stage: params.stage ?? null,
         stageLabel: params.stageLabel ?? null,
+        attempt: params.attempt ?? existing?.attempt ?? null,
+        maxAttempts: params.maxAttempts ?? existing?.maxAttempts ?? null,
         updatedAt: params.updatedAt || new Date(now).toISOString(),
         lastError: null,
         expiresAt: now + TASK_TARGET_OVERLAY_TTL_MS,
@@ -132,6 +138,8 @@ export function applyTaskLifecycleToOverlay(
     progress: number | null
     stage: string | null
     stageLabel: string | null
+    attempt?: number | null
+    maxAttempts?: number | null
     eventTs: string | null
   },
 ) {
@@ -149,6 +157,8 @@ export function applyTaskLifecycleToOverlay(
       progress: params.progress,
       stage: params.stage,
       stageLabel: params.stageLabel,
+      attempt: params.attempt,
+      maxAttempts: params.maxAttempts,
       updatedAt: params.eventTs,
     })
     return
@@ -167,6 +177,8 @@ export function applyTaskLifecycleToOverlay(
       progress: params.progress,
       stage: params.stage,
       stageLabel: params.stageLabel,
+      attempt: params.attempt,
+      maxAttempts: params.maxAttempts,
       updatedAt: params.eventTs,
     })
     return

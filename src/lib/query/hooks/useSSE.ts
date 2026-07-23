@@ -15,6 +15,12 @@ type UseSSEOptions = {
   onEvent?: (event: SSEEvent) => void
 }
 
+function readNonNegativeInteger(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  const rounded = Math.floor(value)
+  return rounded >= 0 ? rounded : null
+}
+
 export function useSSE({ projectId, episodeId, enabled = true, onEvent }: UseSSEOptions) {
   const queryClient = useQueryClient()
   const sourceRef = useRef<EventSource | null>(null)
@@ -174,6 +180,8 @@ export function useSSE({ projectId, episodeId, enabled = true, onEvent }: UseSSE
           progress: typeof eventPayload?.progress === 'number' ? Math.floor(eventPayload.progress) : null,
           stage: typeof eventPayload?.stage === 'string' ? eventPayload.stage : null,
           stageLabel: typeof eventPayload?.stageLabel === 'string' ? eventPayload.stageLabel : null,
+          attempt: readNonNegativeInteger(eventPayload?.attempt),
+          maxAttempts: readNonNegativeInteger(eventPayload?.maxAttempts),
           eventTs: typeof payload.ts === 'string' ? payload.ts : null,
         })
 

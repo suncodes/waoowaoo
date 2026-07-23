@@ -21,6 +21,8 @@ export type TaskTargetState = {
   progress: number | null
   stage: string | null
   stageLabel: string | null
+  attempt: number | null
+  maxAttempts: number | null
   lastError: {
     code: string
     message: string
@@ -58,6 +60,12 @@ export function toProgress(value: unknown): number | null {
   return rounded
 }
 
+export function toPositiveInteger(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  const rounded = Math.floor(value)
+  return rounded >= 0 ? rounded : null
+}
+
 export function extractTaskStateFields(task: {
   type: string
   progress: number
@@ -71,6 +79,8 @@ export function extractTaskStateFields(task: {
     hasOutputAtStart: asBoolean(payloadUi?.hasOutputAtStart),
     intent: coerceTaskIntent(payloadUi?.intent ?? payload?.intent, task.type),
     progress: toProgress(task.progress),
+    attempt: toPositiveInteger(payload?.attempt),
+    maxAttempts: toPositiveInteger(payload?.maxAttempts),
   }
 }
 
@@ -98,6 +108,8 @@ export function buildIdleState(target: TaskTargetQuery): TaskTargetState {
     progress: null,
     stage: null,
     stageLabel: null,
+    attempt: null,
+    maxAttempts: null,
     lastError: null,
     updatedAt: null,
   }
@@ -146,6 +158,8 @@ export function resolveTargetState(
       progress: runningFields.progress,
       stage: runningFields.stage,
       stageLabel: runningFields.stageLabel,
+      attempt: runningFields.attempt,
+      maxAttempts: runningFields.maxAttempts,
       lastError: null,
       updatedAt: running.updatedAt.toISOString(),
     }
@@ -163,6 +177,8 @@ export function resolveTargetState(
       progress: 100,
       stage: latestFields.stage,
       stageLabel: latestFields.stageLabel,
+      attempt: latestFields.attempt,
+      maxAttempts: latestFields.maxAttempts,
       lastError: null,
       updatedAt: latest.updatedAt.toISOString(),
     }
@@ -179,6 +195,8 @@ export function resolveTargetState(
     progress: null,
     stage: latestFields.stage,
     stageLabel: latestFields.stageLabel,
+    attempt: latestFields.attempt,
+    maxAttempts: latestFields.maxAttempts,
     lastError: normalizeFailedError(latest),
     updatedAt: latest.updatedAt.toISOString(),
   }

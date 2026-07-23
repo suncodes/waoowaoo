@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AppIcon } from '@/components/ui/icons'
 import type { VisualAssetSummary } from '@/lib/assets/contracts'
 import { readContentArtifactMeta, readVisualArtifactMeta, type VisualAnchor } from '@/lib/creation-workspace/artifact-state'
-import { resolveVisualAnchorReadiness, resolveVisualAssetStatus, selectedVisualAssetImage } from '@/lib/creation-workspace/visual-readiness'
+import { resolveVisualAnchorReadiness, selectedVisualAssetImage } from '@/lib/creation-workspace/visual-readiness'
 import { useAssetActions, useAssets } from '@/lib/query/hooks'
 import { useWorkspaceProvider } from '../../WorkspaceProvider'
 import { useWorkspaceStageRuntime } from '../../WorkspaceStageRuntimeContext'
@@ -19,7 +19,8 @@ import {
   StudioStageHeader,
   StudioStatusBadge,
 } from './StudioPrimitives'
-import { type StudioProductStatus, type StudioWorkspaceModel } from './studio-types'
+import { type StudioWorkspaceModel } from './studio-types'
+import { resolveVisualAssetWorkflowPresentation } from './studio-visual-asset-status'
 import StudioVisualAssetInspector, { type VisualKitItem } from './StudioVisualAssetInspector'
 
 interface StudioVisualKitCanvasProps {
@@ -30,14 +31,6 @@ type PendingAction = {
   key: string
   label: string
 } | null
-
-function toProductStatus(status: ReturnType<typeof resolveVisualAssetStatus>): StudioProductStatus {
-  if (status === 'running') return 'generating'
-  if (status === 'failed') return 'failed'
-  if (status === 'confirmed') return 'locked'
-  if (status === 'candidate') return 'needs_review'
-  return 'empty'
-}
 
 function assetDescription(asset: VisualAssetSummary) {
   if (asset.kind === 'character') return asset.introduction || asset.variants[0]?.description || ''
@@ -74,32 +67,40 @@ function buildItems(
 ): VisualKitItem[] {
   const readiness = resolveVisualAnchorReadiness(anchors, assets)
   if (readiness.items.length > 0) {
-    return readiness.items.map((item) => ({
-      id: item.anchor.id,
-      name: item.anchor.name,
-      kind: item.anchor.semanticKind,
-      importance: item.anchor.importance,
-      description: item.anchor.description,
-      status: toProductStatus(item.status),
-      imageUrl: item.imageUrl,
-      sourceCount: item.anchor.sourceUnitIds.length,
-      asset: item.asset,
-    }))
+    return readiness.items.map((item) => {
+      const presentation = resolveVisualAssetWorkflowPresentation(item.asset)
+      return {
+        id: item.anchor.id,
+        name: item.anchor.name,
+        kind: item.anchor.semanticKind,
+        importance: item.anchor.importance,
+        description: item.anchor.description,
+        status: presentation.status,
+        statusLabel: presentation.label,
+        imageUrl: item.imageUrl,
+        sourceCount: item.anchor.sourceUnitIds.length,
+        asset: item.asset,
+      }
+    })
   }
   const scopedAssets = requiredAssetIds.size > 0
     ? assets.filter((asset) => requiredAssetIds.has(asset.id))
     : assets
-  return scopedAssets.map((asset) => ({
-    id: asset.id,
-    name: asset.name,
-    kind: semanticKind(asset),
-    importance: requiredAssetIds.has(asset.id) ? 'core' : 'supporting',
-    description: assetDescription(asset),
-    status: toProductStatus(resolveVisualAssetStatus(asset)),
-    imageUrl: selectedVisualAssetImage(asset),
-    sourceCount: 0,
-    asset,
-  }))
+  return scopedAssets.map((asset) => {
+    const presentation = resolveVisualAssetWorkflowPresentation(asset)
+    return {
+      id: asset.id,
+      name: asset.name,
+      kind: semanticKind(asset),
+      importance: requiredAssetIds.has(asset.id) ? 'core' : 'supporting',
+      description: assetDescription(asset),
+      status: presentation.status,
+      statusLabel: presentation.label,
+      imageUrl: selectedVisualAssetImage(asset),
+      sourceCount: 0,
+      asset,
+    }
+  })
 }
 
 export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasProps) {
@@ -286,7 +287,7 @@ function VisualConsistencyAudit({ items, onOpenAssets }: { items: VisualKitItem[
           {unresolved.slice(0, 9).map((item) => (
             <div key={item.id} className="flex items-center justify-between gap-3 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2">
               <span className="truncate text-sm text-stone-300">{item.name}</span>
-              <StudioStatusBadge status={item.status} />
+              <StudioStatusBadge status={item.status} label={item.statusLabel} />
             </div>
           ))}
         </div>
@@ -365,7 +366,7 @@ function AssetRailItem({
             <div className="truncate text-sm font-semibold text-stone-100">{item.name}</div>
             <div className="mt-1 text-[11px] text-stone-500">{assetKindLabel(item.kind)} · 来源 {item.sourceCount}</div>
           </div>
-          <StudioStatusBadge status={item.status} />
+          <StudioStatusBadge status={item.status} label={item.statusLabel} />
         </div>
         <p className="mt-2 line-clamp-2 text-xs leading-5 text-stone-500">{item.asset ? assetDescription(item.asset) : item.description || '待补充标准描述'}</p>
       </div>

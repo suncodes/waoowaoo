@@ -2,22 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { VisualAssetSummary } from '@/lib/assets/contracts'
-import { resolveVisualAssetStatus, selectedVisualAssetImage } from '@/lib/creation-workspace/visual-readiness'
+import { selectedVisualAssetImage } from '@/lib/creation-workspace/visual-readiness'
 import { useAssetActions, useAssets } from '@/lib/query/hooks'
 import ProductModalShell from '@/components/product/ProductModalShell'
 import StudioVisualAssetInspector, { type VisualKitItem } from './StudioVisualAssetInspector'
 import { StudioButton, StudioEmptyState, StudioMetric, StudioPanel, StudioSectionHeader, StudioStatusBadge } from './StudioPrimitives'
-import type { StudioProductStatus } from './studio-types'
+import { resolveVisualAssetWorkflowPresentation } from './studio-visual-asset-status'
 
 type AssetFilter = 'all' | 'character' | 'location' | 'prop'
-
-function toStatus(status: ReturnType<typeof resolveVisualAssetStatus>): StudioProductStatus {
-  if (status === 'running') return 'generating'
-  if (status === 'failed') return 'failed'
-  if (status === 'confirmed') return 'locked'
-  if (status === 'candidate') return 'needs_review'
-  return 'empty'
-}
 
 function descriptionOf(asset: VisualAssetSummary) {
   return asset.kind === 'character' ? asset.introduction || asset.variants[0]?.description || '' : asset.summary || asset.variants[0]?.description || ''
@@ -33,13 +25,15 @@ function kindLabel(kind: VisualKitItem['kind']) {
 }
 
 function toItem(asset: VisualAssetSummary): VisualKitItem {
+  const presentation = resolveVisualAssetWorkflowPresentation(asset)
   return {
     id: asset.id,
     name: asset.name,
     kind: asset.kind,
     importance: 'supporting',
     description: descriptionOf(asset),
-    status: toStatus(resolveVisualAssetStatus(asset)),
+    status: presentation.status,
+    statusLabel: presentation.label,
     imageUrl: selectedVisualAssetImage(asset),
     sourceCount: 0,
     asset,
@@ -58,7 +52,7 @@ function AssetListItem({ item, selected, onSelect }: { item: VisualKitItem; sele
           <div className="truncate text-sm font-semibold text-stone-100">{item.name}</div>
           <div className="mt-1 text-[11px] text-stone-500">{kindLabel(item.kind)}</div>
         </div>
-        <StudioStatusBadge status={item.status} />
+        <StudioStatusBadge status={item.status} label={item.statusLabel} />
       </div>
       <p className="mt-2 line-clamp-2 text-xs leading-5 text-stone-500">{item.description || '待补充标准描述'}</p>
     </button>

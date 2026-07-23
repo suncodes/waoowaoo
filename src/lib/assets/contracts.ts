@@ -13,6 +13,14 @@ export type AssetTaskError = {
 
 export type AssetTaskState = {
   isRunning: boolean
+  phase?: 'idle' | 'queued' | 'processing' | 'completed' | 'failed'
+  taskType?: string | null
+  progress?: number | null
+  stage?: string | null
+  stageLabel?: string | null
+  attempt?: number | null
+  maxAttempts?: number | null
+  updatedAt?: string | null
   lastError: AssetTaskError | null
 }
 
@@ -30,6 +38,16 @@ export type AssetTaskRef = {
   targetType: string
   targetId: string
   types: string[]
+}
+
+export type AssetCandidateGroupSummary = {
+  id: string
+  origin: 'initial' | 'repair'
+  attempt: number
+  action: 'edit' | 'regenerate' | null
+  candidateUrls: string[]
+  sourceCandidateUrl: string | null
+  createdAt: string
 }
 
 export type AssetRenderSummary = {
@@ -65,6 +83,7 @@ export type BaseAssetSummary = {
   name: string
   folderId: string | null
   capabilities: AssetCapabilityMap
+  candidateGroups?: AssetCandidateGroupSummary[]
   taskRefs: AssetTaskRef[]
   taskState: AssetTaskState
 }
@@ -139,6 +158,14 @@ export type ReadAssetsResponse = {
 export function createIdleTaskState(): AssetTaskState {
   return {
     isRunning: false,
+    phase: 'idle',
+    taskType: null,
+    progress: null,
+    stage: null,
+    stageLabel: null,
+    attempt: null,
+    maxAttempts: null,
+    updatedAt: null,
     lastError: null,
   }
 }
