@@ -1,4 +1,5 @@
 import type { ImageQualityReviewResult, RepairAction } from '@/lib/visual-quality'
+import { VISUAL_REPAIR_MAX_ATTEMPTS } from '@/lib/visual-quality/repair-policy'
 import type { VisualCandidateGroup, VisualQualityState } from './types'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -184,8 +185,8 @@ export function parseVisualQualityState(value: unknown): VisualQualityState | nu
     activeCandidateUrl: typeof value.activeCandidateUrl === 'string' ? value.activeCandidateUrl : null,
     attempt: typeof value.attempt === 'number' && Number.isFinite(value.attempt) ? Math.max(0, Math.floor(value.attempt)) : 0,
     maxAttempts: typeof value.maxAttempts === 'number' && Number.isFinite(value.maxAttempts)
-      ? Math.min(2, Math.max(0, Math.floor(value.maxAttempts)))
-      : 2,
+      ? Math.min(VISUAL_REPAIR_MAX_ATTEMPTS, Math.max(0, Math.floor(value.maxAttempts)))
+      : VISUAL_REPAIR_MAX_ATTEMPTS,
     lastAction: typeof value.lastAction === 'string' ? value.lastAction as RepairAction : null,
     review: isRecord(value.review) ? value.review as unknown as ImageQualityReviewResult : null,
     humanConfirmedAt: typeof value.humanConfirmedAt === 'string' && value.humanConfirmedAt.trim()
@@ -217,7 +218,7 @@ export function createVisualQualityState(params: {
     candidateGroups: normalizeCandidateGroups(params.candidateGroups),
     activeCandidateUrl: params.activeCandidateUrl || null,
     attempt: Math.max(0, Math.floor(params.attempt || 0)),
-    maxAttempts: Math.min(2, Math.max(0, Math.floor(params.maxAttempts ?? 2))),
+    maxAttempts: Math.min(VISUAL_REPAIR_MAX_ATTEMPTS, Math.max(0, Math.floor(params.maxAttempts ?? VISUAL_REPAIR_MAX_ATTEMPTS))),
     lastAction: params.lastAction || null,
     review: params.review || null,
     humanConfirmedAt: params.humanConfirmedAt || null,

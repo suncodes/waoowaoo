@@ -20,7 +20,7 @@ export function useRegenerateProjectPanelImage(projectId: string) {
             const res = await apiFetch(`/api/novel-promotion/${projectId}/regenerate-panel-image`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ panelId, count: count ?? 1 }),
+                body: JSON.stringify(count === undefined ? { panelId } : { panelId, count }),
             })
             if (!res.ok) {
                 const error = await res.json().catch(() => ({}))

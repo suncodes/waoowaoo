@@ -13,7 +13,6 @@ import {
 } from '../utils'
 import {
   AnyObj,
-  clampCount,
   collectPanelReferenceImages,
   findCharacterByName,
   parsePanelCharacterReferences,
@@ -21,6 +20,7 @@ import {
   resolveNovelData,
 } from './image-task-handler-shared'
 import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
+import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
 import { parseLocationAvailableSlots } from '@/lib/location-available-slots'
 import { persistPanelCandidatesAndScheduleReview } from './panel-visual-quality-trigger'
 function parseJsonUnknown(raw: string | null | undefined): unknown | null {
@@ -181,7 +181,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
   const modelKey = modelConfig.storyboardModel
   if (!modelKey) throw new Error('Storyboard model not configured')
 
-  const candidateCount = clampCount(payload.candidateCount ?? payload.count, 1, 4, 1)
+  const candidateCount = normalizeImageGenerationCount('storyboard-candidates', payload.candidateCount ?? payload.count)
   const resolvedArtStyle = resolveArtStyleForGeneration({
     artStyleMode: modelConfig.artStyleMode,
     artStyle: modelConfig.artStyle,

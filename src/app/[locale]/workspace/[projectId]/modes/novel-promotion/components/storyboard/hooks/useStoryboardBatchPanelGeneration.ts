@@ -74,7 +74,7 @@ export function useStoryboardBatchPanelGeneration({
         _ulogInfo(`[批量生成] 处理第 ${currentBatch}/${totalBatches} 批 (${batch.length} 个)`)
 
         const batchResults = await Promise.allSettled(
-          batch.map((panelId) => regeneratePanelImage(panelId, 1)),
+          batch.map((panelId) => regeneratePanelImage(panelId)),
         )
         results.push(...batchResults)
 

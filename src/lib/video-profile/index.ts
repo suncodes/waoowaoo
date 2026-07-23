@@ -7,6 +7,7 @@ import {
   type VideoProfilePreset,
   type VisualQualityMode,
 } from './types'
+import { VISUAL_REPAIR_MAX_ATTEMPTS } from '@/lib/visual-quality/repair-policy'
 
 const DEFAULT_PROFILE_BY_PRESET: Record<VideoProfilePreset, VideoProfile> = {
   [VIDEO_PROFILE_PRESET.AI_COMIC]: {
@@ -24,7 +25,7 @@ const DEFAULT_PROFILE_BY_PRESET: Record<VideoProfilePreset, VideoProfile> = {
     },
     qualityPolicy: {
       mode: 'shadow',
-      maxRepairAttempts: 2,
+      maxRepairAttempts: VISUAL_REPAIR_MAX_ATTEMPTS,
       autoApproveThreshold: 85,
       minConfidence: 0.82,
     },
@@ -44,7 +45,7 @@ const DEFAULT_PROFILE_BY_PRESET: Record<VideoProfilePreset, VideoProfile> = {
     },
     qualityPolicy: {
       mode: 'shadow',
-      maxRepairAttempts: 2,
+      maxRepairAttempts: VISUAL_REPAIR_MAX_ATTEMPTS,
       autoApproveThreshold: 88,
       minConfidence: 0.86,
     },
@@ -121,7 +122,7 @@ export function resolveVideoProfile(raw: unknown): VideoProfile {
         qualityPolicy.maxRepairAttempts,
         base.qualityPolicy.maxRepairAttempts,
         0,
-        2,
+        VISUAL_REPAIR_MAX_ATTEMPTS,
       )),
       autoApproveThreshold: Math.round(clampNumber(
         qualityPolicy.autoApproveThreshold,

@@ -10,7 +10,7 @@ import {
 } from './image-generation-runtime'
 
 interface RegeneratePanelMutationLike {
-  mutateAsync: (payload: { panelId: string; count: number }) => Promise<unknown>
+  mutateAsync: (payload: { panelId: string; count?: number }) => Promise<unknown>
 }
 
 interface UsePanelImageRegenerationParams {
@@ -36,7 +36,7 @@ export function usePanelImageRegeneration({
   selectPanelCandidateIndex,
 }: UsePanelImageRegenerationParams) {
   const regeneratePanelImage = useCallback(
-    async (panelId: string, count: number = 1, force: boolean = false) => {
+    async (panelId: string, count?: number, force: boolean = false) => {
       if (!force && submittingPanelImageIds.has(panelId)) return
 
       setSubmittingPanelImageIds((previous) => new Set(previous).add(panelId))

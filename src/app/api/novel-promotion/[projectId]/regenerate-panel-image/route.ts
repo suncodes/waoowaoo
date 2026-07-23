@@ -10,8 +10,7 @@ import { withTaskUiPayload } from '@/lib/task/ui-payload'
 import { getProjectModelConfig } from '@/lib/config-service'
 import { resolveProjectModelCapabilityGenerationOptions } from '@/lib/config-service'
 import { resolveModelSelection } from '@/lib/api-config'
-
-const DEFAULT_CANDIDATE_COUNT = 1
+import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
 
 export const POST = apiHandler(async (
   request: NextRequest,
@@ -27,7 +26,7 @@ export const POST = apiHandler(async (
   const locale = resolveRequiredTaskLocale(request, body)
   const panelId = body?.panelId
   const count = body?.count
-  const candidateCount = Math.max(1, Math.min(4, Number(count ?? DEFAULT_CANDIDATE_COUNT)))
+  const candidateCount = normalizeImageGenerationCount('storyboard-candidates', count)
 
   if (!panelId) {
     throw new ApiError('INVALID_PARAMS')

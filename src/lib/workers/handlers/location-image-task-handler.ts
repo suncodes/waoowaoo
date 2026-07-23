@@ -168,6 +168,11 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
   }
 
   const locationIds = Array.from(new Set(locationImages.map((it) => it.locationId)))
+  const generatedByLocationId = new Map<string, Array<{
+    item: LocationImageRecord
+    imageKey: string
+    promptBody: string
+  }>>()
 
   for (let i = 0; i < locationImages.length; i++) {
     const item = locationImages[i]
@@ -219,22 +224,34 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
       data: { imageUrl: imageKey },
     })
 
+    const generatedItems = generatedByLocationId.get(item.locationId) || []
+    generatedItems.push({
+      item,
+      imageKey,
+      promptBody,
+    })
+    generatedByLocationId.set(item.locationId, generatedItems)
+  }
+
+  for (const [locationId, generatedItems] of generatedByLocationId) {
+    const firstItem = generatedItems[0]
+    if (!firstItem) continue
     try {
       if (!models.analysisModel) throw new Error('ANALYSIS_MODEL_NOT_CONFIGURED')
       assertVisionInputSupported(models.analysisModel)
-      const locationMeta = locationMetaMap[item.locationId] || {
-        name,
+      const locationMeta = locationMetaMap[locationId] || {
+        name: locationNameMap[locationId] || '场景',
         assetKind: assetType,
       }
       const targetSpec = buildLocationAssetTargetSpec({
         image: {
-          ...item,
-          description: promptBody,
+          ...firstItem.item,
+          description: firstItem.promptBody,
           location: locationMeta,
         },
         artStyle: resolvedArtStyle.prompt || models.artStylePrompt || models.artStyle || '',
       })
-      const candidateUrls = [imageKey]
+      const candidateUrls = generatedItems.map((generatedItem) => generatedItem.imageKey)
       const versionHash = createVisualVersionHash({ targetSpec, candidateUrls })
       await submitTask({
         userId,
@@ -242,18 +259,18 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
         projectId,
         type: TASK_TYPE.VISUAL_QUALITY_REVIEW,
         targetType: 'LocationImage',
-        targetId: item.id,
+        targetId: firstItem.item.id,
         payload: {
           assetKind: assetType,
-          locationId: item.locationId,
-          locationImageId: item.id,
+          locationId,
+          locationImageId: firstItem.item.id,
           candidateUrls,
           targetSpec,
           versionHash,
           analysisModel: models.analysisModel,
           attempt: 0,
         },
-        dedupeKey: `visual_quality_review:LocationImage:${item.id}:${versionHash}`,
+        dedupeKey: `visual_quality_review:LocationImage:${firstItem.item.id}:${versionHash}`,
       })
     } catch {
       // 质量检查不可用时不阻断资产生成，用户仍可手动选择候选图。

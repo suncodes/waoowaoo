@@ -14,6 +14,10 @@ import {
   parseVisualQualityState,
   resolveVisualCandidateGroups,
 } from '@/lib/quality-workflow'
+import {
+  VISUAL_REPAIR_CANDIDATE_COUNT,
+  VISUAL_REPAIR_MAX_ATTEMPTS,
+} from '@/lib/visual-quality/repair-policy'
 import { createVisualVersionHash, type ImageTargetSpec, type PromptPatch } from '@/lib/visual-quality'
 import { reportTaskProgress } from '@/lib/workers/shared'
 import {
@@ -106,12 +110,12 @@ async function handleAssetVisualAutoRepairTask(job: Job<TaskJobData>) {
     ? Math.max(1, Math.floor(payload.attempt))
     : 1
   const maxAttempts = typeof payload.maxAttempts === 'number' && Number.isFinite(payload.maxAttempts)
-    ? Math.max(1, Math.floor(payload.maxAttempts))
+    ? Math.min(VISUAL_REPAIR_MAX_ATTEMPTS, Math.max(1, Math.floor(payload.maxAttempts)))
     : null
   const imageModel = typeof payload.imageModel === 'string' ? payload.imageModel.trim() : ''
   const candidateCount = typeof payload.candidateCount === 'number' && Number.isFinite(payload.candidateCount)
-    ? Math.min(4, Math.max(1, Math.floor(payload.candidateCount)))
-    : action === 'regenerate' ? 3 : 2
+    ? Math.min(VISUAL_REPAIR_CANDIDATE_COUNT, Math.max(1, Math.floor(payload.candidateCount)))
+    : VISUAL_REPAIR_CANDIDATE_COUNT
   if (!targetSpec.targetId || !imageModel) throw new Error('VISUAL_REPAIR_PAYLOAD_INVALID')
 
   const projectData = await resolveNovelData(job.data.projectId)
@@ -244,8 +248,8 @@ export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
   const maxAttempts = state.maxAttempts
   const imageModel = typeof payload.imageModel === 'string' ? payload.imageModel.trim() : ''
   const candidateCount = typeof payload.candidateCount === 'number' && Number.isFinite(payload.candidateCount)
-    ? Math.min(4, Math.max(1, Math.floor(payload.candidateCount)))
-    : action === 'regenerate' ? 3 : 2
+    ? Math.min(VISUAL_REPAIR_CANDIDATE_COUNT, Math.max(1, Math.floor(payload.candidateCount)))
+    : VISUAL_REPAIR_CANDIDATE_COUNT
   if (!targetSpec.targetId || !imageModel) throw new Error('VISUAL_REPAIR_PAYLOAD_INVALID')
 
   const projectData = await resolveNovelData(job.data.projectId)

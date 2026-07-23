@@ -10,14 +10,25 @@ import { submitTask } from '@/lib/task/submitter'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 import { resolveVideoProfile } from '@/lib/video-profile'
 import {
+  VISUAL_REPAIR_ASSET_CANDIDATE_LIMIT,
+  VISUAL_REPAIR_PANEL_CANDIDATE_LIMIT,
+  resolveVisualRepairCandidateCount,
+} from '@/lib/visual-quality/repair-policy'
+import {
   assertVisionInputSupported,
   createVisualVersionHash,
   decideVisualRepair,
+  type ImageQualityReviewResult,
   type ImageTargetSpec,
   inspectVisualCandidates,
   parseImageQualityReviewResult,
 } from '@/lib/visual-quality'
-import { createVisualQualityState, parseVisualQualityState, resolveVisualCandidateGroups } from '@/lib/quality-workflow'
+import {
+  createVisualQualityState,
+  flattenVisualCandidateGroups,
+  parseVisualQualityState,
+  resolveVisualCandidateGroups,
+} from '@/lib/quality-workflow'
 import { reportTaskProgress } from '@/lib/workers/shared'
 import { assertTaskActive } from '@/lib/workers/utils'
 import { resolveAnalysisModel } from './resolve-analysis-model'
@@ -49,6 +60,10 @@ function readPayloadCandidateUrls(payload: Record<string, unknown>): string[] {
 
 function readNumber(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : fallback
+}
+
+function hasUsableVisualCandidate(review: ImageQualityReviewResult): boolean {
+  return review.candidates.some((candidate) => candidate.passed)
 }
 
 async function resolveAssetReviewTarget(params: {
@@ -182,6 +197,7 @@ async function handleAssetVisualQualityReviewTask(job: Job<TaskJobData>) {
   }
   let review = parseImageQualityReviewResult(rawReview, versionHash)
   review = mergeTechnicalChecks(review, checks)
+  const hasUsableCandidate = hasUsableVisualCandidate(review)
   const decision = decideVisualRepair({
     review,
     attempt,
@@ -191,7 +207,13 @@ async function handleAssetVisualQualityReviewTask(job: Job<TaskJobData>) {
     editModelAvailable: Boolean(novelData.editModel),
   })
   const selectedUrl = decision.candidateIndex === null ? null : candidateUrls[decision.candidateIndex] || null
+  const repairCandidateCount = resolveVisualRepairCandidateCount({
+    currentCandidateCount: candidateUrls.length,
+    maxCandidateCount: VISUAL_REPAIR_ASSET_CANDIDATE_LIMIT[assetKind],
+  })
   const canRepair = mode === 'auto'
+    && !hasUsableCandidate
+    && repairCandidateCount > 0
     && decision.action !== 'approve'
     && decision.action !== 'select_candidate'
     && decision.action !== 'human_required'
@@ -228,7 +250,7 @@ async function handleAssetVisualQualityReviewTask(job: Job<TaskJobData>) {
         attempt: attempt + 1,
         maxAttempts,
         imageModel,
-        candidateCount: decision.action === 'regenerate' ? 3 : 2,
+        candidateCount: repairCandidateCount,
       },
       dedupeKey: `visual_auto_repair:${job.data.targetType}:${job.data.targetId}:${versionHash}:${attempt + 1}`,
     })
@@ -238,7 +260,12 @@ async function handleAssetVisualQualityReviewTask(job: Job<TaskJobData>) {
     targetType: job.data.targetType,
     targetId: job.data.targetId,
     mode,
-    status: canRepair ? 'repairing' : decision.action === 'human_required' ? 'human_required' : 'completed',
+    status: canRepair
+      ? 'repairing'
+      : decision.action === 'human_required'
+        || (hasUsableCandidate && decision.action !== 'approve' && decision.action !== 'select_candidate')
+        ? 'human_required'
+        : 'completed',
     review,
     decision,
   }
@@ -290,6 +317,7 @@ export async function handleVisualQualityReviewTask(job: Job<TaskJobData>) {
     visualQualityState: currentState,
     candidateImages: panel.candidateImages || JSON.stringify(candidateUrls),
   })
+  const retainedCandidateCount = flattenVisualCandidateGroups(candidateGroups).length
 
   const profile = resolveVideoProfile(novelData.videoProfile)
   const mode = panel.linkedToNextPanel ? 'shadow' : (currentState?.mode || profile.qualityPolicy.mode)
@@ -391,6 +419,7 @@ export async function handleVisualQualityReviewTask(job: Job<TaskJobData>) {
   }
   let review = parseImageQualityReviewResult(rawReview, versionHash)
   review = mergeTechnicalChecks(review, checks)
+  const hasUsableCandidate = hasUsableVisualCandidate(review)
   const decision = decideVisualRepair({
     review,
     attempt,
@@ -411,8 +440,15 @@ export async function handleVisualQualityReviewTask(job: Job<TaskJobData>) {
   let nextStatus: 'shadow_completed' | 'approved' | 'repairing' | 'human_required'
   if (mode === 'shadow') nextStatus = 'shadow_completed'
   else if (decision.action === 'approve' || decision.action === 'select_candidate') nextStatus = 'approved'
-  else if (decision.action === 'human_required') nextStatus = 'human_required'
+  else if (decision.action === 'human_required' || hasUsableCandidate) nextStatus = 'human_required'
   else nextStatus = 'repairing'
+  const repairCandidateCount = resolveVisualRepairCandidateCount({
+    currentCandidateCount: retainedCandidateCount,
+    maxCandidateCount: VISUAL_REPAIR_PANEL_CANDIDATE_LIMIT,
+  })
+  if (nextStatus === 'repairing' && repairCandidateCount === 0) {
+    nextStatus = 'human_required'
+  }
 
   const nextQualityState = createVisualQualityState({
     mode,
@@ -490,7 +526,7 @@ export async function handleVisualQualityReviewTask(job: Job<TaskJobData>) {
         targetSpec,
         attempt: attempt + 1,
         imageModel,
-        candidateCount: decision.action === 'regenerate' ? 3 : 2,
+        candidateCount: repairCandidateCount,
       },
       dedupeKey: `visual_auto_repair:${panel.id}:${versionHash}:${attempt + 1}`,
     })

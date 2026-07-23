@@ -15,19 +15,19 @@ const IMAGE_GENERATION_COUNT_CONFIG: Record<ImageGenerationCountScope, ImageGene
   character: {
     defaultValue: 3,
     min: 1,
-    max: 6,
+    max: 4,
     storageKey: 'image-count:character',
   },
   location: {
-    defaultValue: 3,
+    defaultValue: 2,
     min: 1,
-    max: 6,
+    max: 3,
     storageKey: 'image-count:location',
   },
   'storyboard-candidates': {
-    defaultValue: 1,
-    min: 1,
-    max: 4,
+    defaultValue: 2,
+    min: 2,
+    max: 2,
     storageKey: 'image-count:storyboard-candidates',
   },
   'reference-to-character': {

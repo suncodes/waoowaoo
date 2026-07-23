@@ -126,7 +126,7 @@ function BoardDetailPanel({
         </div>
 
         <div className="grid grid-cols-2 gap-2">
-          <StudioButton size="sm" icon="sparkles" loading={isSubmitting} onClick={() => { void controller.regeneratePanelImage(item.panel.id, 3, false) }} disabled={disabled}>
+          <StudioButton size="sm" icon="sparkles" loading={isSubmitting} onClick={() => { void controller.regeneratePanelImage(item.panel.id, 2, false) }} disabled={disabled}>
             生成候选图
           </StudioButton>
           <StudioButton
