@@ -6,10 +6,12 @@ import VisualQualityBadge from '@/components/visual-quality/VisualQualityBadge'
 import { AppIcon } from '@/components/ui/icons'
 import { useUpdateProjectPanelLink } from '@/lib/query/hooks'
 import { useVideoFirstLastFrameFlow } from '@/lib/novel-promotion/stages/video-stage-runtime/useVideoFirstLastFrameFlow'
+import { isRunningPhase } from '@/lib/task/presentation'
 import { useWorkspaceProvider } from '../../WorkspaceProvider'
 import { useWorkspaceStageRuntime } from '../../WorkspaceStageRuntimeContext'
 import { useWorkspaceEpisodeStageData } from '../../hooks/useWorkspaceEpisodeStageData'
 import VoiceStageRoute from '../VoiceStageRoute'
+import { useStoryboardTaskAwareStoryboards } from '../storyboard/hooks/useStoryboardTaskAwareStoryboards'
 import {
   StudioButton,
   StudioEmptyState,
@@ -401,14 +403,19 @@ function ProductionDetailPanel({
 export default function StudioProduceCanvas({ model, onNavigate }: StudioProduceCanvasProps) {
   const runtime = useWorkspaceStageRuntime()
   const { projectId } = useWorkspaceProvider()
-  const { storyboards } = useWorkspaceEpisodeStageData()
+  const { storyboards: rawStoryboards } = useWorkspaceEpisodeStageData()
+  const { taskAwareStoryboards } = useStoryboardTaskAwareStoryboards({
+    projectId,
+    initialStoryboards: rawStoryboards,
+    isRunningPhase,
+  })
   const updatePanelLinkMutation = useUpdateProjectPanelLink(projectId)
   const [selectedId, setSelectedId] = useState('')
   const [showVoiceWorkbench, setShowVoiceWorkbench] = useState(false)
   const [batchPreview, setBatchPreview] = useState<BatchPreviewState | null>(null)
   const [generatingMode, setGeneratingMode] = useState<BatchVideoMode | null>(null)
   const [linkSavingKey, setLinkSavingKey] = useState('')
-  const items = useMemo(() => buildProduceItems(storyboards), [storyboards])
+  const items = useMemo(() => buildProduceItems(taskAwareStoryboards), [taskAwareStoryboards])
   const videoPanels = useMemo(() => toVideoPanels(items), [items])
   const persistedLinks = useMemo(() => new Map(items.map((item) => [`${item.storyboard.id}-${item.panel.panelIndex}`, panelLinkedToNext(item.panel)])), [items])
   const [linkedPanels, setLinkedPanels] = useState<Map<string, boolean>>(persistedLinks)

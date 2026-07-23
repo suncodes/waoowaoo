@@ -119,6 +119,15 @@ type GlobalVoiceRecord = {
   folderId: string | null
 }
 
+const PROJECT_VISUAL_ASSET_TASK_TYPES = [
+  'image_character',
+  'image_location',
+  'modify_asset_image',
+  'regenerate_group',
+  'visual_quality_review',
+  'visual_auto_repair',
+]
+
 function createRender(params: {
   id: string
   index: number
@@ -191,7 +200,7 @@ export function mapProjectCharacterToAsset(character: ProjectCharacterRecord): C
         {
           targetType: 'CharacterAppearance',
           targetId: appearance.id,
-          types: ['image_character', 'modify_asset_image', 'regenerate_group'],
+          types: PROJECT_VISUAL_ASSET_TASK_TYPES,
         },
       ],
     })
@@ -209,7 +218,7 @@ export function mapProjectCharacterToAsset(character: ProjectCharacterRecord): C
       {
         targetType: 'CharacterAppearance',
         targetId: character.id,
-        types: ['image_character', 'modify_asset_image', 'regenerate_group'],
+        types: PROJECT_VISUAL_ASSET_TASK_TYPES,
       },
     ],
     taskState: createIdleTaskState(),
@@ -341,7 +350,7 @@ function buildLocationVariants(
         {
           targetType,
           targetId: image.id,
-          types: scope === 'global' ? ['asset_hub_modify'] : ['image_location', 'modify_asset_image', 'regenerate_group'],
+          types: scope === 'global' ? ['asset_hub_modify'] : PROJECT_VISUAL_ASSET_TASK_TYPES,
         },
       ],
     })
@@ -367,7 +376,7 @@ function mapLocationLikeProjectAsset(
       {
         targetType: 'LocationImage',
         targetId: asset.id,
-        types: ['image_location', 'modify_asset_image', 'regenerate_group'],
+        types: PROJECT_VISUAL_ASSET_TASK_TYPES,
       },
     ],
     taskState: createIdleTaskState(),

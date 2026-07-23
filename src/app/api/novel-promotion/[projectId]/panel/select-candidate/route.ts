@@ -6,7 +6,11 @@ import { getSignedUrl, generateUniqueKey, downloadAndUploadImage, toFetchableUrl
 import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
-import { approveSelectedVisualCandidate, parseVisualQualityState } from '@/lib/quality-workflow'
+import {
+  approveSelectedVisualCandidate,
+  parseVisualQualityState,
+  resolveVisualCandidateUrls,
+} from '@/lib/quality-workflow'
 
 interface PanelHistoryEntry {
   url: string
@@ -99,12 +103,10 @@ export const POST = apiHandler(async (
   ) {
     throw new ApiError('CONFLICT', { message: '自动检查或修复尚未完成，暂时不能确认候选图片。' })
   }
-  const candidateImages = storedCandidateImages.length > 0
-    ? storedCandidateImages
-    : currentQualityState
-      && (currentQualityState.status === 'human_required' || currentQualityState.status === 'failed')
-      ? currentQualityState.candidateUrls
-      : []
+  const candidateImages = resolveVisualCandidateUrls({
+    visualQualityState: currentQualityState,
+    candidateImages: storedCandidateImages,
+  })
 
   const selectedCosKey = await resolveStorageKeyFromMediaValue(selectedImageUrl)
   const candidateKeys = (await Promise.all(candidateImages.map((candidate: unknown) => resolveStorageKeyFromMediaValue(candidate))))

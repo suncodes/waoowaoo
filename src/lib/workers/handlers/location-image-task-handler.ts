@@ -3,7 +3,9 @@ import { prisma } from '@/lib/prisma'
 import { LOCATION_IMAGE_RATIO, PROP_IMAGE_RATIO, addLocationPromptSuffix, addPropPromptSuffix, appendPromptSegments, isArtStyleValue, prependStyleReferenceImage, type ArtStyleValue } from '@/lib/constants'
 import { resolveArtStyleForGeneration } from '@/lib/art-style-generation'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
-import { type TaskJobData } from '@/lib/task/types'
+import { submitTask } from '@/lib/task/submitter'
+import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
+import { assertVisionInputSupported, createVisualVersionHash } from '@/lib/visual-quality'
 import { reportTaskProgress } from '../shared'
 import {
   assertTaskActive,
@@ -16,6 +18,7 @@ import {
 } from './image-task-handler-shared'
 import { buildLocationImagePromptCore } from '@/lib/location-image-prompt'
 import { buildPropImagePromptCore } from '@/lib/prop-image-prompt'
+import { buildLocationAssetTargetSpec } from './visual-quality-review-helpers'
 
 function resolvePayloadArtStyle(payload: AnyObj): ArtStyleValue | undefined {
   if (!Object.prototype.hasOwnProperty.call(payload, 'artStyle')) return undefined
@@ -32,12 +35,14 @@ interface LocationImageRecord {
   description: string | null
   availableSlots?: string | null
   imageIndex: number
-  location?: { name: string } | null
+  location?: { name: string; summary?: string | null; assetKind?: string | null } | null
 }
 
 interface LocationWithImages {
   id: string
   name: string
+  summary?: string | null
+  assetKind?: string | null
   images?: LocationImageRecord[]
 }
 
@@ -89,11 +94,13 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
   let locationImages: LocationImageRecord[] = []
   // 用于存储 locationId -> name 的映射，避免 images 子集缺少 location 关联
   const locationNameMap: Record<string, string> = {}
+  const locationMetaMap: Record<string, { name: string; summary?: string | null; assetKind?: string | null }> = {}
 
   if (maybeLocationImage) {
     // 来源 location 名字已 include，先记录
     if (maybeLocationImage.location?.name) {
       locationNameMap[maybeLocationImage.locationId] = maybeLocationImage.location.name
+      locationMetaMap[maybeLocationImage.locationId] = maybeLocationImage.location
     }
     if (payload.imageIndex !== undefined) {
       locationImages = [maybeLocationImage]
@@ -104,6 +111,11 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
       })
       if (location?.name) {
         locationNameMap[maybeLocationImage.locationId] = location.name
+        locationMetaMap[maybeLocationImage.locationId] = {
+          name: location.name,
+          summary: location.summary,
+          assetKind: location.assetKind,
+        }
       }
       const orderedImages = location?.images || [maybeLocationImage]
       locationImages = requestedCount === null ? orderedImages : orderedImages.slice(0, requestedCount)
@@ -123,6 +135,11 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
 
     // 记录 location 名字
     locationNameMap[locationId] = location.name
+    locationMetaMap[locationId] = {
+      name: location.name,
+      summary: location.summary,
+      assetKind: location.assetKind,
+    }
 
     if (payload.imageIndex !== undefined) {
       const image = location.images.find((it) => it.imageIndex === Number(payload.imageIndex))
@@ -142,6 +159,11 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
     })
     for (const loc of extras) {
       locationNameMap[loc.id] = loc.name
+      locationMetaMap[loc.id] = {
+        name: loc.name,
+        summary: loc.summary,
+        assetKind: loc.assetKind,
+      }
     }
   }
 
@@ -196,6 +218,46 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
       where: { id: item.id },
       data: { imageUrl: imageKey },
     })
+
+    try {
+      if (!models.analysisModel) throw new Error('ANALYSIS_MODEL_NOT_CONFIGURED')
+      assertVisionInputSupported(models.analysisModel)
+      const locationMeta = locationMetaMap[item.locationId] || {
+        name,
+        assetKind: assetType,
+      }
+      const targetSpec = buildLocationAssetTargetSpec({
+        image: {
+          ...item,
+          description: promptBody,
+          location: locationMeta,
+        },
+        artStyle: resolvedArtStyle.prompt || models.artStylePrompt || models.artStyle || '',
+      })
+      const candidateUrls = [imageKey]
+      const versionHash = createVisualVersionHash({ targetSpec, candidateUrls })
+      await submitTask({
+        userId,
+        locale: job.data.locale,
+        projectId,
+        type: TASK_TYPE.VISUAL_QUALITY_REVIEW,
+        targetType: 'LocationImage',
+        targetId: item.id,
+        payload: {
+          assetKind: assetType,
+          locationId: item.locationId,
+          locationImageId: item.id,
+          candidateUrls,
+          targetSpec,
+          versionHash,
+          analysisModel: models.analysisModel,
+          attempt: 0,
+        },
+        dedupeKey: `visual_quality_review:LocationImage:${item.id}:${versionHash}`,
+      })
+    } catch {
+      // 质量检查不可用时不阻断资产生成，用户仍可手动选择候选图。
+    }
   }
 
   return {

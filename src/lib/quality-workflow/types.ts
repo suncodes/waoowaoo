@@ -1,11 +1,26 @@
 import type { ImageQualityReviewResult, RepairAction } from '@/lib/visual-quality'
 
+export type VisualCandidateGroupOrigin = 'initial' | 'repair'
+
+export interface VisualCandidateGroup {
+  id: string
+  versionHash: string
+  label: string
+  origin: VisualCandidateGroupOrigin
+  attempt: number
+  candidateUrls: string[]
+  sourceCandidateUrl: string | null
+  action: Extract<RepairAction, 'edit' | 'regenerate'> | null
+  createdAt: string
+}
+
 export interface VisualQualityState {
   schemaVersion: 1
   mode: 'shadow' | 'auto'
   status: 'pending' | 'reviewing' | 'shadow_completed' | 'repairing' | 'approved' | 'human_required' | 'failed'
   versionHash: string
   candidateUrls: string[]
+  candidateGroups: VisualCandidateGroup[]
   activeCandidateUrl: string | null
   attempt: number
   maxAttempts: number

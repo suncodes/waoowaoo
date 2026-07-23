@@ -144,7 +144,7 @@ function BoardDetailPanel({
                   ? '正在检查候选图片'
                   : '候选图片等待检查'}
             </div>
-            <p className="mt-1 text-xs leading-5 text-cyan-100/70">检查与修复流程完成前不能确认，完成后候选图会自动恢复显示。</p>
+            <p className="mt-1 text-xs leading-5 text-cyan-100/70">检查与修复流程完成前不能确认，但候选图可继续预览和比较。</p>
           </div>
         ) : null}
 
@@ -170,38 +170,78 @@ function BoardDetailPanel({
                 </StudioButton>
               </div>
             </div>
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              {candidates.candidates.map((candidateUrl, index) => {
-                const pending = candidateUrl.startsWith('PENDING:')
-                const selected = index === candidates.selectedIndex
+            <div className="mt-3 space-y-3">
+              {(candidates.groups.length > 0
+                ? candidates.groups
+                : [{
+                  id: 'all-candidates',
+                  label: '候选图',
+                  origin: 'initial' as const,
+                  attempt: 0,
+                  candidateUrls: candidates.candidates,
+                  sourceCandidateUrl: null,
+                  action: null,
+                  versionHash: '',
+                  createdAt: '',
+                }]
+              ).map((group) => {
+                const groupCandidates = group.candidateUrls
+                  .map((candidateUrl) => ({
+                    candidateUrl,
+                    index: candidates.candidates.findIndex((itemUrl) => itemUrl === candidateUrl),
+                  }))
+                  .filter((entry) => entry.index >= 0)
+                if (groupCandidates.length === 0) return null
                 return (
-                  <button
-                    key={`${candidateUrl}:${index}`}
-                    type="button"
-                    onClick={() => {
-                      if (!pending) controller.selectPanelCandidateIndex(item.panel.id, index)
-                    }}
-                    disabled={pending}
-                    className={`relative aspect-video overflow-hidden rounded-md border ${selected ? 'border-[#e8d18a]' : 'border-white/10 hover:border-white/30'}`}
-                  >
-                    {pending ? (
-                      <div className="flex h-full items-center justify-center bg-black/30 text-[11px] text-stone-400">
-                        <AppIcon name="loader" className="mr-1 h-3 w-3 animate-spin" />
-                        等待
-                      </div>
-                    ) : (
-                      <MediaImageWithLoading
-                        src={candidateUrl}
-                        alt={`候选 ${index + 1}`}
-                        containerClassName="h-full w-full"
-                        className="h-full w-full object-cover"
-                        sizes="140px"
-                      />
-                    )}
-                    {!pending && candidateUrl === item.panel.imageUrl ? (
-                      <span className="absolute bottom-1 left-1 rounded bg-emerald-600/90 px-1.5 py-0.5 text-[10px] font-semibold text-white">当前定稿</span>
-                    ) : null}
-                  </button>
+                  <div key={group.id} className="rounded-md border border-white/10 bg-black/10 p-2">
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-[11px] font-semibold text-amber-50">{group.label}（{groupCandidates.length}）</span>
+                      {group.origin === 'repair' ? (
+                        <span className="text-[10px] text-amber-100/70">
+                          {group.action === 'edit' ? '编辑修复' : '重新生成'}
+                          {group.sourceCandidateUrl ? ' · 有修复来源' : ''}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {groupCandidates.map(({ candidateUrl, index }) => {
+                        const pending = candidateUrl.startsWith('PENDING:')
+                        const selected = index === candidates.selectedIndex
+                        return (
+                          <button
+                            key={`${candidateUrl}:${index}`}
+                            type="button"
+                            onClick={() => {
+                              if (!pending) controller.selectPanelCandidateIndex(item.panel.id, index)
+                            }}
+                            disabled={pending}
+                            className={`relative aspect-video cursor-pointer overflow-hidden rounded-md border transition-colors disabled:cursor-not-allowed ${selected ? 'border-[#e8d18a]' : 'border-white/10 hover:border-white/30'}`}
+                          >
+                            {pending ? (
+                              <div className="flex h-full items-center justify-center bg-black/30 text-[11px] text-stone-400">
+                                <AppIcon name="loader" className="mr-1 h-3 w-3 animate-spin" />
+                                等待
+                              </div>
+                            ) : (
+                              <MediaImageWithLoading
+                                src={candidateUrl}
+                                alt={`${group.label} 候选 ${index + 1}`}
+                                containerClassName="h-full w-full"
+                                className="h-full w-full object-cover"
+                                sizes="140px"
+                              />
+                            )}
+                            {!pending && candidateUrl === item.panel.imageUrl ? (
+                              <span className="absolute bottom-1 left-1 rounded bg-emerald-600/90 px-1.5 py-0.5 text-[10px] font-semibold text-white">当前定稿</span>
+                            ) : null}
+                            {!pending && selected ? (
+                              <span className="absolute right-1 top-1 rounded bg-[#f3e9cf] px-1.5 py-0.5 text-[10px] font-semibold text-[#161512]">当前选择</span>
+                            ) : null}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
                 )
               })}
             </div>

@@ -78,7 +78,17 @@ export default function StudioVisualAssetInspector({
   const [draftName, setDraftName] = useState(item.asset?.name || item.name)
   const [draftDescription, setDraftDescription] = useState(item.asset ? assetDescription(item.asset) : item.description)
   const renders = flattenRenders(item.asset)
-  const disabled = !!pendingKey
+  const remoteTaskRunning = !!item.asset && (
+    item.asset.taskState.isRunning
+    || item.asset.variants.some((variant) =>
+      variant.taskState.isRunning || variant.renders.some((render) => render.taskState.isRunning),
+    )
+  )
+  const assetTaskError = item.asset?.variants.flatMap((variant) => [
+    variant.taskState.lastError,
+    ...variant.renders.map((render) => render.taskState.lastError),
+  ]).find(Boolean) || item.asset?.taskState.lastError || null
+  const disabled = !!pendingKey || remoteTaskRunning
   const primaryVariant = item.asset?.variants[0]
   const confirmedRender = renders.find(({ variant, render }) => isSelectedRender(variant, render))
   const confirmedRenderKey = confirmedRender ? renderKey(confirmedRender.variant, confirmedRender.render) : ''
@@ -140,6 +150,12 @@ export default function StudioVisualAssetInspector({
           ) : (
             <div className="flex h-full items-center justify-center text-stone-600"><AppIcon name={item.kind === 'character' ? 'user' : item.kind === 'location' ? 'imageLandscape' : 'package'} className="h-8 w-8" /></div>
           )}
+          {remoteTaskRunning ? (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/55 text-sm font-semibold text-cyan-100">
+              <AppIcon name="loader" className="mr-2 h-4 w-4 animate-spin" />
+              生成/检查/修复中
+            </div>
+          ) : null}
         </div>
         <div className="min-w-0">
           {editing ? (
@@ -164,17 +180,33 @@ export default function StudioVisualAssetInspector({
       {renders.length > 0 ? (
         <div className="border-t border-white/10 px-5 py-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <div><h3 className="text-sm font-semibold text-stone-50">候选图</h3><p className="mt-1 text-xs text-stone-500">先切换比较，再确认定稿。</p></div>
+            <div>
+              <h3 className="text-sm font-semibold text-stone-50">候选图</h3>
+              <p className="mt-1 text-xs text-stone-500">
+                {remoteTaskRunning ? '流程完成前可预览比较，暂不能设为定稿。' : '先切换比较，再确认定稿。'}
+              </p>
+            </div>
             <StudioButton size="sm" icon="check" loading={selectedRender && item.asset ? pendingKey === `select:${item.id}:${visualAssetSelectionIndex(item.asset, selectedRender.variant, selectedRender.render)}` : false} onClick={() => { if (selectedRender) void select(selectedRender.variant, selectedRender.render) }} disabled={!selectedRender || selectedRenderKey === confirmedRenderKey || disabled}>
               {selectedRenderKey === confirmedRenderKey ? '当前已定稿' : '设为定稿'}
             </StudioButton>
           </div>
+          {remoteTaskRunning ? (
+            <div className="mb-3 rounded-md border border-cyan-400/25 bg-cyan-400/10 px-3 py-2 text-xs text-cyan-100">
+              <AppIcon name="loader" className="mr-2 inline h-3.5 w-3.5 animate-spin" />
+              资产图片正在进入质量检查或自动修复，完成后可从所有候选中任选定稿。
+            </div>
+          ) : null}
+          {assetTaskError ? (
+            <div className="mb-3 rounded-md border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs text-rose-100">
+              {assetTaskError.message}
+            </div>
+          ) : null}
           <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-4">
             {renders.map(({ variant, render }) => {
               const key = renderKey(variant, render)
               const selected = key === selectedRenderKey
               return (
-                <button key={key} type="button" onClick={() => setSelectedRenderKey(key)} disabled={disabled} className={`group relative aspect-[4/3] overflow-hidden rounded-md border text-left ${selected ? 'border-emerald-400' : 'border-white/10 hover:border-[#e8d18a]'}`}>
+                <button key={key} type="button" onClick={() => setSelectedRenderKey(key)} disabled={!!pendingKey} className={`group relative aspect-[4/3] cursor-pointer overflow-hidden rounded-md border text-left transition-colors disabled:cursor-not-allowed ${selected ? 'border-emerald-400' : 'border-white/10 hover:border-[#e8d18a]'}`}>
                   <Image src={render.imageUrl || ''} alt={`${item.name} 候选图 ${render.index + 1}`} fill sizes="160px" className="object-cover" unoptimized />
                   <span className={`absolute left-2 top-2 rounded px-2 py-1 text-[11px] font-semibold ${selected ? 'bg-[#f3e9cf] text-[#161512]' : 'bg-black/60 text-stone-100'}`}>{selected ? '当前选择' : `候选 ${render.index + 1}`}</span>
                   {isSelectedRender(variant, render) ? <span className="absolute bottom-2 right-2 rounded bg-emerald-500 px-2 py-1 text-[10px] font-semibold text-white">已定稿</span> : null}

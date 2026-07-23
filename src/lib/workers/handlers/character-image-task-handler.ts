@@ -2,9 +2,11 @@ import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
 import { CHARACTER_ASSET_IMAGE_RATIO, addCharacterPromptSuffix, appendPromptSegments, isArtStyleValue, prependStyleReferenceImage, PRIMARY_APPEARANCE_INDEX, type ArtStyleValue } from '@/lib/constants'
 import { resolveArtStyleForGeneration } from '@/lib/art-style-generation'
-import { type TaskJobData } from '@/lib/task/types'
+import { submitTask } from '@/lib/task/submitter'
+import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 import { encodeImageUrls } from '@/lib/contracts/image-urls-contract'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
+import { assertVisionInputSupported, createVisualVersionHash } from '@/lib/visual-quality'
 import { reportTaskProgress } from '../shared'
 import {
   assertTaskActive,
@@ -18,6 +20,7 @@ import {
   parseJsonStringArray,
   pickFirstString,
 } from './image-task-handler-shared'
+import { buildCharacterAssetTargetSpec } from './visual-quality-review-helpers'
 
 function resolvePayloadArtStyle(payload: AnyObj): ArtStyleValue | undefined {
   if (!Object.prototype.hasOwnProperty.call(payload, 'artStyle')) return undefined
@@ -79,6 +82,7 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
 
   const appearanceId = pickFirstString(job.data.targetId, payload.appearanceId)
   let appearance: CharacterAppearanceRecord | null = null
+  let appearanceForQuality: CharacterAppearanceWithCharacter | null = null
   let characterName = '角色'
 
   if (appearanceId) {
@@ -88,6 +92,7 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
     })
     if (appearanceWithCharacter) {
       appearance = appearanceWithCharacter
+      appearanceForQuality = appearanceWithCharacter
       characterName = appearanceWithCharacter.character.name
     }
   }
@@ -101,6 +106,10 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
     appearance = character?.appearances?.[0] || null
     if (character && appearance) {
       characterName = character.name
+      appearanceForQuality = {
+        ...appearance,
+        character: { name: character.name },
+      }
     }
   }
 
@@ -203,6 +212,39 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
       imageUrl: mainImage || null,
     },
   })
+
+  const qualityCandidates = nextImageUrls.filter((url): url is string => typeof url === 'string' && url.length > 0)
+  if (appearanceForQuality && qualityCandidates.length > 0) {
+    try {
+      if (!models.analysisModel) throw new Error('ANALYSIS_MODEL_NOT_CONFIGURED')
+      assertVisionInputSupported(models.analysisModel)
+      const targetSpec = buildCharacterAssetTargetSpec({
+        appearance: appearanceForQuality,
+        artStyle: resolvedArtStyle.prompt || models.artStylePrompt || models.artStyle || '',
+      })
+      const versionHash = createVisualVersionHash({ targetSpec, candidateUrls: qualityCandidates })
+      await submitTask({
+        userId,
+        locale: job.data.locale,
+        projectId,
+        type: TASK_TYPE.VISUAL_QUALITY_REVIEW,
+        targetType: 'CharacterAppearance',
+        targetId: appearance.id,
+        payload: {
+          assetKind: 'character',
+          appearanceId: appearance.id,
+          candidateUrls: qualityCandidates,
+          targetSpec,
+          versionHash,
+          analysisModel: models.analysisModel,
+          attempt: 0,
+        },
+        dedupeKey: `visual_quality_review:CharacterAppearance:${appearance.id}:${versionHash}`,
+      })
+    } catch {
+      // 质量检查不可用时不阻断资产生成，用户仍可手动选择候选图。
+    }
+  }
 
   return {
     appearanceId: appearance.id,

@@ -4,6 +4,11 @@ import type {
   VisualQualityIssue,
   VisualTechnicalCheck,
 } from '@/lib/visual-quality'
+import {
+  CHARACTER_ASSET_IMAGE_RATIO,
+  LOCATION_IMAGE_RATIO,
+  PROP_IMAGE_RATIO,
+} from '@/lib/constants'
 
 type PanelForQuality = {
   id: string
@@ -18,6 +23,28 @@ type PanelForQuality = {
   renderMode: string | null
   onScreenText: string | null
   linkedToNextPanel: boolean
+}
+
+type CharacterAppearanceForQuality = {
+  id: string
+  changeReason: string | null
+  description: string | null
+  descriptions?: string | null
+  character: {
+    name: string
+    introduction?: string | null
+  }
+}
+
+type LocationImageForQuality = {
+  id: string
+  description: string | null
+  availableSlots?: string | null
+  location: {
+    name: string
+    summary?: string | null
+    assetKind?: string | null
+  }
 }
 
 function parseStringArray(value: string | null): string[] {
@@ -40,6 +67,18 @@ function parseStringArray(value: string | null): string[] {
 function readStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return []
   return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+}
+
+function readFirstDescription(value: string | null | undefined, fallback: string): string {
+  if (!value) return fallback
+  try {
+    const parsed = JSON.parse(value) as unknown
+    if (!Array.isArray(parsed)) return fallback
+    const first = parsed.find((item) => typeof item === 'string' && item.trim())
+    return typeof first === 'string' ? first.trim() : fallback
+  } catch {
+    return fallback
+  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -74,6 +113,67 @@ export function buildPanelImageTargetSpec(params: {
     continuityRules: readStringArray(bible.continuityRules),
     forbiddenPatterns: readStringArray(bible.forbiddenPatterns),
     riskLevel: params.panel.linkedToNextPanel || params.panel.onScreenText ? 'high' : 'medium',
+  }
+}
+
+export function buildCharacterAssetTargetSpec(params: {
+  appearance: CharacterAppearanceForQuality
+  artStyle: string
+}): ImageTargetSpec {
+  const intent = readFirstDescription(
+    params.appearance.descriptions,
+    params.appearance.description || params.appearance.character.introduction || params.appearance.character.name,
+  )
+  return {
+    schemaVersion: 1,
+    targetType: 'character',
+    targetId: params.appearance.id,
+    intent,
+    aspectRatio: CHARACTER_ASSET_IMAGE_RATIO,
+    visualType: 'character',
+    renderMode: 'generated_image',
+    shotType: '',
+    cameraMove: '',
+    location: '',
+    characters: [params.appearance.character.name],
+    props: [],
+    requiredText: '',
+    styleBaseline: params.artStyle,
+    continuityRules: [
+      `${params.appearance.character.name} must match the character description.`,
+      params.appearance.changeReason ? `Appearance variant: ${params.appearance.changeReason}.` : '',
+    ].filter(Boolean),
+    forbiddenPatterns: [],
+    riskLevel: 'medium',
+  }
+}
+
+export function buildLocationAssetTargetSpec(params: {
+  image: LocationImageForQuality
+  artStyle: string
+}): ImageTargetSpec {
+  const isProp = params.image.location.assetKind === 'prop'
+  return {
+    schemaVersion: 1,
+    targetType: isProp ? 'prop' : 'location',
+    targetId: params.image.id,
+    intent: params.image.description || params.image.location.summary || params.image.location.name,
+    aspectRatio: isProp ? PROP_IMAGE_RATIO : LOCATION_IMAGE_RATIO,
+    visualType: isProp ? 'prop' : 'location',
+    renderMode: 'generated_image',
+    shotType: '',
+    cameraMove: '',
+    location: isProp ? '' : params.image.location.name,
+    characters: [],
+    props: isProp ? [params.image.location.name] : [],
+    requiredText: '',
+    styleBaseline: params.artStyle,
+    continuityRules: [
+      `${params.image.location.name} must match the asset description.`,
+      params.image.availableSlots ? `Available slots: ${params.image.availableSlots}.` : '',
+    ].filter(Boolean),
+    forbiddenPatterns: [],
+    riskLevel: isProp ? 'low' : 'medium',
   }
 }
 

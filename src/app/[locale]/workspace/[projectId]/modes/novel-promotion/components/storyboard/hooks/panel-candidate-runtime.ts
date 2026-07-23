@@ -2,11 +2,17 @@
 
 import type { NovelPromotionPanel } from '@/types/project'
 import { extractErrorMessage } from '@/lib/errors/extract'
-import { parseVisualQualityState } from '@/lib/quality-workflow'
+import {
+  flattenVisualCandidateGroups,
+  parseVisualQualityState,
+  resolveVisualCandidateGroups,
+  type VisualCandidateGroup,
+} from '@/lib/quality-workflow'
 
 export interface PanelCandidateData {
   candidates: string[]
   selectedIndex: number
+  groups: VisualCandidateGroup[]
 }
 
 interface CandidateStateLike {
@@ -47,33 +53,20 @@ function parseCandidateImages(candidateImagesStr: string): string[] | null {
   }
 }
 
+function resolveCandidateGroups(panel: NovelPromotionPanel): VisualCandidateGroup[] {
+  return resolveVisualCandidateGroups({
+    visualQualityState: panel.visualQualityState,
+    candidateImages: panel.candidateImages,
+  })
+}
+
 function resolveCandidateImages(panel: NovelPromotionPanel): string[] | null {
-  const qualityState = parseVisualQualityState(panel.visualQualityState)
-  if (
-    qualityState?.mode === 'auto'
-    && (
-      qualityState.status === 'pending'
-      || qualityState.status === 'reviewing'
-      || qualityState.status === 'repairing'
-    )
-  ) {
-    return null
-  }
+  const groupedCandidates = flattenVisualCandidateGroups(resolveCandidateGroups(panel))
+  if (groupedCandidates.length > 0) return groupedCandidates
 
-  if (panel.candidateImages) {
-    const candidates = parseCandidateImages(panel.candidateImages)
-    if (candidates) return candidates
-  }
-
-  if (
-    qualityState
-    && (qualityState.status === 'human_required' || qualityState.status === 'failed')
-    && qualityState.candidateUrls.length > 0
-  ) {
-    return qualityState.candidateUrls
-  }
-
-  return null
+  if (!panel.candidateImages) return null
+  const candidates = parseCandidateImages(panel.candidateImages)
+  return candidates || null
 }
 
 export function resolveConfirmedCandidateIndex(
@@ -139,6 +132,7 @@ export function getPanelCandidatesFromRuntime(
   candidateSystem: PanelCandidateSystemLike,
 ): PanelCandidateData | null {
   const candidates = resolveCandidateImages(panel)
+  const groups = resolveCandidateGroups(panel)
   if (!candidates) return null
 
   const localState = candidateSystem.getCandidateState(panel.id)
@@ -146,6 +140,7 @@ export function getPanelCandidatesFromRuntime(
     return {
       candidates: localState.candidates,
       selectedIndex: localState.selectedIndex,
+      groups,
     }
   }
 
@@ -154,12 +149,14 @@ export function getPanelCandidatesFromRuntime(
     return {
       candidates,
       selectedIndex: 0,
+      groups,
     }
   }
 
   return {
     candidates: validCandidates,
     selectedIndex: Math.max(0, resolveConfirmedCandidateIndex(panel, validCandidates)),
+    groups,
   }
 }
 

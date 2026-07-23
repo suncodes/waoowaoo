@@ -3,7 +3,7 @@ import { NextRequest } from 'next/server'
 import { ApiError, getRequestId } from '@/lib/api-errors'
 import { resolveRequiredTaskLocale } from '@/lib/task/resolve-locale'
 import { submitTask } from '@/lib/task/submitter'
-import { TASK_TYPE } from '@/lib/task/types'
+import { TASK_STATUS, TASK_TYPE } from '@/lib/task/types'
 import { buildDefaultTaskBillingInfo } from '@/lib/billing'
 import { getProjectModelConfig, getUserModelConfig, buildImageBillingPayload, buildImageBillingPayloadFromUserConfig } from '@/lib/config-service'
 import { withTaskUiPayload } from '@/lib/task/ui-payload'
@@ -138,6 +138,32 @@ function requireLocationBackedKind(kind: AssetKind): LocationBackedAssetKind {
     throw new ApiError('INVALID_PARAMS')
   }
   return kind
+}
+
+async function assertNoActiveProjectAssetQualityTask(params: {
+  projectId: string
+  userId: string
+  targetType: 'CharacterAppearance' | 'LocationImage'
+  targetIds: string[]
+}) {
+  const targetIds = params.targetIds.filter(Boolean)
+  if (targetIds.length === 0) return
+  const task = await prisma.task.findFirst({
+    where: {
+      projectId: params.projectId,
+      userId: params.userId,
+      targetType: params.targetType,
+      targetId: { in: targetIds },
+      type: { in: [TASK_TYPE.VISUAL_QUALITY_REVIEW, TASK_TYPE.VISUAL_AUTO_REPAIR] },
+      status: { in: [TASK_STATUS.QUEUED, TASK_STATUS.PROCESSING] },
+    },
+    select: { id: true },
+  })
+  if (task) {
+    throw new ApiError('CONFLICT', {
+      message: '资产图片质量检查或自动修复尚未完成，暂时不能设为定稿。',
+    })
+  }
 }
 
 export async function submitAssetGenerateTask(input: AssetGenerateInput) {
@@ -628,6 +654,12 @@ async function selectProjectAssetRender(input: AssetSelectInput) {
       include: { character: true },
     })
     if (!appearance) throw new ApiError('NOT_FOUND')
+    await assertNoActiveProjectAssetQualityTask({
+      projectId: requireProjectId(input.access),
+      userId: input.access.userId,
+      targetType: 'CharacterAppearance',
+      targetIds: [appearance.id],
+    })
     const imageUrls = decodeImageUrlsFromDb(appearance.imageUrls, 'characterAppearance.imageUrls')
     if (selectedIndex !== null && (selectedIndex < 0 || selectedIndex >= imageUrls.length || !imageUrls[selectedIndex])) {
       throw new ApiError('INVALID_PARAMS')
@@ -641,6 +673,17 @@ async function selectProjectAssetRender(input: AssetSelectInput) {
   }
   const confirm = input.body.confirm === true
   if (confirm) {
+    const location = await prisma.novelPromotionLocation.findUnique({
+      where: { id: input.assetId },
+      include: { images: { select: { id: true } } },
+    })
+    if (!location) throw new ApiError('NOT_FOUND')
+    await assertNoActiveProjectAssetQualityTask({
+      projectId: requireProjectId(input.access),
+      userId: input.access.userId,
+      targetType: 'LocationImage',
+      targetIds: location.images.map((image) => image.id),
+    })
     return confirmProjectLocationBackedSelection(input.assetId)
   }
   const selectedIndex = toNumber(input.body.selectedIndex ?? input.body.imageIndex)
@@ -649,6 +692,12 @@ async function selectProjectAssetRender(input: AssetSelectInput) {
     include: { images: { orderBy: { imageIndex: 'asc' } } },
   })
   if (!location) throw new ApiError('NOT_FOUND')
+  await assertNoActiveProjectAssetQualityTask({
+    projectId: requireProjectId(input.access),
+    userId: input.access.userId,
+    targetType: 'LocationImage',
+    targetIds: location.images.map((image) => image.id),
+  })
 
   if (selectedIndex !== null) {
     const targetImage = location.images.find((image) => image.imageIndex === selectedIndex)
