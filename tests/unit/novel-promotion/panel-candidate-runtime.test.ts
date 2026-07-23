@@ -31,13 +31,12 @@ describe('panel candidate runtime', () => {
       }),
     }), candidateSystem)
 
-    expect(result).toEqual({
-      candidates: ['candidate-1.png', 'candidate-2.png'],
-      selectedIndex: 0,
-    })
+    expect(result?.candidates).toEqual(['candidate-1.png', 'candidate-2.png'])
+    expect(result?.selectedIndex).toBe(0)
+    expect(result?.groups[0]?.label).toBe('原始候选')
   })
 
-  it('does not allow manual selection while automatic review is running', () => {
+  it('keeps candidates visible while automatic review is running', () => {
     const result = getPanelCandidatesFromRuntime(panel({
       candidateImages: JSON.stringify(['candidate-1.png']),
       visualQualityState: createVisualQualityState({
@@ -48,7 +47,9 @@ describe('panel candidate runtime', () => {
       }),
     }), candidateSystem)
 
-    expect(result).toBeNull()
+    expect(result?.candidates).toEqual(['candidate-1.png'])
+    expect(result?.selectedIndex).toBe(0)
+    expect(result?.groups[0]?.label).toBe('原始候选')
   })
 
   it('keeps candidates visible after human confirmation', () => {

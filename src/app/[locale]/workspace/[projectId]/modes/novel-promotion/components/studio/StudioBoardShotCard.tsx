@@ -10,16 +10,20 @@ export default function StudioBoardShotCard({
   item,
   selected,
   status,
+  statusLabel,
   imageUrl,
   running,
+  runningLabel,
   onSelect,
   onPreview,
 }: {
   item: BoardItem
   selected: boolean
   status: StudioProductStatus
+  statusLabel?: string
   imageUrl: string | null
   running: boolean
+  runningLabel?: string
   onSelect: () => void
   onPreview: (url: string) => void
 }) {
@@ -31,10 +35,10 @@ export default function StudioBoardShotCard({
         ) : (
           <div className="flex h-full items-center justify-center text-stone-600"><AppIcon name="image" className="h-7 w-7" /></div>
         )}
-        {running ? <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-xs font-semibold text-cyan-100"><AppIcon name="loader" className="mr-2 h-4 w-4 animate-spin" />生成中</div> : null}
+        {running ? <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-xs font-semibold text-cyan-100"><AppIcon name="loader" className="mr-2 h-4 w-4 animate-spin" />{runningLabel || '生成中'}</div> : null}
       </div>
       <div className="min-w-0">
-        <div className="flex items-center justify-between gap-3"><h2 className="text-sm font-semibold text-stone-50">镜头 {String(item.globalNumber).padStart(2, '0')}</h2><StudioStatusBadge status={status} /></div>
+        <div className="flex items-center justify-between gap-3"><h2 className="text-sm font-semibold text-stone-50">镜头 {String(item.globalNumber).padStart(2, '0')}</h2><StudioStatusBadge status={status} label={statusLabel} /></div>
         <p className="mt-2 line-clamp-3 text-sm leading-6 text-stone-300">{item.panel.description || '待补充画面描述'}</p>
         <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-stone-400">
           {item.panel.location ? <span className="rounded bg-white/[0.05] px-2 py-1">{item.panel.location}</span> : null}
@@ -44,4 +48,3 @@ export default function StudioBoardShotCard({
     </button>
   )
 }
-

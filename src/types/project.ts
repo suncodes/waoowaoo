@@ -199,6 +199,22 @@ export interface NovelPromotionPanel {
   visualQualityState?: unknown
   // 任务态字段（由 tasks + hook 派生，不再依赖数据库持久化）
   imageTaskRunning?: boolean
+  imageTaskIntent?: string | null
+  imageTaskState?: {
+    phase?: 'idle' | 'queued' | 'processing' | 'completed' | 'failed' | null
+    runningTaskId?: string | null
+    runningTaskType?: string | null
+    progress?: number | null
+    stage?: string | null
+    stageLabel?: string | null
+    attempt?: number | null
+    maxAttempts?: number | null
+    updatedAt?: string | null
+    lastError?: {
+      code: string
+      message: string
+    } | null
+  } | null
   videoTaskRunning?: boolean
   imageErrorMessage?: string | null  // 图片生成错误消息
 }

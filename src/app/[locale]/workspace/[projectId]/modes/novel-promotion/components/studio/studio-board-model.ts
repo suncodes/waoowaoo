@@ -4,6 +4,7 @@ import { evaluateVisualReadiness } from '@/lib/visual-readiness'
 import type { StoryboardPanel } from '../storyboard/hooks/useStoryboardState'
 import { getStoryboardPanels } from '../storyboard/hooks/storyboard-state-utils'
 import type { StudioProductStatus } from './studio-types'
+import { resolvePanelImageWorkflowPresentation } from './studio-board-image-workflow'
 
 export interface BoardItem {
   storyboard: NovelPromotionStoryboard
@@ -39,7 +40,6 @@ export function flattenBoardItems(
 }
 
 export function resolvePanelStatus({
-  panel,
   sourcePanel,
   hasCandidates,
   submitting,
@@ -51,15 +51,12 @@ export function resolvePanelStatus({
   submitting: boolean
   modifying: boolean
 }): StudioProductStatus {
-  if (submitting || modifying || sourcePanel.imageTaskRunning) return 'generating'
-  if (sourcePanel.imageErrorMessage) return 'failed'
-  const readiness = evaluateVisualReadiness(sourcePanel.visualQualityState)
-  if (readiness.status === 'pending') return 'generating'
-  if (readiness.status === 'blocked') return 'needs_review'
-  if (candidatesNeedConfirmation(sourcePanel, hasCandidates)) return 'needs_review'
-  if (panel.imageUrl) return 'locked'
-  if (panel.description) return 'drafting'
-  return 'empty'
+  return resolvePanelImageWorkflowPresentation({
+    panel: sourcePanel,
+    hasCandidates,
+    isSubmitting: submitting,
+    isModifying: modifying,
+  }).status
 }
 
 export function isPanelReadyForProduction({

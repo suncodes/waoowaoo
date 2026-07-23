@@ -56,7 +56,13 @@ function buildPanelTargets(storyboards: NovelPromotionStoryboard[], type: 'image
           key: `panel-image:${panel.id}`,
           targetType: 'NovelPromotionPanel',
           targetId: panel.id,
-          types: ['image_panel', 'panel_variant', 'modify_asset_image'],
+          types: [
+            'image_panel',
+            'panel_variant',
+            'modify_asset_image',
+            'visual_quality_review',
+            'visual_auto_repair',
+          ],
           resource: 'image',
           hasOutput: !!panel.imageUrl,
         })
@@ -141,6 +147,20 @@ export function useStoryboardTaskAwareStoryboards({
           ...panel,
           imageTaskRunning: panelImageRunning,
           imageTaskIntent: panelImageTaskState?.intent,
+          imageTaskState: panelImageTaskState
+            ? {
+              phase: panelImageTaskState.phase,
+              runningTaskId: panelImageTaskState.runningTaskId,
+              runningTaskType: panelImageTaskState.runningTaskType,
+              progress: panelImageTaskState.progress,
+              stage: panelImageTaskState.stage,
+              stageLabel: panelImageTaskState.stageLabel,
+              attempt: panelImageTaskState.attempt ?? null,
+              maxAttempts: panelImageTaskState.maxAttempts ?? null,
+              updatedAt: panelImageTaskState.updatedAt,
+              lastError: panelImageTaskState.lastError,
+            }
+            : null,
           videoTaskRunning: isRunningPhase(panelVideoStates.getTaskState(`panel-video:${panel.id}`)?.phase),
           lipSyncTaskRunning: isRunningPhase(panelLipSyncStates.getTaskState(`panel-lip:${panel.id}`)?.phase),
         }

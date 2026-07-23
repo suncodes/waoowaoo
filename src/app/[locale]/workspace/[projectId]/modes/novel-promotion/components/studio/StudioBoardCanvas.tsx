@@ -6,7 +6,7 @@ import VisualQualityBadge from '@/components/visual-quality/VisualQualityBadge'
 import ImagePreviewModal from '@/components/ui/ImagePreviewModal'
 import { AppIcon } from '@/components/ui/icons'
 import type { CreationWorkflowState } from '@/lib/creation-workspace/workflow-state'
-import { isVisualQualityProcessing, parseVisualQualityState } from '@/lib/quality-workflow'
+import { parseVisualQualityState } from '@/lib/quality-workflow'
 import { useWorkspaceProvider } from '../../WorkspaceProvider'
 import { useWorkspaceStageRuntime } from '../../WorkspaceStageRuntimeContext'
 import { useWorkspaceEpisodeStageData } from '../../hooks/useWorkspaceEpisodeStageData'
@@ -18,10 +18,14 @@ import { useStoryboardModalRuntime } from '../storyboard/hooks/useStoryboardModa
 import { useStoryboardStageController } from '../storyboard/hooks/useStoryboardStageController'
 import { StudioButton, StudioEmptyState, StudioMetric, StudioSectionHeader, StudioStageHeader } from './StudioPrimitives'
 import { type StudioWorkspaceModel } from './studio-types'
+import {
+  buildPanelCandidateDisplayGroups,
+  resolvePanelImageWorkflowPresentation,
+} from './studio-board-image-workflow'
 import StudioBoardEmpty from './StudioBoardEmpty'
 import StudioBoardShotCard from './StudioBoardShotCard'
 import StudioShotPlanEditor from './StudioShotPlanEditor'
-import { currentImageUrl, flattenBoardItems, isPanelReadyForProduction, resolvePanelStatus, type BoardItem } from './studio-board-model'
+import { currentImageUrl, flattenBoardItems, isPanelReadyForProduction, type BoardItem } from './studio-board-model'
 
 interface StudioBoardCanvasProps {
   model: StudioWorkspaceModel
@@ -44,13 +48,32 @@ function BoardDetailPanel({
   const saveState = controller.saveStateByPanel[item.panel.id]
   const candidates = controller.getPanelCandidates(item.sourcePanel)
   const qualityState = parseVisualQualityState(item.sourcePanel.visualQualityState)
-  const qualityProcessing = isVisualQualityProcessing(item.sourcePanel.visualQualityState)
   const hasConfirmedCandidate = !!qualityState?.humanConfirmedAt
   const selectedImageUrl = currentImageUrl(item, candidates)
-  const isSubmitting = controller.submittingPanelImageIds.has(item.panel.id) || !!item.sourcePanel.imageTaskRunning
+  const localSubmitting = controller.submittingPanelImageIds.has(item.panel.id)
+  const isSubmitting = localSubmitting || !!item.sourcePanel.imageTaskRunning
   const isModifying = controller.modifyingPanels.has(item.panel.id)
-  const disabled = isSubmitting || isModifying
+  const workflowPresentation = resolvePanelImageWorkflowPresentation({
+    panel: item.sourcePanel,
+    hasCandidates: !!candidates,
+    isSubmitting: localSubmitting,
+    isModifying,
+  })
+  const workflowNotice = workflowPresentation.progress !== null
+    ? `${workflowPresentation.label} · ${workflowPresentation.progress}%`
+    : workflowPresentation.label
+  const disabled = workflowPresentation.blocksConfirmation
   const selectedCandidateUrl = candidates?.candidates[candidates.selectedIndex] || null
+  const candidateDisplayGroups = candidates
+    ? buildPanelCandidateDisplayGroups({
+      candidates: candidates.candidates,
+      groups: candidates.groups,
+    })
+    : []
+  const selectedCandidateCard = candidateDisplayGroups
+    .flatMap((group) => group.cards)
+    .find((card) => card.index === candidates?.selectedIndex)
+    || null
   const confirmedCandidateIndex = candidates
     ? resolveConfirmedCandidateIndex(item.sourcePanel, candidates.candidates)
     : -1
@@ -93,10 +116,10 @@ function BoardDetailPanel({
               <AppIcon name="image" className="h-8 w-8" />
             </div>
           )}
-          {disabled ? (
+          {workflowPresentation.blocksConfirmation ? (
             <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-sm font-semibold text-cyan-100">
               <AppIcon name="loader" className="mr-2 h-4 w-4 animate-spin" />
-              {isModifying ? '改图中' : '生成中'}
+              {workflowNotice}
             </div>
           ) : null}
           <VisualQualityBadge state={item.sourcePanel.visualQualityState} className="absolute bottom-2 left-2 z-20" />
@@ -134,17 +157,13 @@ function BoardDetailPanel({
           </StudioButton>
         </div>
 
-        {qualityProcessing && qualityState ? (
+        {workflowPresentation.blocksConfirmation ? (
           <div className="rounded-md border border-cyan-400/25 bg-cyan-400/10 p-3 text-sm text-cyan-100">
             <div className="flex items-center gap-2 font-semibold">
               <AppIcon name="loader" className="h-4 w-4 animate-spin" />
-              {qualityState.status === 'repairing'
-                ? `自动修复中（第 ${Math.min(qualityState.maxAttempts, qualityState.attempt + 1)}/${qualityState.maxAttempts} 次）`
-                : qualityState.status === 'reviewing'
-                  ? '正在检查候选图片'
-                  : '候选图片等待检查'}
+              {workflowNotice}
             </div>
-            <p className="mt-1 text-xs leading-5 text-cyan-100/70">检查与修复流程完成前不能确认，但候选图可继续预览和比较。</p>
+            <p className="mt-1 text-xs leading-5 text-cyan-100/70">检查与修复流程完成前不能确认；已有候选图可继续预览和比较。</p>
           </div>
         ) : null}
 
@@ -164,86 +183,71 @@ function BoardDetailPanel({
                         .catch(() => undefined)
                     }
                   }}
-                  disabled={disabled || qualityProcessing || selectedIsCurrent}
+                  disabled={disabled || selectedIsCurrent}
                 >
                   {selectedIsCurrent ? '当前定稿' : confirmLabel || (hasConfirmedCandidate ? '确认切换' : '设为定稿')}
                 </StudioButton>
               </div>
             </div>
+            <p className="mt-2 text-[11px] leading-5 text-amber-100/70">
+              {selectedCandidateCard ? `当前选择：${selectedCandidateCard.displayName}` : '可在所有候选中切换比较。'}
+            </p>
             <div className="mt-3 space-y-3">
-              {(candidates.groups.length > 0
-                ? candidates.groups
-                : [{
-                  id: 'all-candidates',
-                  label: '候选图',
-                  origin: 'initial' as const,
-                  attempt: 0,
-                  candidateUrls: candidates.candidates,
-                  sourceCandidateUrl: null,
-                  action: null,
-                  versionHash: '',
-                  createdAt: '',
-                }]
-              ).map((group) => {
-                const groupCandidates = group.candidateUrls
-                  .map((candidateUrl) => ({
-                    candidateUrl,
-                    index: candidates.candidates.findIndex((itemUrl) => itemUrl === candidateUrl),
-                  }))
-                  .filter((entry) => entry.index >= 0)
-                if (groupCandidates.length === 0) return null
-                return (
-                  <div key={group.id} className="rounded-md border border-white/10 bg-black/10 p-2">
-                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-[11px] font-semibold text-amber-50">{group.label}（{groupCandidates.length}）</span>
-                      {group.origin === 'repair' ? (
-                        <span className="text-[10px] text-amber-100/70">
-                          {group.action === 'edit' ? '编辑修复' : '重新生成'}
-                          {group.sourceCandidateUrl ? ' · 有修复来源' : ''}
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      {groupCandidates.map(({ candidateUrl, index }) => {
-                        const pending = candidateUrl.startsWith('PENDING:')
-                        const selected = index === candidates.selectedIndex
-                        return (
-                          <button
-                            key={`${candidateUrl}:${index}`}
-                            type="button"
-                            onClick={() => {
-                              if (!pending) controller.selectPanelCandidateIndex(item.panel.id, index)
-                            }}
-                            disabled={pending}
-                            className={`relative aspect-video cursor-pointer overflow-hidden rounded-md border transition-colors disabled:cursor-not-allowed ${selected ? 'border-[#e8d18a]' : 'border-white/10 hover:border-white/30'}`}
-                          >
-                            {pending ? (
-                              <div className="flex h-full items-center justify-center bg-black/30 text-[11px] text-stone-400">
-                                <AppIcon name="loader" className="mr-1 h-3 w-3 animate-spin" />
-                                等待
-                              </div>
-                            ) : (
-                              <MediaImageWithLoading
-                                src={candidateUrl}
-                                alt={`${group.label} 候选 ${index + 1}`}
-                                containerClassName="h-full w-full"
-                                className="h-full w-full object-cover"
-                                sizes="140px"
-                              />
-                            )}
-                            {!pending && candidateUrl === item.panel.imageUrl ? (
-                              <span className="absolute bottom-1 left-1 rounded bg-emerald-600/90 px-1.5 py-0.5 text-[10px] font-semibold text-white">当前定稿</span>
-                            ) : null}
-                            {!pending && selected ? (
-                              <span className="absolute right-1 top-1 rounded bg-[#f3e9cf] px-1.5 py-0.5 text-[10px] font-semibold text-[#161512]">当前选择</span>
-                            ) : null}
-                          </button>
-                        )
-                      })}
-                    </div>
+              {candidateDisplayGroups.map((group) => (
+                <div key={group.key} className="rounded-md border border-white/10 bg-black/10 p-2">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[11px] font-semibold text-amber-50">{group.label}（{group.cards.length}）</span>
                   </div>
-                )
-              })}
+                  <div className="grid grid-cols-3 gap-2">
+                    {group.cards.map((card) => {
+                      const pending = card.candidateUrl.startsWith('PENDING:')
+                      const selected = card.index === candidates.selectedIndex
+                      return (
+                        <button
+                          key={`${card.candidateUrl}:${card.index}`}
+                          type="button"
+                          onClick={() => {
+                            if (!pending) controller.selectPanelCandidateIndex(item.panel.id, card.index)
+                          }}
+                          disabled={pending}
+                          className={`relative aspect-video cursor-pointer overflow-hidden rounded-md border transition-colors disabled:cursor-not-allowed ${selected ? 'border-[#e8d18a]' : 'border-white/10 hover:border-white/30'}`}
+                        >
+                          {pending ? (
+                            <div className="flex h-full items-center justify-center bg-black/30 text-[11px] text-stone-400">
+                              <AppIcon name="loader" className="mr-1 h-3 w-3 animate-spin" />
+                              等待
+                            </div>
+                          ) : (
+                            <MediaImageWithLoading
+                              src={card.candidateUrl}
+                              alt={`${group.label} ${card.displayName}`}
+                              containerClassName="h-full w-full"
+                              className="h-full w-full object-cover"
+                              sizes="140px"
+                            />
+                          )}
+                          {!pending ? (
+                            <span className={`absolute left-1 top-1 rounded px-1.5 py-0.5 text-[10px] font-semibold ${selected ? 'bg-[#f3e9cf] text-[#161512]' : 'bg-black/65 text-stone-100'}`}>{card.displayName}</span>
+                          ) : null}
+                          {!pending && (card.sourceLabel || card.candidateUrl === item.panel.imageUrl) ? (
+                            <div className="absolute inset-x-1 bottom-1 flex flex-wrap items-end gap-1">
+                              {card.sourceLabel ? (
+                                <span className="max-w-full truncate rounded bg-black/65 px-1.5 py-0.5 text-[10px] font-medium text-cyan-100">{card.sourceLabel}</span>
+                              ) : null}
+                              {card.candidateUrl === item.panel.imageUrl ? (
+                                <span className="ml-auto rounded bg-emerald-600/90 px-1.5 py-0.5 text-[10px] font-semibold text-white">当前定稿</span>
+                              ) : null}
+                            </div>
+                          ) : null}
+                          {!pending && selected ? (
+                            <span className="absolute right-1 top-1 rounded bg-[#f3e9cf] px-1.5 py-0.5 text-[10px] font-semibold text-[#161512]">当前选择</span>
+                          ) : null}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         ) : null}
@@ -537,21 +541,22 @@ function StudioBoardRuntime({
                       const candidates = controller.getPanelCandidates(item.sourcePanel)
                       const submitting = controller.submittingPanelImageIds.has(item.panel.id)
                       const modifying = controller.modifyingPanels.has(item.panel.id)
-                      const status = resolvePanelStatus({
-                        panel: item.panel,
-                        sourcePanel: item.sourcePanel,
+                      const workflowPresentation = resolvePanelImageWorkflowPresentation({
+                        panel: item.sourcePanel,
                         hasCandidates: !!candidates,
-                        submitting,
-                        modifying,
+                        isSubmitting: submitting,
+                        isModifying: modifying,
                       })
                       return (
                         <StudioBoardShotCard
                           key={item.panel.id}
                           item={item}
                           selected={selectedItem?.panel.id === item.panel.id}
-                          status={status}
+                          status={workflowPresentation.status}
+                          statusLabel={workflowPresentation.label}
                           imageUrl={currentImageUrl(item, candidates)}
-                          running={submitting || modifying || !!item.sourcePanel.imageTaskRunning}
+                          running={workflowPresentation.blocksConfirmation}
+                          runningLabel={workflowPresentation.label}
                           onSelect={() => setSelectedPanelId(item.panel.id)}
                           onPreview={controller.setPreviewImage}
                         />
