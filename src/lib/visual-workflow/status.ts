@@ -55,6 +55,7 @@ export type ResolveVisualWorkflowInput = {
   isSubmitting?: boolean
   isModifying?: boolean
   hasCandidates?: boolean
+  candidateCount?: number
   hasPrimaryImage?: boolean
   hasDraft?: boolean
   hasError?: boolean
@@ -80,6 +81,11 @@ const IMAGE_GENERATION_TASK_TYPES = new Set([
 const IMAGE_MODIFY_TASK_TYPES = new Set([
   'modify_asset_image',
   'asset_hub_modify',
+])
+
+const VISUAL_QUALITY_TASK_TYPES = new Set([
+  'visual_quality_review',
+  'visual_auto_repair',
 ])
 
 function taskTypeOf(state: VisualWorkflowTaskState): string {
@@ -269,19 +275,30 @@ export function resolveVisualWorkflowPresentation(input: ResolveVisualWorkflowIn
     return buildPresentation({ ...labels, phase: 'modifying' })
   }
 
+  const qualityState = parseVisualQualityState(input.visualQualityState)
+  const candidateCount = input.candidateCount ?? (input.hasCandidates ? 1 : 0)
+  const humanConfirmed = !!qualityState?.humanConfirmedAt
+  const autoApproved = qualityState?.status === 'approved'
+  const confirmed = humanConfirmed || (autoApproved && candidateCount <= 1)
+  const terminalQualityState = humanConfirmed || autoApproved
   const taskStates = (input.taskStates || []).filter(Boolean)
   const activeTask = selectActiveTaskState(taskStates)
   if (activeTask) {
-    return presentationFromActiveTask(activeTask, labels)
+    const activeTaskType = taskTypeOf(activeTask)
+    if (!terminalQualityState || !VISUAL_QUALITY_TASK_TYPES.has(activeTaskType)) {
+      return presentationFromActiveTask(activeTask, labels)
+    }
   }
 
   const selectedTask = selectTaskState(taskStates)
+  if (confirmed) {
+    return buildPresentation({ ...labels, phase: 'approved', progress: selectedTask?.progress ?? null })
+  }
+
   if (input.hasError || selectedTask?.lastError || selectedTask?.phase === 'failed') {
     return buildPresentation({ ...labels, phase: 'failed', progress: selectedTask?.progress ?? null })
   }
 
-  const qualityState = parseVisualQualityState(input.visualQualityState)
-  const confirmed = !!qualityState?.humanConfirmedAt
   if (qualityState?.mode === 'auto') {
     if (qualityState.status === 'pending') {
       return buildPresentation({ ...labels, phase: 'waiting_review' })
@@ -313,10 +330,10 @@ export function resolveVisualWorkflowPresentation(input: ResolveVisualWorkflowIn
 
   const now = input.now ?? Date.now()
   const recentHandoffMs = input.recentHandoffMs ?? DEFAULT_RECENT_HANDOFF_MS
-  if (!confirmed && isRecentCompletedTask(selectedTask, IMAGE_GENERATION_TASK_TYPES, now, recentHandoffMs)) {
+  if (!terminalQualityState && isRecentCompletedTask(selectedTask, IMAGE_GENERATION_TASK_TYPES, now, recentHandoffMs)) {
     return buildPresentation({ ...labels, phase: 'waiting_review', progress: selectedTask?.progress ?? null })
   }
-  if (!confirmed && isRecentCompletedTask(selectedTask, new Set(['visual_auto_repair']), now, recentHandoffMs)) {
+  if (!terminalQualityState && isRecentCompletedTask(selectedTask, new Set(['visual_auto_repair']), now, recentHandoffMs)) {
     const attempt = selectedTask?.attempt ?? qualityState?.attempt ?? null
     const maxAttempts = selectedTask?.maxAttempts ?? qualityState?.maxAttempts ?? null
     return buildPresentation({
@@ -328,7 +345,7 @@ export function resolveVisualWorkflowPresentation(input: ResolveVisualWorkflowIn
     })
   }
 
-  if (input.hasCandidates && !confirmed) {
+  if (candidateCount > 0 && !confirmed && (!input.hasPrimaryImage || !!qualityState)) {
     return buildPresentation({ ...labels, phase: 'human_required', progress: selectedTask?.progress ?? null })
   }
   if (confirmed || input.hasPrimaryImage) {

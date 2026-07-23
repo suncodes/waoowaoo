@@ -1,6 +1,10 @@
 import { decodeImageUrlsFromDb } from '@/lib/contracts/image-urls-contract'
 import { resolveMediaRef, resolveMediaRefFromLegacyValue } from './service'
 import type { MediaRef } from './types'
+import {
+  resolveMediaValuesToUrls,
+  resolveVisualQualityStateMediaUrls,
+} from './visual-quality-state'
 
 function parseStringArray(value: unknown): string[] {
   if (!value) return []
@@ -98,15 +102,10 @@ async function attachMediaFieldsToPanel<T extends Record<string, unknown>>(panel
   const previousImageMedia = await resolveMediaRef(panel.previousImageMediaId, panel.previousImageUrl)
 
   const candidateRaw = parseStringArray(panel.candidateImages)
-  const candidateMediaUrls: string[] = []
-  for (const candidate of candidateRaw) {
-    if (candidate.startsWith('PENDING:')) {
-      candidateMediaUrls.push(candidate)
-      continue
-    }
-    const media = await resolveMediaRefFromLegacyValue(candidate)
-    candidateMediaUrls.push(media?.url || candidate)
-  }
+  const [candidateMediaUrls, visualQualityState] = await Promise.all([
+    resolveMediaValuesToUrls(candidateRaw),
+    resolveVisualQualityStateMediaUrls(panel.visualQualityState),
+  ])
 
   return {
     ...panel,
@@ -122,6 +121,7 @@ async function attachMediaFieldsToPanel<T extends Record<string, unknown>>(panel
     sketchImageUrl: sketchImageMedia?.url || panel.sketchImageUrl || null,
     previousImageUrl: previousImageMedia?.url || panel.previousImageUrl || null,
     candidateImages: candidateRaw.length > 0 ? JSON.stringify(candidateMediaUrls) : panel.candidateImages,
+    visualQualityState,
   }
 }
 

@@ -55,6 +55,7 @@ export function resolvePanelImageWorkflowPresentation(params: {
     ],
     visualQualityState: params.panel.visualQualityState,
     hasCandidates: params.hasCandidates || candidateUrls.length > 0,
+    candidateCount: candidateUrls.length,
     hasPrimaryImage: !!params.panel.imageUrl,
     hasDraft: !!(params.panel.description || params.panel.imagePrompt),
     hasError: !!params.panel.imageErrorMessage,

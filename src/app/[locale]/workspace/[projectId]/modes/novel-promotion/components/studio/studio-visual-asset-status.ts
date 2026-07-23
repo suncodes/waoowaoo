@@ -13,9 +13,12 @@ export type VisualAssetWorkflowPresentation = VisualWorkflowPresentation & {
 }
 
 function hasVisualCandidate(asset: VisualAssetSummary) {
-  return asset.variants.some((variant) =>
-    variant.renders.some((render) => !!render.imageUrl),
-  )
+  return countVisualCandidates(asset) > 0
+}
+
+function countVisualCandidates(asset: VisualAssetSummary) {
+  return asset.variants.reduce((count, variant) =>
+    count + variant.renders.filter((render) => !!render.imageUrl).length, 0)
 }
 
 function collectTaskStates(asset: VisualAssetSummary): AssetTaskState[] {
@@ -55,6 +58,7 @@ export function resolveVisualAssetWorkflowPresentation(
     isSubmitting: options.isSubmitting,
     taskStates: states,
     hasCandidates: hasVisualCandidate(asset),
+    candidateCount: countVisualCandidates(asset),
     hasPrimaryImage: !!selectedVisualAssetImage(asset),
     hasError,
     emptyLabel: '未生成',

@@ -18,7 +18,6 @@ const prismaMock = vi.hoisted(() => ({
 }))
 
 const storageMock = vi.hoisted(() => ({
-  getSignedUrl: vi.fn((key: string) => `/m/${key}`),
   generateUniqueKey: vi.fn(() => 'generated.png'),
   downloadAndUploadImage: vi.fn(async () => 'generated.png'),
   toFetchableUrl: vi.fn((value: string) => value),
@@ -26,18 +25,23 @@ const storageMock = vi.hoisted(() => ({
     if (typeof value !== 'string') return null
     return value.replace(/^\/m\//, '')
   }),
+  resolveMediaRefFromLegacyValue: vi.fn(async (value: unknown) => {
+    if (typeof value !== 'string') return null
+    const storageKey = value.replace(/^\/m\//, '')
+    return { url: `/m/${storageKey}` }
+  }),
 }))
 
 vi.mock('@/lib/api-auth', () => authMock)
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('@/lib/storage', () => ({
-  getSignedUrl: storageMock.getSignedUrl,
   generateUniqueKey: storageMock.generateUniqueKey,
   downloadAndUploadImage: storageMock.downloadAndUploadImage,
   toFetchableUrl: storageMock.toFetchableUrl,
 }))
 vi.mock('@/lib/media/service', () => ({
   resolveStorageKeyFromMediaValue: storageMock.resolveStorageKeyFromMediaValue,
+  resolveMediaRefFromLegacyValue: storageMock.resolveMediaRefFromLegacyValue,
 }))
 
 describe('api specific - panel candidate quality approval', () => {
@@ -75,10 +79,12 @@ describe('api specific - panel candidate quality approval', () => {
     expect(res.status).toBe(200)
     expect(body.visualQualityState).toMatchObject({
       status: 'approved',
-      activeCandidateUrl: 'candidate-1.png',
+      activeCandidateUrl: '/m/candidate-1.png',
       lastAction: 'select_candidate',
       humanConfirmedAt: expect.any(String),
     })
+    expect(body.candidateImages).toEqual(['/m/candidate-1.png'])
+    expect(body.imageUrl).toBe('/m/candidate-1.png')
     expect(prismaMock.novelPromotionPanel.update).toHaveBeenCalledWith({
       where: { id: 'panel-1' },
       data: expect.objectContaining({

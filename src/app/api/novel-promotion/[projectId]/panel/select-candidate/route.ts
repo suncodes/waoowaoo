@@ -2,8 +2,13 @@ import { logInfo as _ulogInfo } from '@/lib/logging/core'
 import type { Prisma } from '@prisma/client'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getSignedUrl, generateUniqueKey, downloadAndUploadImage, toFetchableUrl } from '@/lib/storage'
+import { generateUniqueKey, downloadAndUploadImage, toFetchableUrl } from '@/lib/storage'
 import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
+import {
+  resolveMediaValueToUrl,
+  resolveMediaValuesToUrls,
+  resolveVisualQualityStateMediaUrls,
+} from '@/lib/media/visual-quality-state'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import {
@@ -140,8 +145,12 @@ export const POST = apiHandler(async (
   }
 
   const retainedCandidates = candidateImages.filter((candidate): candidate is string => typeof candidate === 'string' && !!candidate)
-  const signedUrl = getSignedUrl(finalImageKey, 7 * 24 * 3600)
   const visualQualityState = approveSelectedVisualCandidate(panel.visualQualityState, finalImageKey, retainedCandidates)
+  const [displayImageUrl, displayCandidateImages, displayVisualQualityState] = await Promise.all([
+    resolveMediaValueToUrl(finalImageKey),
+    resolveMediaValuesToUrls(retainedCandidates),
+    resolveVisualQualityStateMediaUrls(visualQualityState),
+  ])
 
   // 更新 Panel：设置定稿图片，同时保留候选列表，便于之后切换。
   await prisma.novelPromotionPanel.update({
@@ -156,10 +165,10 @@ export const POST = apiHandler(async (
 
   return NextResponse.json({
     success: true,
-    imageUrl: signedUrl,
+    imageUrl: displayImageUrl || finalImageKey,
     cosKey: finalImageKey,
-    visualQualityState,
-    candidateImages: retainedCandidates,
+    visualQualityState: displayVisualQualityState,
+    candidateImages: displayCandidateImages,
     message: '已选择图片'
   })
 })
