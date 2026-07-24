@@ -113,7 +113,7 @@ export function CharacterPickerModal({
                   {appearances.map((app: CharacterAppearance) => {
                     const appearanceName = app.changeReason || ts('panel.defaultAppearance')
                     const isSelected = currentCharacters.some(
-                      c => c.name === char.name && c.appearance === appearanceName
+                      c => c.name === char.name && (!c.appearance || c.appearance === appearanceName)
                     )
                     return (
                       <button

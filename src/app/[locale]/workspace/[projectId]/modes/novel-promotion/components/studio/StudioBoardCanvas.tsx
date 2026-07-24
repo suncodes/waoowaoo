@@ -13,6 +13,7 @@ import { useWorkspaceEpisodeStageData } from '../../hooks/useWorkspaceEpisodeSta
 import { CharacterPickerModal, LocationPickerModal, PropPickerModal, type PanelEditData } from '../PanelEditForm'
 import AIDataModal from '../storyboard/AIDataModal'
 import ImageEditModal from '../storyboard/ImageEditModal'
+import PanelBindingPlanSummary from '../storyboard/PanelBindingPlanSummary'
 import { resolveConfirmedCandidateIndex } from '../storyboard/hooks/panel-candidate-runtime'
 import { useStoryboardModalRuntime } from '../storyboard/hooks/useStoryboardModalRuntime'
 import { useStoryboardStageController } from '../storyboard/hooks/useStoryboardStageController'
@@ -334,6 +335,7 @@ function BoardDetailPanel({
               添加道具
             </StudioButton>
           </div>
+          <PanelBindingPlanSummary photographyRules={panelData.photographyRules} />
           {saveState?.status === 'error' ? (
             <div className="flex items-center justify-between gap-3 rounded-md border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs text-rose-100">
               <span>{saveState.errorMessage || '保存失败'}</span>

@@ -38,6 +38,37 @@ export interface StoryboardPanel {
   visualQualityState?: unknown
 }
 
+function readString(value: unknown): string {
+  return typeof value === 'string' && value.trim() ? value.trim() : ''
+}
+
+export function parsePanelCharacters(value: string | null | undefined): Array<{ name: string; appearance: string; slot?: string }> {
+  if (!value) return []
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(value) as unknown
+  } catch {
+    parsed = value.split(',').map((item) => item.trim()).filter(Boolean)
+  }
+  if (!Array.isArray(parsed)) return []
+  return parsed.flatMap((item): Array<{ name: string; appearance: string; slot?: string }> => {
+    if (typeof item === 'string') {
+      const name = item.trim()
+      return name ? [{ name, appearance: '' }] : []
+    }
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return []
+    const record = item as { name?: unknown; appearance?: unknown; changeReason?: unknown; slot?: unknown }
+    const name = readString(record.name)
+    if (!name) return []
+    const appearance = readString(record.appearance) || readString(record.changeReason)
+    return [{
+      name,
+      appearance,
+      slot: readString(record.slot) || undefined,
+    }]
+  })
+}
+
 function parsePanelProps(value: string | null | undefined): string[] {
   if (!value) return []
   try {
@@ -128,25 +159,7 @@ export function useStoryboardState({
       (a.panelIndex || 0) - (b.panelIndex || 0)
     )
     return sortedPanels.map((p) => {
-      const parsedChars = p.characters ? JSON.parse(p.characters) : []
-      const characters = Array.isArray(parsedChars)
-        ? parsedChars.flatMap((item): Array<{ name: string; appearance: string; slot?: string }> => {
-          if (
-            typeof item !== 'object'
-            || item === null
-            || typeof (item as { name?: unknown }).name !== 'string'
-            || typeof (item as { appearance?: unknown }).appearance !== 'string'
-          ) {
-            return []
-          }
-          const candidate = item as { name: string; appearance: string; slot?: unknown }
-          return [{
-            name: candidate.name,
-            appearance: candidate.appearance,
-            slot: typeof candidate.slot === 'string' ? candidate.slot : undefined,
-          }]
-        })
-        : []
+      const characters = parsePanelCharacters(p.characters)
       return {
         id: p.id,
         panelIndex: p.panelIndex,

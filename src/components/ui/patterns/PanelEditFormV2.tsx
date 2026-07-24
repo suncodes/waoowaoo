@@ -2,6 +2,7 @@
 
 import { useTranslations } from 'next-intl'
 import type { PanelEditData } from '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/PanelEditForm'
+import PanelBindingPlanSummary from '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/storyboard/PanelBindingPlanSummary'
 import {
   GlassChip,
   GlassField,
@@ -158,7 +159,7 @@ export default function PanelEditFormV2({
             <div className="flex flex-wrap gap-1.5">
               {panelData.characters.map((character, index) => (
                 <GlassChip key={`${character.name}-${index}`} tone="info" onRemove={() => onRemoveCharacter(index)}>
-                  {character.name}({character.appearance})
+                  {character.appearance ? `${character.name}(${character.appearance})` : character.name}
                 </GlassChip>
               ))}
             </div>
@@ -194,6 +195,8 @@ export default function PanelEditFormV2({
           )}
         </GlassField>
       </div>
+
+      <PanelBindingPlanSummary photographyRules={panelData.photographyRules} />
     </div>
   )
 }

@@ -138,12 +138,47 @@ function readShotSpecText(shotSpec: Record<string, unknown>): string {
 }
 
 function aliases(name: string): string[] {
-  return Array.from(new Set(
-    name.toLowerCase()
-      .split(/[\/|,，、：《》"“”'’‘\s]+/u)
-      .map((item) => item.trim())
-      .filter((item) => item.length >= 2),
-  ))
+  const normalized = name.toLowerCase().trim()
+  const splitAliases = normalized
+    .split(/[\/|,，、：《》"“”'’‘\s]+/u)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 2)
+  const suffixTrimmedAliases = [
+    '潜水艇',
+    '飞船',
+    '舰船',
+    '车辆',
+    '汽车',
+    '道具',
+    '物件',
+    '武器',
+    '书籍',
+    '封面',
+    '书封',
+    '图案',
+    '标志',
+    '徽章',
+    'submarine',
+    'spaceship',
+    'vehicle',
+    'prop',
+    'object',
+    'weapon',
+    'book',
+    'cover',
+    'motif',
+    'logo',
+    'emblem',
+  ].flatMap((suffix) => {
+    if (!normalized.endsWith(suffix) || normalized.length <= suffix.length + 1) return []
+    const value = normalized.slice(0, -suffix.length).trim()
+    return value.length >= 3 ? [value] : []
+  })
+  return Array.from(new Set([
+    normalized,
+    ...splitAliases,
+    ...suffixTrimmedAliases,
+  ].filter((item) => item.length >= 2)))
 }
 
 function textMentionsName(text: string, name: string): boolean {
@@ -152,8 +187,8 @@ function textMentionsName(text: string, name: string): boolean {
   return Boolean(full && normalized.includes(full)) || aliases(name).some((item) => normalized.includes(item))
 }
 
-function looksLikeBookCover(text: string): boolean {
-  return /(书封|封面|书籍封面|book cover|cover)/iu.test(text)
+function looksLikeCoverMotif(text: string): boolean {
+  return /(书封|封面|书籍封面|图案|标志|标识|徽章|纹章|book cover|cover|motif|logo|emblem|badge|symbol|pattern)/iu.test(text)
 }
 
 function looksLikeDiagram(text: string): boolean {
@@ -192,7 +227,7 @@ function roleForAsset(params: {
   source: PanelAssetBinding['source']
 }): PanelAssetBindingRole | null {
   const primary = params.primarySubject.toLowerCase()
-  const subjectLooksLikeBookCover = params.visualType === 'book_cover' || looksLikeBookCover(primary)
+  const subjectLooksLikeCoverMotif = params.visualType === 'book_cover' || looksLikeCoverMotif(primary)
   const subjectLooksLikeDiagram = params.visualType === 'diagram' || looksLikeDiagram(primary)
   const textOnly = params.renderMode === 'text_card' || params.visualType === 'quote_card' || params.visualType === 'kinetic_text'
   const matchesPrimary = textMentionsName(primary, params.asset.name)
@@ -201,9 +236,9 @@ function roleForAsset(params: {
   if (textOnly) {
     return params.asset.kind === 'location' && mentionedInShot ? 'environment' : null
   }
-  if (subjectLooksLikeBookCover) {
+  if (subjectLooksLikeCoverMotif) {
     if (params.asset.kind !== 'prop') return null
-    return mentionedInShot || looksLikeBookCover(params.asset.name) ? 'cover_motif' : null
+    return mentionedInShot || params.source === 'shot_spec' || looksLikeCoverMotif(params.asset.name) ? 'cover_motif' : null
   }
   if (subjectLooksLikeDiagram) {
     if (params.asset.kind === 'character') return null

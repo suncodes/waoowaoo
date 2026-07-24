@@ -57,7 +57,7 @@ function parseJson(value: unknown): unknown {
   }
 }
 
-function readStoredBindingPlan(value: unknown): PanelAssetBindingPlan | null {
+export function readPanelAssetBindingPlanFromRules(value: unknown): PanelAssetBindingPlan | null {
   const rules = asRecord(parseJson(value))
   const plan = asRecord(rules.assetBindingPlan)
   if (plan.schemaVersion !== 1 || !Array.isArray(plan.bindings)) return null
@@ -82,7 +82,7 @@ function looksTextProne(text: string, visualType: string, renderMode: string): b
   return visualType === 'book_cover'
     || visualType === 'quote_card'
     || renderMode === 'text_card'
-    || /(书名|标题|封面|字幕|文字|年份|title|caption|cover)/iu.test(text)
+    || /(书名|标题|封面|图案|标志|标识|徽章|字幕|文字|年份|title|caption|cover|motif|logo|emblem|badge)/iu.test(text)
 }
 
 function computeShotComplexity(
@@ -181,7 +181,7 @@ function buildWarnings(params: {
       warnings.push({
         code: 'BOOK_COVER_MOTIF',
         severity: 'info',
-        message: `${binding.name} is used as a cover motif, not as a full scene to copy.`,
+        message: `${binding.name} is used as a cover or motif detail, not as a full scene to copy.`,
         assetId: binding.id,
       })
     }
@@ -198,7 +198,7 @@ function buildWarnings(params: {
 }
 
 export function resolvePanelAssetBindingPlan(panel: PanelForVisualBindings): PanelAssetBindingPlan {
-  const stored = readStoredBindingPlan(panel.photographyRules)
+  const stored = readPanelAssetBindingPlanFromRules(panel.photographyRules)
   if (stored) return stored
   const bindings = resolvePanelVisualBindings(panel)
   const complexity = computeShotComplexity(panel, bindings.visibleAssets)
@@ -235,7 +235,7 @@ export function bindingPlanPromptGuidance(plan: PanelAssetBindingPlan): string[]
     if (binding.role === 'primary_identity') return `${binding.name}: primary identity, must match the reference image.`
     if (binding.role === 'supporting_identity') return `${binding.name}: supporting visible identity, keep consistent but do not steal focus.`
     if (binding.role === 'environment') return `${binding.name}: environment reference, adapt layout, lighting and atmosphere.`
-    if (binding.role === 'cover_motif') return `${binding.name}: cover motif only, use the core shape/detail on the book cover without copying its full scene.`
+    if (binding.role === 'cover_motif') return `${binding.name}: cover or motif detail only, use the core shape/detail without copying its full scene.`
     if (binding.role === 'comparison_prop') return `${binding.name}: comparison prop, adapt shape/color as a secondary reference.`
     if (binding.role === 'prop_detail') return `${binding.name}: prop detail, lock the object shape and key visual traits.`
     return `${binding.name}: style-only reference, avoid copying subject identity.`

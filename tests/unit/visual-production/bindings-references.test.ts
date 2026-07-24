@@ -12,6 +12,9 @@ import { buildPanelImageTargetSpec } from '@/lib/workers/handlers/visual-quality
 
 const nemo = { id: 'asset-nemo', kind: 'character' as const, name: '尼摩船长' }
 const bookCover = { id: 'asset-book-cover', kind: 'prop' as const, name: '《海底两万里》书封' }
+const genericCharacter = { id: 'asset-character', kind: 'character' as const, name: '旁观者' }
+const compass = { id: 'asset-compass', kind: 'prop' as const, name: '黄铜罗盘' }
+const emblem = { id: 'asset-emblem', kind: 'prop' as const, name: '城市徽章' }
 
 function projectData() {
   return {
@@ -36,6 +39,26 @@ function projectData() {
         imageIndex: 0,
         isSelected: true,
         imageUrl: 'book-cover.png',
+      }],
+    }, {
+      id: 'asset-compass',
+      name: '黄铜罗盘',
+      assetKind: 'prop',
+      images: [{
+        id: 'image-compass',
+        imageIndex: 0,
+        isSelected: true,
+        imageUrl: 'compass.png',
+      }],
+    }, {
+      id: 'asset-emblem',
+      name: '城市徽章',
+      assetKind: 'prop',
+      images: [{
+        id: 'image-emblem',
+        imageIndex: 0,
+        isSelected: true,
+        imageUrl: 'emblem.png',
       }],
     }],
   }
@@ -67,6 +90,57 @@ describe('visual production bindings and references', () => {
       usage: 'must_match',
       weight: 0.65,
     })
+  })
+
+  it('keeps a generic shot-spec prop as a cover motif even when the prop name is not a cover', () => {
+    const panel = {
+      visualType: 'book_cover',
+      renderMode: 'generated_image',
+      description: '冒险小说封面，中心是一枚黄铜罗盘图案',
+      imagePrompt: '封面主视觉，不生成可读文字',
+      photographyRules: JSON.stringify({
+        shotSpec: {
+          primarySubject: '冒险小说封面',
+          visibleAssets: [genericCharacter, compass],
+        },
+      }),
+    }
+
+    const bindings = resolvePanelVisualBindings(panel)
+    const references = resolvePanelVisualReferences({ projectData: projectData(), panel })
+
+    expect(bindings.visibleAssets).toEqual([
+      expect.objectContaining({ id: 'asset-compass', role: 'cover_motif' }),
+    ])
+    expect(bindings.suppressedAssets.map((item) => item.id)).toEqual(['asset-character'])
+    expect(references.map((item) => item.assetId)).toEqual(['asset-compass'])
+    expect(references[0]).toMatchObject({
+      role: 'cover_motif',
+      usage: 'must_match',
+    })
+  })
+
+  it('keeps a generic motif prop for symbol or emblem shots without book-specific wording', () => {
+    const panel = {
+      visualType: 'illustration',
+      renderMode: 'generated_image',
+      description: '城市徽章图案作为画面中心，形成宣传海报主视觉',
+      imagePrompt: '徽章图案，简洁背景，无文字',
+      photographyRules: JSON.stringify({
+        shotSpec: {
+          primarySubject: '城市徽章图案',
+          visibleAssets: [emblem],
+        },
+      }),
+    }
+
+    const bindings = resolvePanelVisualBindings(panel)
+    const plan = resolvePanelAssetBindingPlan(panel)
+
+    expect(bindings.visibleAssets).toEqual([
+      expect.objectContaining({ id: 'asset-emblem', role: 'cover_motif' }),
+    ])
+    expect(plan.warnings.some((item) => item.code === 'BOOK_COVER_MOTIF')).toBe(true)
   })
 
   it('marks a prop as comparison reference in diagram shots', () => {
