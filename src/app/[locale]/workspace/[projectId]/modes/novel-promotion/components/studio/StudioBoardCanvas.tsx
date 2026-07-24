@@ -306,14 +306,18 @@ function BoardDetailPanel({
             ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {panelData.characters.map((character, index) => (
-              <span key={`${character.name}:${character.appearance}:${index}`} className="inline-flex items-center gap-1 rounded-md bg-white/[0.06] px-2 py-1 text-xs text-stone-300">
-                {character.name}
-                <button type="button" onClick={() => controller.handleRemoveCharacter(item.panel, index, item.storyboard.id)} className="text-stone-500 hover:text-stone-100">
-                  <AppIcon name="closeSm" className="h-3 w-3" />
-                </button>
-              </span>
-            ))}
+            {panelData.characters.length > 0 ? (
+              panelData.characters.map((character, index) => (
+                <span key={`${character.name}:${character.appearance}:${index}`} className="inline-flex items-center gap-1 rounded-md bg-white/[0.06] px-2 py-1 text-xs text-stone-300">
+                  {character.name}
+                  <button type="button" onClick={() => controller.handleRemoveCharacter(item.panel, index, item.storyboard.id)} className="text-stone-500 hover:text-stone-100">
+                    <AppIcon name="closeSm" className="h-3 w-3" />
+                  </button>
+                </span>
+              ))
+            ) : (
+              <span className="text-xs text-stone-500">未绑定角色</span>
+            )}
             <StudioButton size="sm" variant="ghost" icon="user" onClick={() => controller.setAssetPickerPanel({ panelId: item.panel.id, type: 'character' })}>
               添加角色
             </StudioButton>
