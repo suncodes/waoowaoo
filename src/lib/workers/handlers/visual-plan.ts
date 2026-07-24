@@ -10,7 +10,12 @@ import {
   type VisualAssetRef,
   type VisualPlanResult,
 } from '@/lib/visual-planning'
+import {
+  autoRepairVisualPlanStoryboard,
+  type StoryboardAutoRepairResult,
+} from '@/lib/visual-planning/storyboard-auto-repair'
 import { reviewVisualPlanStoryboard, type StoryboardReviewResult } from '@/lib/visual-planning/storyboard-review'
+import { buildVisualShotSlotPlan } from '@/lib/visual-planning/storyboard-slot-plan'
 import {
   auditVisualAssetCoverage,
   type AssetCoverageAuditAsset,
@@ -93,6 +98,20 @@ function readInvalidCandidateOutput(
   return '{}'
 }
 
+function asCandidateRecord(value: unknown): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(value)) as Record<string, unknown>
+}
+
+function isBlockingStoryboardReview(review: StoryboardReviewResult): boolean {
+  return review.status === 'failed'
+    || review.status === 'human_required'
+    || review.criticalIssues.length > 0
+}
+
+function storyboardReviewFailureMessage(review: StoryboardReviewResult): string {
+  return `VISUAL_PLAN_REVIEW_FAILED:${review.score}:${review.evidence.slice(0, 5).join(' | ')}`
+}
+
 async function generateValidatedVisualPlan(params: {
   job: Job<TaskJobData>
   model: string
@@ -103,8 +122,13 @@ async function generateValidatedVisualPlan(params: {
   assetsJson: string
   assets: VisualAssetRef[]
   visualBeatPlanJson: string
+  visualShotSlotPlanJson: string
   targetId: string
-}): Promise<{ result: VisualPlanResult; storyboardReview: StoryboardReviewResult }> {
+}): Promise<{
+  result: VisualPlanResult
+  storyboardReview: StoryboardReviewResult
+  storyboardAutoRepair: StoryboardAutoRepairResult | null
+}> {
   let prompt = params.initialPrompt
 
   for (let attempt = 1; attempt <= MAX_VISUAL_PLAN_OUTPUT_ATTEMPTS; attempt += 1) {
@@ -122,16 +146,25 @@ async function generateValidatedVisualPlan(params: {
         stepAttempt: attempt,
         temperature: attempt === 1 ? 0.4 : 0.2,
       })
-      const result = parseVisualPlanResult(candidate, params.profile, params.clipIds, params.assets)
+      const parsedResult = parseVisualPlanResult(candidate, params.profile, params.clipIds, params.assets)
+      const autoRepair = autoRepairVisualPlanStoryboard(parsedResult)
+      const result = autoRepair.result
+      if (autoRepair.appliedFixes.length > 0) {
+        candidate = asCandidateRecord(result)
+      }
       const storyboardReview = reviewVisualPlanStoryboard({
         targetId: params.targetId,
         result,
         profile: params.profile,
       })
-      if (storyboardReview.status !== 'passed') {
-        throw new Error(`VISUAL_PLAN_REVIEW_FAILED:${storyboardReview.score}:${storyboardReview.evidence.slice(0, 5).join(' | ')}`)
+      if (isBlockingStoryboardReview(storyboardReview)) {
+        throw new Error(storyboardReviewFailureMessage(storyboardReview))
       }
-      return { result, storyboardReview }
+      return {
+        result,
+        storyboardReview,
+        storyboardAutoRepair: autoRepair.appliedFixes.length > 0 ? autoRepair : null,
+      }
     } catch (error) {
       if (!isRepairableVisualPlanOutputError(error) || attempt === MAX_VISUAL_PLAN_OUTPUT_ATTEMPTS) {
         throw error
@@ -149,6 +182,7 @@ async function generateValidatedVisualPlan(params: {
         },
       })
       prompt += `\n\n【VisualBeatPlan 约束】\n${params.visualBeatPlanJson}`
+      prompt += `\n\n【VisualShotSlotPlan 硬约束】\n${params.visualShotSlotPlanJson}`
     }
   }
 
@@ -328,6 +362,12 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     assets: visualAssets,
   })
   const visualBeatPlanJson = JSON.stringify(visualBeatPlan, null, 2)
+  const visualShotSlotPlan = buildVisualShotSlotPlan({
+    profile,
+    clips,
+    beatPlan: visualBeatPlan,
+  })
+  const visualShotSlotPlanJson = JSON.stringify(visualShotSlotPlan, null, 2)
   const contentMeta = readContentArtifactMeta(episode.contentPlan)
   const requiredAssetIds = contentMeta?.assetRequirements.status === 'approved'
     ? contentMeta.assetRequirements.assetIds
@@ -452,11 +492,18 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
   const visualBeatPlanInstruction = `${job.data.locale === 'en' ? 'VisualBeatPlan constraints' : 'VisualBeatPlan 约束'}：\n${visualBeatPlanJson}\n\n${job.data.locale === 'en'
     ? 'Use this beat plan as the directing layer. Each visualUnit must map to a beat, preserve visualLicense, screenEvent, actionMoment, continuity and assetNeeds, and avoid static PPT-like illustrations.'
     : '必须把以上节拍计划作为导演前置层。每个 visualUnit 都要对应某个 beat，并继承 visualLicense、screenEvent、actionMoment、continuity 和 assetNeeds，避免静态 PPT 式说明图。'}`
-  const planningPromptBase = `${initialPrompt}\n\n${visualBeatPlanInstruction}`
+  const visualShotSlotPlanInstruction = `${job.data.locale === 'en' ? 'VisualShotSlotPlan hard constraints' : 'VisualShotSlotPlan 硬约束'}：\n${visualShotSlotPlanJson}\n\n${job.data.locale === 'en'
+    ? 'Treat this as the shot-planning agent output. Fill every slot with one visualUnit, do not merge slots, and keep generated_image within the slot max duration.'
+    : '必须把以上槽位计划视为镜头规划 Agent 的硬输出。每个 slot 填成一个 visualUnit，不得合并 slot；generated_image 必须服从槽位的最长时长和单一关键瞬间限制。'}`
+  const planningPromptBase = `${initialPrompt}\n\n${visualBeatPlanInstruction}\n\n${visualShotSlotPlanInstruction}`
   const planningPrompt = rewriteInstruction
     ? `${planningPromptBase}\n\n${job.data.locale === 'en' ? 'Rewrite instruction' : '本次重写要求'}：${rewriteInstruction}`
     : planningPromptBase
-  const { result: parsedResult, storyboardReview: initialStoryboardReview } = await generateValidatedVisualPlan({
+  const {
+    result: parsedResult,
+    storyboardReview: initialStoryboardReview,
+    storyboardAutoRepair,
+  } = await generateValidatedVisualPlan({
     job,
     model,
     initialPrompt: planningPrompt,
@@ -466,6 +513,7 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     assetsJson,
     assets: visualAssets,
     visualBeatPlanJson,
+    visualShotSlotPlanJson,
     targetId: episodeId,
   })
   const explicitlyReferencedAssetIds = parsedResult.visualUnits.flatMap(
@@ -542,6 +590,25 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
   })
   await createArtifact({
     runId: readTaskRunId(job),
+    stepKey: 'visual_shot_slot_plan',
+    artifactType: 'visual.shot_slot.plan',
+    refId: episodeId,
+    payload: toJsonRecord(visualShotSlotPlan),
+  })
+  if (storyboardAutoRepair) {
+    await createArtifact({
+      runId: readTaskRunId(job),
+      stepKey: 'storyboard_auto_repair',
+      artifactType: 'storyboard.auto_repair',
+      refId: episodeId,
+      payload: toJsonRecord({
+        appliedFixes: storyboardAutoRepair.appliedFixes,
+        visualUnitCount: storyboardAutoRepair.result.visualUnits.length,
+      }),
+    })
+  }
+  await createArtifact({
+    runId: readTaskRunId(job),
     stepKey: 'asset_coverage_audit',
     artifactType: 'asset.coverage.audit',
     refId: episodeId,
@@ -559,14 +626,23 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     stepKey: 'storyboard_review',
     artifactType: 'storyboard.quality.review',
     refId: episodeId,
-    payload: toJsonRecord({ profile, review: storyboardReview }),
+    payload: toJsonRecord({ profile, review: storyboardReview, storyboardAutoRepair: storyboardAutoRepair?.appliedFixes || [] }),
   })
   await createArtifact({
     runId: readTaskRunId(job),
     stepKey: 'visual_plan',
     artifactType: 'visual.plan',
     refId: episodeId,
-    payload: toJsonRecord({ profile, visualBeatPlan, storyboardReview, assetCoverageAudit, shotAssetRequirementPlan, ...result }),
+    payload: toJsonRecord({
+      profile,
+      visualBeatPlan,
+      visualShotSlotPlan,
+      storyboardReview,
+      storyboardAutoRepair: storyboardAutoRepair?.appliedFixes || [],
+      assetCoverageAudit,
+      shotAssetRequirementPlan,
+      ...result,
+    }),
   })
 
   return {
@@ -575,6 +651,7 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     visualUnitCount: result.visualUnits.length,
     storyboardReviewScore: storyboardReview.score,
     storyboardReviewStatus: storyboardReview.status,
+    storyboardAutoRepairApplied: !!storyboardAutoRepair,
     assetCoverageStatus: assetCoverageAudit.status,
     shotAssetRequirementPlanSource: shotAssetRequirementPlan.plans.some((plan) => plan.source === 'llm') ? 'llm' : 'fallback',
     storyboardPersisted: isBookGuideProfile(profile) && !deferStoryboard,

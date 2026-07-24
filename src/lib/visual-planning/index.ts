@@ -443,3 +443,5 @@ export function parseVisualPlanResult(
 
 export * from './types'
 export * from './visual-beat-plan'
+export * from './storyboard-slot-plan'
+export * from './storyboard-auto-repair'

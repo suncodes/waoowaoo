@@ -89,6 +89,38 @@ function visualPlanPayload() {
   }
 }
 
+function generatedImageShotSpec(overrides: Record<string, unknown> = {}) {
+  return {
+    narrativeIntent: '把旁白信息变成一个可见瞬间',
+    shotFunction: 'hook',
+    primarySubject: '主角',
+    visibleAssets: [],
+    subjectIdentity: ['清晰剪影'],
+    startState: '主角站定',
+    actionBeats: ['主角看向前方'],
+    endState: '主角保持停顿',
+    continuity: {
+      fromPrevious: '开场',
+      toNext: '进入下一镜',
+      screenDirection: '看向画面右侧',
+      lightingContinuity: '柔和冷光',
+    },
+    singleImageFeasibility: {
+      status: 'feasible',
+      reason: '单一时空单一动作',
+      riskFlags: [],
+    },
+    spatialContinuity: '主体居中',
+    camera: 'medium shot',
+    sceneLightingBaseline: '柔和冷光',
+    colorGrade: '中性冷色',
+    dialogueAudio: '',
+    constraints: ['无文字'],
+    durationIntent: '8s',
+    ...overrides,
+  }
+}
+
 function contentPlanWithApprovedAssets(assetIds: string[]) {
   return {
     planType: 'guide',
@@ -440,32 +472,58 @@ describe('worker visual-plan behavior', () => {
     }))
   })
 
-  it('repairs visual plans that fail storyboard feasibility review', async () => {
+  it('auto-repairs visual plans that fail storyboard hard-rule review', async () => {
     const invalid = visualPlanPayload()
     invalid.visualUnits[0] = {
       ...invalid.visualUnits[0],
       renderMode: 'generated_image',
+      durationSec: 13,
+      description: '依次展示主角进入房间、发现线索和转身离开',
+      imagePrompt: '同一画面拼接主角进入房间、发现线索和转身离开，无文字',
       shotSpec: {
-        singleImageFeasibility: {
-          status: 'needs_split',
-          reason: '同一张图要求展示两个不同时间点',
-          riskFlags: ['multi_moment'],
-        },
+        ...generatedImageShotSpec({
+          actionBeats: ['进入房间', '发现线索', '转身离开'],
+          singleImageFeasibility: {
+            status: 'needs_split',
+            reason: '同一张图要求展示三个连续动作',
+            riskFlags: ['multi_moment'],
+          },
+        }),
       },
     } as typeof invalid.visualUnits[number] & { shotSpec: unknown }
-    planningMock.executePlanningJsonStep
-      .mockResolvedValueOnce(invalid)
-      .mockResolvedValueOnce(visualPlanPayload())
+    planningMock.executePlanningJsonStep.mockResolvedValueOnce(invalid)
 
-    await handleVisualPlanTask(buildJob())
+    const result = await handleVisualPlanTask(buildJob())
 
-    expect(planningMock.executePlanningJsonStep).toHaveBeenCalledTimes(3)
-    expect(planningMock.executePlanningJsonStep).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      action: 'visual_plan_repair',
-      stepAttempt: 2,
+    expect(result).toMatchObject({
+      visualUnitCount: 3,
+      storyboardReviewStatus: 'passed',
+      storyboardAutoRepairApplied: true,
+    })
+    expect(planningMock.executePlanningJsonStep).toHaveBeenCalledTimes(2)
+    expect(planningMock.executePlanningJsonStep).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      action: 'visual_plan_generate',
     }))
-    expect(planningMock.executePlanningJsonStep).toHaveBeenNthCalledWith(3, expect.objectContaining({
+    expect(planningMock.executePlanningJsonStep).toHaveBeenNthCalledWith(2, expect.objectContaining({
       action: 'shot_asset_requirements',
+    }))
+    expect(persistenceMock.persistVisualPlan).toHaveBeenCalledWith(expect.objectContaining({
+      result: expect.objectContaining({
+        visualUnits: expect.arrayContaining([
+          expect.objectContaining({
+            durationSec: expect.any(Number),
+            renderMode: 'generated_image',
+            shotSpec: expect.objectContaining({
+              actionBeats: ['进入房间'],
+              singleImageFeasibility: expect.objectContaining({ status: 'feasible' }),
+            }),
+          }),
+        ]),
+      }),
+    }))
+    expect(artifactMock.createArtifact).toHaveBeenCalledWith(expect.objectContaining({
+      artifactType: 'storyboard.auto_repair',
+      runId: 'run-visual-1',
     }))
   })
 
