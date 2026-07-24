@@ -31,11 +31,19 @@ import {
   uploadImageSourceToCos,
 } from '@/lib/workers/utils'
 import {
-  collectPanelReferenceImages,
+  collectPanelVisualReferences,
   resolveNovelData,
 } from './image-task-handler-shared'
 import { readTaskRunId, toJsonRecord } from './planning-task-shared'
 import { readCandidateUrls } from './visual-quality-review-helpers'
+import {
+  bindingPlanPromptGuidance,
+  resolvePanelAssetBindingPlan,
+} from '@/lib/visual-production/binding-plan'
+import {
+  visualReferencesForPrompt,
+  visualReferencesToImageUrls,
+} from '@/lib/visual-production/references'
 
 function asInputJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
@@ -49,6 +57,12 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)))
+}
+
+function promptPatchArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.flatMap((item) => typeof item === 'string' && item.trim() ? [item.trim()] : [])
+    : []
 }
 
 async function persistAssetRepairCandidates(params: {
@@ -281,18 +295,45 @@ export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
   const projectData = await resolveNovelData(job.data.projectId)
   const modelConfig = await getProjectModels(job.data.projectId, job.data.userId)
   const basePrompt = panel.imagePrompt || panel.description || targetSpec.intent
+  const bindingPlan = resolvePanelAssetBindingPlan(panel)
+  const visualReferences = await collectPanelVisualReferences(projectData, panel)
+  const referenceInstructions = bindingPlanPromptGuidance(bindingPlan)
+  const enhancedTargetSpec: ImageTargetSpec = {
+    ...targetSpec,
+    referenceInstructions,
+    bindingPlan,
+    continuityRules: Array.from(new Set([
+      ...(targetSpec.continuityRules || []),
+      ...referenceInstructions,
+      `Binding complexity: ${bindingPlan.complexity.level}; recommended action: ${bindingPlan.complexity.recommendedAction}.`,
+    ])),
+  }
+  const enhancedPromptPatch: PromptPatch = {
+    preserve: Array.from(new Set([
+      ...promptPatchArray(promptPatch.preserve),
+      ...referenceInstructions,
+    ])),
+    add: promptPatchArray(promptPatch.add),
+    remove: promptPatchArray(promptPatch.remove),
+    negative: Array.from(new Set([
+      ...promptPatchArray(promptPatch.negative),
+      '不要修改绑定计划中的主主体和参考资产职责',
+      ...(bindingPlan.complexity.level === 'high' ? ['复杂镜头只修复一个关键瞬间，不要添加分屏、多阶段动作或额外主体'] : []),
+    ])),
+    rationale: typeof promptPatch.rationale === 'string' ? promptPatch.rationale : '',
+  }
   const prompt = buildPrompt({
     promptId: PROMPT_IDS.NP_VISUAL_AUTO_REPAIR,
     locale: job.data.locale,
     variables: {
       base_prompt: basePrompt,
-      target_spec_json: JSON.stringify(targetSpec, null, 2),
-      prompt_patch_json: JSON.stringify(promptPatch, null, 2),
+      target_spec_json: JSON.stringify(enhancedTargetSpec, null, 2),
+      prompt_patch_json: JSON.stringify(enhancedPromptPatch, null, 2),
     },
   })
-  const assetReferences = await collectPanelReferenceImages(projectData, panel)
+  const assetReferences = visualReferencesToImageUrls(visualReferences)
   const referenceImages = action === 'edit' && sourceCandidateUrl
-    ? [sourceCandidateUrl, ...assetReferences]
+    ? uniqueStrings([sourceCandidateUrl, ...assetReferences])
     : assetReferences
 
   const candidateUrls: string[] = []
@@ -312,7 +353,7 @@ export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
       prompt,
       options: {
         referenceImages,
-        aspectRatio: targetSpec.aspectRatio || projectData.videoRatio || undefined,
+        aspectRatio: enhancedTargetSpec.aspectRatio || projectData.videoRatio || undefined,
       },
       allowTaskExternalIdResume: candidateCount === 1,
     })
@@ -322,7 +363,7 @@ export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
       `${panel.id}-${attempt}-${candidateIndex}`,
     ))
   }
-  const versionHash = createVisualVersionHash({ targetSpec, candidateUrls })
+  const versionHash = createVisualVersionHash({ targetSpec: enhancedTargetSpec, candidateUrls })
   const repairLineageRecord = createVisualAutoRepairLineage({
     targetType: 'panel',
     targetId: panel.id,
@@ -333,7 +374,7 @@ export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
     previousVersionHash: expectedVersionHash,
     repairVersionHash: versionHash,
     scoreBefore: state.review?.score ?? null,
-    promptPatch,
+    promptPatch: enhancedPromptPatch,
     imageModel,
   })
   const repairLineage = [
@@ -409,7 +450,9 @@ export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
       action,
       sourceCandidateUrl,
       imageModel,
-      promptPatch,
+      promptPatch: enhancedPromptPatch,
+      bindingPlan,
+      visualReferences: visualReferencesForPrompt(visualReferences),
       repairLineage: repairLineageRecord,
     }),
   })
@@ -431,6 +474,7 @@ export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
       attempt,
       maxAttempts,
       repairLineage,
+      targetSpec: enhancedTargetSpec,
     },
     dedupeKey: `visual_quality_review:${panel.id}:${versionHash}`,
   })

@@ -11,6 +11,8 @@ export type PanelAssetBindingRole =
   | 'supporting_identity'
   | 'environment'
   | 'prop_detail'
+  | 'cover_motif'
+  | 'comparison_prop'
   | 'style_only'
 
 export interface PanelAssetBinding extends VisualAssetRef {
@@ -201,25 +203,27 @@ function roleForAsset(params: {
   }
   if (subjectLooksLikeBookCover) {
     if (params.asset.kind !== 'prop') return null
-    return matchesPrimary || looksLikeBookCover(params.asset.name) ? 'prop_detail' : null
+    return mentionedInShot || looksLikeBookCover(params.asset.name) ? 'cover_motif' : null
   }
   if (subjectLooksLikeDiagram) {
     if (params.asset.kind === 'character') return null
-    return mentionedInShot ? (params.asset.kind === 'location' ? 'environment' : 'prop_detail') : null
+    return mentionedInShot ? (params.asset.kind === 'location' ? 'environment' : 'comparison_prop') : null
   }
   if (params.asset.kind === 'character') {
     if (matchesPrimary) return 'primary_identity'
     return params.source === 'legacy_panel' || mentionedInShot ? 'supporting_identity' : null
   }
   if (params.asset.kind === 'location') return 'environment'
-  return matchesPrimary ? 'primary_identity' : 'prop_detail'
+  return 'prop_detail'
 }
 
 function weightForRole(role: PanelAssetBindingRole): number {
   if (role === 'primary_identity') return 1
   if (role === 'supporting_identity') return 0.75
   if (role === 'prop_detail') return 0.7
+  if (role === 'cover_motif') return 0.65
   if (role === 'environment') return 0.6
+  if (role === 'comparison_prop') return 0.55
   return 0.35
 }
 

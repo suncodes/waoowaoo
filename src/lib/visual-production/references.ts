@@ -1,8 +1,8 @@
 import type { PanelAssetBinding, PanelForVisualBindings, VisualAssetKind } from './bindings'
 import {
   readSourceAnchorVisualAssetIds,
-  resolvePanelVisualBindings,
 } from './bindings'
+import { resolvePanelAssetBindingPlan } from './binding-plan'
 import { decodeImageUrlsFromDb } from '@/lib/contracts/image-urls-contract'
 
 export type VisualReferenceRole =
@@ -10,6 +10,8 @@ export type VisualReferenceRole =
   | 'supporting_identity'
   | 'environment'
   | 'prop_detail'
+  | 'cover_motif'
+  | 'comparison_prop'
   | 'sketch'
   | 'style_only'
   | 'previous_frame'
@@ -136,7 +138,7 @@ function selectedLocationImage(location: LocationLike): { url: string | null; re
 }
 
 function usageForRole(role: VisualReferenceRole): VisualReferenceUsage {
-  if (role === 'primary_identity' || role === 'supporting_identity' || role === 'prop_detail') return 'must_match'
+  if (role === 'primary_identity' || role === 'supporting_identity' || role === 'prop_detail' || role === 'cover_motif') return 'must_match'
   if (role === 'style_only') return 'avoid_copy'
   return 'adapt'
 }
@@ -175,6 +177,8 @@ function roleFromBinding(binding: PanelAssetBinding): VisualReferenceRole {
   if (binding.role === 'supporting_identity') return 'supporting_identity'
   if (binding.role === 'environment') return 'environment'
   if (binding.role === 'prop_detail') return 'prop_detail'
+  if (binding.role === 'cover_motif') return 'cover_motif'
+  if (binding.role === 'comparison_prop') return 'comparison_prop'
   return 'style_only'
 }
 
@@ -183,8 +187,8 @@ function maxReferenceCount(panel: PanelForVisualBindings, requested: number | un
     return Math.max(0, Math.floor(requested))
   }
   if (panel.renderMode === 'text_card' || panel.visualType === 'quote_card' || panel.visualType === 'kinetic_text') return 1
-  if (panel.visualType === 'book_cover' || panel.visualType === 'diagram') return 2
-  return 3
+  if (panel.visualType === 'book_cover' || panel.visualType === 'diagram') return 3
+  return 4
 }
 
 function appendBindingReference(params: {
@@ -289,7 +293,7 @@ export function resolvePanelVisualReferences(params: {
   const signImageUrl = options.signImageUrl || defaultSignImageUrl
   const refs: VisualReference[] = []
   const seen = new Set<string>()
-  const bindings = resolvePanelVisualBindings(params.panel)
+  const bindingPlan = resolvePanelAssetBindingPlan(params.panel)
 
   pushReference({
     refs,
@@ -305,7 +309,7 @@ export function resolvePanelVisualReferences(params: {
     source: 'sketch',
   })
 
-  for (const binding of bindings.visibleAssets) {
+  for (const binding of bindingPlan.bindings) {
     if (binding.kind === 'character' && options.includeCharacterAssets === false) continue
     if (binding.kind === 'location' && options.includeLocationAssets === false) continue
     if (binding.kind === 'prop' && options.includePropAssets === false) continue
@@ -318,7 +322,7 @@ export function resolvePanelVisualReferences(params: {
     })
   }
 
-  if (bindings.visibleAssets.length === 0 && options.includeSourceAnchorAssets !== false) {
+  if (bindingPlan.bindings.length === 0 && options.includeSourceAnchorAssets !== false) {
     appendSourceAnchorFallbackReferences({
       projectData: params.projectData,
       panel: params.panel,

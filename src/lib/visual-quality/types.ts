@@ -32,6 +32,8 @@ export interface ImageTargetSpec {
   continuityRules: string[]
   forbiddenPatterns: string[]
   riskLevel: 'low' | 'medium' | 'high'
+  referenceInstructions?: string[]
+  bindingPlan?: unknown
 }
 
 export interface VisualQualityIssue {

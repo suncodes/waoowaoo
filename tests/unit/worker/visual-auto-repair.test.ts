@@ -14,6 +14,17 @@ const utilsMock = vi.hoisted(() => ({
 }))
 const sharedMock = vi.hoisted(() => ({
   collectPanelReferenceImages: vi.fn(async () => ['asset-reference.png']),
+  collectPanelVisualReferences: vi.fn(async () => [{
+    assetId: 'asset-1',
+    renderId: 'render-1',
+    assetKind: 'character',
+    assetName: 'Hero',
+    url: 'asset-reference.png',
+    role: 'primary_identity',
+    usage: 'must_match',
+    weight: 1,
+    source: 'shot_spec',
+  }]),
   resolveNovelData: vi.fn(async () => ({ videoRatio: '16:9' })),
 }))
 const taskMock = vi.hoisted(() => ({ submitTask: vi.fn(async () => ({ taskId: 'review-task-2' })) }))

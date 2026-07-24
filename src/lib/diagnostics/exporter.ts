@@ -30,6 +30,7 @@ const CONTENT_PLAN_REUSE_ARTIFACT_TYPES = new Set(['content.plan.reuse'])
 const VISUAL_QUALITY_REVIEW_ARTIFACT_TYPES = new Set(['visual.quality.review', 'visual.asset.quality.review'])
 const VISUAL_PLAN_REUSE_ARTIFACT_TYPES = new Set(['visual.plan.reuse'])
 const VISUAL_AUTO_REPAIR_ARTIFACT_TYPES = new Set(['visual.repair.candidate', 'visual.asset.repair.candidate'])
+const VISUAL_BINDING_PLAN_ARTIFACT_TYPES = new Set(['visual.binding.plan'])
 const STORYBOARD_QUALITY_REVIEW_ARTIFACT_TYPES = new Set(['storyboard.quality.review'])
 const SCRIPT_QUALITY_REVIEW_ARTIFACT_TYPES = new Set(['script.quality.review'])
 
@@ -492,6 +493,7 @@ function buildQualityArtifactViews(artifacts: AnyRecord[]) {
   const visualQualityReviews = filterArtifactsByType(artifacts, VISUAL_QUALITY_REVIEW_ARTIFACT_TYPES)
   const visualPlanReuses = filterArtifactsByType(artifacts, VISUAL_PLAN_REUSE_ARTIFACT_TYPES)
   const visualAutoRepairs = filterArtifactsByType(artifacts, VISUAL_AUTO_REPAIR_ARTIFACT_TYPES)
+  const visualBindingPlans = filterArtifactsByType(artifacts, VISUAL_BINDING_PLAN_ARTIFACT_TYPES)
   const storyboardQualityReviews = filterArtifactsByType(artifacts, STORYBOARD_QUALITY_REVIEW_ARTIFACT_TYPES)
   const scriptQualityReviews = filterArtifactsByType(artifacts, SCRIPT_QUALITY_REVIEW_ARTIFACT_TYPES)
   const visualRepairLineage = collectRepairLineageRecords([
@@ -508,6 +510,7 @@ function buildQualityArtifactViews(artifacts: AnyRecord[]) {
     visualQualityReviews,
     visualPlanReuses,
     visualAutoRepairs,
+    visualBindingPlans,
     visualRepairLineage,
   }
 }
@@ -1065,6 +1068,7 @@ async function createArchive(params: {
   archive.append(stringifyJsonLines(promptQualityReviewRecords as unknown as AnyRecord[]), { name: 'quality/prompt-quality-reviews.jsonl' })
   archive.append(stringifyJsonLines(qualityArtifacts.visualQualityReviews), { name: 'quality/visual-quality-reviews.jsonl' })
   archive.append(stringifyJsonLines(qualityArtifacts.visualPlanReuses), { name: 'quality/visual-plan-reuse.jsonl' })
+  archive.append(stringifyJsonLines(qualityArtifacts.visualBindingPlans), { name: 'quality/visual-binding-plans.jsonl' })
   archive.append(stringifyJsonLines(qualityArtifacts.visualAutoRepairs), { name: 'quality/visual-auto-repairs.jsonl' })
   archive.append(stringifyJsonLines(qualityArtifacts.visualRepairLineage), { name: 'quality/visual-repair-lineage.jsonl' })
   archive.append(stringifyJsonLines(roughCutReviewRecords as unknown as AnyRecord[]), { name: 'quality/rough-cut-reviews.jsonl' })
@@ -1081,6 +1085,7 @@ async function createArchive(params: {
     visualQualityReviewCount: qualityArtifacts.visualQualityReviews.length,
     promptQualityReviewCount: promptQualityReviewRecords.length,
     visualPlanReuseCount: qualityArtifacts.visualPlanReuses.length,
+    visualBindingPlanCount: qualityArtifacts.visualBindingPlans.length,
     visualAutoRepairCount: qualityArtifacts.visualAutoRepairs.length,
     visualRepairLineageCount: qualityArtifacts.visualRepairLineage.length,
     roughCutReviewCount: roughCutReviewRecords.length,
@@ -1097,6 +1102,7 @@ async function createArchive(params: {
       promptQualityReviews: 'quality/prompt-quality-reviews.jsonl',
       visualQualityReviews: 'quality/visual-quality-reviews.jsonl',
       visualPlanReuse: 'quality/visual-plan-reuse.jsonl',
+      visualBindingPlans: 'quality/visual-binding-plans.jsonl',
       visualAutoRepairs: 'quality/visual-auto-repairs.jsonl',
       visualRepairLineage: 'quality/visual-repair-lineage.jsonl',
       roughCutReviews: 'quality/rough-cut-reviews.jsonl',
@@ -1145,6 +1151,7 @@ async function createArchive(params: {
       promptQualityReviews: promptQualityReviewRecords.length,
       visualQualityReviews: qualityArtifacts.visualQualityReviews.length,
       visualPlanReuses: qualityArtifacts.visualPlanReuses.length,
+      visualBindingPlans: qualityArtifacts.visualBindingPlans.length,
       visualAutoRepairs: qualityArtifacts.visualAutoRepairs.length,
       visualRepairLineageRecords: qualityArtifacts.visualRepairLineage.length,
       roughCutReviews: roughCutReviewRecords.length,

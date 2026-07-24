@@ -30,9 +30,13 @@ import {
   buildPanelImagePromptSpec,
 } from '@/lib/prompt-compiler/panel-image-prompt-compiler'
 import {
-  resolvePanelVisualBindings,
   type PanelVisualBindings,
 } from '@/lib/visual-production/bindings'
+import {
+  panelVisualBindingsFromPlan,
+  resolvePanelAssetBindingPlan,
+  type PanelAssetBindingPlan,
+} from '@/lib/visual-production/binding-plan'
 import {
   visualReferencesForPrompt,
   visualReferencesToImageUrls,
@@ -112,6 +116,7 @@ function buildPanelPromptContext(params: {
   }
   projectData: Awaited<ReturnType<typeof resolveNovelData>>
   visualBindings?: PanelVisualBindings
+  visualBindingPlan?: PanelAssetBindingPlan
   visualReferences?: VisualReference[]
 }) {
   const legacyPanelCharacters = parsePanelCharacterReferences(params.panel.characters)
@@ -209,6 +214,7 @@ function buildPanelPromptContext(params: {
       on_screen_text_for_downstream_composition: params.panel.onScreenText || '',
       image_text_policy: 'The generated image must contain no text. Exact copy is rendered downstream.',
       visual_bindings: params.visualBindings || null,
+      visual_binding_plan: params.visualBindingPlan || null,
     },
     context: {
       character_appearances: characterContexts,
@@ -263,7 +269,8 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
     artStyleReferenceEnabled: modelConfig.artStyleReferenceEnabled,
     locale: job.data.locale,
   })
-  const visualBindings = resolvePanelVisualBindings(panel)
+  const visualBindingPlan = resolvePanelAssetBindingPlan(panel)
+  const visualBindings = panelVisualBindingsFromPlan(visualBindingPlan)
   const visualReferences = await collectPanelVisualReferences(projectData, panel)
   const refs = visualReferencesToImageUrls(visualReferences)
   const referenceImages = prependStyleReferenceImage(
@@ -289,6 +296,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
       referenceImagesRawCount: refs.length,
       referenceImagesFinalCount: referenceImages.length,
       visualBindings,
+      visualBindingPlan,
       visualReferences: visualReferencesForPrompt(visualReferences),
       artStyleReferenceEnabled: modelConfig.artStyleReferenceEnabled,
       rawUrls: refs.map((u) => u.substring(0, 100)),
@@ -330,6 +338,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
     },
     projectData,
     visualBindings,
+    visualBindingPlan,
     visualReferences,
   })
   const resolvedStyleText = styleText || fallbackStyleText
@@ -345,6 +354,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
     props: promptContext.context.prop_references,
     referenceImages,
     visualReferences: visualReferencesForPrompt(visualReferences),
+    visualBindingPlan,
   })
   const panelPromptSpec = buildPanelImagePromptSpec({
     context: promptContext,
@@ -374,6 +384,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
     promptTemplateId: PROMPT_IDS.NP_SINGLE_PANEL_IMAGE,
     referenceImages,
     structuredReferences: visualReferencesForPrompt(visualReferences),
+    bindingPlan: visualBindingPlan,
     promptSpec: panelPromptSpec,
     compiledPrompt: prompt,
     assetVersionHash,
@@ -381,6 +392,14 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
   const runId = readOptionalTaskRunId(job)
   if (runId) {
     try {
+      await createArtifact({
+        runId,
+        stepKey: 'visual_binding_plan',
+        artifactType: 'visual.binding.plan',
+        refId: panel.id,
+        versionHash: createCreativeQualityHash(visualBindingPlan),
+        payload: toJsonRecord(visualBindingPlan),
+      })
       await createArtifact({
         runId,
         stepKey: 'panel_image_prompt',

@@ -25,6 +25,8 @@ type PanelCandidateTarget = {
   renderMode: string | null
   onScreenText: string | null
   linkedToNextPanel: boolean
+  sourceAnchor?: unknown
+  photographyRules?: unknown
 }
 
 function asInputJson(value: unknown): Prisma.InputJsonValue {

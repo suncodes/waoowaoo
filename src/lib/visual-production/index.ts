@@ -1,4 +1,5 @@
 export * from './bindings'
+export * from './binding-plan'
 export * from './references'
 export * from './targets'
 export * from './text-policy'

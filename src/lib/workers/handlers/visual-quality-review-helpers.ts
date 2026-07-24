@@ -13,6 +13,10 @@ import {
   appendPanelTextPolicyForbiddenPatterns,
   resolvePanelTextPolicy,
 } from '@/lib/visual-production/text-policy'
+import {
+  bindingPlanPromptGuidance,
+  resolvePanelAssetBindingPlan,
+} from '@/lib/visual-production/binding-plan'
 
 type PanelForQuality = {
   id: string
@@ -27,6 +31,8 @@ type PanelForQuality = {
   renderMode: string | null
   onScreenText: string | null
   linkedToNextPanel: boolean
+  sourceAnchor?: unknown
+  photographyRules?: unknown
 }
 
 type CharacterAppearanceForQuality = {
@@ -103,6 +109,16 @@ export function buildPanelImageTargetSpec(params: {
     renderMode: params.panel.renderMode,
     onScreenText: params.panel.onScreenText,
   })
+  const bindingPlan = resolvePanelAssetBindingPlan(params.panel)
+  const referenceInstructions = bindingPlanPromptGuidance(bindingPlan)
+  const boundCharacters = bindingPlan.bindings.filter((item) => item.kind === 'character').map((item) => item.name)
+  const boundProps = bindingPlan.bindings.filter((item) => item.kind === 'prop').map((item) => item.name)
+  const boundLocation = bindingPlan.bindings.find((item) => item.kind === 'location')?.name || params.panel.location || ''
+  const riskLevel = params.panel.linkedToNextPanel
+    || textPolicy.imageTextPolicy === 'safe_area_only'
+    || bindingPlan.complexity.level === 'high'
+    ? 'high'
+    : bindingPlan.complexity.level === 'medium' ? 'medium' : 'medium'
   return {
     schemaVersion: 1,
     targetType: 'panel',
@@ -113,20 +129,24 @@ export function buildPanelImageTargetSpec(params: {
     renderMode: params.panel.renderMode || 'generated_image',
     shotType: params.panel.shotType || '',
     cameraMove: params.panel.cameraMove || '',
-    location: params.panel.location || '',
-    characters: parseStringArray(params.panel.characters),
-    props: parseStringArray(params.panel.props),
+    location: boundLocation,
+    characters: boundCharacters.length > 0 ? boundCharacters : parseStringArray(params.panel.characters),
+    props: boundProps.length > 0 ? boundProps : parseStringArray(params.panel.props),
     requiredText: textPolicy.requiredImageText,
     styleBaseline: visualStyle || params.artStyle,
     continuityRules: [
       ...readStringArray(bible.continuityRules),
+      ...referenceInstructions,
+      `Binding complexity: ${bindingPlan.complexity.level}; recommended action: ${bindingPlan.complexity.recommendedAction}.`,
       textPolicy.reviewHint,
     ],
     forbiddenPatterns: appendPanelTextPolicyForbiddenPatterns(
       readStringArray(bible.forbiddenPatterns),
       textPolicy,
     ),
-    riskLevel: params.panel.linkedToNextPanel || textPolicy.imageTextPolicy === 'safe_area_only' ? 'high' : 'medium',
+    riskLevel,
+    referenceInstructions,
+    bindingPlan,
   }
 }
 

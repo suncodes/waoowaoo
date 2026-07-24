@@ -3,6 +3,9 @@ import {
   resolvePanelVisualBindings,
 } from '@/lib/visual-production/bindings'
 import {
+  resolvePanelAssetBindingPlan,
+} from '@/lib/visual-production/binding-plan'
+import {
   resolvePanelVisualReferences,
 } from '@/lib/visual-production/references'
 import { buildPanelImageTargetSpec } from '@/lib/workers/handlers/visual-quality-review-helpers'
@@ -39,7 +42,7 @@ function projectData() {
 }
 
 describe('visual production bindings and references', () => {
-  it('does not inject character references into a book cover shot', () => {
+  it('keeps prop motifs but does not inject character references into a book cover shot', () => {
     const panel = {
       visualType: 'book_cover',
       renderMode: 'generated_image',
@@ -60,10 +63,31 @@ describe('visual production bindings and references', () => {
     expect(bindings.suppressedAssets.map((item) => item.id)).toEqual(['asset-nemo'])
     expect(references.map((item) => item.assetId)).toEqual(['asset-book-cover'])
     expect(references[0]).toMatchObject({
-      role: 'prop_detail',
+      role: 'cover_motif',
       usage: 'must_match',
-      weight: 0.7,
+      weight: 0.65,
     })
+  })
+
+  it('marks a prop as comparison reference in diagram shots', () => {
+    const panel = {
+      visualType: 'diagram',
+      renderMode: 'generated_image',
+      description: '现代潜水艇和鹦鹉螺号潜水艇并排对比',
+      imagePrompt: '两艘潜水艇水平并排摆放',
+      photographyRules: JSON.stringify({
+        shotSpec: {
+          primarySubject: '两艘并排的潜水艇',
+          visibleAssets: [{ id: 'asset-nautilus', kind: 'prop', name: '鹦鹉螺号潜水艇' }],
+        },
+      }),
+    }
+
+    const bindings = resolvePanelVisualBindings(panel)
+    const plan = resolvePanelAssetBindingPlan(panel)
+
+    expect(bindings.visibleAssets[0]?.role).toBe('comparison_prop')
+    expect(plan.warnings.some((item) => item.code === 'COMPARISON_REFERENCE')).toBe(true)
   })
 
   it('does not use Nemo as identity reference for an unrelated reading girl shot', () => {
@@ -86,6 +110,31 @@ describe('visual production bindings and references', () => {
     expect(bindings.visibleAssets).toEqual([])
     expect(bindings.suppressedAssets.map((item) => item.id)).toEqual(['asset-nemo'])
     expect(references).toEqual([])
+  })
+
+  it('flags complex multi-character action shots before generation', () => {
+    const panel = {
+      visualType: 'character_action',
+      renderMode: 'generated_image',
+      description: '三人从船上掉入海中，水花飞溅',
+      imagePrompt: '阿龙纳斯、康塞尔、尼德·兰三人落水',
+      photographyRules: JSON.stringify({
+        shotSpec: {
+          primarySubject: '落水的三人',
+          visibleAssets: [
+            { id: 'a', kind: 'character', name: '阿龙纳斯' },
+            { id: 'b', kind: 'character', name: '康塞尔' },
+            { id: 'c', kind: 'character', name: '尼德·兰' },
+          ],
+        },
+      }),
+    }
+
+    const plan = resolvePanelAssetBindingPlan(panel)
+
+    expect(plan.complexity.level).toBe('high')
+    expect(plan.complexity.recommendedAction).toBe('split')
+    expect(plan.warnings.some((item) => item.code === 'HIGH_COMPLEXITY_SHOT')).toBe(true)
   })
 
   it('keeps onScreenText out of required image text for visual review', () => {

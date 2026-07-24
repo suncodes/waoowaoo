@@ -53,6 +53,29 @@ function buildContext(): PanelImagePromptCompilerContext {
       visual_type: 'illustration',
       render_mode: 'generated_image',
       on_screen_text_for_downstream_composition: '',
+      visual_binding_plan: {
+        schemaVersion: 1,
+        primarySubject: 'brass key',
+        visualType: 'illustration',
+        renderMode: 'generated_image',
+        bindings: [{
+          id: 'prop-1',
+          kind: 'prop',
+          name: 'brass key',
+          role: 'prop_detail',
+          source: 'shot_spec',
+          weight: 0.7,
+        }],
+        suppressed: [],
+        warnings: [],
+        complexity: {
+          score: 10,
+          level: 'low',
+          recommendedAction: 'generate',
+          riskFlags: [],
+        },
+        usedShotSpec: true,
+      },
     },
     context: {
       character_appearances: [{
@@ -98,15 +121,15 @@ describe('panel image prompt compiler', () => {
       textPolicy: 'no_text',
     })
     expect(spec.assetRefs).toEqual([
-      { id: 'character-1', kind: 'character', name: 'Hero', role: 'supporting' },
-      { id: 'location-1', kind: 'location', name: 'Vault corridor', role: 'environment' },
-      { id: 'prop-1', kind: 'prop', name: 'brass key', role: 'primary' },
+      { id: 'prop-1', kind: 'prop', name: 'brass key', role: 'prop_detail' },
     ])
+    expect(spec.referenceInstructions[0]).toContain('brass key')
+    expect(spec.bindingPlan).toMatchObject({ primarySubject: 'brass key' })
     expect(spec.spatialLayout).toContain('Hero: left foreground')
     expect(spec.composition.midground).toContain('brass key')
     expect(spec.continuity.fromPrevious).toBe('Hero has reached the vault door.')
     expect(spec.singleImageFeasibility.reason).toBe('one object action at one vault door')
-    expect(spec.promptBlueprint.subject).toEqual(['brass key identity locked to prop reference'])
+    expect(spec.promptBlueprint.subject).toEqual(expect.arrayContaining(['brass key identity locked to prop reference']))
     expect(spec.negativeConstraints).toContain('no extra hands')
     expect(spec.negativeConstraints).toContain('无水印')
   })
@@ -122,6 +145,7 @@ describe('panel image prompt compiler', () => {
       modelKey: 'image::storyboard',
       promptTemplateId: 'single_panel_image',
       referenceImages: ['ref-1.png'],
+      bindingPlan: spec.bindingPlan,
       promptSpec: spec,
       compiledPrompt: 'full compiled prompt',
       assetVersionHash: 'asset-hash',
@@ -131,6 +155,7 @@ describe('panel image prompt compiler', () => {
       modelKey: 'image::storyboard',
       promptTemplateId: 'single_panel_image',
       referenceImages: ['ref-1.png'],
+      bindingPlan: spec.bindingPlan,
       promptSpec: spec,
       compiledPrompt: 'full compiled prompt',
       assetVersionHash: 'asset-hash',

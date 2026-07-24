@@ -3,12 +3,26 @@ import {
   createCreativeQualityHash,
   type GenerationSnapshot,
 } from '@/lib/creative-quality/contracts'
+import {
+  bindingPlanPromptGuidance,
+  type PanelAssetBindingPlan,
+} from '@/lib/visual-production/binding-plan'
 
 export interface PanelPromptAssetRef {
   id: string | null
   kind: 'character' | 'location' | 'prop'
   name: string
-  role: 'primary' | 'supporting' | 'environment' | 'prop'
+  role:
+    | 'primary'
+    | 'supporting'
+    | 'environment'
+    | 'prop'
+    | 'primary_identity'
+    | 'supporting_identity'
+    | 'prop_detail'
+    | 'cover_motif'
+    | 'comparison_prop'
+    | 'style_only'
 }
 
 export interface PanelImagePromptSpec {
@@ -34,6 +48,8 @@ export interface PanelImagePromptSpec {
   lightingAndColor: string
   styleAndTexture: string
   qualityTerms: string[]
+  referenceInstructions: string[]
+  bindingPlan: unknown
   textPolicy: 'no_text' | 'safe_area_only'
   negativeConstraints: string[]
   promptBlueprint: {
@@ -96,6 +112,7 @@ export interface PanelImagePromptCompilerContext {
     render_mode: string
     on_screen_text_for_downstream_composition: string
     visual_bindings?: unknown
+    visual_binding_plan?: unknown
   }
   context: {
     character_appearances: CharacterContext[]
@@ -137,7 +154,18 @@ function readShotSpec(context: PanelImagePromptCompilerContext): Record<string, 
   return asRecord(photographyRules.shotSpec)
 }
 
+function readBindingPlan(context: PanelImagePromptCompilerContext): PanelAssetBindingPlan | null {
+  const value = context.panel.visual_binding_plan
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const record = value as Partial<PanelAssetBindingPlan>
+  return record.schemaVersion === 1 && Array.isArray(record.bindings)
+    ? record as PanelAssetBindingPlan
+    : null
+}
+
 function resolvePrimarySubject(context: PanelImagePromptCompilerContext): string {
+  const bindingPlan = readBindingPlan(context)
+  if (bindingPlan?.primarySubject) return bindingPlan.primarySubject
   const shotSpecSubject = readNestedString(readShotSpec(context), ['primarySubject'])
   if (shotSpecSubject) return shotSpecSubject
   const characters = context.context.character_appearances.filter((item) => item.name.trim())
@@ -161,6 +189,16 @@ function assetNameMatchesPrimary(assetName: string, primarySubject: string): boo
 }
 
 function buildAssetRefs(context: PanelImagePromptCompilerContext, primarySubject: string): PanelPromptAssetRef[] {
+  const bindingPlan = readBindingPlan(context)
+  if (bindingPlan) {
+    return bindingPlan.bindings.map((binding) => ({
+      id: binding.id,
+      kind: binding.kind,
+      name: binding.name,
+      role: binding.role,
+    }))
+  }
+
   const refs: PanelPromptAssetRef[] = []
   let hasPrimary = false
   for (const [index, character] of context.context.character_appearances.entries()) {
@@ -307,8 +345,13 @@ function resolvePromptBlueprint(
   const negative = stringArray(raw.negative)
   const fallbackArray = (values: string[], fallback: string): string[] =>
     values.length > 0 ? values : (fallback ? [fallback] : [])
+  const bindingPlan = readBindingPlan(context)
+  const referenceGuidance = bindingPlan ? bindingPlanPromptGuidance(bindingPlan) : []
   return {
-    subject: fallbackArray(subject, primarySubject),
+    subject: Array.from(new Set([
+      ...fallbackArray(subject, primarySubject),
+      ...referenceGuidance.filter((item) => item.includes('primary identity') || item.includes('prop detail') || item.includes('cover motif')),
+    ])),
     environment: fallbackArray(environment, firstNonEmpty(context.context.location_reference?.description, context.context.location_reference?.name, context.panel.location)),
     action: fallbackArray(action, resolveActionState(context)),
     camera: fallbackArray(camera, resolveCameraAngle(context)),
@@ -342,6 +385,8 @@ export function buildPanelImagePromptSpec(params: {
   const location = params.context.context.location_reference
   const propNames = (params.context.context.prop_references || []).map((item) => item.name).filter(Boolean)
   const promptBlueprint = resolvePromptBlueprint(params.context, primarySubject, params.styleText)
+  const bindingPlan = readBindingPlan(params.context)
+  const referenceInstructions = bindingPlan ? bindingPlanPromptGuidance(bindingPlan) : []
   return {
     schemaVersion: CREATIVE_QUALITY_SCHEMA_VERSION,
     panelId: params.context.panel.panel_id,
@@ -375,7 +420,10 @@ export function buildPanelImagePromptSpec(params: {
       '空间层次明确',
       '参考资产身份一致',
       '画面比例正确',
+      ...(bindingPlan?.complexity.level === 'high' ? ['复杂镜头只生成一个关键瞬间，不要塞入多个动作阶段'] : []),
     ],
+    referenceInstructions,
+    bindingPlan: bindingPlan || params.context.panel.visual_bindings || null,
     textPolicy: params.context.panel.on_screen_text_for_downstream_composition ? 'safe_area_only' : 'no_text',
     negativeConstraints: Array.from(new Set([
       '无文字',
@@ -399,6 +447,7 @@ export function buildPanelImageGenerationSnapshot(params: {
   promptTemplateId: string
   referenceImages: string[]
   structuredReferences?: unknown
+  bindingPlan?: unknown
   promptSpec: PanelImagePromptSpec
   compiledPrompt: string
   assetVersionHash?: string | null
@@ -410,6 +459,7 @@ export function buildPanelImageGenerationSnapshot(params: {
     promptSpecHash: specHash,
     referenceImages: params.referenceImages,
     structuredReferences: params.structuredReferences || null,
+    bindingPlan: params.bindingPlan || null,
     assetVersionHash: params.assetVersionHash || null,
   })
   return {
@@ -425,6 +475,7 @@ export function buildPanelImageGenerationSnapshot(params: {
     assetVersionHash: params.assetVersionHash || null,
     referenceImages: params.referenceImages,
     ...(params.structuredReferences !== undefined ? { structuredReferences: params.structuredReferences } : {}),
+    ...(params.bindingPlan !== undefined ? { bindingPlan: params.bindingPlan } : {}),
     promptSpec: params.promptSpec,
     compiledPrompt: params.compiledPrompt,
     createdAt: new Date().toISOString(),

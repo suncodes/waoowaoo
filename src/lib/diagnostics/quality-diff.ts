@@ -17,6 +17,7 @@ export interface DiagnosticQualityArchiveSummary {
   promptQualityReviews: JsonRecord[]
   visualQualityReviews: JsonRecord[]
   visualPlanReuses: JsonRecord[]
+  visualBindingPlans: JsonRecord[]
   visualAutoRepairs: JsonRecord[]
   visualRepairLineage: JsonRecord[]
   roughCutReviews: JsonRecord[]
@@ -39,6 +40,7 @@ export interface DiagnosticQualityComparison {
     promptQualityReviewCount: number
     visualQualityReviewCount: number
     visualPlanReuseCount: number
+    visualBindingPlanCount: number
     visualAutoRepairCount: number
     acceptedRepairCount: number
     roughCutReviewCount: number
@@ -79,6 +81,7 @@ const QUALITY_FILES = {
   promptQualityReviews: 'quality/prompt-quality-reviews.jsonl',
   visualQualityReviews: 'quality/visual-quality-reviews.jsonl',
   visualPlanReuses: 'quality/visual-plan-reuse.jsonl',
+  visualBindingPlans: 'quality/visual-binding-plans.jsonl',
   visualAutoRepairs: 'quality/visual-auto-repairs.jsonl',
   visualRepairLineage: 'quality/visual-repair-lineage.jsonl',
   roughCutReviews: 'quality/rough-cut-reviews.jsonl',
@@ -213,6 +216,7 @@ function diffManifestCounts(left: DiagnosticQualityArchiveSummary, right: Diagno
     'promptQualityReviews',
     'visualQualityReviews',
     'visualPlanReuses',
+    'visualBindingPlans',
     'visualAutoRepairs',
     'roughCutReviews',
     'pickupItems',
@@ -322,6 +326,7 @@ export async function summarizeDiagnosticQualityArchive(buffer: Buffer): Promise
     promptQualityReviews: await readJsonLines(zip, QUALITY_FILES.promptQualityReviews, missingFiles),
     visualQualityReviews: await readJsonLines(zip, QUALITY_FILES.visualQualityReviews, missingFiles),
     visualPlanReuses: await readJsonLines(zip, QUALITY_FILES.visualPlanReuses, missingFiles),
+    visualBindingPlans: await readJsonLines(zip, QUALITY_FILES.visualBindingPlans, missingFiles),
     visualAutoRepairs: await readJsonLines(zip, QUALITY_FILES.visualAutoRepairs, missingFiles),
     visualRepairLineage: await readJsonLines(zip, QUALITY_FILES.visualRepairLineage, missingFiles),
     roughCutReviews: await readJsonLines(zip, QUALITY_FILES.roughCutReviews, missingFiles),
@@ -391,6 +396,7 @@ export async function compareDiagnosticQualityArchives(params: {
       promptQualityReviewCount: countDelta(left.promptQualityReviews, right.promptQualityReviews),
       visualQualityReviewCount: countDelta(left.visualQualityReviews, right.visualQualityReviews),
       visualPlanReuseCount: countDelta(left.visualPlanReuses, right.visualPlanReuses),
+      visualBindingPlanCount: countDelta(left.visualBindingPlans, right.visualBindingPlans),
       visualAutoRepairCount: countDelta(left.visualAutoRepairs, right.visualAutoRepairs),
       acceptedRepairCount: acceptedRepairCount(right.visualRepairLineage) - acceptedRepairCount(left.visualRepairLineage),
       roughCutReviewCount: countDelta(left.roughCutReviews, right.roughCutReviews),

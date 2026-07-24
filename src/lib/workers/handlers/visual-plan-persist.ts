@@ -9,7 +9,10 @@ import {
   type VisualAnchor,
 } from '@/lib/creation-workspace/artifact-state'
 import { isWorkspaceClipActive } from '@/lib/creation-workspace/guide-clips'
-import { resolvePanelVisualBindings } from '@/lib/visual-production/bindings'
+import {
+  panelVisualBindingsFromPlan,
+  resolvePanelAssetBindingPlan,
+} from '@/lib/visual-production/binding-plan'
 
 function asInputJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
@@ -118,7 +121,7 @@ export async function materializeGuideStoryboards(
     for (let panelIndex = 0; panelIndex < units.length; panelIndex += 1) {
       const unit = units[panelIndex]
       const rawAssetRefs = Array.isArray(unit.assetRefs) ? unit.assetRefs : []
-      const bindings = resolvePanelVisualBindings({
+      const bindingPlan = resolvePanelAssetBindingPlan({
         description: unit.description,
         imagePrompt: unit.imagePrompt,
         characters: JSON.stringify(rawAssetRefs.filter((item) => item.kind === 'character').map((item) => item.name)),
@@ -129,6 +132,7 @@ export async function materializeGuideStoryboards(
         visualType: unit.visualType,
         renderMode: unit.renderMode,
       })
+      const bindings = panelVisualBindingsFromPlan(bindingPlan)
       const assetRefs = bindings.visibleAssets.map((item) => ({
         id: item.id,
         kind: item.kind,
@@ -164,6 +168,7 @@ export async function materializeGuideStoryboards(
           sceneType: unit.visualType,
           photographyRules: JSON.stringify({
             shotSpec: unit.shotSpec,
+            assetBindingPlan: bindingPlan,
             productionBible: params.result.productionBible,
           }),
         },
