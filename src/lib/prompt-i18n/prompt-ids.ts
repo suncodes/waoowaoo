@@ -30,6 +30,7 @@ export const PROMPT_IDS = {
   NP_SELECT_PROP: 'np_select_prop',
   NP_SELECT_LOCATION: 'np_select_location',
   NP_SINGLE_PANEL_IMAGE: 'np_single_panel_image',
+  NP_SHOT_ASSET_REQUIREMENTS: 'np_shot_asset_requirements',
   NP_STORYBOARD_EDIT: 'np_storyboard_edit',
   NP_VISUAL_AUTO_REPAIR: 'np_visual_auto_repair',
   NP_VISUAL_PLAN: 'np_visual_plan',

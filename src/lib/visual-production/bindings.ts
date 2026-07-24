@@ -1,3 +1,11 @@
+import {
+  readShotAssetRequirementPlanFromReferencePlan,
+  readShotAssetRequirementPlanFromRules,
+  readShotAssetRequirementPlanFromUnknown,
+  type ShotAssetRequirement,
+  type ShotAssetRequirementPlan,
+} from './shot-asset-requirements'
+
 export type VisualAssetKind = 'character' | 'location' | 'prop'
 
 export interface VisualAssetRef {
@@ -17,7 +25,7 @@ export type PanelAssetBindingRole =
 
 export interface PanelAssetBinding extends VisualAssetRef {
   role: PanelAssetBindingRole
-  source: 'shot_spec' | 'legacy_panel' | 'source_anchor'
+  source: 'requirement_plan' | 'shot_spec' | 'legacy_panel' | 'source_anchor'
   weight: number
 }
 
@@ -33,6 +41,7 @@ export interface PanelVisualBindings {
   visibleAssets: PanelAssetBinding[]
   suppressedAssets: SuppressedPanelAssetBinding[]
   usedShotSpec: boolean
+  shotAssetRequirementPlan?: ShotAssetRequirementPlan | null
 }
 
 export interface PanelForVisualBindings {
@@ -43,6 +52,8 @@ export interface PanelForVisualBindings {
   props?: string | null
   sourceAnchor?: unknown
   photographyRules?: unknown
+  referencePlan?: unknown
+  shotAssetRequirementPlan?: unknown
   visualType?: string | null
   renderMode?: string | null
 }
@@ -119,6 +130,12 @@ export function readSourceAnchorVisualAssetIds(sourceAnchor: unknown): string[] 
 export function readPanelShotSpec(photographyRules: unknown): Record<string, unknown> {
   const rules = asRecord(photographyRules)
   return asRecord(rules.shotSpec)
+}
+
+export function readPanelShotAssetRequirementPlan(panel: PanelForVisualBindings): ShotAssetRequirementPlan | null {
+  return readShotAssetRequirementPlanFromUnknown(panel.shotAssetRequirementPlan)
+    || readShotAssetRequirementPlanFromRules(panel.photographyRules)
+    || readShotAssetRequirementPlanFromReferencePlan(panel.referencePlan)
 }
 
 function readShotSpecText(shotSpec: Record<string, unknown>): string {
@@ -262,15 +279,89 @@ function weightForRole(role: PanelAssetBindingRole): number {
   return 0.35
 }
 
+function matchRequirementAsset(
+  requirement: ShotAssetRequirement,
+  assets: VisualAssetRef[],
+): VisualAssetRef | null {
+  if (requirement.assetId) {
+    const exact = assets.find((asset) => asset.id === requirement.assetId)
+    return exact || {
+      id: requirement.assetId,
+      kind: requirement.kind,
+      name: requirement.name,
+    }
+  }
+  return assets.find((asset) => asset.kind === requirement.kind && textMentionsName(asset.name, requirement.name))
+    || assets.find((asset) => asset.kind === requirement.kind && textMentionsName(requirement.name, asset.name))
+    || null
+}
+
+function resolvePanelVisualBindingsFromRequirementPlan(params: {
+  requirementPlan: ShotAssetRequirementPlan
+  fallbackAssets: VisualAssetRef[]
+  visualType: string
+  renderMode: string
+  usedShotSpec: boolean
+}): PanelVisualBindings {
+  const visibleAssets: PanelAssetBinding[] = []
+  const suppressedAssets: SuppressedPanelAssetBinding[] = []
+  const seenBindingKeys = new Set<string>()
+
+  for (const requirement of params.requirementPlan.requirements) {
+    const asset = matchRequirementAsset(requirement, params.fallbackAssets)
+    if (!asset) {
+      suppressedAssets.push({
+        id: `missing:${requirement.kind}:${requirement.name}`,
+        kind: requirement.kind,
+        name: requirement.name,
+        source: 'requirement_plan',
+        reason: requirement.required || requirement.mustLock
+          ? 'required asset is missing and must be backfilled before reliable generation'
+          : 'optional asset is unavailable',
+      })
+      continue
+    }
+    const bindingKey = `${asset.id}:${requirement.role}`
+    if (seenBindingKeys.has(bindingKey)) continue
+    seenBindingKeys.add(bindingKey)
+    visibleAssets.push({
+      ...asset,
+      role: requirement.role,
+      source: 'requirement_plan',
+      weight: weightForRole(requirement.role) + (requirement.mustLock ? 0.1 : 0),
+    })
+  }
+
+  return {
+    primarySubject: params.requirementPlan.primarySubject,
+    visualType: params.visualType,
+    renderMode: params.renderMode,
+    visibleAssets,
+    suppressedAssets,
+    usedShotSpec: params.usedShotSpec,
+    shotAssetRequirementPlan: params.requirementPlan,
+  }
+}
+
 export function resolvePanelVisualBindings(panel: PanelForVisualBindings): PanelVisualBindings {
   const shotSpec = readPanelShotSpec(panel.photographyRules)
   const shotAssets = readAssetRefs(shotSpec.visibleAssets)
   const legacyAssets = readLegacyPanelRefs(panel)
   const usedShotSpec = shotAssets.length > 0
   const rawAssets = usedShotSpec ? shotAssets : legacyAssets
+  const requirementPlan = readPanelShotAssetRequirementPlan(panel)
   const primarySubject = readPrimarySubject(panel, shotSpec, rawAssets)
   const visualType = readString(panel.visualType) || 'illustration'
   const renderMode = readString(panel.renderMode) || 'generated_image'
+  if (requirementPlan) {
+    return resolvePanelVisualBindingsFromRequirementPlan({
+      requirementPlan,
+      fallbackAssets: rawAssets,
+      visualType,
+      renderMode,
+      usedShotSpec,
+    })
+  }
   const shotText = JSON.stringify({
     primarySubject,
     visualType,
@@ -308,5 +399,6 @@ export function resolvePanelVisualBindings(panel: PanelForVisualBindings): Panel
     visibleAssets,
     suppressedAssets,
     usedShotSpec,
+    shotAssetRequirementPlan: null,
   }
 }

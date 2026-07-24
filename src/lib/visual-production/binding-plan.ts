@@ -6,6 +6,10 @@ import {
   type PanelVisualBindings,
   type SuppressedPanelAssetBinding,
 } from './bindings'
+import type {
+  ShotAssetRequirement,
+  ShotAssetRequirementPlan,
+} from './shot-asset-requirements'
 
 export type BindingPlanWarningSeverity = 'info' | 'warning' | 'critical'
 
@@ -18,6 +22,7 @@ export interface BindingPlanWarning {
     | 'REFERENCE_LIMIT_EXCEEDED'
     | 'BOOK_COVER_MOTIF'
     | 'COMPARISON_REFERENCE'
+    | 'MISSING_REQUIRED_ASSET'
   severity: BindingPlanWarningSeverity
   message: string
   assetId?: string | null
@@ -40,6 +45,8 @@ export interface PanelAssetBindingPlan {
   warnings: BindingPlanWarning[]
   complexity: PanelShotComplexity
   usedShotSpec: boolean
+  requirementPlan?: ShotAssetRequirementPlan | null
+  unresolvedRequirements?: ShotAssetRequirement[]
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -78,16 +85,28 @@ function readShotText(panel: PanelForVisualBindings): string {
   }).toLowerCase()
 }
 
-function looksTextProne(text: string, visualType: string, renderMode: string): boolean {
+function looksTextProne(
+  text: string,
+  visualType: string,
+  renderMode: string,
+  requirementPlan?: ShotAssetRequirementPlan | null,
+): boolean {
+  if (requirementPlan) {
+    return requirementPlan.visualIntent === 'text_card'
+      || requirementPlan.visualIntent === 'book_clean_plate'
+      || requirementPlan.referencePolicy === 'clean_plate'
+      || requirementPlan.referencePolicy === 'forbidden'
+  }
   return visualType === 'book_cover'
     || visualType === 'quote_card'
     || renderMode === 'text_card'
-    || /(书名|标题|封面|图案|标志|标识|徽章|字幕|文字|年份|title|caption|cover|motif|logo|emblem|badge)/iu.test(text)
+    || /(书名|标题|封面|字幕|title|caption|cover)/iu.test(text)
 }
 
 function computeShotComplexity(
   panel: PanelForVisualBindings,
   bindings: PanelAssetBinding[],
+  requirementPlan?: ShotAssetRequirementPlan | null,
 ): PanelShotComplexity {
   const text = readShotText(panel)
   const visualType = typeof panel.visualType === 'string' ? panel.visualType : ''
@@ -96,7 +115,7 @@ function computeShotComplexity(
   const hasEnvironment = bindings.some((item) => item.kind === 'location')
   const propCount = bindings.filter((item) => item.kind === 'prop').length
   const strongAction = /(落水|掉入|追逐|打斗|战斗|爆炸|飞溅|奔跑|拥挤|群像|多人|三人|并排|对比|split|comparison|crowd|fight|fall)/iu.test(text)
-  const textProne = looksTextProne(text, visualType, renderMode)
+  const textProne = looksTextProne(text, visualType, renderMode, requirementPlan)
   let score = 0
   const riskFlags: string[] = []
 
@@ -145,6 +164,7 @@ function buildWarnings(params: {
   bindings: PanelAssetBinding[]
   suppressed: SuppressedPanelAssetBinding[]
   complexity: PanelShotComplexity
+  unresolvedRequirements: ShotAssetRequirement[]
 }): BindingPlanWarning[] {
   const warnings: BindingPlanWarning[] = []
   for (const asset of params.suppressed) {
@@ -160,6 +180,14 @@ function buildWarnings(params: {
       code: 'NO_REFERENCE_ASSET',
       severity: 'info',
       message: 'No locked visual asset is bound to this panel; generation will rely on the text prompt and style only.',
+    })
+  }
+  for (const requirement of params.unresolvedRequirements) {
+    warnings.push({
+      code: 'MISSING_REQUIRED_ASSET',
+      severity: requirement.kind === 'character' ? 'critical' : 'warning',
+      message: `${requirement.name} is required by the shot asset requirement plan but has no usable bound asset.`,
+      assetId: requirement.assetId || null,
     })
   }
   if (params.complexity.level === 'high') {
@@ -197,11 +225,31 @@ function buildWarnings(params: {
   return warnings
 }
 
+function requirementMatchesBinding(
+  requirement: ShotAssetRequirement,
+  binding: PanelAssetBinding,
+): boolean {
+  if (requirement.assetId && binding.id === requirement.assetId) return true
+  return binding.kind === requirement.kind && binding.name.toLowerCase().trim() === requirement.name.toLowerCase().trim()
+}
+
+function findUnresolvedRequirements(
+  requirementPlan: ShotAssetRequirementPlan | null | undefined,
+  bindings: PanelAssetBinding[],
+): ShotAssetRequirement[] {
+  if (!requirementPlan) return []
+  return requirementPlan.requirements.filter((requirement) => {
+    if (!requirement.required && !requirement.mustLock) return false
+    return !bindings.some((binding) => requirementMatchesBinding(requirement, binding))
+  })
+}
+
 export function resolvePanelAssetBindingPlan(panel: PanelForVisualBindings): PanelAssetBindingPlan {
   const stored = readPanelAssetBindingPlanFromRules(panel.photographyRules)
   if (stored) return stored
   const bindings = resolvePanelVisualBindings(panel)
-  const complexity = computeShotComplexity(panel, bindings.visibleAssets)
+  const unresolvedRequirements = findUnresolvedRequirements(bindings.shotAssetRequirementPlan, bindings.visibleAssets)
+  const complexity = computeShotComplexity(panel, bindings.visibleAssets, bindings.shotAssetRequirementPlan)
   return {
     schemaVersion: 1,
     primarySubject: bindings.primarySubject,
@@ -213,9 +261,12 @@ export function resolvePanelAssetBindingPlan(panel: PanelForVisualBindings): Pan
       bindings: bindings.visibleAssets,
       suppressed: bindings.suppressedAssets,
       complexity,
+      unresolvedRequirements,
     }),
     complexity,
     usedShotSpec: bindings.usedShotSpec,
+    requirementPlan: bindings.shotAssetRequirementPlan || null,
+    unresolvedRequirements,
   }
 }
 
@@ -227,6 +278,7 @@ export function panelVisualBindingsFromPlan(plan: PanelAssetBindingPlan): PanelV
     visibleAssets: plan.bindings,
     suppressedAssets: plan.suppressed,
     usedShotSpec: plan.usedShotSpec,
+    shotAssetRequirementPlan: plan.requirementPlan || null,
   }
 }
 

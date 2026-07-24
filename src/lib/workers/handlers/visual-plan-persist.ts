@@ -13,6 +13,10 @@ import {
   panelVisualBindingsFromPlan,
   resolvePanelAssetBindingPlan,
 } from '@/lib/visual-production/binding-plan'
+import {
+  findShotAssetRequirementPlan,
+  type ShotAssetRequirementPlanResult,
+} from '@/lib/visual-production/shot-asset-requirements'
 
 function asInputJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
@@ -43,6 +47,7 @@ export async function persistVisualPlan(params: {
   storyboardReview?: unknown
   visualBeatPlan?: unknown
   assetCoverageAudit?: unknown
+  shotAssetRequirementPlan?: ShotAssetRequirementPlanResult
 }) {
   await prisma.$transaction(async (tx) => {
     const currentEpisode = await tx.novelPromotionEpisode.findUnique({
@@ -70,6 +75,7 @@ export async function persistVisualPlan(params: {
       visualUnits: cloneWorkspaceValue(params.result.visualUnits),
       ...(params.visualBeatPlan !== undefined ? { visualBeatPlan: cloneWorkspaceValue(params.visualBeatPlan) } : {}),
       ...(params.assetCoverageAudit !== undefined ? { assetCoverageAudit: cloneWorkspaceValue(params.assetCoverageAudit) } : {}),
+      ...(params.shotAssetRequirementPlan !== undefined ? { shotAssetRequirementPlan: cloneWorkspaceValue(params.shotAssetRequirementPlan) } : {}),
       ...(params.storyboardReview !== undefined ? { storyboardReview: cloneWorkspaceValue(params.storyboardReview) } : {}),
     }
     meta.downstream = {
@@ -94,6 +100,7 @@ export async function materializeGuideStoryboards(
     episodeId: string
     result: VisualPlanResult
     narratorLabel: string
+    shotAssetRequirementPlan?: ShotAssetRequirementPlanResult
   },
 ) {
   const clips = await tx.novelPromotionClip.findMany({
@@ -140,6 +147,7 @@ export async function materializeGuideStoryboards(
     for (let panelIndex = 0; panelIndex < units.length; panelIndex += 1) {
       const unit = units[panelIndex]
       const rawAssetRefs = Array.isArray(unit.assetRefs) ? unit.assetRefs : []
+      const shotAssetRequirementPlan = findShotAssetRequirementPlan(params.shotAssetRequirementPlan, unit.id)
       const bindingPlan = resolvePanelAssetBindingPlan({
         description: unit.description,
         imagePrompt: unit.imagePrompt,
@@ -147,7 +155,11 @@ export async function materializeGuideStoryboards(
         location: rawAssetRefs.find((item) => item.kind === 'location')?.name || null,
         props: JSON.stringify(rawAssetRefs.filter((item) => item.kind === 'prop').map((item) => item.name)),
         sourceAnchor: unit.sourceAnchor,
-        photographyRules: { shotSpec: unit.shotSpec },
+        photographyRules: {
+          shotSpec: unit.shotSpec,
+          ...(shotAssetRequirementPlan ? { shotAssetRequirementPlan } : {}),
+        },
+        shotAssetRequirementPlan,
         visualType: unit.visualType,
         renderMode: unit.renderMode,
       })
@@ -190,6 +202,7 @@ export async function materializeGuideStoryboards(
           noReferenceReason: bindingPlan.bindings.length === 0 ? 'one_off_broll' : null,
           referencePlan: asInputJson({
             schemaVersion: 1,
+            shotAssetRequirementPlan,
             bindingPlan,
             references: [],
           }),
@@ -198,6 +211,7 @@ export async function materializeGuideStoryboards(
           sceneType: unit.visualType,
           photographyRules: JSON.stringify({
             shotSpec: unit.shotSpec,
+            shotAssetRequirementPlan,
             assetBindingPlan: bindingPlan,
             productionBible: params.result.productionBible,
           }),

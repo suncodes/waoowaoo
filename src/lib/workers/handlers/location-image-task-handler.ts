@@ -5,6 +5,8 @@ import { resolveArtStyleForGeneration } from '@/lib/art-style-generation'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
 import { submitTask } from '@/lib/task/submitter'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
+import { buildImageBillingPayload } from '@/lib/config-service'
+import { withTaskUiPayload } from '@/lib/task/ui-payload'
 import { assertVisionInputSupported, createVisualVersionHash } from '@/lib/visual-quality'
 import { createCreativeQualityHash, type GenerationSnapshot } from '@/lib/creative-quality/contracts'
 import { createOptionalGenerationSnapshotArtifact } from '@/lib/creative-quality/runtime-artifacts'
@@ -76,6 +78,89 @@ interface LocationImageTaskDb {
 function resolveRequestedLocationCount(payload: AnyObj): number | null {
   if (!Object.prototype.hasOwnProperty.call(payload, 'count')) return null
   return normalizeImageGenerationCount('location', payload.count)
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function readBackfillAssetIds(referencePlan: unknown): string[] {
+  const plan = asRecord(referencePlan)
+  const backfill = asRecord(plan.backfill)
+  const requests = Array.isArray(backfill.requests) ? backfill.requests : []
+  return requests.flatMap((item) => {
+    const request = asRecord(item)
+    return typeof request.assetId === 'string' && request.assetId.trim()
+      ? [request.assetId.trim()]
+      : []
+  })
+}
+
+async function scheduleBackfilledPanelImageTasks(params: {
+  projectId: string
+  userId: string
+  locale: TaskJobData['locale']
+  assetIds: string[]
+  storyboardModel: string | null
+}) {
+  const assetIds = Array.from(new Set(params.assetIds.filter(Boolean)))
+  if (assetIds.length === 0 || !params.storyboardModel) return []
+
+  const panels = await prisma.novelPromotionPanel.findMany({
+    where: {
+      generationRoute: 'asset_backfill',
+      storyboard: {
+        episode: {
+          novelPromotionProject: {
+            projectId: params.projectId,
+          },
+        },
+      },
+    },
+    select: {
+      id: true,
+      referencePlan: true,
+      storyboard: { select: { episodeId: true } },
+    },
+  })
+
+  const scheduled: string[] = []
+  for (const panel of panels) {
+    const panelBackfillAssetIds = readBackfillAssetIds(panel.referencePlan)
+    if (!panelBackfillAssetIds.some((assetId) => assetIds.includes(assetId))) continue
+
+    const payloadBase = {
+      panelId: panel.id,
+      candidateCount: 1,
+      count: 1,
+      source: 'asset_backfill_resume',
+      backfillAssetIds: panelBackfillAssetIds,
+    }
+    const billingPayload = await buildImageBillingPayload({
+      projectId: params.projectId,
+      userId: params.userId,
+      imageModel: params.storyboardModel,
+      basePayload: payloadBase,
+    })
+    const submitted = await submitTask({
+      userId: params.userId,
+      locale: params.locale,
+      projectId: params.projectId,
+      episodeId: panel.storyboard.episodeId,
+      type: TASK_TYPE.IMAGE_PANEL,
+      targetType: 'NovelPromotionPanel',
+      targetId: panel.id,
+      payload: withTaskUiPayload(billingPayload, {
+        intent: 'generate',
+        source: 'asset_backfill_resume',
+      }),
+      dedupeKey: `image_panel:${panel.id}:asset_backfill:${assetIds.join(',')}`,
+    })
+    scheduled.push(submitted.taskId)
+  }
+  return scheduled
 }
 
 export async function handleLocationImageTask(job: Job<TaskJobData>) {
@@ -338,9 +423,18 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
     }
   }
 
+  const resumedPanelTaskIds = await scheduleBackfilledPanelImageTasks({
+    projectId,
+    userId,
+    locale: job.data.locale,
+    assetIds: locationIds,
+    storyboardModel: models.storyboardModel,
+  })
+
   return {
     updated: locationImages.length,
     locationIds,
+    resumedPanelTaskIds,
     promptSnapshots,
   }
 }

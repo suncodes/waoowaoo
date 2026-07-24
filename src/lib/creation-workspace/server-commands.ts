@@ -27,6 +27,7 @@ import { getGuideClipSegmentId, syncGuideClips } from './guide-clips'
 import type { WorkspaceArtifactCommand, WorkspaceArtifactCommandResult } from './commands'
 import { materializeGuideStoryboards } from '@/lib/workers/handlers/visual-plan-persist'
 import { parseVisualPlanResult } from '@/lib/visual-planning'
+import type { ShotAssetRequirementPlanResult } from '@/lib/visual-production/shot-asset-requirements'
 
 function asInputJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
@@ -312,6 +313,7 @@ async function materializeStoredVisualPlan(params: {
     episodeId: params.episodeId,
     result,
     narratorLabel: params.narratorLabel,
+    shotAssetRequirementPlan: meta.plan.shotAssetRequirementPlan as ShotAssetRequirementPlanResult | undefined,
   })
   const nextMeta = cloneWorkspaceValue(meta)
   nextMeta.downstream.storyboard = false

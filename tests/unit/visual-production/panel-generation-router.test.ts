@@ -6,6 +6,7 @@ import {
 } from '@/lib/visual-production/panel-generation-router'
 import type { PanelAssetBindingPlan } from '@/lib/visual-production/binding-plan'
 import type { VisualReference } from '@/lib/visual-production/references'
+import type { ShotAssetRequirementPlan } from '@/lib/visual-production/shot-asset-requirements'
 
 function buildBindingPlan(overrides: Partial<PanelAssetBindingPlan> = {}): PanelAssetBindingPlan {
   return {
@@ -38,6 +39,33 @@ function buildPrimaryReference(): VisualReference {
     usage: 'must_match',
     weight: 0.9,
     source: 'shot_spec',
+  }
+}
+
+function buildRequirementPlan(overrides: Partial<ShotAssetRequirementPlan> = {}): ShotAssetRequirementPlan {
+  return {
+    schemaVersion: 1,
+    panelId: 'visual_1',
+    primarySubject: '关键罗盘',
+    subjectType: 'prop',
+    visualIntent: 'prop_focus',
+    referencePolicy: 'required',
+    noReferenceAllowed: false,
+    noReferenceReason: null,
+    requirements: [{
+      name: '关键罗盘',
+      kind: 'prop',
+      assetId: null,
+      role: 'prop_detail',
+      required: true,
+      mustLock: true,
+      reuseExpected: true,
+      reason: '主道具需要稳定外观',
+    }],
+    confidence: 0.9,
+    source: 'llm',
+    warnings: [],
+    ...overrides,
   }
 }
 
@@ -128,5 +156,92 @@ describe('panel generation router', () => {
 
     expect(decision.route).toBe('split')
     expect(decision.suggestedFix).toContain('拆分镜头规划')
+  })
+
+  it('uses requirement plans to route missing prop references to backfill', () => {
+    const decision = decidePanelGenerationRoute({
+      panel: {
+        id: 'panel-prop',
+        visualType: 'illustration',
+        renderMode: 'generated_image',
+        imagePrompt: '无文字，桌上的关键罗盘特写',
+      },
+      bindingPlan: buildBindingPlan({
+        primarySubject: '关键罗盘',
+        requirementPlan: buildRequirementPlan(),
+        unresolvedRequirements: buildRequirementPlan().requirements,
+      }),
+      references: [],
+    })
+
+    expect(decision).toMatchObject({
+      route: 'asset_backfill',
+      noReferenceReason: 'asset_backfill_required',
+      blockingAssetNames: ['关键罗盘'],
+    })
+  })
+
+  it('uses requirement plans to route missing character references to human review', () => {
+    const requirementPlan = buildRequirementPlan({
+      primarySubject: '主角',
+      subjectType: 'character',
+      visualIntent: 'character_action',
+      requirements: [{
+        name: '主角',
+        kind: 'character',
+        assetId: 'character-1',
+        role: 'primary_identity',
+        required: true,
+        mustLock: true,
+        reuseExpected: true,
+        reason: '角色脸和服装必须稳定',
+      }],
+    })
+    const decision = decidePanelGenerationRoute({
+      panel: { id: 'panel-character', visualType: 'character_action', renderMode: 'generated_image' },
+      bindingPlan: buildBindingPlan({
+        primarySubject: '主角',
+        requirementPlan,
+        unresolvedRequirements: [],
+      }),
+      references: [],
+    })
+
+    expect(decision).toMatchObject({
+      route: 'human_required',
+      noReferenceReason: 'character_reference_required',
+      blockingAssetNames: ['主角'],
+    })
+  })
+
+  it('does not treat negative text instructions as text-card routing when no reference is allowed', () => {
+    const requirementPlan = buildRequirementPlan({
+      primarySubject: '深海压力感',
+      subjectType: 'abstract',
+      visualIntent: 'one_off_broll',
+      referencePolicy: 'no_reference_allowed',
+      noReferenceAllowed: true,
+      noReferenceReason: 'one_off_broll',
+      requirements: [],
+    })
+    const decision = decidePanelGenerationRoute({
+      panel: {
+        id: 'panel-broll',
+        visualType: 'illustration',
+        renderMode: 'generated_image',
+        imagePrompt: '无文字、无水印、无标志，深海中的压迫感抽象画面',
+      },
+      bindingPlan: buildBindingPlan({
+        primarySubject: '深海压力感',
+        requirementPlan,
+        unresolvedRequirements: [],
+      }),
+      references: [],
+    })
+
+    expect(decision).toMatchObject({
+      route: 'generate',
+      noReferenceReason: 'one_off_broll',
+    })
   })
 })

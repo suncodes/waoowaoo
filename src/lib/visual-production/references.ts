@@ -27,7 +27,7 @@ export interface VisualReference {
   role: VisualReferenceRole
   usage: VisualReferenceUsage
   weight: number
-  source: 'shot_spec' | 'legacy_panel' | 'source_anchor' | 'sketch' | 'style' | 'previous_frame'
+  source: 'requirement_plan' | 'shot_spec' | 'legacy_panel' | 'source_anchor' | 'sketch' | 'style' | 'previous_frame'
 }
 
 interface CharacterAppearanceLike {

@@ -42,6 +42,10 @@ import {
   decidePanelGenerationRoute,
 } from '@/lib/visual-production/panel-generation-router'
 import {
+  applyBackfillRequestsToRequirementPlan,
+  ensureMissingAssetBackfill,
+} from '@/lib/visual-production/missing-asset-backfill'
+import {
   visualReferencesForPrompt,
   visualReferencesToImageUrls,
   type VisualReference,
@@ -88,6 +92,19 @@ function asJsonRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {}
+}
+
+function mergeBackfillRequirementPlanIntoPhotographyRules(params: {
+  raw: string | null
+  requirementPlan: unknown
+}) {
+  const rules = asJsonRecord(parseJsonUnknown(params.raw))
+  const next: Record<string, unknown> = {
+    ...rules,
+    ...(params.requirementPlan ? { shotAssetRequirementPlan: params.requirementPlan } : {}),
+  }
+  delete next.assetBindingPlan
+  return JSON.stringify(next)
 }
 
 function readOptionalTaskRunId(job: Job<TaskJobData>): string | null {
@@ -461,6 +478,72 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
       }),
     },
   })
+
+  if (generationRouteDecision.route === 'asset_backfill' || generationRouteDecision.route === 'human_required') {
+    const backfillPlan = await ensureMissingAssetBackfill({
+      projectId: job.data.projectId,
+      userId: job.data.userId,
+      locale: job.data.locale,
+      panelId: panel.id,
+      bindingPlan: visualBindingPlan,
+      decision: generationRouteDecision,
+    })
+    const updatedRequirementPlan = applyBackfillRequestsToRequirementPlan(
+      visualBindingPlan.requirementPlan,
+      backfillPlan.requests,
+    )
+    const referencePlan = {
+      schemaVersion: 1,
+      shotAssetRequirementPlan: updatedRequirementPlan || visualBindingPlan.requirementPlan || null,
+      bindingPlan: {
+        ...visualBindingPlan,
+        requirementPlan: updatedRequirementPlan || visualBindingPlan.requirementPlan || null,
+      },
+      references: structuredReferences,
+      decision: generationRouteDecision,
+      backfill: backfillPlan,
+    }
+    await prisma.novelPromotionPanel.update({
+      where: { id: panel.id },
+      data: {
+        generationRoute: generationRouteDecision.route,
+        noReferenceReason: generationRouteDecision.noReferenceReason,
+        referencePlan: asInputJson(referencePlan),
+        photographyRules: mergeBackfillRequirementPlanIntoPhotographyRules({
+          raw: panel.photographyRules,
+          requirementPlan: updatedRequirementPlan || visualBindingPlan.requirementPlan || null,
+        }),
+      },
+    })
+    if (runId) {
+      try {
+        await createArtifact({
+          runId,
+          stepKey: 'missing_asset_backfill',
+          artifactType: 'visual.missing_asset_backfill',
+          refId: panel.id,
+          versionHash: createCreativeQualityHash(backfillPlan),
+          payload: toJsonRecord(backfillPlan),
+        })
+      } catch (error) {
+        logger.warn({
+          message: 'missing asset backfill artifact failed',
+          details: { panelId: panel.id, runId },
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+
+    return {
+      panelId: panel.id,
+      candidateCount: 0,
+      imageUrl: panel.imageUrl,
+      status: backfillPlan.status === 'human_required' ? 'human_required' : 'waiting_asset_backfill',
+      generationRouteDecision,
+      backfillPlan,
+      promptSnapshot,
+    }
+  }
 
   assertPanelGenerationRouteAllowed(generationRouteDecision)
 

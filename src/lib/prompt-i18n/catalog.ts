@@ -164,6 +164,15 @@ export const PROMPT_CATALOG: Record<PromptId, PromptCatalogEntry> = {
     pathStem: 'novel-promotion/single_panel_image',
     variableKeys: ['storyboard_text_json_input', 'source_text', 'aspect_ratio', 'style'],
   },
+  [PROMPT_IDS.NP_SHOT_ASSET_REQUIREMENTS]: {
+    pathStem: 'novel-promotion/shot_asset_requirements',
+    variableKeys: [
+      'profile_json',
+      'visual_plan_json',
+      'assets_json',
+      'visual_beat_plan_json',
+    ],
+  },
   [PROMPT_IDS.NP_STORYBOARD_EDIT]: {
     pathStem: 'novel-promotion/storyboard_edit',
     variableKeys: ['user_input'],

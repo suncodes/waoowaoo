@@ -15,6 +15,11 @@ import {
   auditVisualAssetCoverage,
   type AssetCoverageAuditAsset,
 } from '@/lib/assets/asset-coverage-audit'
+import {
+  buildFallbackShotAssetRequirementPlanResult,
+  normalizeShotAssetRequirementPlanResult,
+  type ShotAssetRequirementPlanResult,
+} from '@/lib/visual-production/shot-asset-requirements'
 import type { TaskJobData } from '@/lib/task/types'
 import { reportTaskProgress } from '@/lib/workers/shared'
 import { assertTaskActive } from '@/lib/workers/utils'
@@ -150,16 +155,59 @@ async function generateValidatedVisualPlan(params: {
   throw new Error('VISUAL_PLAN_INVALID: no valid result after repair')
 }
 
+async function generateShotAssetRequirementPlan(params: {
+  job: Job<TaskJobData>
+  model: string
+  profile: ReturnType<typeof resolveVideoProfile>
+  result: VisualPlanResult
+  assetsJson: string
+  assets: VisualAssetRef[]
+  visualBeatPlanJson: string
+}): Promise<ShotAssetRequirementPlanResult> {
+  const prompt = buildPrompt({
+    promptId: PROMPT_IDS.NP_SHOT_ASSET_REQUIREMENTS,
+    locale: params.job.data.locale,
+    variables: {
+      profile_json: JSON.stringify(params.profile, null, 2),
+      visual_plan_json: JSON.stringify({
+        shotPlan: params.result.shotPlan,
+        visualUnits: params.result.visualUnits,
+      }, null, 2),
+      assets_json: params.assetsJson,
+      visual_beat_plan_json: params.visualBeatPlanJson,
+    },
+  })
+
+  try {
+    const candidate = await executePlanningJsonStep({
+      job: params.job,
+      model: params.model,
+      prompt,
+      action: 'shot_asset_requirements',
+      stepId: 'shot_asset_requirements',
+      stepTitle: 'progress.stage.shotAssetRequirements',
+      stepIndex: 1,
+      stepTotal: 1,
+      temperature: 0.2,
+    })
+    return normalizeShotAssetRequirementPlanResult(candidate, params.result.visualUnits, params.assets)
+  } catch {
+    return buildFallbackShotAssetRequirementPlanResult(params.result.visualUnits)
+  }
+}
+
 async function materializeReusableApprovedVisualPlan(params: {
   episodeId: string
   result: VisualPlanResult
   narratorLabel: string
+  shotAssetRequirementPlan?: ShotAssetRequirementPlanResult
 }) {
   await prisma.$transaction(async (tx) => {
     await materializeGuideStoryboards(tx, {
       episodeId: params.episodeId,
       result: params.result,
       narratorLabel: params.narratorLabel,
+      shotAssetRequirementPlan: params.shotAssetRequirementPlan,
     })
     const current = await tx.novelPromotionEpisode.findUnique({
       where: { id: params.episodeId },
@@ -313,6 +361,7 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
       visualUnits: reusedResult.visualUnits,
       assets: coverageAssets,
     })
+    const shotAssetRequirementPlan = buildFallbackShotAssetRequirementPlanResult(reusedResult.visualUnits)
     if (storyboardReview.status !== 'passed') {
       throw new Error(`VISUAL_PLAN_REUSE_INVALID:${storyboardReview.score}:${storyboardReview.evidence.slice(0, 5).join(' | ')}`)
     }
@@ -328,6 +377,7 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
         episodeId,
         result: reusedResult,
         narratorLabel: job.data.locale === 'en' ? 'Narrator' : '旁白',
+        shotAssetRequirementPlan,
       })
     }
     await createArtifact({
@@ -355,6 +405,13 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
       refId: episodeId,
       payload: toJsonRecord(assetCoverageAudit),
     })
+    await createArtifact({
+      runId: readTaskRunId(job),
+      stepKey: 'shot_asset_requirements',
+      artifactType: 'visual.shot_asset_requirements',
+      refId: episodeId,
+      payload: toJsonRecord(shotAssetRequirementPlan),
+    })
     return {
       episodeId,
       profilePreset: profile.preset,
@@ -366,6 +423,7 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
       storyboardReviewScore: storyboardReview.score,
       storyboardReviewStatus: storyboardReview.status,
       assetCoverageStatus: assetCoverageAudit.status,
+      shotAssetRequirementPlanSource: 'fallback',
       storyboardPersisted: isBookGuideProfile(profile) && !deferStoryboard,
       storyboardMaterialized: shouldMaterializeStoryboard,
     }
@@ -439,6 +497,17 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     visualUnits: result.visualUnits,
     assets: coverageAssets,
   })
+  await reportTaskProgress(job, 80, { stage: 'shot_asset_requirements', displayMode: 'detail' })
+  await assertTaskActive(job, 'shot_asset_requirements')
+  const shotAssetRequirementPlan = await generateShotAssetRequirementPlan({
+    job,
+    model,
+    profile,
+    result,
+    assetsJson,
+    assets: visualAssets,
+    visualBeatPlanJson,
+  })
   if (assetCoverageAudit.relationSuggestions.length > 0) {
     await prisma.novelPromotionAssetRelation.createMany({
       data: assetCoverageAudit.relationSuggestions.map((relation) => ({
@@ -460,6 +529,7 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     storyboardReview,
     visualBeatPlan,
     assetCoverageAudit,
+    shotAssetRequirementPlan,
   })
   await createArtifact({
     runId: readTaskRunId(job),
@@ -477,6 +547,13 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
   })
   await createArtifact({
     runId: readTaskRunId(job),
+    stepKey: 'shot_asset_requirements',
+    artifactType: 'visual.shot_asset_requirements',
+    refId: episodeId,
+    payload: toJsonRecord(shotAssetRequirementPlan),
+  })
+  await createArtifact({
+    runId: readTaskRunId(job),
     stepKey: 'storyboard_review',
     artifactType: 'storyboard.quality.review',
     refId: episodeId,
@@ -487,7 +564,7 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     stepKey: 'visual_plan',
     artifactType: 'visual.plan',
     refId: episodeId,
-    payload: toJsonRecord({ profile, visualBeatPlan, storyboardReview, assetCoverageAudit, ...result }),
+    payload: toJsonRecord({ profile, visualBeatPlan, storyboardReview, assetCoverageAudit, shotAssetRequirementPlan, ...result }),
   })
 
   return {
@@ -497,6 +574,7 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     storyboardReviewScore: storyboardReview.score,
     storyboardReviewStatus: storyboardReview.status,
     assetCoverageStatus: assetCoverageAudit.status,
+    shotAssetRequirementPlanSource: shotAssetRequirementPlan.plans.some((plan) => plan.source === 'llm') ? 'llm' : 'fallback',
     storyboardPersisted: isBookGuideProfile(profile) && !deferStoryboard,
   }
 }

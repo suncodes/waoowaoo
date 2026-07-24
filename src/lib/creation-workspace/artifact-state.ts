@@ -82,6 +82,7 @@ export interface StoredVisualPlan {
   visualUnits: unknown[]
   visualBeatPlan?: unknown
   assetCoverageAudit?: unknown
+  shotAssetRequirementPlan?: unknown
   storyboardReview?: unknown
 }
 
@@ -360,6 +361,7 @@ export function readVisualArtifactMeta(value: unknown): VisualArtifactMeta | nul
             visualUnits: Array.isArray(plan.visualUnits) ? cloneWorkspaceValue(plan.visualUnits) : [],
             ...(plan.visualBeatPlan !== undefined ? { visualBeatPlan: cloneWorkspaceValue(plan.visualBeatPlan) } : {}),
             ...(plan.assetCoverageAudit !== undefined ? { assetCoverageAudit: cloneWorkspaceValue(plan.assetCoverageAudit) } : {}),
+            ...(plan.shotAssetRequirementPlan !== undefined ? { shotAssetRequirementPlan: cloneWorkspaceValue(plan.shotAssetRequirementPlan) } : {}),
             ...(plan.storyboardReview !== undefined ? { storyboardReview: cloneWorkspaceValue(plan.storyboardReview) } : {}),
           }
       : null,
