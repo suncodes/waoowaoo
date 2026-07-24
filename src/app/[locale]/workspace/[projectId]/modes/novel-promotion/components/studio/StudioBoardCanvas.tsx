@@ -10,7 +10,7 @@ import { parseVisualQualityState } from '@/lib/quality-workflow'
 import { useWorkspaceProvider } from '../../WorkspaceProvider'
 import { useWorkspaceStageRuntime } from '../../WorkspaceStageRuntimeContext'
 import { useWorkspaceEpisodeStageData } from '../../hooks/useWorkspaceEpisodeStageData'
-import { CharacterPickerModal, LocationPickerModal, type PanelEditData } from '../PanelEditForm'
+import { CharacterPickerModal, LocationPickerModal, PropPickerModal, type PanelEditData } from '../PanelEditForm'
 import AIDataModal from '../storyboard/AIDataModal'
 import ImageEditModal from '../storyboard/ImageEditModal'
 import { resolveConfirmedCandidateIndex } from '../storyboard/hooks/panel-candidate-runtime'
@@ -317,6 +317,23 @@ function BoardDetailPanel({
               添加角色
             </StudioButton>
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {panelData.props.length > 0 ? (
+              panelData.props.map((prop, index) => (
+                <span key={`${prop}:${index}`} className="inline-flex items-center gap-1 rounded-md bg-white/[0.06] px-2 py-1 text-xs text-stone-300">
+                  {prop}
+                  <button type="button" onClick={() => controller.handleRemoveProp(item.panel, index, item.storyboard.id)} className="text-stone-500 hover:text-stone-100">
+                    <AppIcon name="closeSm" className="h-3 w-3" />
+                  </button>
+                </span>
+              ))
+            ) : (
+              <span className="text-xs text-stone-500">未绑定道具</span>
+            )}
+            <StudioButton size="sm" variant="ghost" icon="package" onClick={() => controller.setAssetPickerPanel({ panelId: item.panel.id, type: 'prop' })}>
+              添加道具
+            </StudioButton>
+          </div>
           {saveState?.status === 'error' ? (
             <div className="flex items-center justify-between gap-3 rounded-md border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs text-rose-100">
               <span>{saveState.errorMessage || '保存失败'}</span>
@@ -431,6 +448,7 @@ function StudioBoardRuntime({
     handleEditSubmit: controller.handleEditSubmit,
     handleAddCharacter: controller.handleAddCharacter,
     handleSetLocation: controller.handleSetLocation,
+    handleAddProp: controller.handleAddProp,
     updatePhotographyPlanMutation: controller.updatePhotographyPlanMutation,
     updatePanelActingNotesMutation: controller.updatePanelActingNotesMutation,
   })
@@ -629,6 +647,15 @@ function StudioBoardRuntime({
           projectId={projectId}
           currentLocation={modalRuntime.pickerPanelRuntime ? controller.getPanelEditData(modalRuntime.pickerPanelRuntime.panel).location || null : null}
           onSelect={modalRuntime.handleSetLocation}
+          onClose={modalRuntime.closeAssetPicker}
+        />
+      ) : null}
+
+      {modalRuntime.hasPropPicker ? (
+        <PropPickerModal
+          projectId={projectId}
+          currentProps={modalRuntime.pickerPanelRuntime ? controller.getPanelEditData(modalRuntime.pickerPanelRuntime.panel).props : []}
+          onSelect={modalRuntime.handleAddProp}
           onClose={modalRuntime.closeAssetPicker}
         />
       ) : null}

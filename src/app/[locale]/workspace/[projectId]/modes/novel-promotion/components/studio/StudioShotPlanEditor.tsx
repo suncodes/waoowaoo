@@ -161,6 +161,20 @@ export default function StudioShotPlanEditor({
     }
   }
 
+  const regenerate = async () => {
+    if (running || saving || confirming) return
+    if (
+      dirty
+      && !window.confirm('重新生成镜头规划会丢弃当前未保存修改，是否继续？')
+    ) return
+    setError('')
+    try {
+      await runtime.onRunVisualPlan(undefined, { forceRegenerate: true })
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '重新生成镜头规划失败')
+    }
+  }
+
   const confirmAndGenerate = async () => {
     if (!draft || confirming) return
     if (
@@ -213,7 +227,7 @@ export default function StudioShotPlanEditor({
       {running ? (
         <div className="rounded-md border border-cyan-400/30 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100">
           <AppIcon name="loader" className="mr-2 inline h-4 w-4 animate-spin" />
-          AI 正在重写镜头规划，完成前保留当前版本供查看。
+          AI 正在生成镜头规划，完成前保留当前版本供查看。
         </div>
       ) : null}
 
@@ -225,6 +239,9 @@ export default function StudioShotPlanEditor({
             <div className="flex flex-wrap gap-2">
               <StudioButton size="sm" variant="secondary" icon="sparkles" loading={running} onClick={() => { void rewrite() }} disabled={running || saving || confirming}>
                 AI 重写
+              </StudioButton>
+              <StudioButton size="sm" variant="secondary" icon="refresh" loading={running} onClick={() => { void regenerate() }} disabled={running || saving || confirming}>
+                重新生成
               </StudioButton>
               <StudioButton size="sm" variant="secondary" icon="check" loading={saving} onClick={() => { void save() }} disabled={!dirty || running || confirming}>
                 保存修改

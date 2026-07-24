@@ -26,6 +26,8 @@ export type ContentPlanRunParams = BasePlanningParams & {
 
 export type VisualPlanRunParams = BasePlanningParams & {
   deferStoryboard?: boolean
+  instruction?: string
+  forceRegenerate?: boolean
 }
 export type PlanningRunResult = RunResult
 
@@ -112,6 +114,8 @@ export function useVisualPlanRunStream({ projectId, episodeId }: PlanningRunOpti
       episodeId: params.episodeId,
       model: params.model || undefined,
       deferStoryboard: params.deferStoryboard === true,
+      instruction: params.instruction || undefined,
+      forceRegenerate: params.forceRegenerate === true || undefined,
       async: true,
       displayMode: 'detail',
     }),

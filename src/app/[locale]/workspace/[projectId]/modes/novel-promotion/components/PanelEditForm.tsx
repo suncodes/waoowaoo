@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl'
 import PanelEditFormV2 from '@/components/ui/patterns/PanelEditFormV2'
 import ProductModalShell from '@/components/product/ProductModalShell'
-import { Character, Location } from '@/types/project'
+import { Character, Location, Prop } from '@/types/project'
 import { useProjectAssets } from '@/lib/query/hooks/useProjectAssets'
 import { AppIcon } from '@/components/ui/icons'
 
@@ -22,6 +22,7 @@ export interface PanelEditData {
   description: string | null
   location: string | null
   characters: { name: string; appearance: string; slot?: string }[]
+  props: string[]
   srtStart: number | null
   srtEnd: number | null
   duration: number | null
@@ -41,8 +42,10 @@ interface PanelEditFormProps {
   onUpdate: (updates: Partial<PanelEditData>) => void
   onOpenCharacterPicker: () => void
   onOpenLocationPicker: () => void
+  onOpenPropPicker: () => void
   onRemoveCharacter: (index: number) => void
   onRemoveLocation: () => void
+  onRemoveProp: (index: number) => void
 }
 
 export default function PanelEditForm({
@@ -54,8 +57,10 @@ export default function PanelEditForm({
   onUpdate,
   onOpenCharacterPicker,
   onOpenLocationPicker,
+  onOpenPropPicker,
   onRemoveCharacter,
-  onRemoveLocation
+  onRemoveLocation,
+  onRemoveProp
 }: PanelEditFormProps) {
   return (
     <PanelEditFormV2
@@ -67,8 +72,10 @@ export default function PanelEditForm({
       onUpdate={onUpdate}
       onOpenCharacterPicker={onOpenCharacterPicker}
       onOpenLocationPicker={onOpenLocationPicker}
+      onOpenPropPicker={onOpenPropPicker}
       onRemoveCharacter={onRemoveCharacter}
       onRemoveLocation={onRemoveLocation}
+      onRemoveProp={onRemoveProp}
       uiMode="flow"
     />
   )
@@ -129,6 +136,64 @@ export function CharacterPickerModal({
               </section>
             )
           })
+        )}
+      </div>
+    </ProductModalShell>
+  )
+}
+
+interface PropPickerModalProps {
+  projectId: string
+  currentProps: string[]
+  onSelect: (propName: string) => void
+  onClose: () => void
+}
+
+export function PropPickerModal({
+  projectId,
+  currentProps,
+  onSelect,
+  onClose
+}: PropPickerModalProps) {
+  const ts = useTranslations('storyboard')
+  const { data: assets } = useProjectAssets(projectId)
+  const props: Prop[] = assets?.props ?? []
+
+  return (
+    <ProductModalShell open onClose={onClose} size="md" eyebrow="资产选择" title={ts('panel.selectProp')} description="选择要绑定到当前镜头的道具。">
+      <div>
+        {props.length === 0 ? (
+          <p className="rounded-md border border-dashed border-white/15 px-4 py-8 text-center text-sm text-stone-500">{ts('panel.noPropAssets')}</p>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            {props.map((prop) => {
+              const isSelected = currentProps.some((name) => name.toLowerCase() === prop.name.toLowerCase())
+              return (
+                <button
+                  key={prop.id}
+                  type="button"
+                  disabled={isSelected}
+                  onClick={() => onSelect(prop.name)}
+                  className={`rounded-md border px-3 py-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                    isSelected
+                      ? 'border-emerald-400/40 bg-emerald-400/10 text-emerald-100'
+                      : 'border-white/10 bg-white/[0.03] text-stone-300 hover:bg-white/[0.06]'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 font-semibold text-stone-100">
+                    <AppIcon name="package" className="h-3.5 w-3.5 text-stone-500" />
+                    <span>{prop.name}</span>
+                  </div>
+                  {prop.summary ? (
+                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-stone-500">{prop.summary}</p>
+                  ) : null}
+                  {isSelected ? (
+                    <span className="text-xs text-emerald-200">{ts('panel.selected')}</span>
+                  ) : null}
+                </button>
+              )
+            })}
+          </div>
         )}
       </div>
     </ProductModalShell>

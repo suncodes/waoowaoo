@@ -209,7 +209,10 @@ export function useWorkspaceExecution({
     t,
   ])
 
-  const runVisualPlanFlow = useCallback(async (instruction?: string) => {
+  const runVisualPlanFlow = useCallback(async (
+    instruction?: string,
+    options?: { forceRegenerate?: boolean },
+  ) => {
     if (!episodeId) {
       alert(t('execution.selectEpisode'))
       return
@@ -217,7 +220,11 @@ export function useWorkspaceExecution({
 
     try {
       setIsTransitioning(true)
-      await planning.runVisualPlan(workspaceV2Enabled && isBookGuideProfile(resolvedVideoProfile), instruction)
+      await planning.runVisualPlan(
+        workspaceV2Enabled && isBookGuideProfile(resolvedVideoProfile),
+        instruction,
+        options,
+      )
       await onRefresh()
       onStageChange('storyboard')
     } catch (err: unknown) {

@@ -100,6 +100,8 @@ export function useStoryboardStageController({
     addCharacterToPanel,
     removeCharacterFromPanel,
     setPanelLocation,
+    addPropToPanel,
+    removePropFromPanel,
     insertPanel,
   } = panelOps
 
@@ -157,8 +159,10 @@ export function useStoryboardStageController({
     handlePanelUpdate,
     handleAddCharacter,
     handleSetLocation,
+    handleAddProp,
     handleRemoveCharacter,
     handleRemoveLocation,
+    handleRemoveProp,
     runningCount,
     pendingPanelCount,
     handleGenerateAllPanels,
@@ -181,6 +185,8 @@ export function useStoryboardStageController({
     addCharacterToPanel,
     removeCharacterFromPanel,
     setPanelLocation,
+    addPropToPanel,
+    removePropFromPanel,
     assetPickerPanel,
     setAssetPickerPanel,
   })
@@ -201,7 +207,7 @@ export function useStoryboardStageController({
     regeneratePanelImage, regenerateAllPanelsIndividually, selectPanelCandidate, selectPanelCandidateIndex,
     cancelPanelCandidate, getPanelCandidates, modifyPanelImage, downloadAllImages, clearStoryboardError,
     assetPickerPanel, setAssetPickerPanel, aiDataPanel, setAIDataPanel, isEpisodeBatchSubmitting,
-    getDefaultAssetsForClip, handleEditSubmit, handlePanelUpdate, handleAddCharacter, handleSetLocation, handleRemoveCharacter, handleRemoveLocation,
+    getDefaultAssetsForClip, handleEditSubmit, handlePanelUpdate, handleAddCharacter, handleSetLocation, handleAddProp, handleRemoveCharacter, handleRemoveLocation, handleRemoveProp,
     retrySave,
     updatePhotographyPlanMutation, updatePanelActingNotesMutation,
     addingStoryboardGroupState, transitioningState, runningCount, pendingPanelCount, handleGenerateAllPanels,

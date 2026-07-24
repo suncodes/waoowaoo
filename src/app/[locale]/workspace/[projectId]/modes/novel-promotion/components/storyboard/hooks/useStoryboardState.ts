@@ -21,6 +21,7 @@ export interface StoryboardPanel {
   camera_move: string | null
   description: string
   characters: { name: string; appearance: string; slot?: string }[]
+  props: string[]
   location?: string
   srt_range?: string
   duration?: number
@@ -35,6 +36,19 @@ export interface StoryboardPanel {
   imageTaskIntent?: string | null
   imageTaskState?: NovelPromotionPanel['imageTaskState']
   visualQualityState?: unknown
+}
+
+function parsePanelProps(value: string | null | undefined): string[] {
+  if (!value) return []
+  try {
+    const parsed = JSON.parse(value) as unknown
+    if (Array.isArray(parsed)) {
+      return parsed.flatMap((item) => typeof item === 'string' && item.trim() ? [item.trim()] : [])
+    }
+  } catch {
+    return value.split(',').map((item) => item.trim()).filter(Boolean)
+  }
+  return []
 }
 
 interface UseStoryboardStateProps {
@@ -142,6 +156,7 @@ export function useStoryboardState({
         description: p.description ?? '',
         location: p.location || undefined,
         characters,
+        props: parsePanelProps(p.props),
         srt_range: p.srtStart && p.srtEnd ? `${p.srtStart}-${p.srtEnd}` : undefined,
         duration: p.duration ?? undefined,
         image_prompt: p.imagePrompt || undefined,
@@ -172,6 +187,7 @@ export function useStoryboardState({
       description: panel.description,
       location: panel.location || null,
       characters: panel.characters || [],
+      props: panel.props || [],
       srtStart: null,
       srtEnd: null,
       duration: panel.duration || null,

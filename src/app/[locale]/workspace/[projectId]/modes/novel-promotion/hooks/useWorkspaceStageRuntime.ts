@@ -37,7 +37,7 @@ interface UseWorkspaceStageRuntimeParams {
   runWithRebuildConfirm: (action: 'storyToScript' | 'scriptToStoryboard', operation: () => Promise<void>) => Promise<void>
   runStoryToScriptFlow: () => Promise<void>
   runContentUnitRewrite: (unitId: string, instruction?: string) => Promise<void>
-  runVisualPlanFlow: (instruction?: string) => Promise<void>
+  runVisualPlanFlow: (instruction?: string, options?: { forceRegenerate?: boolean }) => Promise<void>
   runScriptToStoryboardFlow: (options?: { visualApprovalConfirmed?: boolean }) => Promise<void>
   handleAnalyzeAssets: () => Promise<void>
   handleUpdateClip: (clipId: string, updates: Record<string, unknown>) => Promise<void>
@@ -175,7 +175,7 @@ export function useWorkspaceStageRuntime({
     },
     onArtStyleReferenceEnabledChange: (value) => handleUpdateConfig('artStyleReferenceEnabled', value),
     onRunStoryToScript: () => runWithRebuildConfirm('storyToScript', runStoryToScriptFlow),
-    onRunVisualPlan: (instruction) => runWithRebuildConfirm('scriptToStoryboard', () => runVisualPlanFlow(instruction)),
+    onRunVisualPlan: (instruction, options) => runWithRebuildConfirm('scriptToStoryboard', () => runVisualPlanFlow(instruction, options)),
     onAnalyzeAssets: handleAnalyzeAssets,
     onClipUpdate: (clipId, data) => {
       if (!data || typeof data !== 'object' || Array.isArray(data)) {

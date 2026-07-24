@@ -50,8 +50,10 @@ export default function StoryboardGroup({
   onPanelDelete,
   onOpenCharacterPicker,
   onOpenLocationPicker,
+  onOpenPropPicker,
   onRemoveCharacter,
   onRemoveLocation,
+  onRemoveProp,
   onRetryPanelSave,
   onRegeneratePanelImage,
   onOpenEditModal,
@@ -219,8 +221,10 @@ export default function StoryboardGroup({
         onPanelDelete={onPanelDelete}
         onOpenCharacterPicker={onOpenCharacterPicker}
         onOpenLocationPicker={onOpenLocationPicker}
+        onOpenPropPicker={onOpenPropPicker}
         onRemoveCharacter={onRemoveCharacter}
         onRemoveLocation={onRemoveLocation}
+        onRemoveProp={onRemoveProp}
         onRetryPanelSave={onRetryPanelSave}
         onRegeneratePanelImage={handleRegeneratePanelImage}
         onOpenEditModal={onOpenEditModal}

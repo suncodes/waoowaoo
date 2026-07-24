@@ -49,8 +49,10 @@ interface StoryboardCanvasProps {
   ) => Promise<void>
   onOpenCharacterPicker: (panelId: string) => void
   onOpenLocationPicker: (panelId: string) => void
+  onOpenPropPicker: (panelId: string) => void
   onRemoveCharacter: (panel: StoryboardPanel, index: number, storyboardId: string) => void
   onRemoveLocation: (panel: StoryboardPanel, storyboardId: string) => void
+  onRemoveProp: (panel: StoryboardPanel, index: number, storyboardId: string) => void
   onRetryPanelSave: (panelId: string) => void
   onRegeneratePanelImage: (panelId: string, count?: number, force?: boolean) => void
   onOpenEditModal: (storyboardId: string, panelIndex: number) => void
@@ -107,8 +109,10 @@ export default function StoryboardCanvas({
   onPanelDelete,
   onOpenCharacterPicker,
   onOpenLocationPicker,
+  onOpenPropPicker,
   onRemoveCharacter,
   onRemoveLocation,
+  onRemoveProp,
   onRetryPanelSave,
   onRegeneratePanelImage,
   onOpenEditModal,
@@ -180,8 +184,10 @@ export default function StoryboardCanvas({
               onPanelDelete={(panelId) => onPanelDelete(panelId, storyboard.id, setLocalStoryboards)}
               onOpenCharacterPicker={onOpenCharacterPicker}
               onOpenLocationPicker={onOpenLocationPicker}
+              onOpenPropPicker={onOpenPropPicker}
               onRemoveCharacter={(panel, index) => onRemoveCharacter(panel, index, storyboard.id)}
               onRemoveLocation={(panel) => onRemoveLocation(panel, storyboard.id)}
+              onRemoveProp={(panel, index) => onRemoveProp(panel, index, storyboard.id)}
               onRetryPanelSave={onRetryPanelSave}
               onRegeneratePanelImage={onRegeneratePanelImage}
               onOpenEditModal={(panelIndex) => onOpenEditModal(storyboard.id, panelIndex)}

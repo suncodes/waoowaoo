@@ -1,7 +1,7 @@
 'use client'
 
 import { NovelPromotionStoryboard, NovelPromotionClip } from '@/types/project'
-import { CharacterPickerModal, LocationPickerModal } from '../PanelEditForm'
+import { CharacterPickerModal, LocationPickerModal, PropPickerModal } from '../PanelEditForm'
 import ImageEditModal from './ImageEditModal'
 import AIDataModal from './AIDataModal'
 import ImagePreviewModal from '@/components/ui/ImagePreviewModal'
@@ -106,8 +106,10 @@ export default function StoryboardStage({
     handlePanelUpdate,
     handleAddCharacter,
     handleSetLocation,
+    handleAddProp,
     handleRemoveCharacter,
     handleRemoveLocation,
+    handleRemoveProp,
     retrySave,
 
     updatePhotographyPlanMutation,
@@ -140,6 +142,7 @@ export default function StoryboardStage({
     handleEditSubmit,
     handleAddCharacter,
     handleSetLocation,
+    handleAddProp,
     updatePhotographyPlanMutation,
     updatePanelActingNotesMutation,
   })
@@ -204,8 +207,10 @@ export default function StoryboardStage({
           onPanelDelete={deletePanel}
           onOpenCharacterPicker={(panelId) => setAssetPickerPanel({ panelId, type: 'character' })}
           onOpenLocationPicker={(panelId) => setAssetPickerPanel({ panelId, type: 'location' })}
+          onOpenPropPicker={(panelId) => setAssetPickerPanel({ panelId, type: 'prop' })}
           onRemoveCharacter={handleRemoveCharacter}
           onRemoveLocation={handleRemoveLocation}
+          onRemoveProp={handleRemoveProp}
           onRetryPanelSave={retrySave}
           onRegeneratePanelImage={regeneratePanelImage}
           onOpenEditModal={(storyboardId, panelIndex) => setEditingPanel({ storyboardId, panelIndex })}
@@ -271,6 +276,15 @@ export default function StoryboardStage({
             projectId={projectId}
             currentLocation={modalRuntime.pickerPanelRuntime ? getPanelEditData(modalRuntime.pickerPanelRuntime.panel).location || null : null}
             onSelect={modalRuntime.handleSetLocation}
+            onClose={modalRuntime.closeAssetPicker}
+          />
+        )}
+
+        {modalRuntime.hasPropPicker && (
+          <PropPickerModal
+            projectId={projectId}
+            currentProps={modalRuntime.pickerPanelRuntime ? getPanelEditData(modalRuntime.pickerPanelRuntime.panel).props : []}
+            onSelect={modalRuntime.handleAddProp}
             onClose={modalRuntime.closeAssetPicker}
           />
         )}

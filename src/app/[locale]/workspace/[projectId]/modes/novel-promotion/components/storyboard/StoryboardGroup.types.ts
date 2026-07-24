@@ -39,8 +39,10 @@ export interface StoryboardGroupProps {
   onPanelDelete: (panelId: string) => void
   onOpenCharacterPicker: (panelId: string) => void
   onOpenLocationPicker: (panelId: string) => void
+  onOpenPropPicker: (panelId: string) => void
   onRemoveCharacter: (panel: StoryboardPanel, index: number) => void
   onRemoveLocation: (panel: StoryboardPanel) => void
+  onRemoveProp: (panel: StoryboardPanel, index: number) => void
   onRetryPanelSave: (panelId: string) => void
   onRegeneratePanelImage: (panelId: string, count?: number, force?: boolean) => void
   onOpenEditModal: (panelIndex: number) => void

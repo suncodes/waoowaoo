@@ -56,7 +56,7 @@ export interface WorkspaceStageRuntimeValue {
   onArtStyleChange: (value: string) => Promise<void>
   onArtStyleReferenceEnabledChange: (value: boolean) => Promise<void>
   onRunStoryToScript: () => Promise<void>
-  onRunVisualPlan: (instruction?: string) => Promise<void>
+  onRunVisualPlan: (instruction?: string, options?: { forceRegenerate?: boolean }) => Promise<void>
   onAnalyzeAssets: () => Promise<void>
   onClipUpdate: (clipId: string, data: unknown) => Promise<void>
   onOpenAssetLibrary: () => void

@@ -20,8 +20,10 @@ export interface PanelEditFormV2Props {
   onUpdate: (updates: Partial<PanelEditData>) => void
   onOpenCharacterPicker: () => void
   onOpenLocationPicker: () => void
+  onOpenPropPicker: () => void
   onRemoveCharacter: (index: number) => void
   onRemoveLocation: () => void
+  onRemoveProp: (index: number) => void
   uiMode?: UiPatternMode
 }
 
@@ -34,8 +36,10 @@ export default function PanelEditFormV2({
   onUpdate,
   onOpenCharacterPicker,
   onOpenLocationPicker,
+  onOpenPropPicker,
   onRemoveCharacter,
   onRemoveLocation,
+  onRemoveProp,
   uiMode = 'flow'
 }: PanelEditFormV2Props) {
   const t = useTranslations('storyboard')
@@ -112,7 +116,7 @@ export default function PanelEditFormV2({
         />
       </GlassField>
 
-      <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2 xl:grid-cols-3">
         <GlassField
           label={t('panel.locationLabel')}
           actions={
@@ -160,6 +164,33 @@ export default function PanelEditFormV2({
             </div>
           ) : (
             <p className="text-xs text-[var(--glass-text-tertiary)]">{t('panel.charactersNotEdited')}</p>
+          )}
+        </GlassField>
+
+        <GlassField
+          label={t('panel.propLabelWithCount', { count: panelData.props.length })}
+          actions={
+            <button
+              type="button"
+              onClick={onOpenPropPicker}
+              className="inline-flex h-8 w-8 items-center justify-center text-[var(--glass-text-secondary)] hover:text-[var(--glass-tone-info-fg)] transition-colors"
+              aria-label={t('panel.editProp')}
+              title={t('panel.editProp')}
+            >
+              <AppIcon name="edit" className="h-4 w-4" />
+            </button>
+          }
+        >
+          {panelData.props.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {panelData.props.map((prop, index) => (
+                <GlassChip key={`${prop}-${index}`} tone="neutral" onRemove={() => onRemoveProp(index)}>
+                  {prop}
+                </GlassChip>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-[var(--glass-text-tertiary)]">{t('panel.propsNotEdited')}</p>
           )}
         </GlassField>
       </div>

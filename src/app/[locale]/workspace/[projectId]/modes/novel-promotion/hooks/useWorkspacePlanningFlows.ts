@@ -59,7 +59,11 @@ export function useWorkspacePlanningFlows({
     }
   }, [analysisModel, contentPlanStream, episodeId, setTransitionProgress, t])
 
-  const runVisualPlan = useCallback(async (deferStoryboard = false, instruction?: string) => {
+  const runVisualPlan = useCallback(async (
+    deferStoryboard = false,
+    instruction?: string,
+    options?: { forceRegenerate?: boolean },
+  ) => {
     if (!episodeId) throw new Error(t('execution.selectEpisode'))
     setTransitionProgress({ message: t('execution.visualPlanRunning'), step: 'planning' })
     const result = await visualPlanStream.run({
@@ -67,6 +71,7 @@ export function useWorkspacePlanningFlows({
       model: analysisModel || undefined,
       deferStoryboard,
       instruction: instruction?.trim() || undefined,
+      forceRegenerate: options?.forceRegenerate || undefined,
     })
     if (result.status !== 'completed') {
       throw new Error(result.errorMessage || t('execution.visualPlanFailed'))

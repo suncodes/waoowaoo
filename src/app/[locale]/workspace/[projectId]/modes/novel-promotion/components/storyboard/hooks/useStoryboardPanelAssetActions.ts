@@ -51,11 +51,25 @@ interface UseStoryboardPanelAssetActionsProps {
     storyboardId: string,
     updatePanelEdit: (panelId: string, panel: StoryboardPanel, updates: Partial<PanelEditData>) => void,
   ) => void
+  addPropToPanel: (
+    panel: StoryboardPanel,
+    propName: string,
+    storyboardId: string,
+    getPanelEditData: (panel: StoryboardPanel) => PanelEditData,
+    updatePanelEdit: (panelId: string, panel: StoryboardPanel, updates: Partial<PanelEditData>) => void,
+  ) => void
+  removePropFromPanel: (
+    panel: StoryboardPanel,
+    index: number,
+    storyboardId: string,
+    getPanelEditData: (panel: StoryboardPanel) => PanelEditData,
+    updatePanelEdit: (panelId: string, panel: StoryboardPanel, updates: Partial<PanelEditData>) => void,
+  ) => void
   assetPickerPanel: {
     panelId: string
-    type: 'character' | 'location'
+    type: 'character' | 'location' | 'prop'
   } | null
-  setAssetPickerPanel: (panel: { panelId: string; type: 'character' | 'location' } | null) => void
+  setAssetPickerPanel: (panel: { panelId: string; type: 'character' | 'location' | 'prop' } | null) => void
 }
 
 export function useStoryboardPanelAssetActions({
@@ -77,6 +91,8 @@ export function useStoryboardPanelAssetActions({
   addCharacterToPanel,
   removeCharacterFromPanel,
   setPanelLocation,
+  addPropToPanel,
+  removePropFromPanel,
   assetPickerPanel,
   setAssetPickerPanel,
 }: UseStoryboardPanelAssetActionsProps) {
@@ -153,6 +169,40 @@ export function useStoryboardPanelAssetActions({
     [assetPickerPanel, getTextPanels, localStoryboards, setAssetPickerPanel, setPanelLocation, updatePanelEdit],
   )
 
+  const handleAddProp = useCallback(
+    (propName: string) => {
+      if (!assetPickerPanel || assetPickerPanel.type !== 'prop') return
+
+      const storyboard = localStoryboards.find((item) =>
+        getTextPanels(item).some((panel) => panel.id === assetPickerPanel.panelId),
+      )
+      const panel = storyboard
+        ? getTextPanels(storyboard).find((item) => item.id === assetPickerPanel.panelId)
+        : null
+
+      if (storyboard && panel) {
+        addPropToPanel(panel, propName, storyboard.id, getPanelEditData, updatePanelEdit)
+      }
+      setAssetPickerPanel(null)
+    },
+    [
+      addPropToPanel,
+      assetPickerPanel,
+      getPanelEditData,
+      getTextPanels,
+      localStoryboards,
+      setAssetPickerPanel,
+      updatePanelEdit,
+    ],
+  )
+
+  const handleRemoveProp = useCallback(
+    (panel: StoryboardPanel, index: number, storyboardId: string) => {
+      removePropFromPanel(panel, index, storyboardId, getPanelEditData, updatePanelEdit)
+    },
+    [getPanelEditData, removePropFromPanel, updatePanelEdit],
+  )
+
   const handleRemoveCharacter = useCallback(
     (panel: StoryboardPanel, index: number, storyboardId: string) => {
       removeCharacterFromPanel(panel, index, storyboardId, getPanelEditData, updatePanelEdit)
@@ -181,8 +231,10 @@ export function useStoryboardPanelAssetActions({
     handlePanelUpdate,
     handleAddCharacter,
     handleSetLocation,
+    handleAddProp,
     handleRemoveCharacter,
     handleRemoveLocation,
+    handleRemoveProp,
     runningCount,
     pendingPanelCount,
     handleGenerateAllPanels,

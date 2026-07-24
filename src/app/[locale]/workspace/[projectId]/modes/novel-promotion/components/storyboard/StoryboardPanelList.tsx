@@ -27,8 +27,10 @@ interface StoryboardPanelListProps {
   onPanelDelete: (panelId: string) => void
   onOpenCharacterPicker: (panelId: string) => void
   onOpenLocationPicker: (panelId: string) => void
+  onOpenPropPicker: (panelId: string) => void
   onRemoveCharacter: (panel: StoryboardPanel, index: number) => void
   onRemoveLocation: (panel: StoryboardPanel) => void
+  onRemoveProp: (panel: StoryboardPanel, index: number) => void
   onRetryPanelSave: (panelId: string) => void
   onRegeneratePanelImage: (panelId: string, count?: number, force?: boolean) => void
   onOpenEditModal: (panelIndex: number) => void
@@ -62,8 +64,10 @@ export default function StoryboardPanelList({
   onPanelDelete,
   onOpenCharacterPicker,
   onOpenLocationPicker,
+  onOpenPropPicker,
   onRemoveCharacter,
   onRemoveLocation,
+  onRemoveProp,
   onRetryPanelSave,
   onRegeneratePanelImage,
   onOpenEditModal,
@@ -127,9 +131,11 @@ export default function StoryboardPanelList({
               onDelete={() => onPanelDelete(panel.id)}
               onOpenCharacterPicker={() => onOpenCharacterPicker(panel.id)}
               onOpenLocationPicker={() => onOpenLocationPicker(panel.id)}
+              onOpenPropPicker={() => onOpenPropPicker(panel.id)}
               onRetrySave={() => onRetryPanelSave(panel.id)}
               onRemoveCharacter={(characterIndex) => onRemoveCharacter(panel, characterIndex)}
               onRemoveLocation={() => onRemoveLocation(panel)}
+              onRemoveProp={(propIndex) => onRemoveProp(panel, propIndex)}
               onRegeneratePanelImage={onRegeneratePanelImage}
               onOpenEditModal={() => onOpenEditModal(index)}
               onOpenAIDataModal={() => onOpenAIDataModal(index)}

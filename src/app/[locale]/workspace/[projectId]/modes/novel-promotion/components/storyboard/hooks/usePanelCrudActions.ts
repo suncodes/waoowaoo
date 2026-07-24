@@ -89,6 +89,7 @@ export function usePanelCrudActions({
           description: snapshot.description,
           location: snapshot.location,
           characters: JSON.stringify(snapshot.characters),
+          props: JSON.stringify(snapshot.props),
           srtStart: snapshot.srtStart,
           srtEnd: snapshot.srtEnd,
           duration: snapshot.duration,
@@ -128,6 +129,7 @@ export function usePanelCrudActions({
         description: snapshot.description,
         location: snapshot.location,
         characters: JSON.stringify(snapshot.characters),
+        props: JSON.stringify(snapshot.props),
         srtStart: snapshot.srtStart,
         srtEnd: snapshot.srtEnd,
         duration: snapshot.duration,
@@ -327,6 +329,36 @@ export function usePanelCrudActions({
     debouncedSave(panel.id, storyboardId)
   }, [debouncedSave])
 
+  const addPropToPanel = useCallback((
+    panel: StoryboardPanel,
+    propName: string,
+    storyboardId: string,
+    getPanelEditData: (panel: StoryboardPanel) => PanelEditData,
+    updatePanelEdit: (panelId: string, panel: StoryboardPanel, updates: Partial<PanelEditData>) => void,
+  ) => {
+    const currentData = getPanelEditData(panel)
+    const exists = currentData.props.some((item) => item.toLowerCase() === propName.toLowerCase())
+    if (exists) return
+    updatePanelEdit(panel.id, panel, {
+      props: [...currentData.props, propName],
+    })
+    debouncedSave(panel.id, storyboardId)
+  }, [debouncedSave])
+
+  const removePropFromPanel = useCallback((
+    panel: StoryboardPanel,
+    index: number,
+    storyboardId: string,
+    getPanelEditData: (panel: StoryboardPanel) => PanelEditData,
+    updatePanelEdit: (panelId: string, panel: StoryboardPanel, updates: Partial<PanelEditData>) => void,
+  ) => {
+    const currentData = getPanelEditData(panel)
+    updatePanelEdit(panel.id, panel, {
+      props: currentData.props.filter((_, propIndex) => propIndex !== index),
+    })
+    debouncedSave(panel.id, storyboardId)
+  }, [debouncedSave])
+
   return {
     savingPanels,
     deletingPanelIds,
@@ -341,5 +373,7 @@ export function usePanelCrudActions({
     addCharacterToPanel,
     removeCharacterFromPanel,
     setPanelLocation,
+    addPropToPanel,
+    removePropFromPanel,
   }
 }
