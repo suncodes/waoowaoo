@@ -23,19 +23,20 @@ Execution rules:
 1. `prompt_spec` inside the storyboard data is the final image specification. Follow it first, then use panel/context/source_text only to fill gaps.
 2. prompt_spec.narrativeIntent defines the shot purpose, shotFunction defines the shot role, and primarySubject is the single main visual subject.
 3. prompt_spec.assetRefs are identity constraints and must stay consistent with references and asset names.
-4. prompt_spec.promptBlueprint is the final prompt skeleton. Execute subject, environment, action, camera, lighting, style, and negative fields item by item; if loose fields conflict with it, keep the blueprint and source-supported content.
-5. prompt_spec.continuity preserves spatial, lighting, eye-line, and action handoff across shots.
-6. If prompt_spec.singleImageFeasibility reports a risk, render only the one frame that can work as a still image instead of packing impossible content into the image.
-7. Respect panel composition, character placement, and action logic.
-8. If storyboard data contains `slot`, treat it as a preferred placement anchor for consistency, not as an absolute restriction.
-9. If location data contains `available_slots`, treat them as typical anchor references rather than a complete map of all valid positions.
-10. When the panel description, source text, action flow, or scene nature implies movement, entry/exit, path traversal, transition space, temporary space, empty space, or abstract/non-literal space, do not force the character to remain inside an existing slot.
-11. Use reference images for style/identity consistency only.
-12. Repaint the background according to shot type and angle.
-13. If storyboard conflicts with source text, keep narrative logic from source text.
-14. Keep final visual style consistent with provided references.
-15. One image may contain only one time, one place, one shot, and one primary visual event. If the input says montage, collage, rapid switching, or sequential display, render only the single most informative frame and never create a grid or multi-frame image.
-16. For renderMode=generated_image, create one complete shot. For text_card, create only a text-free background, decoration, and negative space. For composite, create one clean plate or one foreground element; never fake a news montage, multiple locations, multiple book covers, or an asset wall.
-17. assetRefs and character/location/prop references are identity constraints, not optional decoration. Show only explicitly requested subjects. Do not introduce any character, face, body, building, logo, or motif associated with the style source.
-18. Style applies only to line, shape language, material, palette, and lighting. It must never change subject identity or turn a prop into a character.
-19. If image_prompt conflicts with these rules, preserve its narrative subject and composition intent while removing exact-text generation, multi-scene, and extra-subject requests.
+4. context.visual_references records each reference image role, usage, and weight: primary_identity must match the main subject; supporting_identity stays consistent only when that asset is visible and must not dominate; environment guides space, lighting, and material only; prop_detail locks prop form only; style_only transfers visual language only and must not bring the reference subject into this panel.
+5. prompt_spec.promptBlueprint is the final prompt skeleton. Execute subject, environment, action, camera, lighting, style, and negative fields item by item; if loose fields conflict with it, keep the blueprint and source-supported content.
+6. prompt_spec.continuity preserves spatial, lighting, eye-line, and action handoff across shots.
+7. If prompt_spec.singleImageFeasibility reports a risk, render only the one frame that can work as a still image instead of packing impossible content into the image.
+8. Respect panel composition, character placement, and action logic.
+9. If storyboard data contains `slot`, treat it as a preferred placement anchor for consistency, not as an absolute restriction.
+10. If location data contains `available_slots`, treat them as typical anchor references rather than a complete map of all valid positions.
+11. When the panel description, source text, action flow, or scene nature implies movement, entry/exit, path traversal, transition space, temporary space, empty space, or abstract/non-literal space, do not force the character to remain inside an existing slot.
+12. Use reference images for style/identity consistency only.
+13. Repaint the background according to shot type and angle.
+14. If storyboard conflicts with source text, keep narrative logic from source text.
+15. Keep final visual style consistent with provided references.
+16. One image may contain only one time, one place, one shot, and one primary visual event. If the input says montage, collage, rapid switching, or sequential display, render only the single most informative frame and never create a grid or multi-frame image.
+17. For renderMode=generated_image, create one complete shot. For text_card, create only a text-free background, decoration, and negative space. For composite, create one clean plate or one foreground element; never fake a news montage, multiple locations, multiple book covers, or an asset wall.
+18. assetRefs and character/location/prop references are identity constraints, not optional decoration. Show only explicitly requested subjects. Do not introduce any character, face, body, building, logo, or motif associated with the style source.
+19. Style applies only to line, shape language, material, palette, and lighting. It must never change subject identity or turn a prop into a character.
+20. If image_prompt conflicts with these rules, preserve its narrative subject and composition intent while removing exact-text generation, multi-scene, and extra-subject requests.

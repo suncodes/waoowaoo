@@ -71,6 +71,10 @@ const hasOutputMock = vi.hoisted(() => ({
 }))
 
 const prismaMock = vi.hoisted(() => ({
+  characterAppearance: {
+    findFirst: vi.fn(async () => ({ id: 'appearance-1' })),
+    upsert: vi.fn(async () => ({ id: 'appearance-1' })),
+  },
   userPreference: {
     findUnique: vi.fn(async () => ({ lipSyncModel: 'fal::lipsync-model' })),
   },

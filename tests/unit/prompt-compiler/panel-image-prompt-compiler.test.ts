@@ -98,9 +98,9 @@ describe('panel image prompt compiler', () => {
       textPolicy: 'no_text',
     })
     expect(spec.assetRefs).toEqual([
-      { id: 'character-1', kind: 'character', name: 'Hero', role: 'primary' },
+      { id: 'character-1', kind: 'character', name: 'Hero', role: 'supporting' },
       { id: 'location-1', kind: 'location', name: 'Vault corridor', role: 'environment' },
-      { id: 'prop-1', kind: 'prop', name: 'brass key', role: 'prop' },
+      { id: 'prop-1', kind: 'prop', name: 'brass key', role: 'primary' },
     ])
     expect(spec.spatialLayout).toContain('Hero: left foreground')
     expect(spec.composition.midground).toContain('brass key')

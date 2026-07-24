@@ -17,7 +17,17 @@ const utilsMock = vi.hoisted(() => ({
 }))
 
 const sharedMock = vi.hoisted(() => ({
-  collectPanelReferenceImages: vi.fn(async () => ['https://signed.example/ref-1.png']),
+  collectPanelVisualReferences: vi.fn(async () => [{
+    assetId: 'asset-1',
+    renderId: 'render-1',
+    assetKind: 'character',
+    assetName: 'Hero',
+    url: 'https://signed.example/ref-1.png',
+    role: 'primary_identity',
+    usage: 'must_match',
+    weight: 1,
+    source: 'shot_spec',
+  }]),
   resolveNovelData: vi.fn(async () => ({
     videoRatio: '16:9',
     characters: [],
@@ -70,7 +80,7 @@ vi.mock('@/lib/workers/handlers/image-task-handler-shared', async () => {
   )
   return {
     ...actual,
-    collectPanelReferenceImages: sharedMock.collectPanelReferenceImages,
+    collectPanelVisualReferences: sharedMock.collectPanelVisualReferences,
     resolveNovelData: sharedMock.resolveNovelData,
   }
 })

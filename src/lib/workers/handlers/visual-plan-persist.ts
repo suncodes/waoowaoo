@@ -9,6 +9,7 @@ import {
   type VisualAnchor,
 } from '@/lib/creation-workspace/artifact-state'
 import { isWorkspaceClipActive } from '@/lib/creation-workspace/guide-clips'
+import { resolvePanelVisualBindings } from '@/lib/visual-production/bindings'
 
 function asInputJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
@@ -116,7 +117,23 @@ export async function materializeGuideStoryboards(
     let firstPanel: { id: string; panelIndex: number } | null = null
     for (let panelIndex = 0; panelIndex < units.length; panelIndex += 1) {
       const unit = units[panelIndex]
-      const assetRefs = Array.isArray(unit.assetRefs) ? unit.assetRefs : []
+      const rawAssetRefs = Array.isArray(unit.assetRefs) ? unit.assetRefs : []
+      const bindings = resolvePanelVisualBindings({
+        description: unit.description,
+        imagePrompt: unit.imagePrompt,
+        characters: JSON.stringify(rawAssetRefs.filter((item) => item.kind === 'character').map((item) => item.name)),
+        location: rawAssetRefs.find((item) => item.kind === 'location')?.name || null,
+        props: JSON.stringify(rawAssetRefs.filter((item) => item.kind === 'prop').map((item) => item.name)),
+        sourceAnchor: unit.sourceAnchor,
+        photographyRules: { shotSpec: unit.shotSpec },
+        visualType: unit.visualType,
+        renderMode: unit.renderMode,
+      })
+      const assetRefs = bindings.visibleAssets.map((item) => ({
+        id: item.id,
+        kind: item.kind,
+        name: item.name,
+      }))
       const characterNames = assetRefs.filter((item) => item.kind === 'character').map((item) => item.name)
       const locationName = assetRefs.find((item) => item.kind === 'location')?.name || null
       const propNames = assetRefs.filter((item) => item.kind === 'prop').map((item) => item.name)

@@ -95,11 +95,13 @@ export interface PanelImagePromptCompilerContext {
     visual_type: string
     render_mode: string
     on_screen_text_for_downstream_composition: string
+    visual_bindings?: unknown
   }
   context: {
     character_appearances: CharacterContext[]
     location_reference: LocationContext | null
     prop_references?: PropContext[]
+    visual_references?: unknown[]
   }
 }
 
@@ -146,33 +148,61 @@ function resolvePrimarySubject(context: PanelImagePromptCompilerContext): string
   return firstNonEmpty(context.panel.image_prompt, context.panel.description, context.panel.source_text, '当前镜头主体')
 }
 
-function buildAssetRefs(context: PanelImagePromptCompilerContext): PanelPromptAssetRef[] {
+function assetNameMatchesPrimary(assetName: string, primarySubject: string): boolean {
+  const asset = assetName.toLowerCase().trim()
+  const primary = primarySubject.toLowerCase().trim()
+  if (!asset || !primary) return false
+  if (primary.includes(asset)) return true
+  return asset
+    .split(/[\/|,，、：《》"“”'’‘\s]+/u)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 2)
+    .some((item) => primary.includes(item))
+}
+
+function buildAssetRefs(context: PanelImagePromptCompilerContext, primarySubject: string): PanelPromptAssetRef[] {
   const refs: PanelPromptAssetRef[] = []
+  let hasPrimary = false
   for (const [index, character] of context.context.character_appearances.entries()) {
     if (!character.name.trim()) continue
+    const role = assetNameMatchesPrimary(character.name, primarySubject)
+      ? 'primary'
+      : index === 0 && refs.length === 0 ? 'supporting' : 'supporting'
+    if (role === 'primary') hasPrimary = true
     refs.push({
       id: character.id || null,
       kind: 'character',
       name: character.name,
-      role: index === 0 ? 'primary' : 'supporting',
+      role,
     })
   }
   if (context.context.location_reference?.name) {
+    const role = !hasPrimary && assetNameMatchesPrimary(context.context.location_reference.name, primarySubject)
+      ? 'primary'
+      : 'environment'
+    if (role === 'primary') hasPrimary = true
     refs.push({
       id: context.context.location_reference.id || null,
       kind: 'location',
       name: context.context.location_reference.name,
-      role: 'environment',
+      role,
     })
   }
   for (const prop of context.context.prop_references || []) {
     if (!prop.name.trim()) continue
+    const role = !hasPrimary && assetNameMatchesPrimary(prop.name, primarySubject)
+      ? 'primary'
+      : 'prop'
+    if (role === 'primary') hasPrimary = true
     refs.push({
       id: prop.id || null,
       kind: 'prop',
       name: prop.name,
-      role: 'prop',
+      role,
     })
+  }
+  if (!hasPrimary && refs[0]) {
+    refs[0] = { ...refs[0], role: refs[0].kind === 'location' ? 'environment' : 'primary' }
   }
   return refs
 }
@@ -321,7 +351,7 @@ export function buildPanelImagePromptSpec(params: {
     narrativeIntent,
     shotFunction: firstNonEmpty(readNestedString(shotSpec, ['shotFunction']), 'setup'),
     primarySubject,
-    assetRefs: buildAssetRefs(params.context),
+    assetRefs: buildAssetRefs(params.context, primarySubject),
     actionState: resolveActionState(params.context),
     environment: firstNonEmpty(
       location?.description,
@@ -368,6 +398,7 @@ export function buildPanelImageGenerationSnapshot(params: {
   modelKey: string
   promptTemplateId: string
   referenceImages: string[]
+  structuredReferences?: unknown
   promptSpec: PanelImagePromptSpec
   compiledPrompt: string
   assetVersionHash?: string | null
@@ -378,6 +409,7 @@ export function buildPanelImageGenerationSnapshot(params: {
     promptTemplateId: params.promptTemplateId,
     promptSpecHash: specHash,
     referenceImages: params.referenceImages,
+    structuredReferences: params.structuredReferences || null,
     assetVersionHash: params.assetVersionHash || null,
   })
   return {
@@ -392,6 +424,7 @@ export function buildPanelImageGenerationSnapshot(params: {
     inputHash,
     assetVersionHash: params.assetVersionHash || null,
     referenceImages: params.referenceImages,
+    ...(params.structuredReferences !== undefined ? { structuredReferences: params.structuredReferences } : {}),
     promptSpec: params.promptSpec,
     compiledPrompt: params.compiledPrompt,
     createdAt: new Date().toISOString(),

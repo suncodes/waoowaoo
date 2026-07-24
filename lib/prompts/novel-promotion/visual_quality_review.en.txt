@@ -8,6 +8,12 @@ Deterministic checks:
 
 Candidate count: {candidate_count}
 
+Text policy:
+- When target_spec.requiredText is empty, do not raise TEXT_ERROR because subtitles, titles, or onScreenText are missing.
+- Novel promotion panel images are text-free base images by default. Exact on-screen copy is rendered by downstream composition, not by the image model.
+- Raise TEXT_ERROR only for unintended readable text, watermark, logo, garbled text, or clearly missing negative space for text_card/safe_area_only images.
+- promptPatch must not ask the image model to draw onScreenText, subtitles, book titles, or long copy. It may only ask to remove unintended text or preserve clean negative space.
+
 Return JSON only. candidateIndex is zero-based:
 {
   "status": "passed|repairable|human_required",

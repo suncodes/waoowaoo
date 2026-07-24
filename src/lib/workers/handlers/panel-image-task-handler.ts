@@ -13,7 +13,7 @@ import {
 } from '../utils'
 import {
   AnyObj,
-  collectPanelReferenceImages,
+  collectPanelVisualReferences,
   findCharacterByName,
   parsePanelCharacterReferences,
   pickFirstString,
@@ -29,6 +29,15 @@ import {
   buildPanelImageGenerationSnapshot,
   buildPanelImagePromptSpec,
 } from '@/lib/prompt-compiler/panel-image-prompt-compiler'
+import {
+  resolvePanelVisualBindings,
+  type PanelVisualBindings,
+} from '@/lib/visual-production/bindings'
+import {
+  visualReferencesForPrompt,
+  visualReferencesToImageUrls,
+  type VisualReference,
+} from '@/lib/visual-production/references'
 
 function parseJsonUnknown(raw: string | null | undefined): unknown | null {
   if (!raw) return null
@@ -102,8 +111,24 @@ function buildPanelPromptContext(params: {
     onScreenText: string | null
   }
   projectData: Awaited<ReturnType<typeof resolveNovelData>>
+  visualBindings?: PanelVisualBindings
+  visualReferences?: VisualReference[]
 }) {
-  const panelCharacters = parsePanelCharacterReferences(params.panel.characters)
+  const legacyPanelCharacters = parsePanelCharacterReferences(params.panel.characters)
+  const legacyCharacterByName = new Map(
+    legacyPanelCharacters.map((item) => [item.name.toLowerCase(), item]),
+  )
+  const bindingCharacters = params.visualBindings?.visibleAssets
+    .filter((asset) => asset.kind === 'character')
+    .map((asset) => {
+      const legacy = legacyCharacterByName.get(asset.name.toLowerCase())
+      return {
+        name: asset.name,
+        appearance: legacy?.appearance,
+        slot: legacy?.slot,
+      }
+    }) || []
+  const panelCharacters = bindingCharacters.length > 0 ? bindingCharacters : legacyPanelCharacters
   const characterContexts = panelCharacters.map((reference) => {
     const character = findCharacterByName(params.projectData.characters || [], reference.name)
     if (!character) {
@@ -132,9 +157,11 @@ function buildPanelPromptContext(params: {
   })
 
   const locationContext = (() => {
-    if (!params.panel.location) return null
+    const boundLocation = params.visualBindings?.visibleAssets.find((asset) => asset.kind === 'location')
+    const locationName = boundLocation?.name || params.panel.location
+    if (!locationName) return null
     const matchedLocation = (params.projectData.locations || []).find(
-      (item) => item.name.toLowerCase() === params.panel.location!.toLowerCase(),
+      (item) => item.id === boundLocation?.id || item.name.toLowerCase() === locationName.toLowerCase(),
     )
     if (!matchedLocation) return null
     const selectedImage = (matchedLocation.images || []).find((item) => item.isSelected) || matchedLocation.images?.[0]
@@ -146,7 +173,10 @@ function buildPanelPromptContext(params: {
     }
   })()
 
-  const panelProps = parseDescriptionList(params.panel.props)
+  const boundProps = params.visualBindings?.visibleAssets
+    .filter((asset) => asset.kind === 'prop')
+    .map((asset) => asset.name) || []
+  const panelProps = boundProps.length > 0 ? boundProps : parseDescriptionList(params.panel.props)
   const propContexts = panelProps.map((name) => {
     const matchedProp = (params.projectData.locations || []).find(
       (item) => item.assetKind === 'prop' && item.name.toLowerCase() === name.toLowerCase(),
@@ -178,11 +208,13 @@ function buildPanelPromptContext(params: {
       render_mode: params.panel.renderMode || 'generated_image',
       on_screen_text_for_downstream_composition: params.panel.onScreenText || '',
       image_text_policy: 'The generated image must contain no text. Exact copy is rendered downstream.',
+      visual_bindings: params.visualBindings || null,
     },
     context: {
       character_appearances: characterContexts,
       location_reference: locationContext,
       prop_references: propContexts,
+      visual_references: visualReferencesForPrompt(params.visualReferences || []),
     },
   }
 }
@@ -231,7 +263,9 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
     artStyleReferenceEnabled: modelConfig.artStyleReferenceEnabled,
     locale: job.data.locale,
   })
-  const refs = await collectPanelReferenceImages(projectData, panel)
+  const visualBindings = resolvePanelVisualBindings(panel)
+  const visualReferences = await collectPanelVisualReferences(projectData, panel)
+  const refs = visualReferencesToImageUrls(visualReferences)
   const referenceImages = prependStyleReferenceImage(
     refs,
     resolvedArtStyle.referenceImage,
@@ -254,6 +288,8 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
       candidateCount,
       referenceImagesRawCount: refs.length,
       referenceImagesFinalCount: referenceImages.length,
+      visualBindings,
+      visualReferences: visualReferencesForPrompt(visualReferences),
       artStyleReferenceEnabled: modelConfig.artStyleReferenceEnabled,
       rawUrls: refs.map((u) => u.substring(0, 100)),
       referenceUrls: referenceImages.map((u) => u.substring(0, 100)),
@@ -293,6 +329,8 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
       onScreenText: panel.onScreenText,
     },
     projectData,
+    visualBindings,
+    visualReferences,
   })
   const resolvedStyleText = styleText || fallbackStyleText
   const assetVersionHash = createCreativeQualityHash({
@@ -306,6 +344,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
     location: promptContext.context.location_reference,
     props: promptContext.context.prop_references,
     referenceImages,
+    visualReferences: visualReferencesForPrompt(visualReferences),
   })
   const panelPromptSpec = buildPanelImagePromptSpec({
     context: promptContext,
@@ -334,6 +373,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
     modelKey,
     promptTemplateId: PROMPT_IDS.NP_SINGLE_PANEL_IMAGE,
     referenceImages,
+    structuredReferences: visualReferencesForPrompt(visualReferences),
     promptSpec: panelPromptSpec,
     compiledPrompt: prompt,
     assetVersionHash,

@@ -9,6 +9,10 @@ import {
   LOCATION_IMAGE_RATIO,
   PROP_IMAGE_RATIO,
 } from '@/lib/constants'
+import {
+  appendPanelTextPolicyForbiddenPatterns,
+  resolvePanelTextPolicy,
+} from '@/lib/visual-production/text-policy'
 
 type PanelForQuality = {
   id: string
@@ -95,6 +99,10 @@ export function buildPanelImageTargetSpec(params: {
 }): ImageTargetSpec {
   const bible = asRecord(params.productionBible)
   const visualStyle = typeof bible.visualStyle === 'string' ? bible.visualStyle : params.artStyle
+  const textPolicy = resolvePanelTextPolicy({
+    renderMode: params.panel.renderMode,
+    onScreenText: params.panel.onScreenText,
+  })
   return {
     schemaVersion: 1,
     targetType: 'panel',
@@ -108,11 +116,17 @@ export function buildPanelImageTargetSpec(params: {
     location: params.panel.location || '',
     characters: parseStringArray(params.panel.characters),
     props: parseStringArray(params.panel.props),
-    requiredText: params.panel.onScreenText || '',
+    requiredText: textPolicy.requiredImageText,
     styleBaseline: visualStyle || params.artStyle,
-    continuityRules: readStringArray(bible.continuityRules),
-    forbiddenPatterns: readStringArray(bible.forbiddenPatterns),
-    riskLevel: params.panel.linkedToNextPanel || params.panel.onScreenText ? 'high' : 'medium',
+    continuityRules: [
+      ...readStringArray(bible.continuityRules),
+      textPolicy.reviewHint,
+    ],
+    forbiddenPatterns: appendPanelTextPolicyForbiddenPatterns(
+      readStringArray(bible.forbiddenPatterns),
+      textPolicy,
+    ),
+    riskLevel: params.panel.linkedToNextPanel || textPolicy.imageTextPolicy === 'safe_area_only' ? 'high' : 'medium',
   }
 }
 

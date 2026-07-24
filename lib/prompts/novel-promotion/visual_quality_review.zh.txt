@@ -8,6 +8,12 @@
 
 候选数量：{candidate_count}
 
+文字策略：
+- target_spec.requiredText 为空时，不得因为缺少字幕、标题或 onScreenText 判为 TEXT_ERROR。
+- 小说推广分镜底图默认无字；准确屏幕文字由后续合成层渲染，不要求候选图直接生成。
+- 只有候选图中出现了未要求的可读文字、水印、徽标、乱码文字，或 text_card/safe_area_only 明显没有留白时，才判 TEXT_ERROR。
+- promptPatch 不得要求把 onScreenText、字幕、书名或长句画进图片；只能要求移除意外文字或保留干净留白。
+
 只输出 JSON，candidateIndex 从 0 开始：
 {
   "status": "passed|repairable|human_required",

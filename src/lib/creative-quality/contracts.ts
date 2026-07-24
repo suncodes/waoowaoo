@@ -58,6 +58,7 @@ export interface GenerationSnapshot {
   inputHash: string
   assetVersionHash: string | null
   referenceImages: string[]
+  structuredReferences?: unknown
   promptSpec: unknown
   compiledPrompt: string
   createdAt: string

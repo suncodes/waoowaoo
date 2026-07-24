@@ -38,6 +38,7 @@
 - 分镜数据中的 prompt_spec 是最终图片规格，优先级高于零散字段；先执行 prompt_spec，再用 panel/context/source_text 补充缺失信息。
 - prompt_spec.narrativeIntent 决定镜头目的，shotFunction 决定镜头功能，primarySubject 是唯一主视觉主体。
 - prompt_spec.assetRefs 是身份约束，必须与参考图和资产名称保持一致。
+- context.visual_references 记录每张参考图的 role/usage/weight：primary_identity 必须匹配主体身份；supporting_identity 只在该资产可见时保持一致且不得抢主主体；environment 只参考空间、光色和材质；prop_detail 只锁定道具形体；style_only 只取视觉语言，禁止把参考图主体画入当前镜头。
 - prompt_spec.promptBlueprint 是最终提示词骨架，必须逐项执行 subject、environment、action、camera、lighting、style、negative；如果零散字段与它冲突，优先保留 promptBlueprint 和 source_text 支持的内容。
 - prompt_spec.continuity 用于保持前后镜空间、光色、视线和动作承接。
 - prompt_spec.singleImageFeasibility 如果提示风险，只生成单张图可表达的那一帧，不要把不可执行内容塞进画面。

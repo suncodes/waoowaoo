@@ -8,6 +8,11 @@ import {
   uploadImageSourceToCos,
   withLabelBar,
 } from '../utils'
+import {
+  resolvePanelVisualReferences,
+  visualReferencesToImageUrls,
+  type VisualReference,
+} from '@/lib/visual-production/references'
 
 export type AnyObj = Record<string, unknown>
 
@@ -234,101 +239,25 @@ export function findCharacterByName<T extends { name: string }>(characters: T[],
   return undefined
 }
 
-function readVisualAssetIds(sourceAnchor: unknown): string[] {
-  if (!sourceAnchor || typeof sourceAnchor !== 'object' || Array.isArray(sourceAnchor)) return []
-  return parseJsonStringArray((sourceAnchor as { visualAssetIds?: unknown }).visualAssetIds)
-}
-
-function selectedCharacterImage(character: CharacterLike): string | null {
-  const appearance = character.appearances?.[0]
-  if (!appearance) return null
-  const imageUrls = parseImageUrls(appearance.imageUrls, 'characterAppearance.imageUrls')
-  const selectedUrl = appearance.selectedIndex !== null && appearance.selectedIndex !== undefined
-    ? imageUrls[appearance.selectedIndex]
-    : null
-  return selectedUrl || imageUrls[0] || appearance.imageUrl || null
-}
-
-function selectedLocationImage(location: LocationLike): string | null {
-  const images = location.images || []
-  return (images.find((image) => image.isSelected) || images[0])?.imageUrl || null
-}
-
 export async function collectPanelReferenceImages(
   projectData: NovelProjectData,
   panel: PanelLike,
   options: PanelReferenceImageOptions = {},
 ) {
-  const refs: string[] = []
-  const seen = new Set<string>()
-  const includeCharacterAssets = options.includeCharacterAssets !== false
-  const includeLocationAssets = options.includeLocationAssets !== false
-  const includePropAssets = options.includePropAssets !== false
-  const includeSourceAnchorAssets = options.includeSourceAnchorAssets !== false
-  const pushReference = (value: string | null | undefined) => {
-    const signed = toSignedUrlIfCos(value, 3600)
-    if (!signed || seen.has(signed)) return
-    seen.add(signed)
-    refs.push(signed)
-  }
+  return visualReferencesToImageUrls(await collectPanelVisualReferences(projectData, panel, options))
+}
 
-  pushReference(panel.sketchImageUrl)
-
-  if (includeSourceAnchorAssets) {
-    for (const assetId of readVisualAssetIds(panel.sourceAnchor)) {
-      const character = projectData.characters?.find((item) => item.id === assetId)
-      if (character && includeCharacterAssets) {
-        pushReference(selectedCharacterImage(character))
-        continue
-      }
-      const location = projectData.locations?.find((item) => item.id === assetId)
-      if (!location) continue
-      const isProp = location.assetKind === 'prop'
-      if ((isProp && includePropAssets) || (!isProp && includeLocationAssets)) {
-        pushReference(selectedLocationImage(location))
-      }
-    }
-  }
-
-  if (includeCharacterAssets) {
-    const panelCharacters = parsePanelCharacterReferences(panel.characters)
-    for (const item of panelCharacters) {
-      const character = findCharacterByName(projectData.characters || [], item.name)
-      if (!character) continue
-
-      const appearances = character.appearances || []
-      let appearance = appearances[0]
-      if (item.appearance) {
-        const matched = appearances.find((a) => (a.changeReason || '').toLowerCase() === item.appearance!.toLowerCase())
-        if (matched) appearance = matched
-      }
-
-      if (!appearance) continue
-
-      const imageUrls = parseImageUrls(appearance.imageUrls, 'characterAppearance.imageUrls')
-      const selectedIndex = appearance.selectedIndex
-      const selectedUrl = selectedIndex !== null && selectedIndex !== undefined ? imageUrls[selectedIndex] : null
-      pushReference(selectedUrl || imageUrls[0] || appearance.imageUrl)
-    }
-  }
-
-  if (includeLocationAssets && panel.location) {
-    const location = (projectData.locations || []).find((item) => (
-      item.assetKind !== 'prop' && item.name.toLowerCase() === panel.location!.toLowerCase()
-    ))
-    if (location) {
-      pushReference(selectedLocationImage(location))
-    }
-  }
-
-  if (includePropAssets) {
-    for (const propName of parseJsonStringArray(panel.props)) {
-      const prop = (projectData.locations || []).find((item) => (
-        item.assetKind === 'prop' && item.name.toLowerCase() === propName.toLowerCase()
-      ))
-      if (prop) pushReference(selectedLocationImage(prop))
-    }
-  }
-
-  return refs
+export async function collectPanelVisualReferences(
+  projectData: NovelProjectData,
+  panel: PanelLike,
+  options: PanelReferenceImageOptions = {},
+): Promise<VisualReference[]> {
+  return resolvePanelVisualReferences({
+    projectData,
+    panel,
+    options: {
+      ...options,
+      signImageUrl: (value) => toSignedUrlIfCos(value, 3600),
+    },
+  })
 }
