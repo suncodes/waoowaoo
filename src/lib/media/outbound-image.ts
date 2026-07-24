@@ -353,6 +353,7 @@ function resolveStyleAssetPath(input: string): string {
 }
 
 function filenameFromInput(input: string, fallback: string): string {
+  if (isDataUrl(input)) return fallback
   const parsed = toUrlMaybe(input)
   const pathname = parsed?.pathname ?? input
   const filename = path.basename(pathname)

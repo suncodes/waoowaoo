@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getProjectModelConfig, buildImageBillingPayload } from '@/lib/config-service'
 import { createProjectLocationBackedAsset } from '@/lib/assets/services/location-backed-assets'
+import { ensureProjectLocationImageSlots } from '@/lib/image-generation/location-slots'
 import { TASK_TYPE } from '@/lib/task/types'
 import { withTaskUiPayload } from '@/lib/task/ui-payload'
 import type { Locale } from '@/i18n/routing'
@@ -277,8 +278,32 @@ export async function ensureMissingAssetBackfill(params: {
       continue
     }
 
+    if (!hasUsableImage(asset) && (!asset.images || asset.images.length === 0)) {
+      await ensureProjectLocationImageSlots({
+        locationId: asset.id,
+        count: 1,
+        fallbackDescription: request.description,
+      })
+      asset = await findExistingLocationBackedAsset({
+        projectDbId: project.id,
+        kind: request.kind,
+        assetId: asset.id,
+        name: request.name,
+      })
+    }
+
+    if (!asset) {
+      nextRequests.push({
+        ...request,
+        status: 'skipped',
+      })
+      continue
+    }
+
+    const targetImageId = asset?.images?.[0]?.id || asset?.id || request.assetId
+
     let taskId: string | null = null
-    if (!hasUsableImage(asset)) {
+    if (!hasUsableImage(asset) && targetImageId) {
       const payloadBase = {
         type: request.kind,
         id: asset.id,
@@ -300,7 +325,7 @@ export async function ensureMissingAssetBackfill(params: {
         projectId: params.projectId,
         type: TASK_TYPE.IMAGE_LOCATION,
         targetType: 'LocationImage',
-        targetId: asset.id,
+        targetId: targetImageId,
         payload: withTaskUiPayload(billingPayload, {
           intent: 'generate',
           hasOutputAtStart: false,

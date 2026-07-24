@@ -126,4 +126,30 @@ describe('storyboard review', () => {
     expect(review.route).toBe('SHOT_REPLAN')
     expect(review.criticalIssues[0]).toContain('needs_split')
   })
+
+  it('rejects overlong generated-image shots before image generation', () => {
+    const review = reviewVisualPlanStoryboard({
+      targetId: 'episode-1',
+      result: result(visualUnit({ durationSec: 20 })),
+      profile: resolveVideoProfile({ preset: 'book_guide', targetDurationSec: 20 }),
+    })
+
+    expect(review.status).toBe('repairable')
+    expect(review.route).toBe('SHOT_REPLAN')
+    expect(review.criticalIssues.join('\n')).toContain('过长')
+  })
+
+  it('rejects montage-like generated-image prompts as split candidates', () => {
+    const review = reviewVisualPlanStoryboard({
+      targetId: 'episode-1',
+      result: result(visualUnit({
+        description: '依次展示童年、成年和晚年的三段经历',
+        imagePrompt: '同一画面拼接多个时期的经历，无文字',
+      })),
+      profile: resolveVideoProfile({ preset: 'book_guide', targetDurationSec: 8 }),
+    })
+
+    expect(review.status).toBe('repairable')
+    expect(review.criticalIssues.join('\n')).toContain('混剪')
+  })
 })

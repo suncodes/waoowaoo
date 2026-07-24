@@ -34,6 +34,7 @@ export function appendPanelTextPolicyForbiddenPatterns(
   return Array.from(new Set([
     ...forbiddenPatterns,
     'Do not render any subtitles, captions, book titles, UI text, logos, watermarks, labels, numbers, or readable text inside the image.',
+    'Book titles, author names, chapter titles, and promotional copy are downstream overlays, not pixels to generate.',
     policy.overlayText
       ? `Do not render the overlay copy "${policy.overlayText}" inside the image; it is composed downstream.`
       : '',

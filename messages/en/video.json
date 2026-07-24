@@ -62,6 +62,7 @@
     "reviewing": "Reviewing",
     "repairing": "Auto repair {attempt}/{maxAttempts}",
     "confirmed": "Human confirmed",
+    "confirmedWithWarnings": "Confirmed with risks",
     "approved": "Quality approved",
     "humanRequired": "Human review required",
     "videoBlocked": "This image has not passed automatic quality review, so video generation is blocked.",

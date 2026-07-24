@@ -162,6 +162,7 @@ export async function materializeGuideStoryboards(
         shotAssetRequirementPlan,
         visualType: unit.visualType,
         renderMode: unit.renderMode,
+        duration: unit.durationSec,
       })
       const bindings = panelVisualBindingsFromPlan(bindingPlan)
       const assetRefs = bindings.visibleAssets.map((item) => ({

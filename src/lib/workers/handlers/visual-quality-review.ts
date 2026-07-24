@@ -22,6 +22,7 @@ import {
   assertVisionInputSupported,
   createVisualVersionHash,
   decideVisualRepair,
+  enforceVisualQualityHardGates,
   type ImageQualityReviewResult,
   type ImageTargetSpec,
   inspectVisualCandidates,
@@ -219,7 +220,7 @@ async function handleAssetVisualQualityReviewTask(job: Job<TaskJobData>) {
     await callbacks.flush()
   }
   let review = parseImageQualityReviewResult(rawReview, versionHash)
-  review = mergeTechnicalChecks(review, checks)
+  review = enforceVisualQualityHardGates(mergeTechnicalChecks(review, checks), targetSpec)
   const hasUsableCandidate = hasUsableVisualCandidate(review)
   const decision = decideVisualRepair({
     review,
@@ -462,7 +463,7 @@ export async function handleVisualQualityReviewTask(job: Job<TaskJobData>) {
     await callbacks.flush()
   }
   let review = parseImageQualityReviewResult(rawReview, versionHash)
-  review = mergeTechnicalChecks(review, checks)
+  review = enforceVisualQualityHardGates(mergeTechnicalChecks(review, checks), targetSpec)
   const hasUsableCandidate = hasUsableVisualCandidate(review)
   const decision = decideVisualRepair({
     review,

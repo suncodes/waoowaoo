@@ -31,3 +31,4 @@ VideoProfile：
 13. shotSpec.visibleAssets 必须与 visualUnit.assetRefs 一致；不能引用可用资产之外的 id。
 14. 如果候选输出缺少 visualLicense 或 continuityGroupId，应按镜头功能保守补齐；同一角色、载具、核心道具或连续空间跨镜必须复用稳定 continuityGroupId。
 15. 如果修复提示中附带 VisualBeatPlan 约束，必须优先恢复 beat 对应的 visualLicense、screenEvent、actionMoment、assetNeeds 和连续性。
+16. generated_image 单镜头原则上不超过 12 秒，且只保留一个主动作；出现混剪、多时空、依次展示或多个阶段时，必须拆成多个 visualUnit 或改为 diagram/composite/text_card。

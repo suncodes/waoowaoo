@@ -46,5 +46,8 @@ export function createOpenAICompatClient(config: OpenAICompatClientConfig): Open
 
 export async function toUploadFile(imageSource: string, index: number): Promise<File> {
   const resource = await loadImageResource(imageSource)
-  return await toFile(resource.bytes, resource.filename || `reference-${index}.png`, { type: resource.mimeType })
+  const filename = resource.sourceKind === 'data-url'
+    ? `reference-${index}.png`
+    : resource.filename || `reference-${index}.png`
+  return await toFile(resource.bytes, filename, { type: resource.mimeType })
 }

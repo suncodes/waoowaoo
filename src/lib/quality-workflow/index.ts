@@ -173,6 +173,8 @@ export function parseVisualQualityState(value: unknown): VisualQualityState | nu
     'shadow_completed',
     'repairing',
     'approved',
+    'approved_by_user',
+    'approved_with_warnings',
     'human_required',
     'failed',
   ])
@@ -248,16 +250,31 @@ export function approveSelectedVisualCandidate(
     activeCandidateUrl: selectedUrl.trim(),
     maxAttempts: 0,
   })
+  const resolvedCandidateUrls = baseState.candidateUrls.length > 0 ? baseState.candidateUrls : candidateUrls
+  const selectedIndex = resolvedCandidateUrls.findIndex((url) => url === selectedUrl.trim())
+  const selectedReview = selectedIndex >= 0
+    ? baseState.review?.candidates.find((candidate) => candidate.candidateIndex === selectedIndex) || null
+    : null
+  const hasReviewWarnings = baseState.status === 'human_required'
+    || baseState.status === 'failed'
+    || baseState.status === 'repairing'
+    || (!!baseState.review && (
+    baseState.review.status !== 'passed'
+    || baseState.review.issueCodes.length > 0
+    || baseState.review.score < 80
+    || selectedReview?.passed === false
+    || (selectedReview?.issues.length || 0) > 0
+    ))
   return createVisualQualityState({
     ...baseState,
-    candidateUrls: baseState.candidateUrls.length > 0 ? baseState.candidateUrls : candidateUrls,
+    candidateUrls: resolvedCandidateUrls,
     candidateGroups: baseState.candidateGroups.length > 0
       ? baseState.candidateGroups
       : resolveVisualCandidateGroups({
         visualQualityState: baseState,
         candidateImages: candidateUrls,
       }),
-    status: baseState.mode === 'auto' ? 'approved' : 'shadow_completed',
+    status: hasReviewWarnings ? 'approved_with_warnings' : 'approved_by_user',
     activeCandidateUrl: selectedUrl.trim(),
     lastAction: 'select_candidate',
     humanConfirmedAt: new Date().toISOString(),

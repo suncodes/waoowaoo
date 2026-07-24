@@ -20,6 +20,8 @@ Before returning the result, verify every hard requirement below:
 9. Art style controls line, shape language, material, palette, and lighting only. It must not introduce characters, buildings, logos, or motifs from an associated franchise. Any character not explicitly named by the shot or assetRefs is forbidden.
 10. imagePrompt must not request exact book titles, dates, newspaper headlines, or long text. Explicitly require no text, watermark, or logo.
 11. If a VisualBeatPlan is provided, every visualUnit must map to a beat and preserve its visualLicense, screenEvent, actionMoment, continuity, and assetNeeds. Do not turn the guide into static slide-like illustrations.
+12. A generated_image visualUnit should usually last 4-8 seconds and must not exceed 12 seconds. Split longer narration into consecutive shots instead of packing it into one image.
+13. A generated_image actionBeats list should contain one primary action, with at most one subtle environmental support beat. If the idea needs before/after change, comparison, or sequential object reveals, split it or use diagram/composite/text_card.
 
 Return JSON only:
 {

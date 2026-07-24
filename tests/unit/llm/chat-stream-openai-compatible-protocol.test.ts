@@ -78,11 +78,13 @@ vi.mock('@/lib/providers/siliconflow', () => ({
 
 vi.mock('@/lib/llm/runtime-shared', () => ({
   completionUsageSummary: vi.fn(() => ({ promptTokens: 1, completionTokens: 1 })),
+  createLlmInvocationId: vi.fn(() => 'llm-test-1'),
   llmLogger: {
     info: vi.fn(),
     warn: vi.fn(),
   },
   logLlmRawInput: logLlmRawInputMock,
+  logLlmRawError: vi.fn(),
   logLlmRawOutput: logLlmRawOutputMock,
   recordCompletionUsage: recordCompletionUsageMock,
   resolveLlmRuntimeModel: resolveLlmRuntimeModelMock,

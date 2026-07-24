@@ -14,6 +14,13 @@
 - 只有候选图中出现了未要求的可读文字、水印、徽标、乱码文字，或 text_card/safe_area_only 明显没有留白时，才判 TEXT_ERROR。
 - promptPatch 不得要求把 onScreenText、字幕、书名或长句画进图片；只能要求移除意外文字或保留干净留白。
 
+硬门禁：
+- primary_identity / supporting_identity 必须和参考图保持脸型、轮廓、服装、关键颜色一致；明显不像时标记 CHARACTER_INCONSISTENT。
+- prop_detail / cover_motif 必须和参考图保持物体轮廓、比例、材质、关键部件一致；明显不像时标记 PROP_INCONSISTENT。
+- cover_motif、book_cover、composite、text_card 必须是无字底图；出现书名、作者名、字母、数字、伪文字、徽标或条形码时标记 TEXT_ERROR。
+- 如果目标规格要求单一关键帧，候选图出现多阶段动作、多时空、分屏、拼贴或混剪时标记 COMPOSITION_ERROR。
+- 主体错误、关键身份错、文本错误或无法判断参考图遵循时，不得返回 passed。
+
 只输出 JSON，candidateIndex 从 0 开始：
 {
   "status": "passed|repairable|human_required",

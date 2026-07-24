@@ -98,6 +98,10 @@ function readImagePromptSpec(context: PanelVideoPromptCompilerContext): Record<s
   return asRecord(context.panel.promptSpec)
 }
 
+function readReferencePlan(context: PanelVideoPromptCompilerContext): Record<string, unknown> {
+  return asRecord(context.panel.referencePlan)
+}
+
 function boundedDuration(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null
   return Math.round(value > 1000 ? value / 1000 : value)
@@ -123,6 +127,42 @@ function buildNegativeConstraints(locale: Locale): string[] {
         '不要混剪或分屏',
         '不要过度镜头抖动',
       ]
+}
+
+function readLockedReferenceConstraints(params: {
+  imagePromptSpec: Record<string, unknown>
+  referencePlan: Record<string, unknown>
+  locale: Locale
+}): string[] {
+  const references = Array.isArray(params.referencePlan.references)
+    ? params.referencePlan.references
+    : []
+  const referenceConstraints = references.flatMap((item) => {
+    const ref = asRecord(item)
+    const role = readString(ref.role)
+    const usage = readString(ref.usage)
+    const name = readString(ref.assetName)
+    if (!name || usage === 'avoid_copy') return []
+    if (!/primary_identity|supporting_identity|prop_detail|cover_motif|environment/iu.test(role)) return []
+    return params.locale === 'en'
+      ? [`Preserve ${name} as ${role} from the approved still image and asset reference.`]
+      : [`保持 ${name} 的 ${role} 参考一致性，沿用已确认首帧和资产参考。`]
+  })
+
+  const assetRefs = Array.isArray(params.imagePromptSpec.assetRefs)
+    ? params.imagePromptSpec.assetRefs
+    : []
+  const imageSpecConstraints = assetRefs.flatMap((item) => {
+    const ref = asRecord(item)
+    const name = readString(ref.name)
+    const role = readString(ref.role)
+    if (!name || !/primary|primary_identity|supporting_identity|prop|prop_detail|cover_motif|environment/iu.test(role)) return []
+    return params.locale === 'en'
+      ? [`Do not redesign ${name}; keep its source-frame silhouette, color, and material stable.`]
+      : [`不要重新设计 ${name}；保持首帧中的轮廓、颜色和材质稳定。`]
+  })
+
+  return Array.from(new Set([...referenceConstraints, ...imageSpecConstraints]))
 }
 
 function sourceFramePolicy(mode: PanelVideoPromptSpec['generationMode'], hasLastFrame: boolean, locale: Locale): string {
@@ -151,6 +191,7 @@ export function buildPanelVideoPromptSpec(params: {
   const continuity = readContinuity(shotSpec)
   const promptBlueprint = readPromptBlueprint(shotSpec)
   const imagePromptSpec = readImagePromptSpec(params.context)
+  const referencePlan = readReferencePlan(params.context)
   const imageContinuity = asRecord(imagePromptSpec.continuity)
   const actionBeats = stringArray(shotSpec.actionBeats)
   const blueprintActions = stringArray(promptBlueprint.action)
@@ -174,6 +215,13 @@ export function buildPanelVideoPromptSpec(params: {
     description,
     locale === 'en' ? 'subtle controlled motion matching the storyboard intent' : '符合分镜意图的轻微受控运动',
   )
+  const durationSec = boundedDuration(params.context.panel.duration)
+  const shortClip = durationSec === null || durationSec <= 6
+  const lockedReferenceConstraints = readLockedReferenceConstraints({
+    imagePromptSpec,
+    referencePlan,
+    locale,
+  })
   return {
     schemaVersion: CREATIVE_QUALITY_SCHEMA_VERSION,
     panelId: params.context.panel.panelId,
@@ -189,7 +237,7 @@ export function buildPanelVideoPromptSpec(params: {
     ),
     startState: firstNonEmpty(readString(shotSpec.startState), locale === 'en' ? 'start from the exact source frame' : '从源图首帧状态开始'),
     primaryMotion,
-    secondaryMotion: actionBeats.slice(1, 3),
+    secondaryMotion: shortClip ? [] : actionBeats.slice(1, 2),
     cameraMotion: firstNonEmpty(readString(shotSpec.camera), blueprintCamera[0], readString(params.context.panel.cameraMove), locale === 'en' ? 'locked or gently moving camera' : '锁定机位或轻微镜头运动'),
     focusChange: locale === 'en' ? 'keep focus on the primary subject unless the prompt explicitly asks otherwise' : '焦点保持在主视觉主体上，除非提示词明确要求转移',
     environmentMotion: locale === 'en' ? 'only subtle environmental motion that supports the main action' : '只加入服务主体动作的轻微环境运动',
@@ -209,12 +257,20 @@ export function buildPanelVideoPromptSpec(params: {
           ? `image generation route: ${params.context.panel.generationRoute}`
           : `图片生成路由：${params.context.panel.generationRoute}`
         : '',
+      ...lockedReferenceConstraints,
+      shortClip
+        ? locale === 'en'
+          ? 'Short video clip: use one controlled motion only; no new plot beat, no subject redesign, no extra reveal.'
+          : '短视频段：只执行一个受控运动，不新增剧情节点、不重新设计主体、不额外揭示新元素。'
+        : locale === 'en'
+          ? 'Keep motion continuous and avoid multiple narrative beats inside the same generated clip.'
+          : '保持运动连续，不要在同一个生成片段里塞入多个叙事节拍。',
     ].filter(Boolean),
     continuityGroupId: params.context.panel.continuityGroupId || null,
     generationRoute: params.context.panel.generationRoute || null,
     imagePromptSpec: Object.keys(imagePromptSpec).length > 0 ? imagePromptSpec : null,
-    referencePlan: params.context.panel.referencePlan || null,
-    durationSec: boundedDuration(params.context.panel.duration),
+    referencePlan: Object.keys(referencePlan).length > 0 ? referencePlan : params.context.panel.referencePlan || null,
+    durationSec,
     negativeConstraints: Array.from(new Set([
       ...buildNegativeConstraints(locale),
       ...blueprintNegative,

@@ -19,6 +19,9 @@ function resolvePresentation(rawState: unknown): BadgePresentation | null {
   const readiness = evaluateVisualReadiness(state)
 
   if (state.humanConfirmedAt) {
+    if (state.status === 'approved_with_warnings') {
+      return { labelKey: 'quality.confirmedWithWarnings', icon: 'alert', className: 'bg-[var(--glass-tone-warning-bg)] text-[var(--glass-tone-warning-fg)]' }
+    }
     return { labelKey: 'quality.confirmed', icon: 'check', className: 'bg-[var(--glass-tone-success-bg)] text-[var(--glass-tone-success-fg)]' }
   }
 

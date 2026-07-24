@@ -97,13 +97,14 @@ function asJsonRecord(value: unknown): Record<string, unknown> {
 function mergeBackfillRequirementPlanIntoPhotographyRules(params: {
   raw: string | null
   requirementPlan: unknown
+  bindingPlan: PanelAssetBindingPlan
 }) {
   const rules = asJsonRecord(parseJsonUnknown(params.raw))
   const next: Record<string, unknown> = {
     ...rules,
     ...(params.requirementPlan ? { shotAssetRequirementPlan: params.requirementPlan } : {}),
+    assetBindingPlan: params.bindingPlan,
   }
-  delete next.assetBindingPlan
   return JSON.stringify(next)
 }
 
@@ -119,6 +120,41 @@ function toJsonRecord(value: unknown): Record<string, unknown> {
 
 function asInputJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
+}
+
+function buildPanelReferencePlan(params: {
+  bindingPlan: PanelAssetBindingPlan
+  references: ReturnType<typeof visualReferencesForPrompt>
+  decision: ReturnType<typeof decidePanelGenerationRoute>
+  backfill?: unknown
+}) {
+  return {
+    schemaVersion: 1,
+    shotAssetRequirementPlan: params.bindingPlan.requirementPlan || null,
+    bindingPlan: params.bindingPlan,
+    references: params.references,
+    decision: params.decision,
+    ...(params.backfill ? { backfill: params.backfill } : {}),
+  }
+}
+
+function refreshBindingPlanWithRequirementPlan(params: {
+  panel: Parameters<typeof resolvePanelAssetBindingPlan>[0]
+  requirementPlan: unknown
+}): PanelAssetBindingPlan {
+  const rules = asJsonRecord(parseJsonUnknown(
+    typeof params.panel.photographyRules === 'string' ? params.panel.photographyRules : null,
+  ))
+  const rulesWithoutBindingPlan = { ...rules }
+  delete rulesWithoutBindingPlan.assetBindingPlan
+  return resolvePanelAssetBindingPlan({
+    ...params.panel,
+    photographyRules: {
+      ...rulesWithoutBindingPlan,
+      shotAssetRequirementPlan: params.requirementPlan,
+    },
+    shotAssetRequirementPlan: params.requirementPlan,
+  })
 }
 
 function buildPanelPromptContext(params: {
@@ -389,17 +425,18 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
     visualReferences: structuredReferences,
     visualBindingPlan,
   })
+  const referencePlan = buildPanelReferencePlan({
+    bindingPlan: visualBindingPlan,
+    references: structuredReferences,
+    decision: generationRouteDecision,
+  })
   const panelPromptSpec = buildPanelImagePromptSpec({
     context: promptContext,
     aspectRatio,
     styleText: resolvedStyleText,
     generationRoute: generationRouteDecision.route,
     noReferenceReason: generationRouteDecision.noReferenceReason,
-    referencePlan: {
-      schemaVersion: 1,
-      references: structuredReferences,
-      decision: generationRouteDecision,
-    },
+    referencePlan,
   })
   const contextJson = JSON.stringify({
     ...promptContext,
@@ -471,11 +508,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
       generationRoute: generationRouteDecision.route,
       noReferenceReason: generationRouteDecision.noReferenceReason,
       promptSpec: asInputJson(panelPromptSpec),
-      referencePlan: asInputJson({
-        schemaVersion: 1,
-        references: structuredReferences,
-        decision: generationRouteDecision,
-      }),
+      referencePlan: asInputJson(referencePlan),
     },
   })
 
@@ -492,13 +525,14 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
       visualBindingPlan.requirementPlan,
       backfillPlan.requests,
     )
+    const updatedBindingPlan = refreshBindingPlanWithRequirementPlan({
+      panel,
+      requirementPlan: updatedRequirementPlan || visualBindingPlan.requirementPlan || null,
+    })
     const referencePlan = {
       schemaVersion: 1,
-      shotAssetRequirementPlan: updatedRequirementPlan || visualBindingPlan.requirementPlan || null,
-      bindingPlan: {
-        ...visualBindingPlan,
-        requirementPlan: updatedRequirementPlan || visualBindingPlan.requirementPlan || null,
-      },
+      shotAssetRequirementPlan: updatedBindingPlan.requirementPlan || null,
+      bindingPlan: updatedBindingPlan,
       references: structuredReferences,
       decision: generationRouteDecision,
       backfill: backfillPlan,
@@ -511,7 +545,8 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
         referencePlan: asInputJson(referencePlan),
         photographyRules: mergeBackfillRequirementPlanIntoPhotographyRules({
           raw: panel.photographyRules,
-          requirementPlan: updatedRequirementPlan || visualBindingPlan.requirementPlan || null,
+          requirementPlan: updatedBindingPlan.requirementPlan || null,
+          bindingPlan: updatedBindingPlan,
         }),
       },
     })

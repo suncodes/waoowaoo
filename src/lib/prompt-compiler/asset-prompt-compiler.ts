@@ -72,6 +72,10 @@ function splitDescription(value: string): string[] {
 
 function buildDefaultNegativeConstraints(kind: AssetPromptSpec['assetKind'], locale: Locale): string[] {
   if (locale === 'en') {
+    const bookTextNegatives = [
+      'no title, author name, readable letters, numbers, fake glyphs, printed copy, logo or barcode',
+      'asset name is an internal label and must not appear on the image',
+    ]
     if (kind === 'location') {
       return [
         'no text, watermark, logo, signature, UI, subtitles, posters or readable labels',
@@ -84,6 +88,7 @@ function buildDefaultNegativeConstraints(kind: AssetPromptSpec['assetKind'], loc
         'no text, watermark, logo, signature, UI or readable label',
         'no people, faces, bodies, hands, animals, buildings, tabletop clutter or environment',
         'no existing IP character, mixed object set, collage, split screen with different objects',
+        ...bookTextNegatives,
       ]
     }
     return [
@@ -92,6 +97,10 @@ function buildDefaultNegativeConstraints(kind: AssetPromptSpec['assetKind'], loc
       'do not place different characters in different views',
     ]
   }
+  const bookTextNegatives = [
+    '禁止书名、作者名、可读字母、数字、伪文字、印刷文案、徽标和条形码',
+    '资产名称只是内部标签，禁止出现在图像里',
+  ]
   if (kind === 'location') {
     return [
       '禁止文字、水印、徽标、签名、UI、字幕、海报和可读标签',
@@ -104,6 +113,7 @@ function buildDefaultNegativeConstraints(kind: AssetPromptSpec['assetKind'], loc
       '禁止文字、水印、徽标、签名、UI 和可读标签',
       '禁止人物、角色、脸、五官、身体、手部、动物、建筑、桌面陈设和环境背景',
       '禁止已有 IP 角色、多个不同对象混杂、拼贴和把不同对象放入不同视图区',
+      ...bookTextNegatives,
     ]
   }
   return [
@@ -216,7 +226,7 @@ export function buildAssetPromptSpec(params: {
   const evidence = uniqueStrings([description])
   const descriptionFragments = splitDescription(description)
   const identityLocks = uniqueStrings([
-    params.assetName,
+    semanticType === 'book' ? null : params.assetName,
     params.variantLabel || null,
     description,
   ])
@@ -260,7 +270,9 @@ function compileSpecBody(spec: AssetPromptSpec, locale: Locale): string {
     return [
       `${spec.assetKind} asset image, purpose: ${spec.renderPurpose}.`,
       `Semantic type: ${spec.semanticType}; template: ${spec.templateKind}.`,
-      `Asset name: ${spec.assetName}.`,
+      spec.semanticType === 'book'
+        ? `Asset name is an internal label only, not image text: ${spec.assetName}.`
+        : `Asset name: ${spec.assetName}.`,
       listLine('Identity locks: ', spec.identityLocks, spec.assetName),
       listLine('Shape and silhouette: ', spec.shapeAndSilhouette, spec.assetName),
       listLine('Material and texture: ', spec.materialAndTexture, 'use the source description only'),
@@ -277,7 +289,9 @@ function compileSpecBody(spec: AssetPromptSpec, locale: Locale): string {
   return [
     `${spec.assetKind === 'character' ? '角色' : spec.assetKind === 'prop' ? '道具' : '场景'}资产图，用途：${spec.renderPurpose}。`,
     `语义类型：${spec.semanticType}；图型模板：${spec.templateKind}。`,
-    `资产名称：${spec.assetName}。`,
+    spec.semanticType === 'book'
+      ? `资产名称只是内部标签，不得画入图像：${spec.assetName}。`
+      : `资产名称：${spec.assetName}。`,
     listLine('身份不变量：', spec.identityLocks, spec.assetName),
     listLine('形体轮廓：', spec.shapeAndSilhouette, spec.assetName),
     listLine('材质纹理：', spec.materialAndTexture, '只使用来源描述中的材质信息'),

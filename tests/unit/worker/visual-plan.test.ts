@@ -32,6 +32,7 @@ vi.mock('@/lib/prompt-i18n', () => ({
   PROMPT_IDS: {
     NP_VISUAL_PLAN: 'visual-plan',
     NP_VISUAL_PLAN_REPAIR: 'visual-plan-repair',
+    NP_SHOT_ASSET_REQUIREMENTS: 'shot-asset-requirements',
   },
   buildPrompt: vi.fn(() => 'visual-plan-prompt'),
 }))
@@ -247,7 +248,13 @@ describe('worker visual-plan behavior', () => {
       storyboardReviewStatus: 'passed',
     })
     expect(result).not.toHaveProperty('reused')
-    expect(planningMock.executePlanningJsonStep).toHaveBeenCalledTimes(1)
+    expect(planningMock.executePlanningJsonStep).toHaveBeenCalledTimes(2)
+    expect(planningMock.executePlanningJsonStep).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      action: 'visual_plan_generate',
+    }))
+    expect(planningMock.executePlanningJsonStep).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      action: 'shot_asset_requirements',
+    }))
     expect(persistenceMock.persistVisualPlan).toHaveBeenCalledOnce()
     expect(artifactMock.createArtifact).not.toHaveBeenCalledWith(expect.objectContaining({
       artifactType: 'visual.plan.reuse',
@@ -264,11 +271,14 @@ describe('worker visual-plan behavior', () => {
     const result = await handleVisualPlanTask(buildJob())
 
     expect(result.visualUnitCount).toBe(1)
-    expect(planningMock.executePlanningJsonStep).toHaveBeenCalledTimes(2)
+    expect(planningMock.executePlanningJsonStep).toHaveBeenCalledTimes(3)
     expect(planningMock.executePlanningJsonStep).toHaveBeenNthCalledWith(2, expect.objectContaining({
       action: 'visual_plan_repair',
       stepAttempt: 2,
       temperature: 0.2,
+    }))
+    expect(planningMock.executePlanningJsonStep).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      action: 'shot_asset_requirements',
     }))
     expect(persistenceMock.persistVisualPlan).toHaveBeenCalledWith(expect.objectContaining({
       result: expect.objectContaining({
@@ -288,10 +298,13 @@ describe('worker visual-plan behavior', () => {
 
     await handleVisualPlanTask(buildJob())
 
-    expect(planningMock.executePlanningJsonStep).toHaveBeenCalledTimes(2)
+    expect(planningMock.executePlanningJsonStep).toHaveBeenCalledTimes(3)
     expect(planningMock.executePlanningJsonStep).toHaveBeenNthCalledWith(2, expect.objectContaining({
       action: 'visual_plan_repair',
       stepAttempt: 2,
+    }))
+    expect(planningMock.executePlanningJsonStep).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      action: 'shot_asset_requirements',
     }))
     expect(persistenceMock.persistVisualPlan).toHaveBeenCalledOnce()
   })
@@ -418,9 +431,12 @@ describe('worker visual-plan behavior', () => {
 
     await handleVisualPlanTask(buildJob())
 
-    expect(planningMock.executePlanningJsonStep).toHaveBeenCalledTimes(2)
+    expect(planningMock.executePlanningJsonStep).toHaveBeenCalledTimes(3)
     expect(planningMock.executePlanningJsonStep).toHaveBeenNthCalledWith(2, expect.objectContaining({
       action: 'visual_plan_repair',
+    }))
+    expect(planningMock.executePlanningJsonStep).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      action: 'shot_asset_requirements',
     }))
   })
 
@@ -443,10 +459,13 @@ describe('worker visual-plan behavior', () => {
 
     await handleVisualPlanTask(buildJob())
 
-    expect(planningMock.executePlanningJsonStep).toHaveBeenCalledTimes(2)
+    expect(planningMock.executePlanningJsonStep).toHaveBeenCalledTimes(3)
     expect(planningMock.executePlanningJsonStep).toHaveBeenNthCalledWith(2, expect.objectContaining({
       action: 'visual_plan_repair',
       stepAttempt: 2,
+    }))
+    expect(planningMock.executePlanningJsonStep).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      action: 'shot_asset_requirements',
     }))
   })
 

@@ -38,8 +38,25 @@ function scoreDimension(name: string, issues: ReviewIssue[], penalty: number): Q
   }
 }
 
-function statusFrom(score: number, issues: ReviewIssue[]): StoryboardReviewResult['status'] {
+const SINGLE_IMAGE_MAX_DURATION_SEC = 12
+
+const COMPLEX_SINGLE_IMAGE_PATTERNS = [
+  /混剪|拼接|多格|分屏|素材墙|蒙太奇|快速切换|多个场景|多地点|多时空|前后对比|同时展示|依次展示|逐步展示|逐渐|先.+再|从.+到/iu,
+  /montage|collage|split screen|multi[-\s]?panel|rapid switching|multiple scenes|sequential|before and after|from .+ to /iu,
+]
+
+function statusFrom(
+  score: number,
+  issues: ReviewIssue[],
+  dimensions: QualityReviewDimension[],
+): StoryboardReviewResult['status'] {
   if (issues.some((item) => item.severity === 'critical')) return 'repairable'
+  if (dimensions.some((item) => (
+    (item.name === 'shot_function' || item.name === 'single_image_feasibility')
+    && item.score < 70
+  ))) {
+    return 'repairable'
+  }
   if (score >= 80) return 'passed'
   if (score >= 65) return 'repairable'
   return 'human_required'
@@ -74,6 +91,29 @@ function countConsecutiveDuplicates(units: VisualUnit[]): ReviewIssue[] {
   return issues
 }
 
+function readShotSearchText(unit: VisualUnit): string {
+  return JSON.stringify({
+    description: unit.description,
+    imagePrompt: unit.imagePrompt,
+    videoPrompt: unit.videoPrompt,
+    visualType: unit.visualType,
+    renderMode: unit.renderMode,
+    shotType: unit.shotType,
+    cameraMove: unit.cameraMove,
+    primarySubject: unit.shotSpec.primarySubject,
+    narrativeIntent: unit.shotSpec.narrativeIntent,
+    startState: unit.shotSpec.startState,
+    actionBeats: unit.shotSpec.actionBeats,
+    endState: unit.shotSpec.endState,
+    promptBlueprint: unit.shotSpec.promptBlueprint,
+  })
+}
+
+function hasComplexSingleImageSignal(unit: VisualUnit): boolean {
+  const text = readShotSearchText(unit)
+  return COMPLEX_SINGLE_IMAGE_PATTERNS.some((pattern) => pattern.test(text))
+}
+
 function reviewShotFunction(units: VisualUnit[]): ReviewIssue[] {
   const issues: ReviewIssue[] = []
   if (units.length > 0 && units[0].shotSpec.shotFunction !== 'hook') {
@@ -86,8 +126,18 @@ function reviewShotFunction(units: VisualUnit[]): ReviewIssue[] {
     if (!hasText(unit.shotSpec.primarySubject)) {
       issues.push(issue('shot_function', 'critical', unit.id, '缺少唯一主视觉主体'))
     }
-    if (unit.shotSpec.actionBeats.length > 2 && unit.renderMode === 'generated_image') {
-      issues.push(issue('shot_function', 'warning', unit.id, '单张图承载的动作节拍过多'))
+    if (unit.renderMode === 'generated_image') {
+      if (unit.shotSpec.actionBeats.length > 2) {
+        issues.push(issue('shot_function', 'critical', unit.id, '单张图承载的动作节拍过多，应拆成多个镜头或只保留一个关键瞬间'))
+      } else if (unit.shotSpec.actionBeats.length > 1) {
+        issues.push(issue('shot_function', 'warning', unit.id, '单张图包含多个动作节拍，需确认能压缩成一个关键瞬间'))
+      }
+      if (unit.durationSec > SINGLE_IMAGE_MAX_DURATION_SEC) {
+        issues.push(issue('shot_function', 'critical', unit.id, `generated_image 镜头时长 ${Math.round(unit.durationSec)}s 过长，应拆分为更短的连续镜头`))
+      }
+      if (hasComplexSingleImageSignal(unit)) {
+        issues.push(issue('shot_function', 'critical', unit.id, '单张图包含混剪、多时空、阶段变化或对比展示信号，应拆分或改为专门图表/合成镜头'))
+      }
     }
   }
   return issues
@@ -178,7 +228,7 @@ export function reviewVisualPlanStoryboard(params: {
   const criticalIssues = issues
     .filter((item) => item.severity === 'critical')
     .map(issueText)
-  const status = statusFrom(score, issues)
+  const status = statusFrom(score, issues, dimensions)
 
   return {
     schemaVersion: CREATIVE_QUALITY_SCHEMA_VERSION,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { auditVisualAssetCoverage } from '@/lib/assets/asset-coverage-audit'
 import type { VisualUnit } from '@/lib/visual-planning'
+import type { ShotAssetRequirementPlanResult } from '@/lib/visual-production/shot-asset-requirements'
 
 function buildVisualUnit(overrides: Partial<VisualUnit> = {}): VisualUnit {
   return {
@@ -133,5 +134,64 @@ describe('asset coverage audit', () => {
         relation: 'contains',
       }),
     ]))
+  })
+
+  it('uses shot asset requirements instead of inferring the expected kind from prompt text', () => {
+    const shotAssetRequirementPlan: ShotAssetRequirementPlanResult = {
+      schemaVersion: 1,
+      plans: [{
+        schemaVersion: 1,
+        panelId: 'panel-1',
+        primarySubject: '银星号内部结构',
+        subjectType: 'environment',
+        visualIntent: 'environment_plate',
+        referencePolicy: 'required',
+        noReferenceAllowed: false,
+        noReferenceReason: null,
+        requirements: [{
+          name: '银星号内部结构',
+          kind: 'location',
+          semanticType: 'interior_location',
+          assetId: 'loc-interior',
+          role: 'environment',
+          required: true,
+          mustLock: false,
+          reuseExpected: true,
+          reason: '镜头需要复现内部空间',
+        }],
+        confidence: 0.92,
+        source: 'llm',
+        warnings: [],
+      }],
+    }
+    const result = auditVisualAssetCoverage({
+      targetId: 'project-1',
+      generatedAt: '2026-07-24T00:00:00.000Z',
+      visualUnits: [buildVisualUnit({
+        description: '银星号潜艇内部结构展示',
+        imagePrompt: '银星号潜艇内部结构的环境镜头',
+        shotSpec: {
+          ...buildVisualUnit().shotSpec,
+          primarySubject: '银星号内部结构',
+          visibleAssets: [{ id: 'loc-interior', kind: 'location', name: '银星号内部结构' }],
+        },
+        assetRefs: [{ id: 'loc-interior', kind: 'location', name: '银星号内部结构' }],
+      })],
+      assets: [{
+        id: 'loc-interior',
+        kind: 'location',
+        name: '银星号内部结构',
+        semanticType: 'interior_location',
+      }],
+      shotAssetRequirementPlan,
+    })
+
+    expect(result.status).toBe('passed')
+    expect(result.items[0]).toMatchObject({
+      coverageStatus: 'covered',
+      expectedKind: 'location',
+      expectedSemanticType: 'interior_location',
+      matchedAssetKind: 'location',
+    })
   })
 })

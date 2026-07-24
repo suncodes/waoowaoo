@@ -109,4 +109,32 @@ describe('shot asset requirements', () => {
     expect(plan.noReferenceAllowed).toBe(true)
     expect(plan.requirements).toEqual([])
   })
+
+  it('normalizes contradictory book clean-plate plans to no-reference clean plate', () => {
+    const result = normalizeShotAssetRequirementPlanResult({
+      schemaVersion: 1,
+      plans: [{
+        panelId: 'visual_1',
+        primarySubject: '小说封面空白底图',
+        subjectType: 'book',
+        visualIntent: 'book_clean_plate',
+        referencePolicy: 'required',
+        noReferenceAllowed: false,
+        noReferenceReason: null,
+        requirements: [],
+        confidence: 0.8,
+        source: 'llm',
+        warnings: [],
+      }],
+    }, [buildUnit({
+      visualType: 'book_cover',
+      renderMode: 'composite',
+    })], assets)
+
+    expect(result.plans[0]).toMatchObject({
+      referencePolicy: 'clean_plate',
+      noReferenceAllowed: true,
+      noReferenceReason: 'clean_plate_or_text_card',
+    })
+  })
 })

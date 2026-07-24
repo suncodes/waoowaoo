@@ -9,6 +9,23 @@ const utilsMock = vi.hoisted(() => ({
 }))
 
 const prismaMock = vi.hoisted(() => ({
+  $transaction: vi.fn(async (run: (tx: {
+    locationImage: {
+      updateMany: ReturnType<typeof vi.fn>
+      update: ReturnType<typeof vi.fn>
+    }
+    novelPromotionLocation: {
+      update: ReturnType<typeof vi.fn>
+    }
+  }) => Promise<unknown>) => run({
+    locationImage: {
+      updateMany: vi.fn(async () => ({ count: 1 })),
+      update: vi.fn(async () => ({})),
+    },
+    novelPromotionLocation: {
+      update: vi.fn(async () => ({})),
+    },
+  })),
   locationImage: {
     findUnique: vi.fn(),
     update: vi.fn(async () => ({})),

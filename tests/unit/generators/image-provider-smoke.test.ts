@@ -4,6 +4,13 @@ const googleGenerateContentMock = vi.hoisted(() => vi.fn())
 const getProviderConfigMock = vi.hoisted(() => vi.fn())
 const getImageBase64CachedMock = vi.hoisted(() => vi.fn(async () => 'data:image/png;base64,UkVG'))
 const arkImageGenerationMock = vi.hoisted(() => vi.fn())
+const imageResourceToInlineDataMock = vi.hoisted(() => vi.fn(() => ({ mimeType: 'image/png', data: 'UkVG' })))
+const loadImageResourceMock = vi.hoisted(() => vi.fn(async () => ({
+  bytes: Buffer.from('REF'),
+  mimeType: 'image/png',
+  filename: 'ref-image.png',
+  sourceKind: 'remote-url',
+})))
 const normalizeToBase64ForGenerationMock = vi.hoisted(() => vi.fn(async () => 'UkVG'))
 
 vi.mock('@google/genai', () => ({
@@ -36,6 +43,8 @@ vi.mock('@/lib/ark-api', () => ({
 }))
 
 vi.mock('@/lib/media/outbound-image', () => ({
+  imageResourceToInlineData: imageResourceToInlineDataMock,
+  loadImageResource: loadImageResourceMock,
   normalizeToBase64ForGeneration: normalizeToBase64ForGenerationMock,
 }))
 

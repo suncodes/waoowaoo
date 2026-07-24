@@ -356,12 +356,13 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
       result: reusedResult,
       profile,
     })
+    const shotAssetRequirementPlan = buildFallbackShotAssetRequirementPlanResult(reusedResult.visualUnits)
     const assetCoverageAudit = auditVisualAssetCoverage({
       targetId: episodeId,
       visualUnits: reusedResult.visualUnits,
       assets: coverageAssets,
+      shotAssetRequirementPlan,
     })
-    const shotAssetRequirementPlan = buildFallbackShotAssetRequirementPlanResult(reusedResult.visualUnits)
     if (storyboardReview.status !== 'passed') {
       throw new Error(`VISUAL_PLAN_REUSE_INVALID:${storyboardReview.score}:${storyboardReview.evidence.slice(0, 5).join(' | ')}`)
     }
@@ -492,11 +493,6 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     profile,
     reviewedAt: initialStoryboardReview.reviewedAt,
   })
-  const assetCoverageAudit = auditVisualAssetCoverage({
-    targetId: episodeId,
-    visualUnits: result.visualUnits,
-    assets: coverageAssets,
-  })
   await reportTaskProgress(job, 80, { stage: 'shot_asset_requirements', displayMode: 'detail' })
   await assertTaskActive(job, 'shot_asset_requirements')
   const shotAssetRequirementPlan = await generateShotAssetRequirementPlan({
@@ -507,6 +503,12 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     assetsJson,
     assets: visualAssets,
     visualBeatPlanJson,
+  })
+  const assetCoverageAudit = auditVisualAssetCoverage({
+    targetId: episodeId,
+    visualUnits: result.visualUnits,
+    assets: coverageAssets,
+    shotAssetRequirementPlan,
   })
   if (assetCoverageAudit.relationSuggestions.length > 0) {
     await prisma.novelPromotionAssetRelation.createMany({

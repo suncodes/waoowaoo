@@ -165,4 +165,61 @@ describe('panel image prompt compiler', () => {
     expect(second.specHash).toBe(first.specHash)
     expect(second.inputHash).toBe(first.inputHash)
   })
+
+  it('turns book cover panels into text-free clean-plate prompt specs', () => {
+    const context = buildContext()
+    context.panel.visual_type = 'book_cover'
+    context.panel.render_mode = 'composite'
+    context.panel.on_screen_text_for_downstream_composition = 'The Vault'
+    context.panel.visual_binding_plan = {
+      schemaVersion: 1,
+      primarySubject: 'The Vault cover plate',
+      visualType: 'book_cover',
+      renderMode: 'composite',
+      bindings: [{
+        id: 'prop-cover',
+        kind: 'prop',
+        name: 'The Vault book cover',
+        role: 'cover_motif',
+        source: 'requirement_plan',
+        weight: 0.75,
+      }],
+      suppressed: [],
+      warnings: [],
+      complexity: {
+        score: 25,
+        level: 'medium',
+        recommendedAction: 'composite',
+        riskFlags: ['text_prone_visual_type'],
+      },
+      usedShotSpec: true,
+      requirementPlan: {
+        schemaVersion: 1,
+        panelId: 'panel-1',
+        primarySubject: 'The Vault cover plate',
+        subjectType: 'book',
+        visualIntent: 'book_clean_plate',
+        referencePolicy: 'clean_plate',
+        noReferenceAllowed: true,
+        noReferenceReason: 'clean_plate_or_text_card',
+        requirements: [],
+        confidence: 0.9,
+        source: 'llm',
+        warnings: [],
+      },
+    }
+
+    const spec = buildPanelImagePromptSpec({
+      context,
+      aspectRatio: '16:9',
+      styleText: 'cinematic ink illustration',
+      generationRoute: 'composite',
+    })
+
+    expect(spec.textPolicy).toBe('safe_area_only')
+    expect(spec.qualityTerms.join('\n')).toContain('无字干净底图')
+    expect(spec.negativeConstraints).toEqual(expect.arrayContaining(['无书名', '无作者名', '无伪文字']))
+    expect(spec.promptBlueprint.subject.join('\n')).toContain('空白封面')
+    expect(spec.referenceInstructions.join('\n')).not.toContain('The Vault book cover:')
+  })
 })

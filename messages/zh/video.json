@@ -62,6 +62,7 @@
     "reviewing": "正在检查",
     "repairing": "自动修复 {attempt}/{maxAttempts}",
     "confirmed": "已人工确认",
+    "confirmedWithWarnings": "已确认有风险",
     "approved": "质量通过",
     "humanRequired": "需人工处理",
     "videoBlocked": "当前画面尚未通过自动质量检查，暂不能生成视频。",

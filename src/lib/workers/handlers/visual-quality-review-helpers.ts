@@ -98,6 +98,55 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {}
 }
 
+function buildBindingQualityRules(bindingPlan: ReturnType<typeof resolvePanelAssetBindingPlan>): {
+  continuityRules: string[]
+  forbiddenPatterns: string[]
+  forceHighRisk: boolean
+} {
+  const continuityRules: string[] = []
+  const forbiddenPatterns: string[] = []
+  let forceHighRisk = false
+  for (const binding of bindingPlan.bindings) {
+    if (binding.role === 'primary_identity') {
+      forceHighRisk = true
+      continuityRules.push(`${binding.name} 是主身份锁定资产，候选图必须匹配参考图的脸型/轮廓/服装/关键颜色。`)
+    }
+    if (binding.role === 'supporting_identity') {
+      continuityRules.push(`${binding.name} 是可见辅助角色，出现时必须匹配参考图身份且不能抢主主体。`)
+    }
+    if (binding.role === 'prop_detail') {
+      forceHighRisk = true
+      continuityRules.push(`${binding.name} 是道具细节锁定资产，候选图必须匹配参考图的形体比例、材质、关键部件和颜色。`)
+    }
+    if (binding.role === 'cover_motif') {
+      forceHighRisk = true
+      continuityRules.push('书封/封面资产只用于无字底图或核心 motif，候选图不得生成书名、作者名、字母、数字、伪文字、徽标或条形码。')
+      forbiddenPatterns.push('书名、作者名、可读文字、伪文字、字母、数字、徽标、条形码')
+    }
+    if (binding.role === 'environment') {
+      continuityRules.push(`${binding.name} 是场景参考，候选图应延续空间结构、光色和材质，不应把场景当作贴图背景。`)
+    }
+  }
+  if (bindingPlan.complexity.riskFlags.includes('text_prone_visual_type')) {
+    forceHighRisk = true
+    forbiddenPatterns.push('任何未要求的可读文字、字幕、标题、标签、水印或标志')
+  }
+  if (
+    bindingPlan.complexity.riskFlags.includes('too_many_action_beats')
+    || bindingPlan.complexity.riskFlags.includes('long_single_image_duration')
+    || bindingPlan.complexity.recommendedAction === 'split'
+  ) {
+    forceHighRisk = true
+    continuityRules.push('复杂镜头只能评审为单一关键帧；如果候选图包含多阶段动作、多场景、分屏或混剪，应判为 COMPOSITION_ERROR 或 SUBJECT_MISMATCH。')
+    forbiddenPatterns.push('多阶段动作、多个时空、多场景同框、拼贴、分屏、混剪')
+  }
+  return {
+    continuityRules,
+    forbiddenPatterns,
+    forceHighRisk,
+  }
+}
+
 export function buildPanelImageTargetSpec(params: {
   panel: PanelForQuality
   aspectRatio: string
@@ -112,11 +161,13 @@ export function buildPanelImageTargetSpec(params: {
   })
   const bindingPlan = resolvePanelAssetBindingPlan(params.panel)
   const referenceInstructions = bindingPlanPromptGuidance(bindingPlan)
+  const bindingQualityRules = buildBindingQualityRules(bindingPlan)
   const boundCharacters = bindingPlan.bindings.filter((item) => item.kind === 'character').map((item) => item.name)
   const boundProps = bindingPlan.bindings.filter((item) => item.kind === 'prop').map((item) => item.name)
   const boundLocation = bindingPlan.bindings.find((item) => item.kind === 'location')?.name || params.panel.location || ''
   const riskLevel = params.panel.linkedToNextPanel
     || textPolicy.imageTextPolicy === 'safe_area_only'
+    || bindingQualityRules.forceHighRisk
     || bindingPlan.complexity.level === 'high'
     ? 'high'
     : bindingPlan.complexity.level === 'medium' ? 'medium' : 'medium'
@@ -138,11 +189,15 @@ export function buildPanelImageTargetSpec(params: {
     continuityRules: [
       ...readStringArray(bible.continuityRules),
       ...referenceInstructions,
+      ...bindingQualityRules.continuityRules,
       `Binding complexity: ${bindingPlan.complexity.level}; recommended action: ${bindingPlan.complexity.recommendedAction}.`,
       textPolicy.reviewHint,
     ],
     forbiddenPatterns: appendPanelTextPolicyForbiddenPatterns(
-      readStringArray(bible.forbiddenPatterns),
+      [
+        ...readStringArray(bible.forbiddenPatterns),
+        ...bindingQualityRules.forbiddenPatterns,
+      ],
       textPolicy,
     ),
     riskLevel,

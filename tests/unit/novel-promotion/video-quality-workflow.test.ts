@@ -269,7 +269,7 @@ describe('video quality workflow contracts', () => {
       mode: 'auto', status: 'human_required', versionHash: left, candidateUrls: ['a.png'],
     }), 'a.png')
     expect(humanApproved).toMatchObject({
-      status: 'approved',
+      status: 'approved_with_warnings',
       activeCandidateUrl: 'a.png',
       lastAction: 'select_candidate',
     })

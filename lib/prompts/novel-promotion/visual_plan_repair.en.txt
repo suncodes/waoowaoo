@@ -31,3 +31,4 @@ Hard requirements:
 13. shotSpec.visibleAssets must match visualUnit.assetRefs and must not reference IDs outside Available assets.
 14. If visualLicense or continuityGroupId is missing, conservatively restore it from the shot function. Shots sharing the same character, vehicle, core prop, or continuous space must reuse a stable continuityGroupId.
 15. If the repair prompt includes VisualBeatPlan constraints, prioritize restoring each beat's visualLicense, screenEvent, actionMoment, assetNeeds, and continuity.
+16. A generated_image shot must not exceed 12 seconds and should keep one primary action. If the candidate contains montage, multiple times/places, sequential display, or multiple stages, split it into multiple visualUnits or convert it to diagram/composite/text_card.

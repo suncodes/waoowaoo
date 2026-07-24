@@ -56,6 +56,7 @@ export interface PanelForVisualBindings {
   shotAssetRequirementPlan?: unknown
   visualType?: string | null
   renderMode?: string | null
+  duration?: number | null
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

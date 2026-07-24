@@ -43,6 +43,13 @@ const apiConfigMock = vi.hoisted(() => ({
 }))
 
 const configServiceMock = vi.hoisted(() => ({
+  getProjectModelConfig: vi.fn(async () => ({
+    artStyle: 'japanese-anime',
+    artStyleMode: 'preset',
+    artStylePrompt: null,
+    customArtStyleReferenceImage: null,
+    artStyleReferenceEnabled: true,
+  })),
   getUserModelConfig: vi.fn(async () => ({
     characterModel: 'character-model-1',
     analysisModel: 'analysis-model-1',

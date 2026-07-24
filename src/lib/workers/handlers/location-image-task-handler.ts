@@ -163,6 +163,44 @@ async function scheduleBackfilledPanelImageTasks(params: {
   return scheduled
 }
 
+async function ensureGeneratedLocationImageSelected(params: {
+  locationId: string
+  imageId: string
+}) {
+  const location = await prisma.novelPromotionLocation.findUnique({
+    where: { id: params.locationId },
+    select: {
+      selectedImageId: true,
+      images: {
+        select: { id: true, imageUrl: true, isSelected: true },
+        orderBy: { imageIndex: 'asc' },
+      },
+    },
+  })
+  if (!location) return
+  const hasUsableSelectedImage = location.images.some((image) => (
+    (image.id === location.selectedImageId || image.isSelected)
+    && typeof image.imageUrl === 'string'
+    && image.imageUrl.trim().length > 0
+  ))
+  if (hasUsableSelectedImage) return
+
+  await prisma.$transaction(async (tx) => {
+    await tx.locationImage.updateMany({
+      where: { locationId: params.locationId },
+      data: { isSelected: false },
+    })
+    await tx.locationImage.update({
+      where: { id: params.imageId },
+      data: { isSelected: true },
+    })
+    await tx.novelPromotionLocation.update({
+      where: { id: params.locationId },
+      data: { selectedImageId: params.imageId },
+    })
+  })
+}
+
 export async function handleLocationImageTask(job: Job<TaskJobData>) {
   const payload = (job.data.payload || {}) as AnyObj
   const projectId = job.data.projectId
@@ -368,6 +406,10 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
     await db.locationImage.update({
       where: { id: item.id },
       data: { imageUrl: imageKey },
+    })
+    await ensureGeneratedLocationImageSelected({
+      locationId: item.locationId,
+      imageId: item.id,
     })
 
     const generatedItems = generatedByLocationId.get(item.locationId) || []

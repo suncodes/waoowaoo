@@ -1,4 +1,9 @@
 import type { VisualAssetRef, VisualUnit } from '@/lib/visual-planning'
+import type {
+  ShotAssetRequirement,
+  ShotAssetRequirementPlan,
+  ShotAssetRequirementPlanResult,
+} from '@/lib/visual-production/shot-asset-requirements'
 import {
   inferAssetSemanticType,
   type AssetSemanticType,
@@ -91,6 +96,24 @@ function compactName(value: string): string {
 
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)))
+}
+
+function isAssetSemanticType(value: unknown): value is AssetSemanticType {
+  return value === 'person'
+    || value === 'interior_location'
+    || value === 'exterior_location'
+    || value === 'vehicle'
+    || value === 'book'
+    || value === 'weapon'
+    || value === 'tool'
+    || value === 'symbol'
+    || value === 'creature'
+    || value === 'device'
+    || value === 'generic_object'
+}
+
+function readRequirementSemanticType(requirement: ShotAssetRequirement): AssetSemanticType | undefined {
+  return isAssetSemanticType(requirement.semanticType) ? requirement.semanticType : undefined
 }
 
 function splitAliases(name: string): string[] {
@@ -213,6 +236,81 @@ function findBestMatchedAsset(params: {
     || null
 }
 
+function findRequirementMatchedAsset(params: {
+  requirement: ShotAssetRequirement
+  availableAssets: AssetCoverageAuditAsset[]
+}): AssetCoverageAuditAsset | null {
+  if (params.requirement.assetId) {
+    return params.availableAssets.find((asset) => asset.id === params.requirement.assetId) || null
+  }
+  return params.availableAssets.find((asset) => (
+    asset.kind === params.requirement.kind
+    && (
+      textMentionsName(asset.name, params.requirement.name)
+      || textMentionsName(params.requirement.name, asset.name)
+    )
+  )) || null
+}
+
+function findRequirementWrongTypeAsset(params: {
+  requirement: ShotAssetRequirement
+  availableAssets: AssetCoverageAuditAsset[]
+}): AssetCoverageAuditAsset | null {
+  if (params.requirement.assetId) return null
+  return params.availableAssets.find((asset) => (
+    asset.kind !== params.requirement.kind
+    && (
+      textMentionsName(asset.name, params.requirement.name)
+      || textMentionsName(params.requirement.name, asset.name)
+    )
+  )) || null
+}
+
+function primaryRequirement(plan: ShotAssetRequirementPlan): ShotAssetRequirement | null {
+  return plan.requirements.find((item) => item.role === 'primary_identity' && (item.required || item.mustLock))
+    || plan.requirements.find((item) => item.role === 'prop_detail' && (item.required || item.mustLock))
+    || plan.requirements.find((item) => item.role === 'cover_motif' && (item.required || item.mustLock))
+    || plan.requirements.find((item) => item.required || item.mustLock)
+    || plan.requirements[0]
+    || null
+}
+
+function expectedKindFromRequirementPlan(plan: ShotAssetRequirementPlan): VisualAssetKind | 'abstract' {
+  const requirement = primaryRequirement(plan)
+  if (requirement) return requirement.kind
+  if (
+    plan.subjectType === 'abstract'
+    || plan.subjectType === 'text_card'
+    || plan.visualIntent === 'text_card'
+    || plan.referencePolicy === 'clean_plate'
+    || plan.referencePolicy === 'no_reference_allowed'
+    || plan.referencePolicy === 'forbidden'
+  ) {
+    return 'abstract'
+  }
+  if (plan.subjectType === 'character') return 'character'
+  if (plan.subjectType === 'location' || plan.subjectType === 'environment') return 'location'
+  return 'prop'
+}
+
+function severityForRequirementMissing(
+  unit: VisualUnit,
+  requirement: ShotAssetRequirement,
+): AssetCoverageSeverity {
+  const semanticType = readRequirementSemanticType(requirement)
+  if (
+    requirement.role === 'primary_identity'
+    || requirement.mustLock
+    || unit.shotSpec.shotFunction === 'hook'
+    || unit.shotSpec.shotFunction === 'payoff'
+    || semanticType === 'vehicle'
+    || semanticType === 'book'
+  ) {
+    return 'blocking'
+  }
+  return requirement.required ? 'warning' : 'info'
+}
+
 function severityForMissing(unit: VisualUnit, expectedSemanticType?: AssetSemanticType): AssetCoverageSeverity {
   if (
     unit.shotSpec.shotFunction === 'hook'
@@ -292,6 +390,122 @@ function buildAuditItem(
     severity: 'info',
     suggestedAction: 'continue',
     reason: '主视觉主体已有可复用资产支撑',
+  }
+}
+
+function buildAuditItemFromRequirementPlan(params: {
+  unit: VisualUnit
+  plan: ShotAssetRequirementPlan
+  availableAssets: AssetCoverageAuditAsset[]
+}): AssetCoverageAuditItem {
+  const primarySubject = params.plan.primarySubject || params.unit.shotSpec.primarySubject || params.unit.description
+  const expectedKind = expectedKindFromRequirementPlan(params.plan)
+  const relevantRequirements = params.plan.requirements.filter((requirement) => requirement.required || requirement.mustLock)
+  const primary = primaryRequirement(params.plan)
+  const expectedSemanticType = primary ? readRequirementSemanticType(primary) : undefined
+
+  if (relevantRequirements.length === 0 || params.plan.noReferenceAllowed) {
+    return {
+      panelId: params.unit.id,
+      clipId: params.unit.clipId,
+      primarySubject,
+      expectedKind,
+      ...(expectedSemanticType ? { expectedSemanticType } : {}),
+      coverageStatus: 'one_off_allowed',
+      severity: 'info',
+      suggestedAction: 'mark_one_off',
+      reason: params.plan.noReferenceReason || '资产需求计划判断该镜头允许不绑定稳定参考图',
+    }
+  }
+
+  for (const requirement of relevantRequirements) {
+    const matchedAsset = findRequirementMatchedAsset({
+      requirement,
+      availableAssets: params.availableAssets,
+    })
+    const requirementSemanticType = readRequirementSemanticType(requirement)
+    if (!matchedAsset) {
+      const wrongTypeAsset = findRequirementWrongTypeAsset({
+        requirement,
+        availableAssets: params.availableAssets,
+      })
+      if (wrongTypeAsset) {
+        const wrongTypeSemantic = semanticForAsset(wrongTypeAsset)
+        return {
+          panelId: params.unit.id,
+          clipId: params.unit.clipId,
+          primarySubject: requirement.name || primarySubject,
+          expectedKind: requirement.kind,
+          ...(requirementSemanticType ? { expectedSemanticType: requirementSemanticType } : {}),
+          matchedAssetId: wrongTypeAsset.id,
+          matchedAssetName: wrongTypeAsset.name,
+          matchedAssetKind: wrongTypeAsset.kind,
+          matchedAssetSemanticType: wrongTypeSemantic,
+          coverageStatus: 'covered_by_wrong_type',
+          severity: 'blocking',
+          suggestedAction: 'change_binding',
+          reason: '资产需求计划要求的 kind 与同名/近名已存在资产不一致，不能跨类型替代',
+        }
+      }
+      return {
+        panelId: params.unit.id,
+        clipId: params.unit.clipId,
+        primarySubject: requirement.name || primarySubject,
+        expectedKind: requirement.kind,
+        ...(requirementSemanticType ? { expectedSemanticType: requirementSemanticType } : {}),
+        coverageStatus: 'missing',
+        severity: severityForRequirementMissing(params.unit, requirement),
+        suggestedAction: 'create_asset',
+        reason: requirement.reason || '资产需求计划要求该镜头绑定稳定资产，但当前资产库缺失',
+      }
+    }
+
+    const matchedSemanticType = semanticForAsset(matchedAsset)
+    const wrongType = isWrongType({
+      expectedKind: requirement.kind,
+      expectedSemanticType: requirementSemanticType,
+      asset: matchedAsset,
+      assetSemanticType: matchedSemanticType,
+    })
+    if (wrongType) {
+      return {
+        panelId: params.unit.id,
+        clipId: params.unit.clipId,
+        primarySubject: requirement.name || primarySubject,
+        expectedKind: requirement.kind,
+        ...(requirementSemanticType ? { expectedSemanticType: requirementSemanticType } : {}),
+        matchedAssetId: matchedAsset.id,
+        matchedAssetName: matchedAsset.name,
+        matchedAssetKind: matchedAsset.kind,
+        matchedAssetSemanticType: matchedSemanticType,
+        coverageStatus: 'covered_by_wrong_type',
+        severity: 'blocking',
+        suggestedAction: 'change_binding',
+        reason: '资产需求计划要求的语义类型和已绑定资产语义不一致',
+      }
+    }
+  }
+
+  const matchedAsset = primary
+    ? findRequirementMatchedAsset({ requirement: primary, availableAssets: params.availableAssets })
+    : null
+  const matchedSemanticType = matchedAsset ? semanticForAsset(matchedAsset) : undefined
+  return {
+    panelId: params.unit.id,
+    clipId: params.unit.clipId,
+    primarySubject,
+    expectedKind,
+    ...(expectedSemanticType ? { expectedSemanticType } : {}),
+    ...(matchedAsset ? {
+      matchedAssetId: matchedAsset.id,
+      matchedAssetName: matchedAsset.name,
+      matchedAssetKind: matchedAsset.kind,
+    } : {}),
+    ...(matchedSemanticType ? { matchedAssetSemanticType: matchedSemanticType } : {}),
+    coverageStatus: 'covered',
+    severity: 'info',
+    suggestedAction: 'continue',
+    reason: '资产需求计划中的关键资产均已覆盖',
   }
 }
 
@@ -377,9 +591,18 @@ export function auditVisualAssetCoverage(params: {
   targetId: string
   visualUnits: VisualUnit[]
   assets: AssetCoverageAuditAsset[]
+  shotAssetRequirementPlan?: ShotAssetRequirementPlanResult | null
   generatedAt?: string
 }): AssetCoverageAuditResult {
-  const items = params.visualUnits.map((unit) => buildAuditItem(unit, params.assets))
+  const plansByPanelId = new Map(
+    (params.shotAssetRequirementPlan?.plans || []).map((plan) => [plan.panelId, plan]),
+  )
+  const items = params.visualUnits.map((unit) => {
+    const plan = plansByPanelId.get(unit.id)
+    return plan
+      ? buildAuditItemFromRequirementPlan({ unit, plan, availableAssets: params.assets })
+      : buildAuditItem(unit, params.assets)
+  })
   const missingAssetRequests = buildMissingAssetRequests(items)
   const relationSuggestions = buildRelationSuggestions(params.assets)
   const summary = {

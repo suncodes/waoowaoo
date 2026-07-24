@@ -65,6 +65,25 @@ describe('asset image prompt compiler', () => {
     expect(prompt.endsWith(PROP_PROMPT_SUFFIX)).toBe(true)
   })
 
+  it('treats book assets as blank clean plates instead of rendered title art', () => {
+    const spec = buildAssetPromptSpec({
+      assetId: 'book-1',
+      assetKind: 'prop',
+      assetName: '《示例小说》书封',
+      description: '一本深色硬壳书，封面中央有抽象海浪纹理，边缘有银色压纹',
+      semanticType: 'book',
+      styleText: '电影感棚拍',
+      locale: 'zh',
+    })
+    const prompt = compileAssetImagePrompt({ spec, locale: 'zh' })
+
+    expect(spec.templateKind).toBe('book_clean_plate')
+    expect(spec.identityLocks).not.toContain('《示例小说》书封')
+    expect(prompt).toContain('资产名称只是内部标签，不得画入图像')
+    expect(prompt).toContain('禁止书名、作者名、可读字母')
+    expect(prompt.endsWith(PROP_PROMPT_SUFFIX)).toBe(true)
+  })
+
   it('keeps location spatial slots and negative constraints in the compiled prompt', () => {
     const spec = buildAssetPromptSpec({
       assetId: 'location-image-1',

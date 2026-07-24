@@ -15,9 +15,13 @@ export function evaluateVisualReadiness(rawState: unknown): VisualReadinessResul
     return { ready: true, status: 'shadow', reasons: state.status === 'failed' ? ['shadow_review_failed'] : [] }
   }
   if (state.humanConfirmedAt) {
-    return { ready: true, status: 'ready', reasons: [] }
+    return {
+      ready: true,
+      status: 'ready',
+      reasons: state.status === 'approved_with_warnings' ? ['approved_with_warnings'] : [],
+    }
   }
-  if (state.status === 'approved') {
+  if (state.status === 'approved' || state.status === 'approved_by_user' || state.status === 'approved_with_warnings') {
     return { ready: false, status: 'blocked', reasons: ['awaiting_human_confirmation'] }
   }
   if (state.status === 'human_required' || state.status === 'failed') {

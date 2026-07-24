@@ -207,6 +207,19 @@ function reviewVisualQuality(panels: RoughCutPanelInput[], pickups: RoughCutPick
         suggestedAction: '根据质量评审问题重生成、修复或人工选择候选图。',
       })
     }
+    if (qualityState.status === 'approved_with_warnings') {
+      addPickup(pickups, {
+        severity: 'warning',
+        category: 'visual_quality',
+        targetType: 'panel',
+        targetId: panel.id,
+        panelId: panel.id,
+        route: 'HUMAN_REQUIRED',
+        reason: '画面由人工确认但仍保留质量风险',
+        evidence: [`${panelLabel(panel)} status=${qualityState.status}`],
+        suggestedAction: '最终导出前复核该镜头，必要时重新生成或替换候选图。',
+      })
+    }
     if (qualityState.mode === 'auto' && (
       qualityState.status === 'pending'
       || qualityState.status === 'reviewing'

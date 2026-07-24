@@ -373,6 +373,53 @@ function resolvePromptBlueprint(
   }
 }
 
+function isCleanPlatePanel(params: {
+  context: PanelImagePromptCompilerContext
+  bindingPlan: PanelAssetBindingPlan | null
+  generationRoute: PanelGenerationRoute
+}): boolean {
+  const requirementPlan = params.bindingPlan?.requirementPlan
+  return params.generationRoute === 'composite'
+    || params.context.panel.render_mode === 'text_card'
+    || params.context.panel.visual_type === 'book_cover'
+    || params.context.panel.visual_type === 'quote_card'
+    || params.context.panel.visual_type === 'kinetic_text'
+    || requirementPlan?.visualIntent === 'book_clean_plate'
+    || requirementPlan?.visualIntent === 'text_card'
+    || requirementPlan?.referencePolicy === 'clean_plate'
+}
+
+function applyCleanPlateBlueprint(
+  blueprint: PanelImagePromptSpec['promptBlueprint'],
+  cleanPlate: boolean,
+): PanelImagePromptSpec['promptBlueprint'] {
+  if (!cleanPlate) return blueprint
+  return {
+    subject: Array.from(new Set([
+      ...blueprint.subject,
+      '无字干净底图或空白封面表面，只保留可被后期叠加文字的视觉空间',
+    ])),
+    environment: blueprint.environment,
+    action: Array.from(new Set([
+      '静态、稳定、单一画面，不表现文字内容本身',
+      ...blueprint.action,
+    ])),
+    camera: blueprint.camera,
+    lighting: blueprint.lighting,
+    style: blueprint.style,
+    negative: Array.from(new Set([
+      ...blueprint.negative,
+      '无书名',
+      '无作者名',
+      '无可读文字',
+      '无伪文字',
+      '无字母',
+      '无数字',
+      '无徽标',
+    ])),
+  }
+}
+
 export function buildPanelImagePromptSpec(params: {
   context: PanelImagePromptCompilerContext
   aspectRatio: string
@@ -392,8 +439,16 @@ export function buildPanelImagePromptSpec(params: {
   )
   const location = params.context.context.location_reference
   const propNames = (params.context.context.prop_references || []).map((item) => item.name).filter(Boolean)
-  const promptBlueprint = resolvePromptBlueprint(params.context, primarySubject, params.styleText)
   const bindingPlan = readBindingPlan(params.context)
+  const cleanPlate = isCleanPlatePanel({
+    context: params.context,
+    bindingPlan,
+    generationRoute,
+  })
+  const promptBlueprint = applyCleanPlateBlueprint(
+    resolvePromptBlueprint(params.context, primarySubject, params.styleText),
+    cleanPlate,
+  )
   const referenceInstructions = bindingPlan ? bindingPlanPromptGuidance(bindingPlan) : []
   return {
     schemaVersion: CREATIVE_QUALITY_SCHEMA_VERSION,
@@ -428,6 +483,7 @@ export function buildPanelImagePromptSpec(params: {
       '空间层次明确',
       '参考资产身份一致',
       '画面比例正确',
+      ...(cleanPlate ? ['无字干净底图，书名/字幕/标题由后期合成，不在图像内生成'] : []),
       ...(generationRoute === 'composite' ? ['生成无字干净底图或单一前景素材，准确文字留给后期合成'] : []),
       ...(generationRoute === 'split' ? ['只生成当前镜头最关键的一个瞬间，不生成多格、多阶段或混剪'] : []),
       ...(bindingPlan?.complexity.level === 'high' ? ['复杂镜头只生成一个关键瞬间，不要塞入多个动作阶段'] : []),
@@ -446,7 +502,7 @@ export function buildPanelImagePromptSpec(params: {
       '无混剪画面',
       '无未指定角色',
       '无风格关联 IP 角色',
-      ...(generationRoute === 'composite' ? ['无可读文字', '无书名', '无新闻标题', '无素材墙'] : []),
+      ...(cleanPlate ? ['无可读文字', '无书名', '无作者名', '无标题', '无字幕', '无伪文字', '无字母', '无数字', '无素材墙'] : []),
       ...promptBlueprint.negative,
     ])),
     promptBlueprint,

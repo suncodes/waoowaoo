@@ -111,10 +111,15 @@ function computeShotComplexity(
   const text = readShotText(panel)
   const visualType = typeof panel.visualType === 'string' ? panel.visualType : ''
   const renderMode = typeof panel.renderMode === 'string' ? panel.renderMode : ''
+  const duration = typeof panel.duration === 'number' && Number.isFinite(panel.duration) ? panel.duration : 0
   const characterCount = bindings.filter((item) => item.kind === 'character').length
   const hasEnvironment = bindings.some((item) => item.kind === 'location')
   const propCount = bindings.filter((item) => item.kind === 'prop').length
-  const strongAction = /(落水|掉入|追逐|打斗|战斗|爆炸|飞溅|奔跑|拥挤|群像|多人|三人|并排|对比|split|comparison|crowd|fight|fall)/iu.test(text)
+  const strongAction = /(落水|掉入|追逐|打斗|战斗|爆炸|飞溅|奔跑|拥挤|群像|多人|三人|并排|对比|混剪|拼接|依次|逐渐|同时展示|多个场景|split|comparison|crowd|fight|fall|montage|collage|sequential)/iu.test(text)
+  const shotSpec = asRecord(asRecord(parseJson(panel.photographyRules)).shotSpec)
+  const actionBeatCount = Array.isArray(shotSpec.actionBeats)
+    ? shotSpec.actionBeats.length
+    : 0
   const textProne = looksTextProne(text, visualType, renderMode, requirementPlan)
   let score = 0
   const riskFlags: string[] = []
@@ -129,6 +134,14 @@ function computeShotComplexity(
   if (strongAction) {
     score += 25
     riskFlags.push('strong_action_or_comparison')
+  }
+  if (actionBeatCount > 2) {
+    score += 30
+    riskFlags.push('too_many_action_beats')
+  }
+  if (duration > 12 && renderMode === 'generated_image') {
+    score += 25
+    riskFlags.push('long_single_image_duration')
   }
   if (hasEnvironment && characterCount > 0) {
     score += 12
@@ -150,7 +163,7 @@ function computeShotComplexity(
   const boundedScore = Math.min(100, score)
   const level = boundedScore >= 60 ? 'high' : boundedScore >= 35 ? 'medium' : 'low'
   const recommendedAction = level === 'high'
-    ? (characterCount >= 3 || strongAction ? 'split' : 'simplify')
+    ? (characterCount >= 3 || strongAction || actionBeatCount > 2 || duration > 12 ? 'split' : 'simplify')
     : textProne && renderMode === 'text_card' ? 'composite' : 'generate'
   return {
     score: boundedScore,
@@ -284,12 +297,12 @@ export function panelVisualBindingsFromPlan(plan: PanelAssetBindingPlan): PanelV
 
 export function bindingPlanPromptGuidance(plan: PanelAssetBindingPlan): string[] {
   const lines = plan.bindings.map((binding) => {
-    if (binding.role === 'primary_identity') return `${binding.name}: primary identity, must match the reference image.`
-    if (binding.role === 'supporting_identity') return `${binding.name}: supporting visible identity, keep consistent but do not steal focus.`
-    if (binding.role === 'environment') return `${binding.name}: environment reference, adapt layout, lighting and atmosphere.`
-    if (binding.role === 'cover_motif') return `${binding.name}: cover or motif detail only, use the core shape/detail without copying its full scene.`
+    if (binding.role === 'primary_identity') return `${binding.name}: primary identity lock, preserve face/outline/clothing/key colors from the reference image and keep it as the main subject.`
+    if (binding.role === 'supporting_identity') return `${binding.name}: supporting visible identity, preserve reference face/outline/clothing but keep secondary focus.`
+    if (binding.role === 'environment') return `${binding.name}: environment reference, adapt spatial layout, lighting direction, material language and atmosphere without copying it as a flat backdrop.`
+    if (binding.role === 'cover_motif') return 'Cover or motif reference: internal asset label only; use blank cover geometry, material and core motif shape, never render readable title, author name, letters or logo.'
     if (binding.role === 'comparison_prop') return `${binding.name}: comparison prop, adapt shape/color as a secondary reference.`
-    if (binding.role === 'prop_detail') return `${binding.name}: prop detail, lock the object shape and key visual traits.`
+    if (binding.role === 'prop_detail') return `${binding.name}: prop detail lock, preserve object silhouette, proportions, material, key parts and color accents from the reference.`
     return `${binding.name}: style-only reference, avoid copying subject identity.`
   })
   if (plan.complexity.level !== 'low') {

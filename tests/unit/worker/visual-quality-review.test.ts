@@ -42,6 +42,7 @@ vi.mock('@/lib/visual-quality', () => ({
   assertVisionInputSupported: vi.fn(),
   createVisualVersionHash: vi.fn(() => 'version-1'),
   decideVisualRepair: visualMock.decideVisualRepair,
+  enforceVisualQualityHardGates: vi.fn((review: unknown) => review),
   inspectVisualCandidates: vi.fn(async () => []),
   parseImageQualityReviewResult: vi.fn(() => visualMock.review),
 }))

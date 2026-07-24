@@ -22,12 +22,12 @@ describe('llm observe task contract', () => {
     const scriptMeta = getTaskFlowMeta(TASK_TYPE.SCRIPT_TO_STORYBOARD_RUN)
 
     expect(storyMeta.flowId).toBe('novel_promotion_generation')
-    expect(storyMeta.flowStageIndex).toBe(1)
-    expect(storyMeta.flowStageTotal).toBe(2)
+    expect(storyMeta.flowStageIndex).toBe(2)
+    expect(storyMeta.flowStageTotal).toBe(4)
 
     expect(scriptMeta.flowId).toBe('novel_promotion_generation')
-    expect(scriptMeta.flowStageIndex).toBe(2)
-    expect(scriptMeta.flowStageTotal).toBe(2)
+    expect(scriptMeta.flowStageIndex).toBe(4)
+    expect(scriptMeta.flowStageTotal).toBe(4)
   })
 
   it('maps AI_CREATE tasks to dedicated single-stage flows', () => {
@@ -43,11 +43,13 @@ describe('llm observe task contract', () => {
     expect(locationMeta.flowStageTotal).toBe(1)
   })
 
-  it('returns a stable two-stage pipeline for story/script flow', () => {
+  it('returns a stable four-stage pipeline for novel promotion generation flow', () => {
     const pipeline = getTaskPipeline(TASK_TYPE.SCRIPT_TO_STORYBOARD_RUN)
     const stageTaskTypes = pipeline.stages.map((stage) => stage.taskType)
     expect(stageTaskTypes).toEqual([
+      TASK_TYPE.CONTENT_PLAN_RUN,
       TASK_TYPE.STORY_TO_SCRIPT_RUN,
+      TASK_TYPE.VISUAL_PLAN_RUN,
       TASK_TYPE.SCRIPT_TO_STORYBOARD_RUN,
     ])
   })

@@ -185,6 +185,30 @@ function readReferencePolicy(value: unknown, fallback: ShotReferencePolicy): Sho
     : fallback
 }
 
+function normalizeReferencePolicy(params: {
+  rawPolicy: ShotReferencePolicy
+  visualIntent: ShotVisualIntent
+  subjectType: ShotSubjectType
+}): ShotReferencePolicy {
+  if (params.visualIntent === 'text_card') return 'clean_plate'
+  if (params.visualIntent === 'book_clean_plate' || params.subjectType === 'book' || params.subjectType === 'text_card') {
+    return params.rawPolicy === 'forbidden' || params.rawPolicy === 'no_reference_allowed'
+      ? params.rawPolicy
+      : 'clean_plate'
+  }
+  return params.rawPolicy
+}
+
+function referencePolicyAllowsNoReference(policy: ShotReferencePolicy): boolean {
+  return policy === 'forbidden' || policy === 'clean_plate' || policy === 'no_reference_allowed'
+}
+
+function noReferenceReasonForPolicy(policy: ShotReferencePolicy): string {
+  if (policy === 'clean_plate') return 'clean_plate_or_text_card'
+  if (policy === 'forbidden') return 'reference_forbidden'
+  return 'one_off_or_reference_forbidden'
+}
+
 function readRequirementRole(value: unknown, fallback: ShotAssetRequirementRole): ShotAssetRequirementRole {
   return typeof value === 'string' && REQUIREMENT_ROLES.has(value as ShotAssetRequirementRole)
     ? value as ShotAssetRequirementRole
@@ -307,20 +331,28 @@ export function normalizeShotAssetRequirementPlan(
         return requirement ? [requirement] : []
       })
     : fallback.requirements
-  const referencePolicy = readReferencePolicy(raw.referencePolicy, fallback.referencePolicy)
-  const noReferenceAllowed = readBoolean(
-    raw.noReferenceAllowed,
-    referencePolicy === 'forbidden' || referencePolicy === 'clean_plate' || referencePolicy === 'no_reference_allowed',
-  )
+  const visualIntent = readVisualIntent(raw.visualIntent, fallback.visualIntent)
+  const subjectType = readSubjectType(raw.subjectType, fallback.subjectType)
+  const referencePolicy = normalizeReferencePolicy({
+    rawPolicy: readReferencePolicy(raw.referencePolicy, fallback.referencePolicy),
+    visualIntent,
+    subjectType,
+  })
+  const noReferenceAllowed = referencePolicyAllowsNoReference(referencePolicy)
+    || (
+      readBoolean(raw.noReferenceAllowed, false)
+      && requirements.length === 0
+      && fallback.noReferenceAllowed
+    )
   return {
     schemaVersion: 1,
     panelId: readString(raw.panelId) || fallback.panelId,
     primarySubject: readString(raw.primarySubject) || fallback.primarySubject,
-    subjectType: readSubjectType(raw.subjectType, fallback.subjectType),
-    visualIntent: readVisualIntent(raw.visualIntent, fallback.visualIntent),
+    subjectType,
+    visualIntent,
     referencePolicy,
     noReferenceAllowed,
-    noReferenceReason: readNullableString(raw.noReferenceReason) || (noReferenceAllowed ? fallback.noReferenceReason : null),
+    noReferenceReason: readNullableString(raw.noReferenceReason) || (noReferenceAllowed ? noReferenceReasonForPolicy(referencePolicy) : null),
     requirements,
     confidence: readConfidence(raw.confidence, fallback.confidence),
     source: raw.source === 'llm' ? 'llm' : fallback.source,

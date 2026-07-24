@@ -3,6 +3,7 @@ import type {
   ImageQualityReviewResult,
   PromptPatch,
   RepairDecision,
+  ImageTargetSpec,
   VisualQualityIssue,
   VisualQualityIssueCode,
 } from './types'
@@ -168,6 +169,73 @@ export function decideVisualRepair(params: {
     candidateIndex: review.selectedCandidateIndex,
     reason: requiresRegeneration ? 'structural mismatch requires regeneration' : 'localized defects can be edited',
     promptPatch: review.promptPatch,
+  }
+}
+
+function targetHasLockedCharacter(targetSpec: ImageTargetSpec): boolean {
+  if (targetSpec.targetType === 'character') return true
+  if (targetSpec.characters.length > 0) return true
+  const bindingText = JSON.stringify(targetSpec.bindingPlan || {}).toLowerCase()
+  return /primary_identity|supporting_identity/iu.test(bindingText)
+}
+
+function targetHasLockedProp(targetSpec: ImageTargetSpec): boolean {
+  if (targetSpec.targetType === 'prop') return true
+  if (targetSpec.props.length > 0) return true
+  const bindingText = JSON.stringify(targetSpec.bindingPlan || {}).toLowerCase()
+  return /prop_detail|cover_motif|comparison_prop/iu.test(bindingText)
+}
+
+function targetForbidsText(targetSpec: ImageTargetSpec): boolean {
+  if (!targetSpec.requiredText.trim()) return true
+  const source = [
+    targetSpec.visualType,
+    targetSpec.renderMode,
+    ...targetSpec.forbiddenPatterns,
+    ...targetSpec.continuityRules,
+  ].join(' ')
+  return /(no text|no readable text|无文字|无可读文字|书名|title|subtitle|caption|clean plate|blank cover)/iu.test(source)
+}
+
+function isHardGateIssue(issue: VisualQualityIssue, targetSpec: ImageTargetSpec): boolean {
+  if (issue.severity === 'minor') return false
+  if (
+    issue.code === 'EMPTY_IMAGE'
+    || issue.code === 'UNREADABLE_IMAGE'
+    || issue.code === 'ASPECT_RATIO_MISMATCH'
+    || issue.code === 'SUBJECT_MISMATCH'
+  ) {
+    return true
+  }
+  if (issue.code === 'TEXT_ERROR') return targetForbidsText(targetSpec)
+  if (issue.code === 'CHARACTER_INCONSISTENT') return targetHasLockedCharacter(targetSpec)
+  if (issue.code === 'PROP_INCONSISTENT') return targetHasLockedProp(targetSpec)
+  if (issue.code === 'STYLE_MISMATCH' || issue.code === 'CONTINUITY_ERROR') {
+    return targetSpec.riskLevel === 'high' || issue.severity === 'critical'
+  }
+  return false
+}
+
+export function enforceVisualQualityHardGates(
+  review: ImageQualityReviewResult,
+  targetSpec: ImageTargetSpec,
+): ImageQualityReviewResult {
+  const candidates = review.candidates.map((candidate) => {
+    const hardBlocked = candidate.issues.some((issue) => isHardGateIssue(issue, targetSpec))
+    return {
+      ...candidate,
+      passed: candidate.passed && !hardBlocked,
+    }
+  })
+  const selected = review.selectedCandidateIndex === null
+    ? null
+    : candidates.find((candidate) => candidate.candidateIndex === review.selectedCandidateIndex) || null
+  return {
+    ...review,
+    candidates,
+    status: selected?.passed
+      ? 'passed'
+      : review.status === 'human_required' ? 'human_required' : 'repairable',
   }
 }
 

@@ -121,7 +121,10 @@ describe('worker image-task-handlers-core', () => {
         options: expect.objectContaining({
           aspectRatio: LOCATION_IMAGE_RATIO,
           resolution: '1536x1024',
-          referenceImages: ['required-reference-image', 'normalized-reference-image'],
+          referenceImages: [
+            'required-reference-image',
+            'https://example.com/location-ref.png',
+          ],
         }),
       }),
     )
@@ -193,8 +196,9 @@ describe('worker image-task-handlers-core', () => {
           aspectRatio: '16:9',
           resolution: '2048x1152',
           referenceImages: [
-            'base64-required-reference',
-            'normalized-reference-image',
+            'https://signed/current-image.png',
+            'https://example.com/asset-ref.png',
+            'https://example.com/extra-ref.png',
           ],
         }),
       }),

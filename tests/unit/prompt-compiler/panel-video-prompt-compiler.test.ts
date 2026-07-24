@@ -41,7 +41,8 @@ describe('panel video prompt compiler', () => {
     expect(spec.primaryMotion).toBe('缓慢转头看向深海')
     expect(prompt).toContain('源图是锁定首帧')
     expect(prompt).toContain('主体主运动：缓慢转头看向深海')
-    expect(prompt).toContain('二级动画：窗外微光流动')
+    expect(prompt).not.toContain('二级动画：窗外微光流动')
+    expect(prompt).toContain('短视频段')
     expect(prompt).toContain('禁止项：')
     expect(prompt).toContain('不要改变角色身份')
   })
@@ -103,5 +104,46 @@ describe('panel video prompt compiler', () => {
     expect(spec.primaryMotion).toBe('窗外水流缓慢掠过')
     expect(spec.cameraMotion).toBe('固定机位轻微呼吸感')
     expect(prompt).toContain('禁止新增人物')
+  })
+
+  it('inherits locked visual references and simplifies short clip motion', () => {
+    const spec = buildPanelVideoPromptSpec({
+      locale: 'zh',
+      context: {
+        generationMode: 'normal',
+        panel: {
+          panelId: 'panel-ref',
+          description: '黄铜罗盘在桌面上',
+          duration: 4,
+          promptSpec: {
+            primarySubject: '黄铜罗盘',
+            assetRefs: [{
+              id: 'prop-1',
+              kind: 'prop',
+              name: '黄铜罗盘',
+              role: 'prop_detail',
+            }],
+          },
+          referencePlan: {
+            schemaVersion: 1,
+            references: [{
+              assetName: '黄铜罗盘',
+              role: 'prop_detail',
+              usage: 'must_match',
+            }],
+          },
+          photographyRules: {
+            shotSpec: {
+              primarySubject: '黄铜罗盘',
+              actionBeats: ['指针轻微颤动', '桌面阴影移动'],
+            },
+          },
+        },
+      },
+    })
+
+    expect(spec.secondaryMotion).toEqual([])
+    expect(spec.continuityConstraints.join('\n')).toContain('黄铜罗盘')
+    expect(spec.continuityConstraints.join('\n')).toContain('短视频段')
   })
 })

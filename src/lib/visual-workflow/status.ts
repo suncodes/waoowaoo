@@ -284,6 +284,8 @@ export function resolveVisualWorkflowPresentation(input: ResolveVisualWorkflowIn
   const settledQualityState = !!qualityState && (
     humanConfirmed
     || qualityState.status === 'approved'
+    || qualityState.status === 'approved_by_user'
+    || qualityState.status === 'approved_with_warnings'
     || qualityState.status === 'human_required'
     || qualityState.status === 'failed'
     || qualityState.status === 'shadow_completed'
