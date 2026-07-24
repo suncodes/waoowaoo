@@ -19,6 +19,7 @@ Clips：{clips_json}
 8. 可用资产中的已有角色、场景或道具一旦出现在画面中，必须在 assetRefs 中使用资产库给出的精确 id、kind、name。不得自造 ID，不得只写名称而省略引用。
 9. 艺术风格只控制线条、形状语言、材质、配色和光影，不得自动加入该风格关联作品中的角色、建筑、徽标或标志物。未在 assetRefs 或镜头主体中指定的角色一律禁止出现。
 10. imagePrompt 不得要求生成准确书名、年份、新闻标题或长文字；必须明确“无文字、无水印、无标志”。
+11. 如果输入中附带 VisualBeatPlan，必须把每个 visualUnit 映射到对应 beat，继承其 visualLicense、screenEvent、actionMoment、continuity 和 assetNeeds，不得把导读做成静态 PPT 图集。
 
 只输出 JSON：
 {
@@ -63,6 +64,8 @@ Clips：{clips_json}
     "panelNumber": 1,
     "visualType": "character_action|environment|book_cover|quote_card|diagram|illustration|kinetic_text",
     "renderMode": "generated_image|text_card|composite",
+    "visualLicense": "literal|illustrative|metaphor|transition|text_card",
+    "continuityGroupId": "同一主体、空间或连续动作共用的稳定分组 id",
     "shotType": "景别",
     "cameraMove": "一种主要运镜",
     "description": "画面描述",
@@ -124,5 +127,6 @@ Clips：{clips_json}
 - imagePrompt 必须把 promptBlueprint 中的 subject/environment/action/camera/lighting/style 合成成自然完整的提示词，不能只重复分镜描述。
 - videoPrompt 必须从 startState、actionBeats、endState 和 promptBlueprint.action/camera 推导，描述首帧之后发生的可控运动，不要重新设计静态外观。
 - 如果 ContentPlan 或 screenplay 中包含 voiceRhythm、sourceBoundary、promotion_voiceover、visual_beats，必须优先使用它们决定镜头功能和信息密度；不要按文本长度机械拆镜。
+- 如果输入中包含 VisualBeatPlan，visualLicense 必须来自对应 beat；screenEvent 要转成可见的单一画面事件；continuityGroupId 应让同一角色、载具、核心物件或连续空间跨镜共享。
 
 导读必须覆盖每个 clip，并在书封、引用卡、图表、插画、动态文字之间按信息功能选择，不要全部生成人物插画。需要表达多个素材或多个地点时，拆成多个 visualUnit，不得塞进一张 imagePrompt。剧情也必须覆盖每个 clip，可以为每个 clip 提供少量全局建议，后续细分镜仍必须服从 Treatment 和 Bible。

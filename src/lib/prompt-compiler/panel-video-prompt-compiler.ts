@@ -21,6 +21,10 @@ export interface PanelVideoPromptSpec {
   environmentMotion: string
   endState: string
   continuityConstraints: string[]
+  continuityGroupId: string | null
+  generationRoute: string | null
+  imagePromptSpec: unknown
+  referencePlan: unknown
   durationSec: number | null
   negativeConstraints: string[]
 }
@@ -34,6 +38,11 @@ export interface PanelVideoPromptCompilerContext {
     cameraMove?: string | null
     duration?: number | null
     photographyRules?: unknown
+    promptSpec?: unknown
+    referencePlan?: unknown
+    continuityGroupId?: string | null
+    generationRoute?: string | null
+    primarySubject?: string | null
   }
   generationMode: 'normal' | 'firstlastframe'
   customPrompt?: string | null
@@ -83,6 +92,10 @@ function readContinuity(shotSpec: Record<string, unknown>): Record<string, unkno
 
 function readPromptBlueprint(shotSpec: Record<string, unknown>): Record<string, unknown> {
   return asRecord(shotSpec.promptBlueprint)
+}
+
+function readImagePromptSpec(context: PanelVideoPromptCompilerContext): Record<string, unknown> {
+  return asRecord(context.panel.promptSpec)
 }
 
 function boundedDuration(value: unknown): number | null {
@@ -137,6 +150,8 @@ export function buildPanelVideoPromptSpec(params: {
   const shotSpec = readShotSpec(params.context)
   const continuity = readContinuity(shotSpec)
   const promptBlueprint = readPromptBlueprint(shotSpec)
+  const imagePromptSpec = readImagePromptSpec(params.context)
+  const imageContinuity = asRecord(imagePromptSpec.continuity)
   const actionBeats = stringArray(shotSpec.actionBeats)
   const blueprintActions = stringArray(promptBlueprint.action)
   const blueprintCamera = stringArray(promptBlueprint.camera)
@@ -145,6 +160,7 @@ export function buildPanelVideoPromptSpec(params: {
   const rawVideoPrompt = readString(params.context.panel.videoPrompt)
   const description = readString(params.context.panel.description)
   const narrativeIntent = firstNonEmpty(
+    readString(imagePromptSpec.narrativeIntent),
     readString(shotSpec.narrativeIntent),
     rawVideoPrompt,
     description,
@@ -164,7 +180,13 @@ export function buildPanelVideoPromptSpec(params: {
     generationMode: params.context.generationMode,
     narrativeIntent,
     sourceFramePolicy: sourceFramePolicy(params.context.generationMode, params.context.lastFrameProvided === true, locale),
-    primarySubject: firstNonEmpty(readString(shotSpec.primarySubject), description, locale === 'en' ? 'the locked source-frame subject' : '首帧中的锁定主体'),
+    primarySubject: firstNonEmpty(
+      readString(params.context.panel.primarySubject),
+      readString(imagePromptSpec.primarySubject),
+      readString(shotSpec.primarySubject),
+      description,
+      locale === 'en' ? 'the locked source-frame subject' : '首帧中的锁定主体',
+    ),
     startState: firstNonEmpty(readString(shotSpec.startState), locale === 'en' ? 'start from the exact source frame' : '从源图首帧状态开始'),
     primaryMotion,
     secondaryMotion: actionBeats.slice(1, 3),
@@ -175,9 +197,23 @@ export function buildPanelVideoPromptSpec(params: {
     continuityConstraints: [
       firstNonEmpty(readString(continuity.fromPrevious), locale === 'en' ? 'preserve established spatial continuity' : '保持已建立的空间连续性'),
       firstNonEmpty(readString(continuity.toNext), locale === 'en' ? 'leave a clear visual handoff for the next shot' : '为下一镜保留清晰视觉衔接'),
-      firstNonEmpty(readString(continuity.screenDirection), locale === 'en' ? 'preserve screen direction' : '保持视线和运动方向'),
-      firstNonEmpty(readString(continuity.lightingContinuity), locale === 'en' ? 'preserve lighting and color continuity' : '保持光色连续性'),
-    ],
+      firstNonEmpty(readString(imageContinuity.screenDirection), readString(continuity.screenDirection), locale === 'en' ? 'preserve screen direction' : '保持视线和运动方向'),
+      firstNonEmpty(readString(imageContinuity.lightingContinuity), readString(continuity.lightingContinuity), locale === 'en' ? 'preserve lighting and color continuity' : '保持光色连续性'),
+      params.context.panel.continuityGroupId
+        ? locale === 'en'
+          ? `continuity group: ${params.context.panel.continuityGroupId}`
+          : `连续性分组：${params.context.panel.continuityGroupId}`
+        : '',
+      params.context.panel.generationRoute
+        ? locale === 'en'
+          ? `image generation route: ${params.context.panel.generationRoute}`
+          : `图片生成路由：${params.context.panel.generationRoute}`
+        : '',
+    ].filter(Boolean),
+    continuityGroupId: params.context.panel.continuityGroupId || null,
+    generationRoute: params.context.panel.generationRoute || null,
+    imagePromptSpec: Object.keys(imagePromptSpec).length > 0 ? imagePromptSpec : null,
+    referencePlan: params.context.panel.referencePlan || null,
     durationSec: boundedDuration(params.context.panel.duration),
     negativeConstraints: Array.from(new Set([
       ...buildNegativeConstraints(locale),

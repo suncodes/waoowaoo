@@ -27,9 +27,29 @@ describe('asset image prompt compiler', () => {
     expect(prompt.indexOf('真人电影感')).toBeLessThan(prompt.indexOf(CHARACTER_PROMPT_SUFFIX))
   })
 
-  it('compiles prop prompts as isolated reference sheets', () => {
+  it('compiles generic prop prompts as isolated reference sheets', () => {
     const spec = buildAssetPromptSpec({
       assetId: 'prop-1',
+      assetKind: 'prop',
+      assetName: '黄铜钥匙',
+      description: '旧黄铜材质，方形齿纹，顶部有圆形孔洞，表面有磨损痕迹',
+      styleText: '十九世纪幻想工业风',
+      locale: 'zh',
+    })
+    const prompt = compileAssetImagePrompt({ spec, locale: 'zh' })
+
+    expect(spec.renderPurpose).toBe('reference_sheet')
+    expect(spec.semanticType).toBe('tool')
+    expect(spec.templateKind).toBe('prop_turnaround')
+    expect(spec.keyParts).toEqual(expect.arrayContaining(['方形齿纹', '顶部有圆形孔洞']))
+    expect(prompt).toContain('单一道具设定图')
+    expect(prompt.endsWith(PROP_PROMPT_SUFFIX)).toBe(true)
+    expect(prompt.indexOf('十九世纪幻想工业风')).toBeLessThan(prompt.indexOf(PROP_PROMPT_SUFFIX))
+  })
+
+  it('routes vehicle props to a vehicle turnaround template', () => {
+    const spec = buildAssetPromptSpec({
+      assetId: 'vehicle-1',
       assetKind: 'prop',
       assetName: '深海潜艇',
       description: '长梭形暗铜金属船体，圆形舷窗，船首撞角，表面有海水侵蚀痕迹',
@@ -38,11 +58,11 @@ describe('asset image prompt compiler', () => {
     })
     const prompt = compileAssetImagePrompt({ spec, locale: 'zh' })
 
-    expect(spec.renderPurpose).toBe('reference_sheet')
-    expect(spec.keyParts).toEqual(expect.arrayContaining(['圆形舷窗', '船首撞角']))
-    expect(prompt).toContain('单一道具设定图')
+    expect(spec.semanticType).toBe('vehicle')
+    expect(spec.templateKind).toBe('vehicle_turnaround')
+    expect(prompt).toContain('载具设定图')
+    expect(prompt).toContain('头尾方向明确')
     expect(prompt.endsWith(PROP_PROMPT_SUFFIX)).toBe(true)
-    expect(prompt.indexOf('十九世纪幻想工业风')).toBeLessThan(prompt.indexOf(PROP_PROMPT_SUFFIX))
   })
 
   it('keeps location spatial slots and negative constraints in the compiled prompt', () => {

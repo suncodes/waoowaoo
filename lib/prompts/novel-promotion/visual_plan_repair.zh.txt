@@ -29,3 +29,5 @@ VideoProfile：
 11. shotPlan 必须包含 shotBudget、rhythmCurve、functionMix、continuityChecks；缺失时根据 visualUnits 保守补齐。
 12. 每个 shotSpec 必须包含 shotFunction、primarySubject、visibleAssets、continuity、singleImageFeasibility；缺失时根据 description、assetRefs、shotType、cameraMove 补齐。
 13. shotSpec.visibleAssets 必须与 visualUnit.assetRefs 一致；不能引用可用资产之外的 id。
+14. 如果候选输出缺少 visualLicense 或 continuityGroupId，应按镜头功能保守补齐；同一角色、载具、核心道具或连续空间跨镜必须复用稳定 continuityGroupId。
+15. 如果修复提示中附带 VisualBeatPlan 约束，必须优先恢复 beat 对应的 visualLicense、screenEvent、actionMoment、assetNeeds 和连续性。

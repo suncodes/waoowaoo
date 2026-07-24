@@ -34,6 +34,9 @@ interface GlobalCharacterAppearanceRecord {
 interface GlobalCharacterRecord {
   id: string
   name: string
+  semanticType?: string | null
+  assetTier?: string | null
+  usageScope?: string | null
   appearances: GlobalCharacterAppearanceRecord[]
 }
 
@@ -46,6 +49,9 @@ interface GlobalLocationImageRecord {
 interface GlobalLocationRecord {
   id: string
   name: string
+  semanticType?: string | null
+  assetTier?: string | null
+  usageScope?: string | null
   images: GlobalLocationImageRecord[]
 }
 
@@ -112,6 +118,9 @@ export async function handleAssetHubImageTask(job: Job<TaskJobData>) {
         assetKind: 'character',
         assetName: character.name,
         description: raw,
+        semanticType: character.semanticType,
+        assetTier: character.assetTier,
+        usageScope: character.usageScope,
         renderPurpose: appearance.appearanceIndex === PRIMARY_APPEARANCE_INDEX ? 'reference_sheet' : 'variant',
         variantLabel: appearance.changeReason,
         styleText: artStyle,
@@ -207,6 +216,9 @@ export async function handleAssetHubImageTask(job: Job<TaskJobData>) {
         assetKind,
         assetName: location.name,
         description: image.description,
+        semanticType: location.semanticType,
+        assetTier: location.assetTier,
+        usageScope: location.usageScope,
         renderPurpose: assetKind === 'prop' ? 'reference_sheet' : 'single_reference',
         styleText: artStyle,
         styleReferenceInstruction,

@@ -38,10 +38,15 @@ import {
   type PanelAssetBindingPlan,
 } from '@/lib/visual-production/binding-plan'
 import {
+  assertPanelGenerationRouteAllowed,
+  decidePanelGenerationRoute,
+} from '@/lib/visual-production/panel-generation-router'
+import {
   visualReferencesForPrompt,
   visualReferencesToImageUrls,
   type VisualReference,
 } from '@/lib/visual-production/references'
+import type { Prisma } from '@prisma/client'
 
 function parseJsonUnknown(raw: string | null | undefined): unknown | null {
   if (!raw) return null
@@ -93,6 +98,10 @@ function readOptionalTaskRunId(job: Job<TaskJobData>): string | null {
 
 function toJsonRecord(value: unknown): Record<string, unknown> {
   return JSON.parse(JSON.stringify(value)) as Record<string, unknown>
+}
+
+function asInputJson(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
 }
 
 function buildPanelPromptContext(params: {
@@ -272,6 +281,12 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
   const visualBindingPlan = resolvePanelAssetBindingPlan(panel)
   const visualBindings = panelVisualBindingsFromPlan(visualBindingPlan)
   const visualReferences = await collectPanelVisualReferences(projectData, panel)
+  const structuredReferences = visualReferencesForPrompt(visualReferences)
+  const generationRouteDecision = decidePanelGenerationRoute({
+    panel,
+    bindingPlan: visualBindingPlan,
+    references: visualReferences,
+  })
   const refs = visualReferencesToImageUrls(visualReferences)
   const referenceImages = prependStyleReferenceImage(
     refs,
@@ -297,7 +312,8 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
       referenceImagesFinalCount: referenceImages.length,
       visualBindings,
       visualBindingPlan,
-      visualReferences: visualReferencesForPrompt(visualReferences),
+      visualReferences: structuredReferences,
+      generationRouteDecision,
       artStyleReferenceEnabled: modelConfig.artStyleReferenceEnabled,
       rawUrls: refs.map((u) => u.substring(0, 100)),
       referenceUrls: referenceImages.map((u) => u.substring(0, 100)),
@@ -353,13 +369,20 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
     location: promptContext.context.location_reference,
     props: promptContext.context.prop_references,
     referenceImages,
-    visualReferences: visualReferencesForPrompt(visualReferences),
+    visualReferences: structuredReferences,
     visualBindingPlan,
   })
   const panelPromptSpec = buildPanelImagePromptSpec({
     context: promptContext,
     aspectRatio,
     styleText: resolvedStyleText,
+    generationRoute: generationRouteDecision.route,
+    noReferenceReason: generationRouteDecision.noReferenceReason,
+    referencePlan: {
+      schemaVersion: 1,
+      references: structuredReferences,
+      decision: generationRouteDecision,
+    },
   })
   const contextJson = JSON.stringify({
     ...promptContext,
@@ -383,7 +406,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
     modelKey,
     promptTemplateId: PROMPT_IDS.NP_SINGLE_PANEL_IMAGE,
     referenceImages,
-    structuredReferences: visualReferencesForPrompt(visualReferences),
+    structuredReferences,
     bindingPlan: visualBindingPlan,
     promptSpec: panelPromptSpec,
     compiledPrompt: prompt,
@@ -402,6 +425,14 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
       })
       await createArtifact({
         runId,
+        stepKey: 'panel_generation_route',
+        artifactType: 'visual.generation.route',
+        refId: panel.id,
+        versionHash: createCreativeQualityHash(generationRouteDecision),
+        payload: toJsonRecord(generationRouteDecision),
+      })
+      await createArtifact({
+        runId,
         stepKey: 'panel_image_prompt',
         artifactType: 'prompt.panel_image.snapshot',
         refId: panel.id,
@@ -416,6 +447,22 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
       })
     }
   }
+
+  await prisma.novelPromotionPanel.update({
+    where: { id: panel.id },
+    data: {
+      generationRoute: generationRouteDecision.route,
+      noReferenceReason: generationRouteDecision.noReferenceReason,
+      promptSpec: asInputJson(panelPromptSpec),
+      referencePlan: asInputJson({
+        schemaVersion: 1,
+        references: structuredReferences,
+        decision: generationRouteDecision,
+      }),
+    },
+  })
+
+  assertPanelGenerationRouteAllowed(generationRouteDecision)
 
   const candidates: string[] = []
 

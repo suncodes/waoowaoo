@@ -1,5 +1,6 @@
 export * from './bindings'
 export * from './binding-plan'
+export * from './panel-generation-router'
 export * from './references'
 export * from './targets'
 export * from './text-policy'

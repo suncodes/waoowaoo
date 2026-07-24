@@ -11,6 +11,8 @@ export type VisualType =
 
 export type RenderMode = 'generated_image' | 'text_card' | 'composite'
 
+export type VisualLicense = 'literal' | 'illustrative' | 'metaphor' | 'transition' | 'text_card'
+
 export type ShotFunction =
   | 'hook'
   | 'setup'
@@ -96,6 +98,8 @@ export interface VisualUnit {
   panelNumber: number
   visualType: VisualType
   renderMode: RenderMode
+  visualLicense?: VisualLicense
+  continuityGroupId?: string
   shotType: string
   cameraMove: string
   description: string

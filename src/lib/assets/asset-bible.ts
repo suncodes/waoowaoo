@@ -1,3 +1,5 @@
+import { buildAssetMeta, type AssetSemanticType, type AssetTier, type AssetUsageScope } from './asset-semantics'
+
 export type AssetBibleKind = 'character' | 'location' | 'prop' | 'symbol'
 
 export type AssetBibleRole = 'primary' | 'secondary' | 'background' | 'symbolic'
@@ -15,6 +17,9 @@ export interface AssetBibleEvidence {
 export interface AssetBibleItem {
   id: string
   kind: AssetBibleKind
+  semanticType?: AssetSemanticType
+  assetTier?: AssetTier
+  usageScope?: AssetUsageScope
   canonicalName: string
   aliases: string[]
   role: AssetBibleRole
@@ -29,6 +34,12 @@ export interface AssetBibleItem {
   forbiddenVariants: string[]
   firstAppearance: string
   usedByPanels: string[]
+  expectedUse?: Array<{
+    panelId?: string
+    clipId?: string
+    role: 'primary_subject' | 'visible_support' | 'background' | 'reference_only'
+  }>
+  missingRisk?: 'blocking' | 'warning' | 'none'
   priority: AssetBiblePriority
   generationNeed: AssetBibleGenerationNeed
 }
@@ -261,9 +272,23 @@ export function buildAssetBible(params: {
     const kind = normalizeKind(anchor)
     const priority = priorityForAnchor(anchor)
     const aliases = assetAliases(anchor)
+    const usedByPanels = buildUsedByPanels(anchor, visualUnits, usageByAssetId)
+    const assetKindForMeta = kind === 'symbol' ? 'prop' : kind
+    const assetMeta = buildAssetMeta({
+      assetKind: assetKindForMeta,
+      name: anchor.name,
+      description: anchor.description,
+      importance: anchor.importance,
+      sourceUnitIds,
+      usedByPanels,
+      explicitSemanticType: anchor.semanticKind,
+    })
     return {
       id: anchor.assetId,
       kind,
+      semanticType: assetMeta.semanticType,
+      assetTier: assetMeta.assetTier,
+      usageScope: assetMeta.usageScope,
       canonicalName: anchor.name,
       aliases,
       role: roleForAnchor(anchor),
@@ -282,7 +307,12 @@ export function buildAssetBible(params: {
         '不要被艺术风格替换成已有 IP 主体',
       ],
       firstAppearance: sourceUnitIds[0] || '',
-      usedByPanels: buildUsedByPanels(anchor, visualUnits, usageByAssetId),
+      usedByPanels,
+      expectedUse: usedByPanels.map((panelId) => ({
+        panelId,
+        role: priority === 'must_lock' ? 'primary_subject' : 'visible_support',
+      })),
+      missingRisk: priority === 'must_lock' ? 'blocking' : priority === 'normal' ? 'warning' : 'none',
       priority,
       generationNeed: generationNeedForAnchor(anchor),
     }

@@ -7,6 +7,7 @@ import {
   bindingPlanPromptGuidance,
   type PanelAssetBindingPlan,
 } from '@/lib/visual-production/binding-plan'
+import type { PanelGenerationRoute } from '@/lib/visual-production/panel-generation-router'
 
 export interface PanelPromptAssetRef {
   id: string | null
@@ -50,6 +51,9 @@ export interface PanelImagePromptSpec {
   qualityTerms: string[]
   referenceInstructions: string[]
   bindingPlan: unknown
+  generationRoute: PanelGenerationRoute
+  noReferenceReason: string | null
+  referencePlan: unknown
   textPolicy: 'no_text' | 'safe_area_only'
   negativeConstraints: string[]
   promptBlueprint: {
@@ -373,8 +377,12 @@ export function buildPanelImagePromptSpec(params: {
   context: PanelImagePromptCompilerContext
   aspectRatio: string
   styleText: string
+  generationRoute?: PanelGenerationRoute
+  noReferenceReason?: string | null
+  referencePlan?: unknown
 }): PanelImagePromptSpec {
   const primarySubject = resolvePrimarySubject(params.context)
+  const generationRoute = params.generationRoute || 'generate'
   const shotSpec = readShotSpec(params.context)
   const narrativeIntent = firstNonEmpty(
     readNestedString(shotSpec, ['narrativeIntent']),
@@ -420,10 +428,15 @@ export function buildPanelImagePromptSpec(params: {
       '空间层次明确',
       '参考资产身份一致',
       '画面比例正确',
+      ...(generationRoute === 'composite' ? ['生成无字干净底图或单一前景素材，准确文字留给后期合成'] : []),
+      ...(generationRoute === 'split' ? ['只生成当前镜头最关键的一个瞬间，不生成多格、多阶段或混剪'] : []),
       ...(bindingPlan?.complexity.level === 'high' ? ['复杂镜头只生成一个关键瞬间，不要塞入多个动作阶段'] : []),
     ],
     referenceInstructions,
     bindingPlan: bindingPlan || params.context.panel.visual_bindings || null,
+    generationRoute,
+    noReferenceReason: params.noReferenceReason || null,
+    referencePlan: params.referencePlan || params.context.context.visual_references || null,
     textPolicy: params.context.panel.on_screen_text_for_downstream_composition ? 'safe_area_only' : 'no_text',
     negativeConstraints: Array.from(new Set([
       '无文字',
@@ -433,6 +446,7 @@ export function buildPanelImagePromptSpec(params: {
       '无混剪画面',
       '无未指定角色',
       '无风格关联 IP 角色',
+      ...(generationRoute === 'composite' ? ['无可读文字', '无书名', '无新闻标题', '无素材墙'] : []),
       ...promptBlueprint.negative,
     ])),
     promptBlueprint,

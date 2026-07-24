@@ -70,6 +70,25 @@ function hasUsableVisualCandidate(review: ImageQualityReviewResult): boolean {
   return review.candidates.some((candidate) => candidate.passed)
 }
 
+function chooseNextActiveCandidateUrl(params: {
+  currentState: ReturnType<typeof parseVisualQualityState> | null
+  review: ImageQualityReviewResult
+  selectedUrl: string | null
+  fallbackUrl: string | null
+}): string | null {
+  const currentScore = typeof params.currentState?.review?.score === 'number'
+    ? params.currentState.review.score
+    : null
+  if (
+    currentScore !== null
+    && currentScore > params.review.score
+    && params.currentState?.activeCandidateUrl
+  ) {
+    return params.currentState.activeCandidateUrl
+  }
+  return params.selectedUrl || params.fallbackUrl
+}
+
 async function resolveAssetReviewTarget(params: {
   job: Job<TaskJobData>
   payload: Record<string, unknown>
@@ -500,7 +519,12 @@ export async function handleVisualQualityReviewTask(job: Job<TaskJobData>) {
     versionHash,
     candidateUrls,
     candidateGroups,
-    activeCandidateUrl: selectedUrl || panel.imageUrl,
+    activeCandidateUrl: chooseNextActiveCandidateUrl({
+      currentState,
+      review,
+      selectedUrl,
+      fallbackUrl: panel.imageUrl,
+    }),
     attempt,
     maxAttempts,
     lastAction: decision.action,

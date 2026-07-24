@@ -4,8 +4,17 @@ import { prisma } from '@/lib/prisma'
 import { createArtifact } from '@/lib/run-runtime/service'
 import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
 import { isBookGuideProfile, resolveVideoProfile } from '@/lib/video-profile'
-import { parseVisualPlanResult, type VisualAssetRef, type VisualPlanResult } from '@/lib/visual-planning'
+import {
+  buildVisualBeatPlan,
+  parseVisualPlanResult,
+  type VisualAssetRef,
+  type VisualPlanResult,
+} from '@/lib/visual-planning'
 import { reviewVisualPlanStoryboard, type StoryboardReviewResult } from '@/lib/visual-planning/storyboard-review'
+import {
+  auditVisualAssetCoverage,
+  type AssetCoverageAuditAsset,
+} from '@/lib/assets/asset-coverage-audit'
 import type { TaskJobData } from '@/lib/task/types'
 import { reportTaskProgress } from '@/lib/workers/shared'
 import { assertTaskActive } from '@/lib/workers/utils'
@@ -88,6 +97,7 @@ async function generateValidatedVisualPlan(params: {
   clipsJson: string
   assetsJson: string
   assets: VisualAssetRef[]
+  visualBeatPlanJson: string
   targetId: string
 }): Promise<{ result: VisualPlanResult; storyboardReview: StoryboardReviewResult }> {
   let prompt = params.initialPrompt
@@ -133,6 +143,7 @@ async function generateValidatedVisualPlan(params: {
           assets_json: params.assetsJson,
         },
       })
+      prompt += `\n\n【VisualBeatPlan 约束】\n${params.visualBeatPlanJson}`
     }
   }
 
@@ -196,8 +207,8 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
   const novelData = await prisma.novelPromotionProject.findUnique({
     where: { projectId: job.data.projectId },
     include: {
-      characters: { select: { id: true, name: true, aliases: true, introduction: true } },
-      locations: { select: { id: true, name: true, summary: true, assetKind: true } },
+      characters: { select: { id: true, name: true, aliases: true, introduction: true, semanticType: true, assetTier: true, usageScope: true } },
+      locations: { select: { id: true, name: true, summary: true, assetKind: true, semanticType: true, assetTier: true, usageScope: true } },
     },
   })
   if (!novelData) throw new Error('Novel promotion data not found')
@@ -243,6 +254,32 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
       name: item.name,
     })),
   ]
+  const coverageAssets: AssetCoverageAuditAsset[] = [
+    ...novelData.characters.map((item) => ({
+      id: item.id,
+      kind: 'character' as const,
+      name: item.name,
+      summary: item.introduction,
+      semanticType: item.semanticType,
+      assetTier: item.assetTier,
+      usageScope: item.usageScope,
+    })),
+    ...novelData.locations.map((item) => ({
+      id: item.id,
+      kind: item.assetKind === 'prop' ? 'prop' as const : 'location' as const,
+      name: item.name,
+      summary: item.summary,
+      semanticType: item.semanticType,
+      assetTier: item.assetTier,
+      usageScope: item.usageScope,
+    })),
+  ]
+  const visualBeatPlan = buildVisualBeatPlan({
+    profile,
+    clips,
+    assets: visualAssets,
+  })
+  const visualBeatPlanJson = JSON.stringify(visualBeatPlan, null, 2)
   const contentMeta = readContentArtifactMeta(episode.contentPlan)
   const requiredAssetIds = contentMeta?.assetRequirements.status === 'approved'
     ? contentMeta.assetRequirements.assetIds
@@ -270,6 +307,11 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
       targetId: episodeId,
       result: reusedResult,
       profile,
+    })
+    const assetCoverageAudit = auditVisualAssetCoverage({
+      targetId: episodeId,
+      visualUnits: reusedResult.visualUnits,
+      assets: coverageAssets,
     })
     if (storyboardReview.status !== 'passed') {
       throw new Error(`VISUAL_PLAN_REUSE_INVALID:${storyboardReview.score}:${storyboardReview.evidence.slice(0, 5).join(' | ')}`)
@@ -306,6 +348,13 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
         storyboardMaterialized: shouldMaterializeStoryboard,
       }),
     })
+    await createArtifact({
+      runId: readTaskRunId(job),
+      stepKey: 'asset_coverage_audit',
+      artifactType: 'asset.coverage.audit',
+      refId: episodeId,
+      payload: toJsonRecord(assetCoverageAudit),
+    })
     return {
       episodeId,
       profilePreset: profile.preset,
@@ -316,6 +365,7 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
       approvedRevision: reusableVisualPlanState.approvedRevision,
       storyboardReviewScore: storyboardReview.score,
       storyboardReviewStatus: storyboardReview.status,
+      assetCoverageStatus: assetCoverageAudit.status,
       storyboardPersisted: isBookGuideProfile(profile) && !deferStoryboard,
       storyboardMaterialized: shouldMaterializeStoryboard,
     }
@@ -340,9 +390,13 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     },
   })
   const rewriteInstruction = readText(payload.instruction)
+  const visualBeatPlanInstruction = `${job.data.locale === 'en' ? 'VisualBeatPlan constraints' : 'VisualBeatPlan 约束'}：\n${visualBeatPlanJson}\n\n${job.data.locale === 'en'
+    ? 'Use this beat plan as the directing layer. Each visualUnit must map to a beat, preserve visualLicense, screenEvent, actionMoment, continuity and assetNeeds, and avoid static PPT-like illustrations.'
+    : '必须把以上节拍计划作为导演前置层。每个 visualUnit 都要对应某个 beat，并继承 visualLicense、screenEvent、actionMoment、continuity 和 assetNeeds，避免静态 PPT 式说明图。'}`
+  const planningPromptBase = `${initialPrompt}\n\n${visualBeatPlanInstruction}`
   const planningPrompt = rewriteInstruction
-    ? `${initialPrompt}\n\n${job.data.locale === 'en' ? 'Rewrite instruction' : '本次重写要求'}：${rewriteInstruction}`
-    : initialPrompt
+    ? `${planningPromptBase}\n\n${job.data.locale === 'en' ? 'Rewrite instruction' : '本次重写要求'}：${rewriteInstruction}`
+    : planningPromptBase
   const { result: parsedResult, storyboardReview: initialStoryboardReview } = await generateValidatedVisualPlan({
     job,
     model,
@@ -352,6 +406,7 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     clipsJson,
     assetsJson,
     assets: visualAssets,
+    visualBeatPlanJson,
     targetId: episodeId,
   })
   const explicitlyReferencedAssetIds = parsedResult.visualUnits.flatMap(
@@ -379,6 +434,20 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     profile,
     reviewedAt: initialStoryboardReview.reviewedAt,
   })
+  const assetCoverageAudit = auditVisualAssetCoverage({
+    targetId: episodeId,
+    visualUnits: result.visualUnits,
+    assets: coverageAssets,
+  })
+  if (assetCoverageAudit.relationSuggestions.length > 0) {
+    await prisma.novelPromotionAssetRelation.createMany({
+      data: assetCoverageAudit.relationSuggestions.map((relation) => ({
+        projectId: novelData.id,
+        ...relation,
+      })),
+      skipDuplicates: true,
+    })
+  }
   await reportTaskProgress(job, 82, { stage: 'visual_plan_persist', displayMode: 'detail' })
   await assertTaskActive(job, 'visual_plan_persist')
   await persistVisualPlan({
@@ -389,6 +458,22 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     anchors,
     deferStoryboard,
     storyboardReview,
+    visualBeatPlan,
+    assetCoverageAudit,
+  })
+  await createArtifact({
+    runId: readTaskRunId(job),
+    stepKey: 'visual_beat_plan',
+    artifactType: 'visual.beat.plan',
+    refId: episodeId,
+    payload: toJsonRecord(visualBeatPlan),
+  })
+  await createArtifact({
+    runId: readTaskRunId(job),
+    stepKey: 'asset_coverage_audit',
+    artifactType: 'asset.coverage.audit',
+    refId: episodeId,
+    payload: toJsonRecord(assetCoverageAudit),
   })
   await createArtifact({
     runId: readTaskRunId(job),
@@ -402,7 +487,7 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     stepKey: 'visual_plan',
     artifactType: 'visual.plan',
     refId: episodeId,
-    payload: toJsonRecord({ profile, storyboardReview, ...result }),
+    payload: toJsonRecord({ profile, visualBeatPlan, storyboardReview, assetCoverageAudit, ...result }),
   })
 
   return {
@@ -411,6 +496,7 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     visualUnitCount: result.visualUnits.length,
     storyboardReviewScore: storyboardReview.score,
     storyboardReviewStatus: storyboardReview.status,
+    assetCoverageStatus: assetCoverageAudit.status,
     storyboardPersisted: isBookGuideProfile(profile) && !deferStoryboard,
   }
 }

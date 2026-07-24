@@ -18,6 +18,21 @@ function asInputJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
 }
 
+function safeGroupPart(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fa5]+/giu, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60) || 'subject'
+}
+
+function resolveContinuityGroupId(unit: VisualUnit): string {
+  const primaryAsset = unit.assetRefs?.find((asset) => asset.kind !== 'location') || unit.assetRefs?.[0]
+  const subject = primaryAsset?.id || unit.shotSpec.primarySubject || unit.clipId
+  return `cg-${safeGroupPart(subject)}`
+}
+
 export async function persistVisualPlan(params: {
   episodeId: string
   result: VisualPlanResult
@@ -26,6 +41,8 @@ export async function persistVisualPlan(params: {
   anchors?: VisualAnchor[]
   deferStoryboard?: boolean
   storyboardReview?: unknown
+  visualBeatPlan?: unknown
+  assetCoverageAudit?: unknown
 }) {
   await prisma.$transaction(async (tx) => {
     const currentEpisode = await tx.novelPromotionEpisode.findUnique({
@@ -51,6 +68,8 @@ export async function persistVisualPlan(params: {
     meta.plan = {
       shotPlan: cloneWorkspaceValue(params.result.shotPlan),
       visualUnits: cloneWorkspaceValue(params.result.visualUnits),
+      ...(params.visualBeatPlan !== undefined ? { visualBeatPlan: cloneWorkspaceValue(params.visualBeatPlan) } : {}),
+      ...(params.assetCoverageAudit !== undefined ? { assetCoverageAudit: cloneWorkspaceValue(params.assetCoverageAudit) } : {}),
       ...(params.storyboardReview !== undefined ? { storyboardReview: cloneWorkspaceValue(params.storyboardReview) } : {}),
     }
     meta.downstream = {
@@ -163,6 +182,17 @@ export async function materializeGuideStoryboards(
           duration: unit.durationSec,
           visualType: unit.visualType,
           renderMode: unit.renderMode,
+          visualLicense: unit.visualLicense || null,
+          shotFunction: unit.shotSpec.shotFunction,
+          primarySubject: unit.shotSpec.primarySubject,
+          continuityGroupId: unit.continuityGroupId || resolveContinuityGroupId(unit),
+          generationRoute: bindingPlan.complexity.recommendedAction === 'composite' ? 'composite' : 'generate',
+          noReferenceReason: bindingPlan.bindings.length === 0 ? 'one_off_broll' : null,
+          referencePlan: asInputJson({
+            schemaVersion: 1,
+            bindingPlan,
+            references: [],
+          }),
           onScreenText: unit.onScreenText || null,
           sourceAnchor: sourceAnchor ? asInputJson(sourceAnchor) : undefined,
           sceneType: unit.visualType,

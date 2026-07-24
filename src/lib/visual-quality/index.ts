@@ -26,6 +26,8 @@ const ISSUE_CODES = new Set<VisualQualityIssueCode>([
   'LOW_TECHNICAL_QUALITY',
 ])
 
+export const VISUAL_REVIEW_PASS_MIN_SCORE = 80
+
 function isRecord(value: unknown): value is JsonRecord {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
@@ -76,11 +78,12 @@ function parseCandidate(value: unknown, index: number): CandidateQualityReview {
   if (!isRecord(value)) throw new Error(`VISUAL_REVIEW_INVALID: candidate ${index} must be object`)
   const issues = (Array.isArray(value.issues) ? value.issues : []).map(parseIssue)
   const score = Math.round(boundedNumber(value.score, 0, 0, 100))
+  const hasCriticalIssue = issues.some((issue) => issue.severity === 'critical')
   return {
     candidateIndex: Math.round(boundedNumber(value.candidateIndex, index, 0, 999)),
     score,
     confidence: boundedNumber(value.confidence, 0.5, 0, 1),
-    passed: value.passed === true && !issues.some((issue) => issue.severity === 'critical'),
+    passed: value.passed === true && score >= VISUAL_REVIEW_PASS_MIN_SCORE && !hasCriticalIssue,
     strengths: stringArray(value.strengths),
     issues,
   }

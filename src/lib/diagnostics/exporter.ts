@@ -31,6 +31,9 @@ const VISUAL_QUALITY_REVIEW_ARTIFACT_TYPES = new Set(['visual.quality.review', '
 const VISUAL_PLAN_REUSE_ARTIFACT_TYPES = new Set(['visual.plan.reuse'])
 const VISUAL_AUTO_REPAIR_ARTIFACT_TYPES = new Set(['visual.repair.candidate', 'visual.asset.repair.candidate'])
 const VISUAL_BINDING_PLAN_ARTIFACT_TYPES = new Set(['visual.binding.plan'])
+const VISUAL_BEAT_PLAN_ARTIFACT_TYPES = new Set(['visual.beat.plan'])
+const ASSET_COVERAGE_AUDIT_ARTIFACT_TYPES = new Set(['asset.coverage.audit'])
+const VISUAL_GENERATION_ROUTE_ARTIFACT_TYPES = new Set(['visual.generation.route'])
 const STORYBOARD_QUALITY_REVIEW_ARTIFACT_TYPES = new Set(['storyboard.quality.review'])
 const SCRIPT_QUALITY_REVIEW_ARTIFACT_TYPES = new Set(['script.quality.review'])
 
@@ -494,6 +497,9 @@ function buildQualityArtifactViews(artifacts: AnyRecord[]) {
   const visualPlanReuses = filterArtifactsByType(artifacts, VISUAL_PLAN_REUSE_ARTIFACT_TYPES)
   const visualAutoRepairs = filterArtifactsByType(artifacts, VISUAL_AUTO_REPAIR_ARTIFACT_TYPES)
   const visualBindingPlans = filterArtifactsByType(artifacts, VISUAL_BINDING_PLAN_ARTIFACT_TYPES)
+  const visualBeatPlans = filterArtifactsByType(artifacts, VISUAL_BEAT_PLAN_ARTIFACT_TYPES)
+  const assetCoverageAudits = filterArtifactsByType(artifacts, ASSET_COVERAGE_AUDIT_ARTIFACT_TYPES)
+  const visualGenerationRoutes = filterArtifactsByType(artifacts, VISUAL_GENERATION_ROUTE_ARTIFACT_TYPES)
   const storyboardQualityReviews = filterArtifactsByType(artifacts, STORYBOARD_QUALITY_REVIEW_ARTIFACT_TYPES)
   const scriptQualityReviews = filterArtifactsByType(artifacts, SCRIPT_QUALITY_REVIEW_ARTIFACT_TYPES)
   const visualRepairLineage = collectRepairLineageRecords([
@@ -511,6 +517,9 @@ function buildQualityArtifactViews(artifacts: AnyRecord[]) {
     visualPlanReuses,
     visualAutoRepairs,
     visualBindingPlans,
+    visualBeatPlans,
+    assetCoverageAudits,
+    visualGenerationRoutes,
     visualRepairLineage,
   }
 }
@@ -1068,7 +1077,10 @@ async function createArchive(params: {
   archive.append(stringifyJsonLines(promptQualityReviewRecords as unknown as AnyRecord[]), { name: 'quality/prompt-quality-reviews.jsonl' })
   archive.append(stringifyJsonLines(qualityArtifacts.visualQualityReviews), { name: 'quality/visual-quality-reviews.jsonl' })
   archive.append(stringifyJsonLines(qualityArtifacts.visualPlanReuses), { name: 'quality/visual-plan-reuse.jsonl' })
+  archive.append(stringifyJsonLines(qualityArtifacts.visualBeatPlans), { name: 'quality/visual-beat-plans.jsonl' })
+  archive.append(stringifyJsonLines(qualityArtifacts.assetCoverageAudits), { name: 'quality/asset-coverage-audits.jsonl' })
   archive.append(stringifyJsonLines(qualityArtifacts.visualBindingPlans), { name: 'quality/visual-binding-plans.jsonl' })
+  archive.append(stringifyJsonLines(qualityArtifacts.visualGenerationRoutes), { name: 'quality/visual-generation-routes.jsonl' })
   archive.append(stringifyJsonLines(qualityArtifacts.visualAutoRepairs), { name: 'quality/visual-auto-repairs.jsonl' })
   archive.append(stringifyJsonLines(qualityArtifacts.visualRepairLineage), { name: 'quality/visual-repair-lineage.jsonl' })
   archive.append(stringifyJsonLines(roughCutReviewRecords as unknown as AnyRecord[]), { name: 'quality/rough-cut-reviews.jsonl' })
@@ -1085,7 +1097,10 @@ async function createArchive(params: {
     visualQualityReviewCount: qualityArtifacts.visualQualityReviews.length,
     promptQualityReviewCount: promptQualityReviewRecords.length,
     visualPlanReuseCount: qualityArtifacts.visualPlanReuses.length,
+    visualBeatPlanCount: qualityArtifacts.visualBeatPlans.length,
+    assetCoverageAuditCount: qualityArtifacts.assetCoverageAudits.length,
     visualBindingPlanCount: qualityArtifacts.visualBindingPlans.length,
+    visualGenerationRouteCount: qualityArtifacts.visualGenerationRoutes.length,
     visualAutoRepairCount: qualityArtifacts.visualAutoRepairs.length,
     visualRepairLineageCount: qualityArtifacts.visualRepairLineage.length,
     roughCutReviewCount: roughCutReviewRecords.length,
@@ -1102,7 +1117,10 @@ async function createArchive(params: {
       promptQualityReviews: 'quality/prompt-quality-reviews.jsonl',
       visualQualityReviews: 'quality/visual-quality-reviews.jsonl',
       visualPlanReuse: 'quality/visual-plan-reuse.jsonl',
+      visualBeatPlans: 'quality/visual-beat-plans.jsonl',
+      assetCoverageAudits: 'quality/asset-coverage-audits.jsonl',
       visualBindingPlans: 'quality/visual-binding-plans.jsonl',
+      visualGenerationRoutes: 'quality/visual-generation-routes.jsonl',
       visualAutoRepairs: 'quality/visual-auto-repairs.jsonl',
       visualRepairLineage: 'quality/visual-repair-lineage.jsonl',
       roughCutReviews: 'quality/rough-cut-reviews.jsonl',
@@ -1151,7 +1169,10 @@ async function createArchive(params: {
       promptQualityReviews: promptQualityReviewRecords.length,
       visualQualityReviews: qualityArtifacts.visualQualityReviews.length,
       visualPlanReuses: qualityArtifacts.visualPlanReuses.length,
+      visualBeatPlans: qualityArtifacts.visualBeatPlans.length,
+      assetCoverageAudits: qualityArtifacts.assetCoverageAudits.length,
       visualBindingPlans: qualityArtifacts.visualBindingPlans.length,
+      visualGenerationRoutes: qualityArtifacts.visualGenerationRoutes.length,
       visualAutoRepairs: qualityArtifacts.visualAutoRepairs.length,
       visualRepairLineageRecords: qualityArtifacts.visualRepairLineage.length,
       roughCutReviews: roughCutReviewRecords.length,

@@ -29,3 +29,5 @@ Hard requirements:
 11. shotPlan must contain shotBudget, rhythmCurve, functionMix, and continuityChecks. If missing, conservatively derive them from visualUnits.
 12. Every shotSpec must contain shotFunction, primarySubject, visibleAssets, continuity, and singleImageFeasibility. If missing, derive them from description, assetRefs, shotType, and cameraMove.
 13. shotSpec.visibleAssets must match visualUnit.assetRefs and must not reference IDs outside Available assets.
+14. If visualLicense or continuityGroupId is missing, conservatively restore it from the shot function. Shots sharing the same character, vehicle, core prop, or continuous space must reuse a stable continuityGroupId.
+15. If the repair prompt includes VisualBeatPlan constraints, prioritize restoring each beat's visualLicense, screenEvent, actionMoment, assetNeeds, and continuity.

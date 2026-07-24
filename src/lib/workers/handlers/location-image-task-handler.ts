@@ -41,7 +41,14 @@ interface LocationImageRecord {
   description: string | null
   availableSlots?: string | null
   imageIndex: number
-  location?: { name: string; summary?: string | null; assetKind?: string | null } | null
+  location?: {
+    name: string
+    summary?: string | null
+    assetKind?: string | null
+    semanticType?: string | null
+    assetTier?: string | null
+    usageScope?: string | null
+  } | null
 }
 
 interface LocationWithImages {
@@ -49,6 +56,9 @@ interface LocationWithImages {
   name: string
   summary?: string | null
   assetKind?: string | null
+  semanticType?: string | null
+  assetTier?: string | null
+  usageScope?: string | null
   images?: LocationImageRecord[]
 }
 
@@ -100,7 +110,14 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
   let locationImages: LocationImageRecord[] = []
   // 用于存储 locationId -> name 的映射，避免 images 子集缺少 location 关联
   const locationNameMap: Record<string, string> = {}
-  const locationMetaMap: Record<string, { name: string; summary?: string | null; assetKind?: string | null }> = {}
+  const locationMetaMap: Record<string, {
+    name: string
+    summary?: string | null
+    assetKind?: string | null
+    semanticType?: string | null
+    assetTier?: string | null
+    usageScope?: string | null
+  }> = {}
 
   if (maybeLocationImage) {
     // 来源 location 名字已 include，先记录
@@ -121,6 +138,9 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
           name: location.name,
           summary: location.summary,
           assetKind: location.assetKind,
+          semanticType: location.semanticType,
+          assetTier: location.assetTier,
+          usageScope: location.usageScope,
         }
       }
       const orderedImages = location?.images || [maybeLocationImage]
@@ -145,6 +165,9 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
       name: location.name,
       summary: location.summary,
       assetKind: location.assetKind,
+      semanticType: location.semanticType,
+      assetTier: location.assetTier,
+      usageScope: location.usageScope,
     }
 
     if (payload.imageIndex !== undefined) {
@@ -169,6 +192,9 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
         name: loc.name,
         summary: loc.summary,
         assetKind: loc.assetKind,
+        semanticType: loc.semanticType,
+        assetTier: loc.assetTier,
+        usageScope: loc.usageScope,
       }
     }
   }
@@ -192,6 +218,9 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
       assetKind: assetType,
       assetName: name,
       description: promptBody,
+      semanticType: locationMetaMap[item.locationId]?.semanticType,
+      assetTier: locationMetaMap[item.locationId]?.assetTier,
+      usageScope: locationMetaMap[item.locationId]?.usageScope,
       renderPurpose: assetType === 'prop' ? 'reference_sheet' : 'single_reference',
       styleText: resolvedArtStyle.prompt,
       styleReferenceInstruction: resolvedArtStyle.referenceInstruction,

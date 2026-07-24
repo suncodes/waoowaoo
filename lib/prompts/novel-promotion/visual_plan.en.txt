@@ -19,6 +19,7 @@ Before returning the result, verify every hard requirement below:
 8. When an available character, location, or prop appears, assetRefs must use the exact id, kind, and name from Available assets. Never invent an ID or mention an existing asset without its reference.
 9. Art style controls line, shape language, material, palette, and lighting only. It must not introduce characters, buildings, logos, or motifs from an associated franchise. Any character not explicitly named by the shot or assetRefs is forbidden.
 10. imagePrompt must not request exact book titles, dates, newspaper headlines, or long text. Explicitly require no text, watermark, or logo.
+11. If a VisualBeatPlan is provided, every visualUnit must map to a beat and preserve its visualLicense, screenEvent, actionMoment, continuity, and assetNeeds. Do not turn the guide into static slide-like illustrations.
 
 Return JSON only:
 {
@@ -63,6 +64,8 @@ Return JSON only:
     "panelNumber": 1,
     "visualType": "character_action|environment|book_cover|quote_card|diagram|illustration|kinetic_text",
     "renderMode": "generated_image|text_card|composite",
+    "visualLicense": "literal|illustrative|metaphor|transition|text_card",
+    "continuityGroupId": "stable group id shared by the same subject, space, or continuous action",
     "shotType": "shot size",
     "cameraMove": "one primary camera move",
     "description": "visual description",
@@ -124,5 +127,6 @@ Shot-planning standards:
 - imagePrompt must synthesize promptBlueprint subject/environment/action/camera/lighting/style into a natural complete prompt, not merely repeat the storyboard description.
 - videoPrompt must derive from startState, actionBeats, endState, and promptBlueprint action/camera, describing controlled motion after the first frame without redesigning static appearance.
 - If ContentPlan or screenplay includes voiceRhythm, sourceBoundary, promotion_voiceover, or visual_beats, use them to determine shot function and information density before considering text length.
+- If a VisualBeatPlan is provided, visualLicense must come from the matching beat. Convert screenEvent into one visible frame event. Reuse continuityGroupId across shots with the same character, vehicle, core prop, or continuous space.
 
 A guide must cover every clip and choose among book cover, quote card, diagram, illustration, and kinetic text according to information purpose. Do not make every unit a character illustration. When several sources or locations are needed, split them into several visualUnits instead of packing them into one imagePrompt. Fiction must also cover every clip and may provide compact global recommendations per clip; detailed storyboard generation must still obey the Treatment and Bible.

@@ -15,6 +15,7 @@ import { normalizeLocationAvailableSlots } from '@/lib/location-available-slots'
 import { resolvePropVisualDescription } from '@/lib/assets/prop-description'
 import { buildAssetBible } from '@/lib/assets/asset-bible'
 import { reviewAssetBible } from '@/lib/assets/asset-bible-review'
+import { buildAssetMeta } from '@/lib/assets/asset-semantics'
 import { createArtifact } from '@/lib/run-runtime/service'
 import { readOptionalTaskRunId, toJsonRecord } from '@/lib/creative-quality/runtime-artifacts'
 import {
@@ -84,6 +85,16 @@ function buildCharacterProfileData(item: Record<string, unknown>): Record<string
     continuity_notes: toStringArray(item.continuity_notes),
     expected_appearances: readObjectArray(item.expected_appearances),
   }
+}
+
+function inferAssetImportance(...values: unknown[]): 'core' | 'supporting' {
+  const text = values
+    .filter((value): value is string => typeof value === 'string')
+    .join(' ')
+    .toLowerCase()
+  return /(核心|主角|主要|反复|贯穿|标志性|必须锁定|core|primary|main|recurring|must-lock)/iu.test(text)
+    ? 'core'
+    : 'supporting'
 }
 
 /** 按别名匹配：按 '/' 拆分后任一别名精确匹配即为命中 */
@@ -548,6 +559,12 @@ export async function handleAnalyzeNovelTask(job: Job<TaskJobData>) {
     if (existsInLibrary) continue
 
     const profileData = buildCharacterProfileData(item)
+    const assetMeta = buildAssetMeta({
+      assetKind: 'character',
+      name,
+      description: readText(item.introduction) || JSON.stringify(profileData),
+      importance: inferAssetImportance(item.role_level, item.introduction, item.primary_identifier),
+    })
 
     const created = await prisma.novelPromotionCharacter.create({
       data: {
@@ -556,6 +573,14 @@ export async function handleAnalyzeNovelTask(job: Job<TaskJobData>) {
         aliases: JSON.stringify(aliases),
         introduction: readText(item.introduction) || null,
         profileData: JSON.stringify(profileData),
+        semanticType: assetMeta.semanticType,
+        assetTier: assetMeta.assetTier,
+        usageScope: assetMeta.usageScope,
+        assetMeta: asInputJson({
+          ...assetMeta,
+          source: 'analyze_novel',
+          profileData,
+        }),
         profileConfirmed: false,
       },
       select: { id: true },
@@ -611,6 +636,23 @@ export async function handleAnalyzeNovelTask(job: Job<TaskJobData>) {
         novelPromotionProjectId: novelData.id,
         name,
         summary: readText(item.summary) || null,
+        ...(() => {
+          const assetMeta = buildAssetMeta({
+            assetKind: 'location',
+            name,
+            description: readText(item.summary) || firstDescription,
+            importance: inferAssetImportance(item.summary, item.description),
+          })
+          return {
+            semanticType: assetMeta.semanticType,
+            assetTier: assetMeta.assetTier,
+            usageScope: assetMeta.usageScope,
+            assetMeta: asInputJson({
+              ...assetMeta,
+              source: 'analyze_novel',
+            }),
+          }
+        })(),
       },
       select: { id: true },
     })
@@ -652,6 +694,23 @@ export async function handleAnalyzeNovelTask(job: Job<TaskJobData>) {
         name,
         summary,
         assetKind: 'prop',
+        ...(() => {
+          const assetMeta = buildAssetMeta({
+            assetKind: 'prop',
+            name,
+            description,
+            importance: inferAssetImportance(summary, description),
+          })
+          return {
+            semanticType: assetMeta.semanticType,
+            assetTier: assetMeta.assetTier,
+            usageScope: assetMeta.usageScope,
+            assetMeta: asInputJson({
+              ...assetMeta,
+              source: 'analyze_novel',
+            }),
+          }
+        })(),
       },
       select: { id: true },
     })

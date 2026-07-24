@@ -80,6 +80,8 @@ export interface VisualAnchor {
 export interface StoredVisualPlan {
   shotPlan: unknown
   visualUnits: unknown[]
+  visualBeatPlan?: unknown
+  assetCoverageAudit?: unknown
   storyboardReview?: unknown
 }
 
@@ -353,11 +355,13 @@ export function readVisualArtifactMeta(value: unknown): VisualArtifactMeta | nul
       .map(readVisualAnchor)
       .filter((item): item is VisualAnchor => !!item),
     plan: plan
-      ? {
-          shotPlan: cloneWorkspaceValue(plan.shotPlan),
-          visualUnits: Array.isArray(plan.visualUnits) ? cloneWorkspaceValue(plan.visualUnits) : [],
-          ...(plan.storyboardReview !== undefined ? { storyboardReview: cloneWorkspaceValue(plan.storyboardReview) } : {}),
-        }
+        ? {
+            shotPlan: cloneWorkspaceValue(plan.shotPlan),
+            visualUnits: Array.isArray(plan.visualUnits) ? cloneWorkspaceValue(plan.visualUnits) : [],
+            ...(plan.visualBeatPlan !== undefined ? { visualBeatPlan: cloneWorkspaceValue(plan.visualBeatPlan) } : {}),
+            ...(plan.assetCoverageAudit !== undefined ? { assetCoverageAudit: cloneWorkspaceValue(plan.assetCoverageAudit) } : {}),
+            ...(plan.storyboardReview !== undefined ? { storyboardReview: cloneWorkspaceValue(plan.storyboardReview) } : {}),
+          }
       : null,
     latestImpact: readImpact(meta.latestImpact),
     downstream: {

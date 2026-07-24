@@ -1,8 +1,9 @@
-import type {
-  ImageQualityReviewResult,
-  ImageTargetSpec,
-  VisualQualityIssue,
-  VisualTechnicalCheck,
+import {
+  VISUAL_REVIEW_PASS_MIN_SCORE,
+  type ImageQualityReviewResult,
+  type ImageTargetSpec,
+  type VisualQualityIssue,
+  type VisualTechnicalCheck,
 } from '@/lib/visual-quality'
 import {
   CHARACTER_ASSET_IMAGE_RATIO,
@@ -246,7 +247,9 @@ export function mergeTechnicalChecks(
       candidateIndex: check.candidateIndex,
       score: modelCandidate?.score ?? 0,
       confidence: modelCandidate?.confidence ?? 0.5,
-      passed: modelCandidate?.passed === true && issues.length === 0,
+      passed: modelCandidate?.passed === true
+        && (modelCandidate?.score ?? 0) >= VISUAL_REVIEW_PASS_MIN_SCORE
+        && issues.length === 0,
       strengths: modelCandidate?.strengths || [],
       issues,
     }

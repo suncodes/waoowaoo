@@ -54,12 +54,18 @@ interface CharacterAppearanceRecord {
 interface CharacterAppearanceWithCharacter extends CharacterAppearanceRecord {
   character: {
     name: string
+    semanticType?: string | null
+    assetTier?: string | null
+    usageScope?: string | null
   }
 }
 
 interface CharacterRecord {
   id: string
   name: string
+  semanticType?: string | null
+  assetTier?: string | null
+  usageScope?: string | null
   appearances: CharacterAppearanceRecord[]
 }
 
@@ -116,7 +122,12 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
       characterName = character.name
       appearanceForQuality = {
         ...appearance,
-        character: { name: character.name },
+        character: {
+          name: character.name,
+          semanticType: character.semanticType,
+          assetTier: character.assetTier,
+          usageScope: character.usageScope,
+        },
       }
     }
   }
@@ -175,12 +186,15 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
   for (let i = 0; i < indexes.length; i++) {
     const index = indexes[i]
     const raw = baseDescriptions[index] || baseDescriptions[0]
-    const promptSpec = buildAssetPromptSpec({
-      assetId: appearance.id,
-      assetKind: 'character',
-      assetName: characterName,
-      description: raw,
-      renderPurpose: appearance.appearanceIndex === PRIMARY_APPEARANCE_INDEX ? 'reference_sheet' : 'variant',
+      const promptSpec = buildAssetPromptSpec({
+        assetId: appearance.id,
+        assetKind: 'character',
+        assetName: characterName,
+        description: raw,
+        semanticType: appearanceForQuality?.character.semanticType,
+        assetTier: appearanceForQuality?.character.assetTier,
+        usageScope: appearanceForQuality?.character.usageScope,
+        renderPurpose: appearance.appearanceIndex === PRIMARY_APPEARANCE_INDEX ? 'reference_sheet' : 'variant',
       variantLabel: appearance.changeReason,
       styleText: resolvedArtStyle.prompt,
       styleReferenceInstruction: resolvedArtStyle.referenceInstruction,

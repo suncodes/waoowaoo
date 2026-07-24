@@ -13,6 +13,7 @@ import type {
   ShotSpec,
   SingleImageFeasibility,
   ShotContinuity,
+  VisualLicense,
   VisualPlanResult,
   VisualAssetRef,
   VisualType,
@@ -215,6 +216,22 @@ function parseRenderMode(value: unknown): RenderMode {
   return value === 'text_card' || value === 'composite' ? value : 'generated_image'
 }
 
+function parseVisualLicense(value: unknown, visualType: VisualType, renderMode: RenderMode): VisualLicense {
+  if (
+    value === 'literal'
+    || value === 'illustrative'
+    || value === 'metaphor'
+    || value === 'transition'
+    || value === 'text_card'
+  ) {
+    return value
+  }
+  if (renderMode === 'text_card' || visualType === 'quote_card' || visualType === 'kinetic_text') return 'text_card'
+  if (visualType === 'diagram') return 'illustrative'
+  if (visualType === 'book_cover') return 'literal'
+  return 'illustrative'
+}
+
 function parseAssetRefs(
   value: unknown,
   unitIndex: number,
@@ -275,12 +292,17 @@ function parseVisualUnits(
     const onScreenText = optionalString(item.onScreenText)
     const sourceAnchor = parseSourceAnchor(item.sourceAnchor)
     const assetRefs = parseAssetRefs(item.assetRefs, index, availableAssets)
+    const visualType = parseVisualType(item.visualType)
+    const renderMode = parseRenderMode(item.renderMode)
+    const continuityGroupId = optionalString(item.continuityGroupId)
     const unit: VisualUnit = {
       id: optionalString(item.id) || `visual_${index + 1}`,
       clipId,
       panelNumber: Math.round(numberInRange(item.panelNumber, index + 1, 1, 999)),
-      visualType: parseVisualType(item.visualType),
-      renderMode: parseRenderMode(item.renderMode),
+      visualType,
+      renderMode,
+      visualLicense: parseVisualLicense(item.visualLicense, visualType, renderMode),
+      ...(continuityGroupId ? { continuityGroupId } : {}),
       shotType: optionalString(item.shotType) || 'medium shot',
       cameraMove: optionalString(item.cameraMove) || 'locked camera',
       description: requiredString(item.description, `visualUnits.${index}.description`),
@@ -420,3 +442,4 @@ export function parseVisualPlanResult(
 }
 
 export * from './types'
+export * from './visual-beat-plan'

@@ -12,6 +12,8 @@ import {
 import { seedProjectLocationBackedImageSlots } from '@/lib/assets/services/location-backed-assets'
 import { normalizeLocationAvailableSlots } from '@/lib/location-available-slots'
 import { resolvePropVisualDescription } from '@/lib/assets/prop-description'
+import { buildAssetMeta } from '@/lib/assets/asset-semantics'
+import type { Prisma } from '@prisma/client'
 
 export type AnalyzeGlobalStats = {
   totalChunks: number
@@ -37,6 +39,20 @@ export function createAnalyzeGlobalStats(totalChunks: number): AnalyzeGlobalStat
     skippedLocations: 0,
     skippedProps: 0,
   }
+}
+
+function asInputJson(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
+}
+
+function inferAssetImportance(...values: unknown[]): 'core' | 'supporting' {
+  const text = values
+    .filter((value): value is string => typeof value === 'string')
+    .join(' ')
+    .toLowerCase()
+  return /(核心|主角|主要|反复|贯穿|标志性|必须锁定|core|primary|main|recurring|must-lock)/iu.test(text)
+    ? 'core'
+    : 'supporting'
 }
 
 export async function persistAnalyzeGlobalChunk(params: {
@@ -87,6 +103,12 @@ export async function persistAnalyzeGlobalChunk(params: {
         continuity_notes: toStringArray(char.continuity_notes),
         expected_appearances: Array.isArray(char.expected_appearances) ? char.expected_appearances : [],
       }
+      const assetMeta = buildAssetMeta({
+        assetKind: 'character',
+        name,
+        description: readText(char.introduction) || JSON.stringify(profileData),
+        importance: inferAssetImportance(char.role_level, char.introduction, char.primary_identifier),
+      })
 
       const created = await prisma.novelPromotionCharacter.create({
         data: {
@@ -95,6 +117,14 @@ export async function persistAnalyzeGlobalChunk(params: {
           aliases: JSON.stringify(aliases),
           introduction: readText(char.introduction),
           profileData: JSON.stringify(profileData),
+          semanticType: assetMeta.semanticType,
+          assetTier: assetMeta.assetTier,
+          usageScope: assetMeta.usageScope,
+          assetMeta: asInputJson({
+            ...assetMeta,
+            source: 'analyze_global',
+            profileData,
+          }),
           profileConfirmed: false,
         },
         select: {
@@ -176,12 +206,25 @@ export async function persistAnalyzeGlobalChunk(params: {
       const descriptions = descriptionsRaw.map((item) => readText(item)).filter(Boolean)
       const cleanDescriptions = descriptions.map((item) => removeLocationPromptSuffix(item))
       const availableSlots = normalizeLocationAvailableSlots(loc.available_slots)
+      const assetMeta = buildAssetMeta({
+        assetKind: 'location',
+        name,
+        description: summary || cleanDescriptions[0] || name,
+        importance: inferAssetImportance(summary, cleanDescriptions.join(' ')),
+      })
 
       const created = await prisma.novelPromotionLocation.create({
         data: {
           novelPromotionProjectId: params.projectInternalId,
           name,
           summary: summary || null,
+          semanticType: assetMeta.semanticType,
+          assetTier: assetMeta.assetTier,
+          usageScope: assetMeta.usageScope,
+          assetMeta: asInputJson({
+            ...assetMeta,
+            source: 'analyze_global',
+          }),
         },
         select: {
           id: true,
@@ -223,12 +266,25 @@ export async function persistAnalyzeGlobalChunk(params: {
     }
 
     try {
+      const assetMeta = buildAssetMeta({
+        assetKind: 'prop',
+        name,
+        description,
+        importance: inferAssetImportance(summary, description),
+      })
       const created = await prisma.novelPromotionLocation.create({
         data: {
           novelPromotionProjectId: params.projectInternalId,
           name,
           summary,
           assetKind: 'prop',
+          semanticType: assetMeta.semanticType,
+          assetTier: assetMeta.assetTier,
+          usageScope: assetMeta.usageScope,
+          assetMeta: asInputJson({
+            ...assetMeta,
+            source: 'analyze_global',
+          }),
         },
       })
       await seedProjectLocationBackedImageSlots({

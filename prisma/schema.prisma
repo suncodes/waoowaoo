@@ -89,6 +89,10 @@ model NovelPromotionCharacter {
   voiceId                 String?
   voiceType               String?
   profileData             String?               @db.Text
+  semanticType            String?
+  assetTier               String?
+  usageScope              String?
+  assetMeta               Json?
   profileConfirmed        Boolean               @default(false)
   introduction            String?               @db.Text // 角色介绍（身份、关系、称呼映射，如"我"对应此角色）
   sourceGlobalCharacterId String? // 🆕 来源全局角色ID（复制时记录）
@@ -106,6 +110,10 @@ model NovelPromotionLocation {
   name                    String
   summary                 String?               @db.Text // 场景简要描述（用途/人物关联）
   assetKind               String                @default("location")
+  semanticType            String?
+  assetTier               String?
+  usageScope              String?
+  assetMeta               Json?
   createdAt               DateTime              @default(now())
   updatedAt               DateTime              @default(now()) @updatedAt
   sourceGlobalLocationId  String? // 🆕 来源全局场景ID（复制时记录）
@@ -238,6 +246,14 @@ model NovelPromotionPanel {
   onScreenText      String?                   @db.Text
   sourceAnchor      Json?
   visualQualityState Json?
+  visualLicense     String?
+  shotFunction      String?
+  primarySubject    String?                   @db.Text
+  continuityGroupId String?
+  generationRoute   String?
+  noReferenceReason String?
+  promptSpec        Json?
+  referencePlan     Json?
   storyboard        NovelPromotionStoryboard  @relation(fields: [storyboardId], references: [id], onDelete: Cascade)
   matchedVoiceLines NovelPromotionVoiceLine[]
 
@@ -282,9 +298,30 @@ model NovelPromotionProject {
   characters      NovelPromotionCharacter[]
   episodes        NovelPromotionEpisode[]
   locations       NovelPromotionLocation[]
+  assetRelations  NovelPromotionAssetRelation[]
   project         Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@map("novel_promotion_projects")
+}
+
+model NovelPromotionAssetRelation {
+  id        String                 @id @default(uuid())
+  projectId String
+  fromType  String
+  fromId    String
+  toType    String
+  toId      String
+  relation  String
+  reason    String?                @db.Text
+  createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
+  project   NovelPromotionProject  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([fromType, fromId])
+  @@index([toType, toId])
+  @@unique([projectId, fromType, fromId, toType, toId, relation])
+  @@map("novel_promotion_asset_relations")
 }
 
 model NovelPromotionShot {
@@ -835,6 +872,10 @@ model GlobalCharacter {
   name             String
   aliases          String?  @db.Text
   profileData      String?  @db.Text
+  semanticType     String?
+  assetTier        String?
+  usageScope       String?
+  assetMeta        Json?
   profileConfirmed Boolean  @default(false)
   voiceId          String?
   voiceType        String?
@@ -896,6 +937,10 @@ model GlobalLocation {
   artStyle  String?
   summary   String?  @db.Text
   assetKind String   @default("location")
+  semanticType String?
+  assetTier    String?
+  usageScope   String?
+  assetMeta    Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
