@@ -19,15 +19,18 @@ export default function StudioNarrationCanvas({ model, onNavigate }: StudioNarra
         <StudioStageHeader
           eyebrow="旁白配音"
           title="音色与台词"
-          description="为旁白和角色台词设置音色，生成配音后会同步刷新旁白时间轴。"
+          description="分镜规划确认后，分析旁白和角色台词，设置音色并生成正式配音。"
           actions={(
             <div className="flex flex-wrap gap-2">
               <StudioStatusBadge
                 status={allAudioReady ? 'locked' : model.summary.voiceLines > 0 ? 'needs_review' : 'drafting'}
                 label={allAudioReady ? '音频已生成' : model.summary.voiceLines > 0 ? '待生成音频' : '待分析台词'}
               />
-              <StudioButton variant="secondary" icon="folderOpen" onClick={() => onNavigate('assets')}>
-                前往视觉资产
+              <StudioButton variant="secondary" icon="image" onClick={() => onNavigate('storyboard')}>
+                返回分镜制作
+              </StudioButton>
+              <StudioButton variant="secondary" icon="video" onClick={() => onNavigate('videos')}>
+                进入视频制作
               </StudioButton>
             </div>
           )}
@@ -44,7 +47,7 @@ export default function StudioNarrationCanvas({ model, onNavigate }: StudioNarra
           </div>
           <div className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2">
             <div className="text-xs text-stone-500">后续步骤</div>
-            <div className="mt-1 truncate text-sm font-semibold text-stone-100">分镜规划按音频时长对齐</div>
+            <div className="mt-1 truncate text-sm font-semibold text-stone-100">确认配音后进入视频制作</div>
           </div>
         </div>
 

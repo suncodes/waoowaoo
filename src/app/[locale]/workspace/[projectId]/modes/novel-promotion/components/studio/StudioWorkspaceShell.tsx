@@ -52,9 +52,9 @@ const MODE_CONFIG: Array<Omit<StudioNavItem, 'status' | 'disabled'>> = [
   { id: 'overview', route: 'overview', label: '项目概览', subtitle: '状态与任务', icon: 'barChart' },
   { id: 'planning', route: 'config', label: '内容策划', subtitle: '输入与方案', icon: 'brain' },
   { id: 'draft', route: 'script', label: '成稿制作', subtitle: '剧本与导读稿', icon: 'bookOpen' },
-  { id: 'narration', route: 'voice', label: '旁白配音', subtitle: '音色与台词', icon: 'mic' },
   { id: 'visual-kit', route: 'assets', label: '视觉资产', subtitle: '角色场景道具', icon: 'folderCards' },
   { id: 'board', route: 'storyboard', label: '分镜制作', subtitle: '规划与画面', icon: 'image' },
+  { id: 'narration', route: 'voice', label: '旁白配音', subtitle: '音色与台词', icon: 'mic' },
   { id: 'produce', route: 'videos', label: '视频制作', subtitle: '生成镜头视频', icon: 'video' },
   { id: 'audio', route: 'audio', label: '音频与字幕', subtitle: '混音与字幕', icon: 'audioWave' },
   { id: 'edit', route: 'editor', label: '成片检查', subtitle: '预览', icon: 'film' },
@@ -66,7 +66,7 @@ function navStatus(mode: StudioModeId, model: StudioWorkspaceModel): StudioProdu
   if (mode === 'planning') return model.draftSegments.length > 0 ? 'locked' : model.novelText.trim() ? 'drafting' : 'empty'
   if (mode === 'draft') return statusFromCreationStage(model.workflow.stageStatuses.content || 'not_started')
   if (mode === 'narration') {
-    if (!model.workflow.hasScriptOutput) return 'empty'
+    if (!model.workflow.hasStoryboard) return 'empty'
     if (model.summary.voiceLines > 0 && model.summary.voiceAudioLines >= model.summary.voiceLines) return 'locked'
     if (model.summary.voiceLines > 0) return 'needs_review'
     return 'drafting'
@@ -301,7 +301,7 @@ function AssistantPanel({
               <ActionButton icon="folderOpen" label="打开项目资产" onClick={runtime.onOpenAssetLibrary} />
             ) : null}
             {model.activeMode === 'narration' ? (
-              <ActionButton icon="image" label="前往视觉资产" onClick={() => onNavigate('assets')} />
+              <ActionButton icon="image" label="返回分镜制作" onClick={() => onNavigate('storyboard')} />
             ) : null}
             {model.activeMode === 'board' ? (
               <ActionButton
@@ -393,6 +393,10 @@ export default function StudioWorkspaceShell({
   )).length
   const productionReady = model.shots.length > 0 && incompleteShotCount === 0
   const navigate = (route: string) => {
+    if (route === 'voice' && !model.workflow.hasStoryboard) {
+      window.alert('请先完成分镜制作。旁白配音会基于已确认分镜分析台词并绑定镜头。')
+      return
+    }
     if (route === 'videos' && !productionReady) {
       window.alert(model.shots.length === 0
         ? '请先生成并确认分镜。'
