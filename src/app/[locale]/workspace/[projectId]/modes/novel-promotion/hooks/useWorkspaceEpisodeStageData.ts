@@ -11,6 +11,15 @@ interface EpisodeStagePayload {
   novelText?: string | null
   clips?: NovelPromotionClip[]
   storyboards?: NovelPromotionStoryboard[]
+  voiceLines?: Array<{
+    id: string
+    audioUrl?: string | null
+    media?: { url?: string | null } | null
+    voicePresetId?: string | null
+    matchedPanelId?: string | null
+    matchedStoryboardId?: string | null
+    matchedPanelIndex?: number | null
+  }>
   creativeBrief?: unknown
   contentPlan?: unknown
   contentReview?: unknown
@@ -38,6 +47,7 @@ export function useWorkspaceEpisodeStageData() {
     novelText: payload?.novelText || '',
     clips,
     storyboards,
+    voiceLines: payload?.voiceLines || [],
     creativeBrief: payload?.creativeBrief,
     contentPlan: payload?.contentPlan,
     contentReview: payload?.contentReview,

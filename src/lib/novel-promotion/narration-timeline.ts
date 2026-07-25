@@ -1,4 +1,6 @@
 import { prisma } from '@/lib/prisma'
+import { logWarn as _ulogWarn } from '@/lib/logging/core'
+import { getPrismaErrorCode } from '@/lib/prisma-error'
 
 const DEFAULT_MIN_LINE_DURATION_MS = 1200
 const DEFAULT_CHAR_DURATION_MS = 180
@@ -144,6 +146,14 @@ function intersectSpan(panel: TimedPanel, line: TimedVoiceLine) {
   }
 }
 
+function isPanelVoiceSpanTableMissing(error: unknown) {
+  const code = getPrismaErrorCode(error)
+  if (code === 'P2021') return true
+  const message = error instanceof Error ? error.message : String(error)
+  return message.includes('novel_promotion_panel_voice_spans')
+    && message.toLowerCase().includes('does not exist')
+}
+
 export async function rebuildEpisodeNarrationTimeline(episodeId: string): Promise<NarrationTimelineResult> {
   const episode = await prisma.novelPromotionEpisode.findUnique({
     where: { id: episodeId },
@@ -228,7 +238,7 @@ export async function rebuildEpisodeNarrationTimeline(episodeId: string): Promis
     }
   }
 
-  await prisma.$transaction(async (tx) => {
+  const persistTimeline = async (includePanelVoiceSpans: boolean) => prisma.$transaction(async (tx) => {
     for (const line of timedLines) {
       await tx.novelPromotionVoiceLine.update({
         where: { id: line.id },
@@ -243,7 +253,9 @@ export async function rebuildEpisodeNarrationTimeline(episodeId: string): Promis
       })
     }
 
-    await tx.novelPromotionPanelVoiceSpan.deleteMany({ where: { episodeId } })
+    if (includePanelVoiceSpans) {
+      await tx.novelPromotionPanelVoiceSpan.deleteMany({ where: { episodeId } })
+    }
 
     for (const panel of panelUpdates) {
       const targetDurationMs = Math.max(800, panel.endMs - panel.startMs)
@@ -258,19 +270,31 @@ export async function rebuildEpisodeNarrationTimeline(episodeId: string): Promis
       })
     }
 
-    if (spans.length > 0) {
+    if (includePanelVoiceSpans && spans.length > 0) {
       await tx.novelPromotionPanelVoiceSpan.createMany({
         data: spans,
         skipDuplicates: true,
       })
     }
   }, { timeout: 30000 })
+  let persistedSpanCount = spans.length
+  try {
+    await persistTimeline(true)
+  } catch (error) {
+    if (!isPanelVoiceSpanTableMissing(error)) throw error
+    persistedSpanCount = 0
+    _ulogWarn(
+      '[NarrationTimeline] novel_promotion_panel_voice_spans 表不存在，已降级保存台词/镜头时间轴；请在部署环境执行 prisma db push 同步数据库。',
+      { episodeId },
+    )
+    await persistTimeline(false)
+  }
 
   return {
     episodeId,
     voiceLineCount: timedLines.length,
     panelCount: panelUpdates.length,
-    spanCount: spans.length,
+    spanCount: persistedSpanCount,
     totalDurationMs: timedLines.length > 0 ? timedLines[timedLines.length - 1].endMs : 0,
   }
 }

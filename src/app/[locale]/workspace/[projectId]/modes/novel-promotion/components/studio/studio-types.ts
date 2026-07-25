@@ -7,6 +7,7 @@ export type StudioModeId =
   | 'overview'
   | 'planning'
   | 'draft'
+  | 'narration'
   | 'visual-kit'
   | 'board'
   | 'produce'
@@ -106,6 +107,8 @@ export interface StudioWorkspaceModel {
     missingCoreVisualAssets: number
     completedVideos: number
     failedShots: number
+    voiceLines: number
+    voiceAudioLines: number
   }
   workflow: {
     isBookGuide: boolean
@@ -116,6 +119,8 @@ export interface StudioWorkspaceModel {
     hasVisualPlan: boolean
     hasStoryboard: boolean
     hasVideo: boolean
+    hasVoiceLines: boolean
+    hasVoiceAudio: boolean
     storyboardGenerating: boolean
     stageStatuses: Record<string, CreationStageStatus>
   }
@@ -138,6 +143,7 @@ export function resolveStudioMode(currentStage: string, stageView?: string | nul
   if (currentStage === 'content') return 'draft'
   if (currentStage === 'visual-design') return 'visual-kit'
   if (currentStage === 'storyboard-preview') return 'board'
+  if (currentStage === 'production' && stageView === 'voice') return 'narration'
   if (currentStage === 'production' && stageView === 'audio') return 'audio'
   if (currentStage === 'production') return 'produce'
   if (currentStage === 'edit' && stageView === 'export') return 'export'

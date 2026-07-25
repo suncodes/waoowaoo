@@ -60,6 +60,28 @@ function splitNames(value: string | null | undefined) {
   return normalized.split(',').map((item) => item.trim()).filter(Boolean)
 }
 
+function hasVoiceAudio(line: ReturnType<typeof useWorkspaceEpisodeStageData>['voiceLines'][number]) {
+  return !!(line.audioUrl || line.media?.url)
+}
+
+function voicePanelKey(storyboardId: string | null | undefined, panelIndex: number | null | undefined) {
+  if (!storyboardId || panelIndex === null || panelIndex === undefined) return ''
+  return `${storyboardId}:${panelIndex}`
+}
+
+function voiceStatusForShot(
+  shot: StudioShot,
+  voiceLinesByPanelId: Map<string, ReturnType<typeof useWorkspaceEpisodeStageData>['voiceLines']>,
+  voiceLinesByPanelKey: Map<string, ReturnType<typeof useWorkspaceEpisodeStageData>['voiceLines']>,
+): StudioProductStatus {
+  const relatedLines = [
+    ...(voiceLinesByPanelId.get(shot.id) || []),
+    ...(voiceLinesByPanelKey.get(voicePanelKey(shot.storyboardId, shot.panelIndex)) || []),
+  ]
+  if (relatedLines.length === 0) return 'empty'
+  return relatedLines.every(hasVoiceAudio) ? 'locked' : 'needs_review'
+}
+
 function panelStatus(panel: NovelPromotionPanel): StudioProductStatus {
   if (panel.videoTaskRunning) return 'generating'
   if (panel.imageErrorMessage) return 'failed'
@@ -273,12 +295,29 @@ export function useStudioWorkspaceModel({
       : visualAssets.map(fallbackVisualAsset)
     const draftSegments = buildDraftSegments(episodeData.contentPlan, contentMeta)
     const shots = buildShots(episodeData.storyboards)
+    const voiceLines = episodeData.voiceLines
+    const voiceAudioCount = voiceLines.filter(hasVoiceAudio).length
+    const voiceLinesByPanelId = new Map<string, typeof voiceLines>()
+    const voiceLinesByPanelKey = new Map<string, typeof voiceLines>()
+    for (const line of voiceLines) {
+      if (line.matchedPanelId) {
+        const list = voiceLinesByPanelId.get(line.matchedPanelId) || []
+        list.push(line)
+        voiceLinesByPanelId.set(line.matchedPanelId, list)
+      }
+      const key = voicePanelKey(line.matchedStoryboardId, line.matchedPanelIndex)
+      if (key) {
+        const list = voiceLinesByPanelKey.get(key) || []
+        list.push(line)
+        voiceLinesByPanelKey.set(key, list)
+      }
+    }
     const productionItems: StudioProductionItem[] = shots.map((shot) => ({
       id: shot.id,
       shot,
       imageStatus: shot.imageUrl ? 'locked' : shot.status === 'failed' ? 'failed' : shot.status === 'generating' ? 'generating' : 'empty',
       videoStatus: shot.videoUrl ? 'locked' : shot.status === 'generating' ? 'generating' : 'empty',
-      voiceStatus: 'empty',
+      voiceStatus: voiceStatusForShot(shot, voiceLinesByPanelId, voiceLinesByPanelKey),
     }))
     const totalDurationSec = draftSegments.reduce((sum, item) => sum + item.durationSec, 0)
 
@@ -314,6 +353,8 @@ export function useStudioWorkspaceModel({
         missingCoreVisualAssets: visualKitAssets.filter((asset) => asset.importance === 'core' && asset.status !== 'locked').length,
         completedVideos: shots.filter((shot) => !!shot.videoUrl).length,
         failedShots: shots.filter((shot) => shot.status === 'failed').length,
+        voiceLines: voiceLines.length,
+        voiceAudioLines: voiceAudioCount,
       },
       workflow: {
         isBookGuide: workflowState.facts.isBookGuide,
@@ -324,6 +365,8 @@ export function useStudioWorkspaceModel({
         hasVisualPlan: !!visualMeta?.plan || workflowState.stages['visual-design'].hasArtifact,
         hasStoryboard: workflowState.stages['storyboard-preview'].hasArtifact,
         hasVideo: workflowState.stages.production.hasArtifact,
+        hasVoiceLines: voiceLines.length > 0,
+        hasVoiceAudio: voiceAudioCount > 0,
         storyboardGenerating: isRunActive(visualPlanStream) || isRunActive(scriptToStoryboardStream),
         stageStatuses: Object.fromEntries(Object.entries(workflowState.stages).map(([key, value]) => [key, value.status])),
       },
@@ -338,6 +381,7 @@ export function useStudioWorkspaceModel({
     episodeData.novelText,
     episodeData.productionBible,
     episodeData.storyboards,
+    episodeData.voiceLines,
     isAssetAnalysisRunning,
     scriptToStoryboardStream,
     stageView,

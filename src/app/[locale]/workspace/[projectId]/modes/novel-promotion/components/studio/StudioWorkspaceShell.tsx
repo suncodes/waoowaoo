@@ -52,9 +52,10 @@ const MODE_CONFIG: Array<Omit<StudioNavItem, 'status' | 'disabled'>> = [
   { id: 'overview', route: 'overview', label: '项目概览', subtitle: '状态与任务', icon: 'barChart' },
   { id: 'planning', route: 'config', label: '内容策划', subtitle: '输入与方案', icon: 'brain' },
   { id: 'draft', route: 'script', label: '成稿制作', subtitle: '剧本与导读稿', icon: 'bookOpen' },
+  { id: 'narration', route: 'voice', label: '旁白配音', subtitle: '音色与台词', icon: 'mic' },
   { id: 'visual-kit', route: 'assets', label: '视觉资产', subtitle: '角色场景道具', icon: 'folderCards' },
   { id: 'board', route: 'storyboard', label: '分镜制作', subtitle: '规划与画面', icon: 'image' },
-  { id: 'produce', route: 'videos', label: '视频制作', subtitle: '视频与配音', icon: 'video' },
+  { id: 'produce', route: 'videos', label: '视频制作', subtitle: '生成镜头视频', icon: 'video' },
   { id: 'audio', route: 'audio', label: '音频与字幕', subtitle: '混音与字幕', icon: 'audioWave' },
   { id: 'edit', route: 'editor', label: '成片检查', subtitle: '预览', icon: 'film' },
   { id: 'export', route: 'export', label: '交付', subtitle: '导出', icon: 'download' },
@@ -64,6 +65,12 @@ function navStatus(mode: StudioModeId, model: StudioWorkspaceModel): StudioProdu
   if (mode === 'overview') return 'drafting'
   if (mode === 'planning') return model.draftSegments.length > 0 ? 'locked' : model.novelText.trim() ? 'drafting' : 'empty'
   if (mode === 'draft') return statusFromCreationStage(model.workflow.stageStatuses.content || 'not_started')
+  if (mode === 'narration') {
+    if (!model.workflow.hasScriptOutput) return 'empty'
+    if (model.summary.voiceLines > 0 && model.summary.voiceAudioLines >= model.summary.voiceLines) return 'locked'
+    if (model.summary.voiceLines > 0) return 'needs_review'
+    return 'drafting'
+  }
   if (mode === 'visual-kit') return statusFromCreationStage(model.workflow.stageStatuses['visual-design'] || 'not_started')
   if (mode === 'board') return model.workflow.storyboardGenerating
     ? 'generating'
@@ -253,6 +260,7 @@ function AssistantPanel({
     overview: '项目概览',
     planning: '内容策划',
     draft: model.workflow.isBookGuide ? '导读稿制作' : '剧本制作',
+    narration: '旁白配音',
     'visual-kit': '视觉资产',
     board: '镜头状态',
     produce: '生产状态',
@@ -262,6 +270,8 @@ function AssistantPanel({
   }[model.activeMode]
   const suggestions = model.activeMode === 'visual-kit'
     ? [`核心资产待确认：${model.summary.missingCoreVisualAssets}`, activeAsset ? `当前资产：${activeAsset.name}` : '暂无核心资产']
+    : model.activeMode === 'narration'
+      ? [`台词：${model.summary.voiceLines}`, `已生成音频：${model.summary.voiceAudioLines}`]
     : model.activeMode === 'board' || model.activeMode === 'produce' || model.activeMode === 'audio'
       ? [activeShot ? `当前镜头：第 ${activeShot.number} 镜` : '暂无镜头', `失败镜头：${model.summary.failedShots}`]
       : [`内容段落：${model.draftSegments.length}`, `预计时长：${model.summary.totalDurationSec || '-'} 秒`]
@@ -289,6 +299,9 @@ function AssistantPanel({
             ) : null}
             {model.activeMode === 'visual-kit' ? (
               <ActionButton icon="folderOpen" label="打开项目资产" onClick={runtime.onOpenAssetLibrary} />
+            ) : null}
+            {model.activeMode === 'narration' ? (
+              <ActionButton icon="image" label="前往视觉资产" onClick={() => onNavigate('assets')} />
             ) : null}
             {model.activeMode === 'board' ? (
               <ActionButton
