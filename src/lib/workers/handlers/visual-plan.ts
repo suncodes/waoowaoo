@@ -21,6 +21,10 @@ import {
   type AssetCoverageAuditAsset,
 } from '@/lib/assets/asset-coverage-audit'
 import {
+  estimateNarrationDurationMs,
+  rebuildEpisodeNarrationTimeline,
+} from '@/lib/novel-promotion/narration-timeline'
+import {
   buildFallbackShotAssetRequirementPlanResult,
   normalizeShotAssetRequirementPlanResult,
   type ShotAssetRequirementPlanResult,
@@ -55,6 +59,20 @@ const MAX_VISUAL_PLAN_OUTPUT_ATTEMPTS = 3
 
 function readText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+function narrationDurationSeconds(line: {
+  content: string
+  audioDuration: number | null
+  estimatedDurationMs: number | null
+} | undefined, fallback: number | null): number | null {
+  if (!line) return fallback
+  const durationMs = typeof line.audioDuration === 'number' && Number.isFinite(line.audioDuration) && line.audioDuration > 0
+    ? line.audioDuration
+    : typeof line.estimatedDurationMs === 'number' && Number.isFinite(line.estimatedDurationMs) && line.estimatedDurationMs > 0
+      ? line.estimatedDurationMs
+      : estimateNarrationDurationMs(line.content)
+  return Math.max(1, Math.round((durationMs / 1000) * 10) / 10)
 }
 
 function asInputJson(value: unknown): Prisma.InputJsonValue {
@@ -299,6 +317,15 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     include: {
       clips: { orderBy: { createdAt: 'asc' } },
       storyboards: { select: { id: true } },
+      voiceLines: {
+        orderBy: { lineIndex: 'asc' },
+        select: {
+          lineIndex: true,
+          content: true,
+          audioDuration: true,
+          estimatedDurationMs: true,
+        },
+      },
     },
   })
   if (!episode || episode.novelPromotionProjectId !== novelData.id) throw new Error('Episode not found')
@@ -313,7 +340,8 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     inputModel: payload.model,
     projectAnalysisModel: novelData.analysisModel,
   })
-  const clips = activeClips.map((clip) => ({
+  const voiceLineByIndex = new Map(episode.voiceLines.map((line) => [line.lineIndex, line]))
+  const clips = activeClips.map((clip, index) => ({
     id: clip.id,
     summary: clip.summary,
     content: clip.content,
@@ -321,7 +349,7 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     characters: clip.characters,
     location: clip.location,
     props: clip.props,
-    duration: clip.duration,
+    duration: narrationDurationSeconds(voiceLineByIndex.get(index + 1), clip.duration),
   }))
   const assets = {
     characters: novelData.characters,
@@ -420,6 +448,7 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
         narratorLabel: job.data.locale === 'en' ? 'Narrator' : '旁白',
         shotAssetRequirementPlan,
       })
+      await rebuildEpisodeNarrationTimeline(episodeId)
     }
     await createArtifact({
       runId: readTaskRunId(job),
@@ -581,6 +610,7 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     assetCoverageAudit,
     shotAssetRequirementPlan,
   })
+  await rebuildEpisodeNarrationTimeline(episodeId)
   await createArtifact({
     runId: readTaskRunId(job),
     stepKey: 'visual_beat_plan',

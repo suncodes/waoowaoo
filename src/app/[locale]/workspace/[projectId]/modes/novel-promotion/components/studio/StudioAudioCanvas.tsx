@@ -46,6 +46,9 @@ function resolveLineDurationMs(line: MatchedVoiceLine) {
   if (typeof line.audioDuration === 'number' && Number.isFinite(line.audioDuration) && line.audioDuration > 0) {
     return Math.max(800, Math.round(line.audioDuration))
   }
+  if (typeof line.estimatedDurationMs === 'number' && Number.isFinite(line.estimatedDurationMs) && line.estimatedDurationMs > 0) {
+    return Math.max(800, Math.round(line.estimatedDurationMs))
+  }
   return estimateSubtitleDurationMs(line.content || '')
 }
 
@@ -69,24 +72,42 @@ function subtitleText(line: MatchedVoiceLine) {
   return `${speaker}：${line.content}`
 }
 
-function buildSrt(items: AudioPanelItem[]) {
+function lineTiming(line: MatchedVoiceLine, fallbackStartMs: number) {
+  if (
+    typeof line.timelineStartMs === 'number'
+    && Number.isFinite(line.timelineStartMs)
+    && typeof line.timelineEndMs === 'number'
+    && Number.isFinite(line.timelineEndMs)
+    && line.timelineEndMs > line.timelineStartMs
+  ) {
+    return {
+      startMs: Math.max(0, Math.round(line.timelineStartMs)),
+      endMs: Math.max(0, Math.round(line.timelineEndMs)),
+      timelineBased: true,
+    }
+  }
+  const durationMs = resolveLineDurationMs(line)
+  return {
+    startMs: fallbackStartMs,
+    endMs: fallbackStartMs + durationMs,
+    timelineBased: false,
+  }
+}
+
+function buildSrt(voiceLines: MatchedVoiceLine[]) {
   const blocks: string[] = []
   let cursorMs = 0
   let index = 1
 
-  for (const item of items) {
-    for (const line of item.voiceLines) {
-      const durationMs = resolveLineDurationMs(line)
-      const start = cursorMs
-      const end = cursorMs + durationMs
-      blocks.push([
-        String(index),
-        `${formatSrtTime(start)} --> ${formatSrtTime(end)}`,
-        subtitleText(line),
-      ].join('\n'))
-      cursorMs = end + 120
-      index += 1
-    }
+  for (const line of [...voiceLines].sort((left, right) => left.lineIndex - right.lineIndex)) {
+    const timing = lineTiming(line, cursorMs)
+    blocks.push([
+      String(index),
+      `${formatSrtTime(timing.startMs)} --> ${formatSrtTime(timing.endMs)}`,
+      subtitleText(line),
+    ].join('\n'))
+    cursorMs = timing.timelineBased ? Math.max(cursorMs, timing.endMs) : timing.endMs + 120
+    index += 1
   }
 
   return `${blocks.join('\n\n')}\n`
@@ -247,9 +268,9 @@ export default function StudioAudioCanvas({ model, onNavigate }: StudioAudioCanv
     const withVideo = items.filter((item) => !!panelVideoUrl(item.panel)).length
     const withVoiceAudio = items.filter((item) => item.voiceLines.some((line) => !!line.audioUrl)).length
     const mixed = items.filter((item) => !!item.panel.audioMixedVideoUrl).length
-    const subtitleLines = items.reduce((sum, item) => sum + item.voiceLines.length, 0)
+    const subtitleLines = voiceLines.length
     return { withVideo, withVoiceAudio, mixed, subtitleLines }
-  }, [items])
+  }, [items, voiceLines.length])
 
   const submitBatchMix = async () => {
     if (!episodeId) return
@@ -264,7 +285,7 @@ export default function StudioAudioCanvas({ model, onNavigate }: StudioAudioCanv
   }
 
   const downloadSrt = () => {
-    const srt = buildSrt(items)
+    const srt = buildSrt(voiceLines)
     if (!srt.trim()) {
       window.alert('当前剧集没有可生成字幕的台词。')
       return
@@ -344,7 +365,7 @@ export default function StudioAudioCanvas({ model, onNavigate }: StudioAudioCanv
           <StudioSectionHeader title="字幕预览" description="按镜头和台词顺序生成 SRT，优先使用音频实际时长。" />
         </div>
         <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap px-5 py-4 text-xs leading-6 text-stone-400">
-          {buildSrt(items).trim() || '暂无字幕内容'}
+          {buildSrt(voiceLines).trim() || '暂无字幕内容'}
         </pre>
       </StudioPanel>
     </div>

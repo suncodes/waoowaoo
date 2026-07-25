@@ -48,6 +48,7 @@ export function useMergeProjectEpisodeVideo(projectId: string) {
         fileName: string
         videoCount: number
         sizeBytes?: number
+        audioTrackApplied?: boolean
       }>(response)
     },
   })

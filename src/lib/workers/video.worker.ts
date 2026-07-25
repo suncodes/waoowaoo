@@ -361,6 +361,7 @@ async function handleVideoMergeExportTask(job: Job<TaskJobData>) {
     projectId: job.data.projectId,
     episodeId,
     panelPreferences: readPanelPreferences(payload.panelPreferences),
+    audioStrategy: payload.audioStrategy === 'none' ? 'none' : 'timeline',
   }, async (progress, progressPayload) => {
     await reportTaskProgress(job, progress, progressPayload)
   })

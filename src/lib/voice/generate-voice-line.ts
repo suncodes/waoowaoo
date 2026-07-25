@@ -12,6 +12,7 @@ import {
   type CharacterVoiceFields,
   type SpeakerVoiceMap,
 } from '@/lib/voice/provider-voice-binding'
+import { rebuildEpisodeNarrationTimeline } from '@/lib/novel-promotion/narration-timeline'
 
 type CheckCancelled = () => Promise<void>
 type CharacterVoiceProfile = CharacterVoiceFields & { name: string }
@@ -277,6 +278,7 @@ export async function generateVoiceLine(params: {
       audioDuration: generated.audioDuration || null,
     },
   })
+  await rebuildEpisodeNarrationTimeline(episodeId)
 
   const signedUrl = getSignedUrl(cosKey, 7200)
   return {

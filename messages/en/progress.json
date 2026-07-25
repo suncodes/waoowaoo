@@ -100,6 +100,7 @@
     "mergeDownload": "Download videos for merge",
     "mergeNormalize": "Normalize video segments",
     "mergeConcat": "Merge video segments",
+    "mergeNarrationAudio": "Mix narration timeline",
     "mergeUpload": "Upload merged video",
     "audioMixPrepare": "Prepare audio mix media",
     "audioMixMerge": "Mix audio and video",

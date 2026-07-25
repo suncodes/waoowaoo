@@ -28,6 +28,9 @@ export interface MatchedVoiceLine {
     content: string
     audioUrl: string | null
     audioDuration?: number | null
+    estimatedDurationMs?: number | null
+    timelineStartMs?: number | null
+    timelineEndMs?: number | null
     matchedPanelId?: string | null
     matchedStoryboardId: string | null
     matchedPanelIndex: number | null

@@ -59,6 +59,7 @@ const STAGE_LABELS: Record<string, string> = {
   merge_download: 'progress.stage.mergeDownload',
   merge_normalize: 'progress.stage.mergeNormalize',
   merge_concat: 'progress.stage.mergeConcat',
+  merge_narration_audio: 'progress.stage.mergeNarrationAudio',
   merge_upload: 'progress.stage.mergeUpload',
   audio_mix_prepare: 'progress.stage.audioMixPrepare',
   audio_mix_merge: 'progress.stage.audioMixMerge',

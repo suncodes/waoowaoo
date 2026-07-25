@@ -23,6 +23,7 @@ export interface VideoMergeExportInput {
   projectId: string
   episodeId?: string | null
   panelPreferences?: Record<string, boolean> | null
+  audioStrategy?: 'timeline' | 'none' | null
 }
 
 export interface VideoMergeExportResult {
@@ -32,6 +33,7 @@ export interface VideoMergeExportResult {
   fileName: string
   videoCount: number
   sizeBytes: number
+  audioTrackApplied?: boolean
 }
 
 interface LoadedMergeSource {
@@ -40,6 +42,31 @@ interface LoadedMergeSource {
   episodes: VideoDownloadEpisodeData[]
   candidates: OrderedVideoCandidate[]
   missingPanels: MissingVideoPanel[]
+  narrationLines: NarrationLineSource[]
+}
+
+interface NarrationVoiceLineData {
+  id: string
+  lineIndex: number
+  content: string
+  audioUrl: string | null
+  audioDuration: number | null
+  estimatedDurationMs?: number | null
+  timelineStartMs?: number | null
+  timelineEndMs?: number | null
+  audioMedia?: { storageKey?: string | null } | null
+}
+
+interface NarrationEpisodeData {
+  voiceLines?: NarrationVoiceLineData[]
+}
+
+interface NarrationLineSource {
+  id: string
+  lineIndex: number
+  audioSource: string
+  startMs: number
+  durationMs: number
 }
 
 interface MergeProgressReporter {
@@ -48,6 +75,69 @@ interface MergeProgressReporter {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
+}
+
+function estimateNarrationDurationMs(content: string | null | undefined): number {
+  const compactLength = typeof content === 'string' ? content.replace(/\s+/g, '').length : 0
+  return Math.max(1200, Math.round(compactLength * 180))
+}
+
+function readMediaStorageKey(media: { storageKey?: string | null } | null | undefined): string | null {
+  return isNonEmptyString(media?.storageKey) ? media.storageKey : null
+}
+
+function resolveVoiceLineDurationMs(line: NarrationVoiceLineData): number {
+  if (typeof line.audioDuration === 'number' && Number.isFinite(line.audioDuration) && line.audioDuration > 0) {
+    return Math.round(line.audioDuration)
+  }
+  if (typeof line.estimatedDurationMs === 'number' && Number.isFinite(line.estimatedDurationMs) && line.estimatedDurationMs > 0) {
+    return Math.round(line.estimatedDurationMs)
+  }
+  if (
+    typeof line.timelineStartMs === 'number'
+    && typeof line.timelineEndMs === 'number'
+    && line.timelineEndMs > line.timelineStartMs
+  ) {
+    return line.timelineEndMs - line.timelineStartMs
+  }
+  return estimateNarrationDurationMs(line.content)
+}
+
+function collectNarrationLines(episodes: NarrationEpisodeData[]): NarrationLineSource[] {
+  const lines: NarrationLineSource[] = []
+  let episodeOffsetMs = 0
+
+  for (const episode of episodes) {
+    const voiceLines = [...(episode.voiceLines || [])].sort((left, right) => left.lineIndex - right.lineIndex)
+    let localCursorMs = 0
+    let episodeEndMs = 0
+
+    for (const line of voiceLines) {
+      const audioSource = readMediaStorageKey(line.audioMedia) || line.audioUrl
+      const durationMs = resolveVoiceLineDurationMs(line)
+      const localStartMs = typeof line.timelineStartMs === 'number' && Number.isFinite(line.timelineStartMs)
+        ? Math.max(0, line.timelineStartMs)
+        : localCursorMs
+      const localEndMs = typeof line.timelineEndMs === 'number' && Number.isFinite(line.timelineEndMs) && line.timelineEndMs > localStartMs
+        ? line.timelineEndMs
+        : localStartMs + durationMs
+      localCursorMs = localEndMs
+      episodeEndMs = Math.max(episodeEndMs, localEndMs)
+
+      if (!isNonEmptyString(audioSource)) continue
+      lines.push({
+        id: line.id,
+        lineIndex: line.lineIndex,
+        audioSource,
+        startMs: episodeOffsetMs + localStartMs,
+        durationMs,
+      })
+    }
+
+    episodeOffsetMs += episodeEndMs
+  }
+
+  return lines
 }
 
 function sanitizeFileName(value: string): string {
@@ -118,9 +208,13 @@ async function runCommand(command: string, args: string[], cwd: string): Promise
   return await new Promise<string>((resolve, reject) => {
     const child = spawn(command, args, {
       cwd,
-      stdio: ['ignore', 'ignore', 'pipe'],
+      stdio: ['ignore', 'pipe', 'pipe'],
     })
+    let stdout = ''
     let stderr = ''
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString()
+    })
     child.stderr.on('data', (chunk) => {
       stderr += chunk.toString()
     })
@@ -129,7 +223,7 @@ async function runCommand(command: string, args: string[], cwd: string): Promise
     })
     child.on('close', (code) => {
       if (code === 0) {
-        resolve(stderr)
+        resolve(stdout || stderr)
         return
       }
       reject(new Error(stderr.trim() || `${command} exited with code ${code ?? 'unknown'}`))
@@ -154,6 +248,123 @@ async function hasAudioStream(filePath: string, cwd: string): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+async function probeDurationMs(filePath: string, cwd: string): Promise<number> {
+  const output = await runCommand('ffprobe', [
+    '-v',
+    'error',
+    '-show_entries',
+    'format=duration',
+    '-of',
+    'default=noprint_wrappers=1:nokey=1',
+    filePath,
+  ], cwd)
+  const seconds = Number.parseFloat(output.trim())
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    throw new Error('VIDEO_MERGE_DURATION_PROBE_FAILED')
+  }
+  return Math.round(seconds * 1000)
+}
+
+async function buildNarrationTrack(params: {
+  lines: NarrationLineSource[]
+  tempDir: string
+  outputPath: string
+}): Promise<number> {
+  if (params.lines.length === 0) {
+    throw new Error('VIDEO_MERGE_NARRATION_AUDIO_MISSING')
+  }
+
+  const inputPaths: string[] = []
+  for (const [index, line] of params.lines.entries()) {
+    const audioPath = path.join(params.tempDir, `${String(index + 1).padStart(3, '0')}-narration.input`)
+    const audioData = await downloadVideoBuffer(line.audioSource)
+    await writeFile(audioPath, audioData)
+    inputPaths.push(audioPath)
+  }
+
+  const totalDurationMs = Math.max(
+    ...params.lines.map((line) => line.startMs + Math.max(1, line.durationMs)),
+  )
+  const inputArgs = inputPaths.flatMap((inputPath) => ['-i', inputPath])
+  const filters = params.lines.map((line, index) => {
+    const delay = Math.max(0, Math.round(line.startMs))
+    return `[${index}:a:0]aresample=48000,adelay=${delay}|${delay},atrim=0:${(totalDurationMs / 1000).toFixed(3)},asetpts=PTS-STARTPTS[a${index}]`
+  })
+  const labels = params.lines.map((_, index) => `[a${index}]`).join('')
+  const filter = `${filters.join(';')};${labels}amix=inputs=${params.lines.length}:duration=longest:normalize=0[aout]`
+
+  await runCommand('ffmpeg', [
+    '-y',
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    ...inputArgs,
+    '-filter_complex',
+    filter,
+    '-map',
+    '[aout]',
+    '-c:a',
+    'aac',
+    '-b:a',
+    '192k',
+    '-ar',
+    '48000',
+    '-ac',
+    '2',
+    params.outputPath,
+  ], params.tempDir)
+
+  return totalDurationMs
+}
+
+async function muxNarrationTrackIntoVideo(params: {
+  videoPath: string
+  audioPath: string
+  outputPath: string
+  tempDir: string
+  videoDurationMs: number
+  audioDurationMs: number
+}) {
+  const outputDurationSec = Math.max(0.1, Math.max(params.videoDurationMs, params.audioDurationMs) / 1000)
+  const videoExtendSec = Math.max(0, (params.audioDurationMs - params.videoDurationMs) / 1000)
+
+  await runCommand('ffmpeg', [
+    '-y',
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-i',
+    params.videoPath,
+    '-i',
+    params.audioPath,
+    '-filter_complex',
+    `[0:v:0]tpad=stop_mode=clone:stop_duration=${videoExtendSec.toFixed(3)},trim=0:${outputDurationSec.toFixed(3)},setpts=PTS-STARTPTS[vout];[1:a]aresample=48000,apad,atrim=0:${outputDurationSec.toFixed(3)},asetpts=PTS-STARTPTS[aout]`,
+    '-map',
+    '[vout]',
+    '-map',
+    '[aout]',
+    '-c:v',
+    'libx264',
+    '-preset',
+    'veryfast',
+    '-crf',
+    '18',
+    '-pix_fmt',
+    'yuv420p',
+    '-c:a',
+    'aac',
+    '-b:a',
+    '192k',
+    '-ar',
+    '48000',
+    '-ac',
+    '2',
+    '-movflags',
+    '+faststart',
+    params.outputPath,
+  ], params.tempDir)
 }
 
 async function normalizeVideoSegment(params: {
@@ -323,6 +534,12 @@ export async function loadVideoMergeSource(input: VideoMergeExportInput): Promis
                   clips: {
                     orderBy: { createdAt: 'asc' },
                   },
+                  voiceLines: {
+                    orderBy: { lineIndex: 'asc' },
+                    include: {
+                      audioMedia: { select: { storageKey: true } },
+                    },
+                  },
                 },
               },
         },
@@ -347,6 +564,12 @@ export async function loadVideoMergeSource(input: VideoMergeExportInput): Promis
         clips: {
           orderBy: { createdAt: 'asc' },
         },
+        voiceLines: {
+          orderBy: { lineIndex: 'asc' },
+          include: {
+            audioMedia: { select: { storageKey: true } },
+          },
+        },
       },
     })
     if (episode) {
@@ -357,13 +580,19 @@ export async function loadVideoMergeSource(input: VideoMergeExportInput): Promis
   }
 
   const panelPreferences = input.panelPreferences || {}
-  const candidates = collectOrderedVideoCandidates(episodes, panelPreferences)
+  const narrationLines = input.audioStrategy === 'none'
+    ? []
+    : collectNarrationLines(episodes as NarrationEpisodeData[])
+  const candidates = collectOrderedVideoCandidates(episodes, panelPreferences, {
+    preferRawVideo: narrationLines.length > 0,
+  })
   return {
     projectName: project.name,
     videoRatio: project.novelPromotionData?.videoRatio || '16:9',
     episodes,
     candidates,
     missingPanels: collectMissingVideoPanels(episodes),
+    narrationLines,
   }
 }
 
@@ -422,7 +651,7 @@ export async function mergeProjectVideosToStorage(
     })
 
     const concatFile = await buildConcatFile(tempDir, normalizedFiles)
-    const outputPath = path.join(tempDir, 'merged.mp4')
+    const mergedPath = path.join(tempDir, 'merged.mp4')
     await runCommand('ffmpeg', [
       '-y',
       '-hide_banner',
@@ -438,8 +667,35 @@ export async function mergeProjectVideosToStorage(
       'copy',
       '-movflags',
       '+faststart',
-      outputPath,
+      mergedPath,
     ], tempDir)
+
+    let outputPath = mergedPath
+    let audioTrackApplied = false
+    if (source.narrationLines.length > 0) {
+      await reportProgress?.(82, {
+        stage: 'merge_narration_audio',
+        voiceLineCount: source.narrationLines.length,
+      })
+      const narrationTrackPath = path.join(tempDir, 'narration-track.m4a')
+      const audioDurationMs = await buildNarrationTrack({
+        lines: source.narrationLines,
+        tempDir,
+        outputPath: narrationTrackPath,
+      })
+      const videoDurationMs = await probeDurationMs(mergedPath, tempDir)
+      const narratedPath = path.join(tempDir, 'merged-with-narration.mp4')
+      await muxNarrationTrackIntoVideo({
+        videoPath: mergedPath,
+        audioPath: narrationTrackPath,
+        outputPath: narratedPath,
+        tempDir,
+        videoDurationMs,
+        audioDurationMs,
+      })
+      outputPath = narratedPath
+      audioTrackApplied = true
+    }
 
     await reportProgress?.(88, {
       stage: 'merge_upload',
@@ -457,6 +713,7 @@ export async function mergeProjectVideosToStorage(
       fileName,
       videoCount: source.candidates.length,
       sizeBytes: outputBuffer.length,
+      audioTrackApplied,
     }
   } finally {
     await rm(tempDir, { recursive: true, force: true }).catch(() => undefined)

@@ -34,6 +34,10 @@ export interface OrderedVideoCandidate {
   sourceType: 'lip_sync' | 'audio_mixed' | 'raw'
 }
 
+export interface OrderedVideoCandidateOptions {
+  preferRawVideo?: boolean
+}
+
 function normalizePanelIndex(value: number | null | undefined): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return 0
   return Math.max(0, Math.floor(value))
@@ -63,6 +67,7 @@ export function buildVideoFileName(index: number, description: string, ext = 'mp
 export function collectOrderedVideoCandidates(
   episodes: VideoDownloadEpisodeData[],
   panelPreferences: Record<string, boolean> = {},
+  options: OrderedVideoCandidateOptions = {},
 ): OrderedVideoCandidate[] {
   const allStoryboards: VideoDownloadStoryboardData[] = []
   const allClips: VideoDownloadClipData[] = []
@@ -88,7 +93,12 @@ export function collectOrderedVideoCandidates(
       let isAudioMixed = false
       let sourceType: OrderedVideoCandidate['sourceType'] = 'raw'
 
-      if (preferLipSync) {
+      if (options.preferRawVideo) {
+        videoUrl = panel.videoUrl || panel.lipSyncVideoUrl || panel.audioMixedVideoUrl || null
+        isLipSync = !panel.videoUrl && !!panel.lipSyncVideoUrl
+        isAudioMixed = !panel.videoUrl && !panel.lipSyncVideoUrl && !!panel.audioMixedVideoUrl
+        sourceType = panel.videoUrl ? 'raw' : panel.lipSyncVideoUrl ? 'lip_sync' : 'audio_mixed'
+      } else if (preferLipSync) {
         videoUrl = panel.lipSyncVideoUrl || panel.audioMixedVideoUrl || panel.videoUrl
         isLipSync = !!panel.lipSyncVideoUrl
         isAudioMixed = !panel.lipSyncVideoUrl && !!panel.audioMixedVideoUrl

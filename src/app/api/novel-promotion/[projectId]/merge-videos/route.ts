@@ -10,6 +10,7 @@ import { TASK_TYPE } from '@/lib/task/types'
 interface EpisodeQueryBody {
   episodeId?: string
   panelPreferences?: Record<string, boolean>
+  audioStrategy?: 'timeline' | 'none'
 }
 
 function normalizePanelPreferences(value: unknown): Record<string, boolean> {
@@ -42,6 +43,7 @@ export const POST = apiHandler(async (
     ? body.episodeId.trim()
     : null
   const panelPreferences = normalizePanelPreferences(body.panelPreferences)
+  const audioStrategy = body.audioStrategy === 'none' ? 'none' : 'timeline'
 
   const authResult = await requireProjectAuthLight(projectId)
   if (isErrorResponse(authResult)) return authResult
@@ -75,6 +77,7 @@ export const POST = apiHandler(async (
     payload: {
       episodeId,
       panelPreferences,
+      audioStrategy,
       hasOutputAtStart: false,
     },
     dedupeKey: buildDedupeKey(projectId, episodeId, panelPreferences),

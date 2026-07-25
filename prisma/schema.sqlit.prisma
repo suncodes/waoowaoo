@@ -133,6 +133,7 @@ model NovelPromotionEpisode {
   shots                   NovelPromotionShot[]
   storyboards             NovelPromotionStoryboard[]
   voiceLines              NovelPromotionVoiceLine[]
+  voiceSpans              NovelPromotionPanelVoiceSpan[]
   editorProject           VideoEditorProject?
 
   @@unique([novelPromotionProjectId, episodeNumber])
@@ -194,6 +195,9 @@ model NovelPromotionPanel {
   srtStart          Float?
   srtEnd            Float?
   duration          Float?
+  timelineStartMs   Int?
+  timelineEndMs     Int?
+  targetDurationMs  Int?
   imagePrompt       String?
   imageUrl          String?
   imageMediaId      String?
@@ -227,9 +231,11 @@ model NovelPromotionPanel {
   previousImageMedia MediaObject?             @relation("NovelPromotionPanelPreviousImageMedia", fields: [previousImageMediaId], references: [id], onDelete: SetNull)
   storyboard        NovelPromotionStoryboard  @relation(fields: [storyboardId], references: [id], onDelete: Cascade)
   matchedVoiceLines NovelPromotionVoiceLine[]
+  voiceSpans        NovelPromotionPanelVoiceSpan[]
 
   @@unique([storyboardId, panelIndex])
   @@index([storyboardId])
+  @@index([timelineStartMs])
   @@index([imageMediaId])
   @@index([videoMediaId])
   @@index([lipSyncVideoMediaId])
@@ -496,15 +502,44 @@ model NovelPromotionVoiceLine {
   matchedPanelIndex   Int?
   matchedStoryboardId String?
   audioDuration       Int?
+  estimatedDurationMs Int?
+  timelineStartMs     Int?
+  timelineEndMs       Int?
   matchedPanelId      String?
   episode             NovelPromotionEpisode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
   matchedPanel        NovelPromotionPanel?  @relation(fields: [matchedPanelId], references: [id])
+  panelSpans          NovelPromotionPanelVoiceSpan[]
 
   @@unique([episodeId, lineIndex])
   @@index([episodeId])
   @@index([matchedPanelId])
   @@index([audioMediaId])
+  @@index([timelineStartMs])
   @@map("novel_promotion_voice_lines")
+}
+
+model NovelPromotionPanelVoiceSpan {
+  id            String                @id @default(uuid())
+  episodeId     String
+  panelId       String
+  voiceLineId   String
+  startMs       Int
+  endMs         Int
+  voiceStartMs  Int
+  voiceEndMs    Int
+  segmentText   String?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @default(now()) @updatedAt
+  episode       NovelPromotionEpisode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  panel         NovelPromotionPanel   @relation(fields: [panelId], references: [id], onDelete: Cascade)
+  voiceLine     NovelPromotionVoiceLine @relation(fields: [voiceLineId], references: [id], onDelete: Cascade)
+
+  @@unique([panelId, voiceLineId, startMs, endMs], map: "np_panel_voice_spans_panel_line_start_end_key")
+  @@index([episodeId])
+  @@index([panelId])
+  @@index([voiceLineId])
+  @@index([startMs])
+  @@map("novel_promotion_panel_voice_spans")
 }
 
 model VoicePreset {
