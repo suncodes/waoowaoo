@@ -74,7 +74,7 @@ export function useTTSGeneration({
         setVoiceDesignCharacter({
             id: characterId,
             name: characterName,
-            hasExistingVoice: !!character?.customVoiceUrl
+            hasExistingVoice: !!character?.customVoiceUrl || !!character?.voiceId
         })
     }
 

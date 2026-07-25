@@ -49,7 +49,7 @@ interface VoiceControlPanelProps {
   onEditingContentChange: (value: string) => void
   onEditingSpeakerChange: (value: string) => void
   onEditingMatchedPanelIdChange: (value: string) => void
-  getSpeakerVoiceUrl: (speaker: string) => string | null
+  hasSpeakerVoiceBinding: (speaker: string) => boolean
 }
 
 export default function VoiceControlPanel({
@@ -87,7 +87,7 @@ export default function VoiceControlPanel({
   onEditingContentChange,
   onEditingSpeakerChange,
   onEditingMatchedPanelIdChange,
-  getSpeakerVoiceUrl,
+  hasSpeakerVoiceBinding,
 }: VoiceControlPanelProps) {
   const t = useTranslations('voice')
 
@@ -129,7 +129,7 @@ export default function VoiceControlPanel({
         <SpeakerVoiceStatus
           speakers={speakers}
           speakerStats={speakerStats}
-          getSpeakerVoiceUrl={getSpeakerVoiceUrl}
+          hasSpeakerVoiceBinding={hasSpeakerVoiceBinding}
           onOpenAssetLibrary={onOpenAssetLibraryForSpeaker}
           onOpenInlineBinding={onOpenInlineBinding}
           hasSpeakerCharacter={hasSpeakerCharacter}

@@ -427,7 +427,7 @@ export default function AssetsStage({
             onUndo={handleUndoCharacter}
             onImageClick={setPreviewImage}
             onImageEdit={(charId, appIdx, imgIdx, name) => handleOpenCharacterImageEdit(charId, appIdx, imgIdx, name)}
-            onVoiceChange={(characterId, customVoiceUrl) => handleVoiceChange(characterId, 'custom', characterId, customVoiceUrl)}
+            onVoiceChange={(characterId, customVoiceUrl) => handleVoiceChange(characterId, 'uploaded', '', customVoiceUrl)}
             onVoiceDesign={handleOpenVoiceDesign}
             onVoiceSelectFromHub={handleVoiceSelectFromHub}
             onCopyFromGlobal={handleCopyFromGlobal}

@@ -11,6 +11,13 @@ import type { InlineSpeakerVoiceBinding } from '@/lib/novel-promotion/stages/voi
 
 type BindingTab = 'select' | 'upload' | 'design'
 
+type CreatedVoice = {
+    id: string
+    customVoiceUrl: string | null
+    voiceId: string | null
+    voiceType: string
+}
+
 interface SpeakerVoiceBindingDialogProps {
     isOpen: boolean
     speaker: string
@@ -73,11 +80,15 @@ export default function SpeakerVoiceBindingDialog({
     }, [speaker, onBound, onClose, t])
 
     // AI 设计音色或上传音频后的回调
-    const handleCreationSuccess = useCallback(() => {
-        // 创建成功后切换到选择模式，让用户从音色库选取刚创建的音色
+    const handleCreationSuccess = useCallback((voice?: CreatedVoice) => {
+        if (voice?.voiceId || voice?.customVoiceUrl) {
+            handleVoiceSelected(voice)
+            return
+        }
+        // 兼容旧回调：没有返回新建音色时，回退到音色库选择。
         setActiveTab('select')
         setSubDialogOpen(true)
-    }, [])
+    }, [handleVoiceSelected])
 
     const handleTabClick = useCallback((tab: BindingTab) => {
         if (tab === 'upload' && !confirmUploadVoice()) {

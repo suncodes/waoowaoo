@@ -18,12 +18,19 @@ export interface VoiceCreationModalShellProps {
     isOpen: boolean
     folderId: string | null
     onClose: () => void
-    onSuccess: () => void
+    onSuccess: (voice?: CreatedVoice) => void
     /** 预填充的音色名称（如发言人名字） */
     initialVoiceName?: string
 }
 
 type CreationMode = 'design' | 'upload'
+
+export interface CreatedVoice {
+    id: string
+    customVoiceUrl: string | null
+    voiceId: string | null
+    voiceType: string
+}
 
 export function useVoiceCreation({ isOpen, folderId, onClose, onSuccess, initialVoiceName }: VoiceCreationModalShellProps) {
     const t = useTranslations('common')
@@ -143,7 +150,7 @@ export function useVoiceCreation({ isOpen, folderId, onClose, onSuccess, initial
         try {
             const voice = generatedVoices[selectedIndex]
 
-            await saveDesignedMutation.mutateAsync({
+            const result = await saveDesignedMutation.mutateAsync({
                 voiceId: voice.voiceId,
                 voiceBase64: voice.audioBase64,
                 voiceName: voiceName.trim(),
@@ -151,7 +158,7 @@ export function useVoiceCreation({ isOpen, folderId, onClose, onSuccess, initial
                 voicePrompt: voicePrompt.trim()
             })
 
-            onSuccess()
+            onSuccess(result.voice)
             handleClose()
         } catch (err: unknown) {
             const errMsg = err instanceof Error ? err.message : tHub('saveVoiceFailed')
@@ -235,13 +242,13 @@ export function useVoiceCreation({ isOpen, folderId, onClose, onSuccess, initial
         setError(null)
 
         try {
-            await uploadVoiceMutation.mutateAsync({
+            const result = await uploadVoiceMutation.mutateAsync({
                 uploadFile,
                 voiceName: voiceName.trim(),
                 folderId
             })
 
-            onSuccess()
+            onSuccess(result.voice)
             handleClose()
         } catch (err: unknown) {
             const errMsg = err instanceof Error ? err.message : tvCreate('uploadFailed')

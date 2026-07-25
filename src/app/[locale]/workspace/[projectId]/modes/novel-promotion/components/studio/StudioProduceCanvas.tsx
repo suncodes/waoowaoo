@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { MediaImageWithLoading } from '@/components/media/MediaImageWithLoading'
 import VisualQualityBadge from '@/components/visual-quality/VisualQualityBadge'
 import { AppIcon } from '@/components/ui/icons'
@@ -78,7 +79,15 @@ function BatchVideoConfirmDialog({
   onConfirm: () => void
 }) {
   const title = preview.mode === 'firstlastframe' ? '批量生成首尾帧视频' : '批量生成单图视频'
-  return (
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!mounted) return null
+
+  return createPortal(
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={title}>
       <div className="w-full max-w-lg rounded-lg border border-white/15 bg-[#151613] shadow-2xl">
         <div className="border-b border-white/10 px-5 py-4">
@@ -120,7 +129,8 @@ function BatchVideoConfirmDialog({
           </StudioButton>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

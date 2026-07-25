@@ -4,7 +4,7 @@ import { useTranslations } from 'next-intl'
 interface SpeakerVoiceStatusProps {
     speakers: string[]
     speakerStats: Record<string, number>
-    getSpeakerVoiceUrl: (speaker: string) => string | null
+    hasSpeakerVoiceBinding: (speaker: string) => boolean
     onOpenAssetLibrary: (speaker: string) => void
     /** 内联绑定回调：当发言人不在资产库中时调用 */
     onOpenInlineBinding?: (speaker: string) => void
@@ -16,7 +16,7 @@ interface SpeakerVoiceStatusProps {
 export default function SpeakerVoiceStatus({
     speakers,
     speakerStats,
-    getSpeakerVoiceUrl,
+    hasSpeakerVoiceBinding,
     onOpenAssetLibrary,
     onOpenInlineBinding,
     hasSpeakerCharacter,
@@ -50,7 +50,7 @@ export default function SpeakerVoiceStatus({
                 </div>
                 <div className="flex flex-wrap gap-2">
                     {speakers.map(speaker => {
-                        const hasVoice = !!getSpeakerVoiceUrl(speaker)
+                        const hasVoice = hasSpeakerVoiceBinding(speaker)
                         const count = speakerStats[speaker]
                         const hasCharacter = hasSpeakerCharacter ? hasSpeakerCharacter(speaker) : true
                         return (
@@ -100,8 +100,7 @@ export default function SpeakerVoiceStatus({
             </h3>
             <div className="flex flex-wrap gap-2">
                 {speakers.map(speaker => {
-                    const voiceUrl = getSpeakerVoiceUrl(speaker)
-                    const hasVoice = !!voiceUrl
+                    const hasVoice = hasSpeakerVoiceBinding(speaker)
                     const hasCharacter = hasSpeakerCharacter ? hasSpeakerCharacter(speaker) : true
 
                     return (

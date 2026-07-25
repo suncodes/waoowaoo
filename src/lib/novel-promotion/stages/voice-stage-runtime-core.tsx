@@ -96,7 +96,7 @@ export function useVoiceStageRuntime({
     speakers,
     speakerOptions,
     matchCharacterBySpeaker,
-    getSpeakerVoiceUrl,
+    hasSpeakerVoiceBinding,
     linesWithVoice,
     linesWithAudio,
     allSpeakersHaveVoice,
@@ -296,7 +296,7 @@ export function useVoiceStageRuntime({
         onEditingContentChange={setEditingContent}
         onEditingSpeakerChange={setEditingSpeaker}
         onEditingMatchedPanelIdChange={setEditingMatchedPanelId}
-        getSpeakerVoiceUrl={getSpeakerVoiceUrl}
+        hasSpeakerVoiceBinding={hasSpeakerVoiceBinding}
       >
         <VoiceLineList
           voiceLines={voiceLines}
@@ -304,7 +304,7 @@ export function useVoiceStageRuntime({
           voiceStatusStateByLineId={voiceStatusStateByLineId}
           playingLineId={playingLineId}
           analyzing={analyzing}
-          getSpeakerVoiceUrl={getSpeakerVoiceUrl}
+          hasSpeakerVoiceBinding={hasSpeakerVoiceBinding}
           onTogglePlayAudio={handleTogglePlayAudio}
           onDownloadSingle={handleDownloadSingle}
           onGenerateLine={handleGenerateLine}

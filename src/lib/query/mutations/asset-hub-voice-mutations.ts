@@ -7,6 +7,16 @@ import {
 } from './mutation-shared'
 import { invalidateGlobalVoices } from './asset-hub-mutations-shared'
 
+type AssetHubVoiceMutationResult = {
+  success?: boolean
+  voice: {
+    id: string
+    customVoiceUrl: string | null
+    voiceId: string | null
+    voiceType: string
+  }
+}
+
 export function useDeleteVoice() {
   const queryClient = useQueryClient()
   const invalidateVoices = () => invalidateGlobalVoices(queryClient)
@@ -72,7 +82,7 @@ export function useSaveDesignedAssetHubVoice() {
           extension: 'wav',
         }),
       }, '上传音频失败')
-      const res = await requestJsonWithError('/api/asset-hub/voices', {
+      const res = await requestJsonWithError<AssetHubVoiceMutationResult>('/api/asset-hub/voices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -109,7 +119,7 @@ export function useUploadAssetHubVoice() {
       if (payload.folderId) {
         formData.append('folderId', payload.folderId)
       }
-      return await requestJsonWithError('/api/asset-hub/voices/upload', {
+      return await requestJsonWithError<AssetHubVoiceMutationResult>('/api/asset-hub/voices/upload', {
         method: 'POST',
         body: formData,
       }, '上传失败')
