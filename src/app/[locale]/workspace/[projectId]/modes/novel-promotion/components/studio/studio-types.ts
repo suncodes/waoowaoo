@@ -10,6 +10,7 @@ export type StudioModeId =
   | 'visual-kit'
   | 'board'
   | 'produce'
+  | 'audio'
   | 'edit'
   | 'export'
 
@@ -137,6 +138,7 @@ export function resolveStudioMode(currentStage: string, stageView?: string | nul
   if (currentStage === 'content') return 'draft'
   if (currentStage === 'visual-design') return 'visual-kit'
   if (currentStage === 'storyboard-preview') return 'board'
+  if (currentStage === 'production' && stageView === 'audio') return 'audio'
   if (currentStage === 'production') return 'produce'
   if (currentStage === 'edit' && stageView === 'export') return 'export'
   if (currentStage === 'edit') return 'edit'

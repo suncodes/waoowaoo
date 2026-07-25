@@ -28,6 +28,7 @@ const GENERATION_OPERATION_PATTERNS = [
   /\/analyze(?:-|\/|$)/,
   /\/tts(?:\/|$)/,
   /\/lip-sync(?:\/|$)/,
+  /\/audio-mix(?:\/|$)/,
   /\/story-to-script(?:-|\/|$)/,
   /\/script-to-storyboard(?:-|\/|$)/,
   /\/screenplay-conversion(?:\/|$)/,

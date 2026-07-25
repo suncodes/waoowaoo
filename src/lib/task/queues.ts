@@ -56,6 +56,7 @@ const IMAGE_TYPES = new Set<TaskType>([
 const VIDEO_TYPES = new Set<TaskType>([
   TASK_TYPE.VIDEO_PANEL,
   TASK_TYPE.VIDEO_MERGE_EXPORT,
+  TASK_TYPE.AUDIO_MIX,
   TASK_TYPE.LIP_SYNC,
 ])
 const VOICE_TYPES = new Set<TaskType>([

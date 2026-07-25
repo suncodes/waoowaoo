@@ -148,6 +148,8 @@ export {
     useUpdateProjectPanelActingNotes,
     useListProjectEpisodeVideoUrls,
     useMergeProjectEpisodeVideo,
+    useMixProjectPanelAudio,
+    useMixProjectEpisodeAudio,
     useUpdateProjectPanelLink,
     useListProjectEpisodes,
     useSplitProjectEpisodes,

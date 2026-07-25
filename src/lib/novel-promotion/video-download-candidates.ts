@@ -2,6 +2,7 @@ export interface VideoDownloadPanelData {
   panelIndex: number | null
   description: string | null
   videoUrl: string | null
+  audioMixedVideoUrl?: string | null
   lipSyncVideoUrl: string | null
   linkedToNextPanel?: boolean | null
 }
@@ -29,6 +30,8 @@ export interface OrderedVideoCandidate {
   clipIndex: number
   panelIndex: number
   isLipSync: boolean
+  isAudioMixed: boolean
+  sourceType: 'lip_sync' | 'audio_mixed' | 'raw'
 }
 
 function normalizePanelIndex(value: number | null | undefined): number {
@@ -82,13 +85,19 @@ export function collectOrderedVideoCandidates(
 
       let videoUrl: string | null = null
       let isLipSync = false
+      let isAudioMixed = false
+      let sourceType: OrderedVideoCandidate['sourceType'] = 'raw'
 
       if (preferLipSync) {
-        videoUrl = panel.lipSyncVideoUrl || panel.videoUrl
+        videoUrl = panel.lipSyncVideoUrl || panel.audioMixedVideoUrl || panel.videoUrl
         isLipSync = !!panel.lipSyncVideoUrl
+        isAudioMixed = !panel.lipSyncVideoUrl && !!panel.audioMixedVideoUrl
+        sourceType = panel.lipSyncVideoUrl ? 'lip_sync' : panel.audioMixedVideoUrl ? 'audio_mixed' : 'raw'
       } else {
-        videoUrl = panel.videoUrl || panel.lipSyncVideoUrl
+        videoUrl = panel.videoUrl || panel.audioMixedVideoUrl || panel.lipSyncVideoUrl
         isLipSync = !panel.videoUrl && !!panel.lipSyncVideoUrl
+        isAudioMixed = !panel.videoUrl && !panel.lipSyncVideoUrl && !!panel.audioMixedVideoUrl
+        sourceType = panel.videoUrl ? 'raw' : panel.audioMixedVideoUrl ? 'audio_mixed' : 'lip_sync'
       }
 
       if (!videoUrl) continue
@@ -101,6 +110,8 @@ export function collectOrderedVideoCandidates(
         clipIndex: clipIndex >= 0 ? clipIndex : 999,
         panelIndex,
         isLipSync,
+        isAudioMixed,
+        sourceType,
       })
     }
   }

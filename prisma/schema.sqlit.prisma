@@ -214,6 +214,9 @@ model NovelPromotionPanel {
   lipSyncVideoUrl   String?
   lipSyncVideoMediaId String?
   lipSyncVideoMedia MediaObject?              @relation("NovelPromotionPanelLipSyncVideoMedia", fields: [lipSyncVideoMediaId], references: [id], onDelete: SetNull)
+  audioMixedVideoUrl String?
+  audioMixedVideoMediaId String?
+  audioMixedVideoMedia MediaObject?            @relation("NovelPromotionPanelAudioMixedVideoMedia", fields: [audioMixedVideoMediaId], references: [id], onDelete: SetNull)
   sketchImageUrl    String?
   sketchImageMediaId String?
   sketchImageMedia  MediaObject?              @relation("NovelPromotionPanelSketchMedia", fields: [sketchImageMediaId], references: [id], onDelete: SetNull)
@@ -230,6 +233,7 @@ model NovelPromotionPanel {
   @@index([imageMediaId])
   @@index([videoMediaId])
   @@index([lipSyncVideoMediaId])
+  @@index([audioMixedVideoMediaId])
   @@index([sketchImageMediaId])
   @@index([previousImageMediaId])
   @@map("novel_promotion_panels")
@@ -808,6 +812,7 @@ model MediaObject {
   novelPromotionPanelImages             NovelPromotionPanel[]       @relation("NovelPromotionPanelImageMedia")
   novelPromotionPanelVideos             NovelPromotionPanel[]       @relation("NovelPromotionPanelVideoMedia")
   novelPromotionPanelLipSyncVideos      NovelPromotionPanel[]       @relation("NovelPromotionPanelLipSyncVideoMedia")
+  novelPromotionPanelAudioMixedVideos   NovelPromotionPanel[]       @relation("NovelPromotionPanelAudioMixedVideoMedia")
   novelPromotionPanelSketchImages       NovelPromotionPanel[]       @relation("NovelPromotionPanelSketchMedia")
   novelPromotionPanelPreviousImages     NovelPromotionPanel[]       @relation("NovelPromotionPanelPreviousImageMedia")
   novelPromotionShotImages              NovelPromotionShot[]        @relation("NovelPromotionShotImageMedia")

@@ -269,7 +269,9 @@ function collectMissingVideoPanels(episodes: VideoDownloadEpisodeData[]): Missin
           panelKey: buildPanelKey(storyboard.id, panelIndex),
           panelIndex,
           description: sanitizeFileName(panel.description || '镜头'),
-          hasVideo: isNonEmptyString(panel.videoUrl) || isNonEmptyString(panel.lipSyncVideoUrl),
+          hasVideo: isNonEmptyString(panel.videoUrl)
+            || isNonEmptyString(panel.audioMixedVideoUrl)
+            || isNonEmptyString(panel.lipSyncVideoUrl),
           linkedToNextPanel: panel.linkedToNextPanel === true,
           clipIndex: clipIndex >= 0 ? clipIndex : 999,
         })

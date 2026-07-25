@@ -31,6 +31,7 @@ export default function VideoPanelCardHeader({ runtime }: VideoPanelCardHeaderPr
   }, [taskStatus.panelErrorDisplay?.message])
 
   const hasVisibleBaseVideo = !!media.baseVideoUrl
+  const hasProcessedVideo = !!panel.lipSyncVideoUrl || !!panel.audioMixedVideoUrl
   const showFirstLastFrameSwitch = layout.hasNext
 
   return (
@@ -113,7 +114,7 @@ export default function VideoPanelCardHeader({ runtime }: VideoPanelCardHeaderPr
       )}
 
       {/* 口型同步切换 */}
-      {panel.lipSyncVideoUrl && hasVisibleBaseVideo ? (
+      {hasProcessedVideo && hasVisibleBaseVideo ? (
         <div
           className="absolute top-2 right-2 flex items-center bg-[var(--glass-overlay)] rounded-full p-0.5 cursor-pointer"
           onClick={(event) => {
@@ -126,7 +127,7 @@ export default function VideoPanelCardHeader({ runtime }: VideoPanelCardHeaderPr
             {t('panelCard.original')}
           </div>
           <div className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-all ${media.showLipSyncVideo ? 'bg-[var(--glass-accent-from)] text-white' : 'text-[var(--glass-text-tertiary)] hover:text-white'}`}>
-            {t('panelCard.synced')}
+            {t(panel.lipSyncVideoUrl ? 'panelCard.synced' : 'panelCard.mixed')}
           </div>
         </div>
       ) : null}

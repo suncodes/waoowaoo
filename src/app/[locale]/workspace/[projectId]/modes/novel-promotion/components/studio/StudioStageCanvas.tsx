@@ -5,6 +5,7 @@ import StudioBoardCanvas from './StudioBoardCanvas'
 import StudioDraftCanvas from './StudioDraftCanvas'
 import StudioEditCanvas from './StudioEditCanvas'
 import StudioExportCanvas from './StudioExportCanvas'
+import StudioAudioCanvas from './StudioAudioCanvas'
 import StudioOverviewCanvas from './StudioOverviewCanvas'
 import StudioProduceCanvas from './StudioProduceCanvas'
 import StudioStartCanvas from './StudioStartCanvas'
@@ -24,6 +25,7 @@ export default function StudioStageCanvas({ model, onNavigate, workflowState }: 
   if (model.activeMode === 'visual-kit') return <StudioVisualKitCanvas model={model} />
   if (model.activeMode === 'board') return <StudioBoardCanvas model={model} onNavigate={onNavigate} workflowState={workflowState} />
   if (model.activeMode === 'produce') return <StudioProduceCanvas model={model} onNavigate={onNavigate} />
+  if (model.activeMode === 'audio') return <StudioAudioCanvas model={model} onNavigate={onNavigate} />
   if (model.activeMode === 'edit') return <StudioEditCanvas model={model} onNavigate={onNavigate} />
   return <StudioExportCanvas model={model} />
 }

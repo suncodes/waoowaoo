@@ -14,6 +14,7 @@ const TASK_TYPE_OWNER_MAP = {
   [TASK_TYPE.IMAGE_LOCATION]: 'tests/unit/worker/location-image-task-handler.test.ts',
   [TASK_TYPE.VIDEO_PANEL]: 'tests/unit/worker/video-worker.test.ts',
   [TASK_TYPE.VIDEO_MERGE_EXPORT]: 'tests/unit/worker/video-worker.test.ts',
+  [TASK_TYPE.AUDIO_MIX]: 'tests/unit/worker/video-worker.test.ts',
   [TASK_TYPE.LIP_SYNC]: 'tests/unit/worker/video-worker.test.ts',
   [TASK_TYPE.VOICE_LINE]: 'tests/unit/worker/voice-worker.test.ts',
   [TASK_TYPE.VOICE_DESIGN]: 'tests/unit/worker/voice-worker.test.ts',

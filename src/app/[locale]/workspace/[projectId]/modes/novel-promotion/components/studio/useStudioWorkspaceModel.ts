@@ -63,7 +63,7 @@ function splitNames(value: string | null | undefined) {
 function panelStatus(panel: NovelPromotionPanel): StudioProductStatus {
   if (panel.videoTaskRunning) return 'generating'
   if (panel.imageErrorMessage) return 'failed'
-  if (panel.videoUrl || panel.lipSyncVideoUrl) return 'locked'
+  if (panel.videoUrl || panel.audioMixedVideoUrl || panel.lipSyncVideoUrl) return 'locked'
   return resolvePanelImageWorkflowPresentation({
     panel,
     hasCandidates: false,
@@ -148,7 +148,7 @@ function buildShots(storyboards: ReturnType<typeof useWorkspaceEpisodeStageData>
         characters: splitNames(panel.characters),
         location: panel.location || '',
         imageUrl: panel.imageUrl || null,
-        videoUrl: panel.lipSyncVideoUrl || panel.videoUrl || null,
+        videoUrl: panel.lipSyncVideoUrl || panel.audioMixedVideoUrl || panel.videoUrl || null,
         status: panelStatus(panel),
         errorMessage: panel.imageErrorMessage || '',
       }

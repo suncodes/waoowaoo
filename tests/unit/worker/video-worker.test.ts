@@ -49,6 +49,17 @@ const concurrencyGateMock = vi.hoisted(() => ({
 const artifactMock = vi.hoisted(() => ({
   createArtifact: vi.fn(async () => undefined),
 }))
+const audioMixMock = vi.hoisted(() => ({
+  mixPanelAudioToStorage: vi.fn(async () => ({
+    panelId: 'panel-1',
+    outputKey: 'videos/audio-mixed/project-1/panel-1.mp4',
+    outputUrl: '/m/audio-mixed-panel-1',
+    videoDurationMs: 4000,
+    audioDurationMs: 5200,
+    outputDurationMs: 5200,
+    voiceLineCount: 1,
+  })),
+}))
 
 const prismaMock = vi.hoisted(() => ({
   novelPromotionPanel: {
@@ -105,6 +116,7 @@ vi.mock('@/lib/api-config', () => ({
 vi.mock('@/lib/config-service', () => configServiceMock)
 vi.mock('@/lib/workers/user-concurrency-gate', () => concurrencyGateMock)
 vi.mock('@/lib/run-runtime/service', () => artifactMock)
+vi.mock('@/lib/novel-promotion/audio-mix', () => audioMixMock)
 
 function buildPanel(overrides?: Partial<PanelRow>): PanelRow {
   return {
@@ -335,6 +347,46 @@ describe('worker video processor behavior', () => {
         lipSyncTaskId: null,
       },
     })
+  })
+
+  it('AUDIO_MIX: 调用镜头音频混合服务并返回混音结果', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+
+    const job = buildJob({
+      type: TASK_TYPE.AUDIO_MIX,
+      payload: {
+        voiceLineIds: ['line-1'],
+      },
+      targetId: 'panel-1',
+    })
+
+    const result = await processor!(job)
+    expect(result).toEqual({
+      panelId: 'panel-1',
+      outputKey: 'videos/audio-mixed/project-1/panel-1.mp4',
+      outputUrl: '/m/audio-mixed-panel-1',
+      videoDurationMs: 4000,
+      audioDurationMs: 5200,
+      outputDurationMs: 5200,
+      voiceLineCount: 1,
+    })
+    expect(audioMixMock.mixPanelAudioToStorage).toHaveBeenCalledWith(
+      {
+        projectId: 'project-1',
+        panelId: 'panel-1',
+        voiceLineIds: ['line-1'],
+      },
+      expect.any(Function),
+    )
+    expect(reportTaskProgressMock).toHaveBeenCalledWith(
+      expect.anything(),
+      95,
+      expect.objectContaining({
+        stage: 'audio_mix_upload',
+        outputUrl: '/m/audio-mixed-panel-1',
+      }),
+    )
   })
 
   it('未知任务类型: 显式报错', async () => {

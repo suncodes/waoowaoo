@@ -186,6 +186,8 @@ export interface NovelPromotionPanel {
   videoMedia?: MediaRef | null
   lipSyncVideoUrl?: string | null
   lipSyncVideoMedia?: MediaRef | null
+  audioMixedVideoUrl?: string | null
+  audioMixedVideoMedia?: MediaRef | null
   sketchImageUrl?: string | null
   sketchImageMedia?: MediaRef | null
   previousImageUrl?: string | null

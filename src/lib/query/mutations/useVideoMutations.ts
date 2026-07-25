@@ -54,6 +54,91 @@ export function useMergeProjectEpisodeVideo(projectId: string) {
 }
 
 /**
+ * 将单个镜头的已生成配音混合到镜头视频
+ */
+export function useMixProjectPanelAudio(projectId: string, episodeId?: string | null) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (payload: {
+      panelId?: string
+      storyboardId?: string
+      panelIndex?: number
+      voiceLineIds?: string[]
+      force?: boolean
+    }) => {
+      const response = await requestTaskResponseWithError(
+        `/api/novel-promotion/${projectId}/audio-mix`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        },
+        '音频混合失败',
+      )
+      return await resolveTaskResponse(response)
+    },
+    onSettled: async () => {
+      if (episodeId) {
+        await invalidateQueryTemplates(queryClient, [
+          queryKeys.episodeData(projectId, episodeId),
+          queryKeys.voiceLines.matched(projectId, episodeId),
+          queryKeys.tasks.targetStatesAll(projectId),
+        ])
+      } else {
+        await invalidateQueryTemplates(queryClient, [
+          queryKeys.projectData(projectId),
+          queryKeys.tasks.targetStatesAll(projectId),
+        ])
+      }
+    },
+  })
+}
+
+/**
+ * 批量将剧集内可用配音混合到镜头视频
+ */
+export function useMixProjectEpisodeAudio(projectId: string, episodeId?: string | null) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (payload: {
+      episodeId: string
+      force?: boolean
+    }) => {
+      const response = await requestTaskResponseWithError(
+        `/api/novel-promotion/${projectId}/audio-mix`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...payload,
+            all: true,
+          }),
+        },
+        '批量音频混合失败',
+      )
+      return await response.json()
+    },
+    onSettled: async (_data, _error, variables) => {
+      const resolvedEpisodeId = variables?.episodeId || episodeId
+      if (resolvedEpisodeId) {
+        await invalidateQueryTemplates(queryClient, [
+          queryKeys.episodeData(projectId, resolvedEpisodeId),
+          queryKeys.voiceLines.matched(projectId, resolvedEpisodeId),
+          queryKeys.tasks.targetStatesAll(projectId),
+        ])
+      } else {
+        await invalidateQueryTemplates(queryClient, [
+          queryKeys.projectData(projectId),
+          queryKeys.tasks.targetStatesAll(projectId),
+        ])
+      }
+    },
+  })
+}
+
+/**
  * 更新 panel 首尾帧链接状态（项目）
  */
 export function useUpdateProjectPanelLink(projectId: string) {

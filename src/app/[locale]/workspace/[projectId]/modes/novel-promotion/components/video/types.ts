@@ -56,6 +56,7 @@ export interface Panel {
   visualQualityState?: unknown
   // 口型同步相关
   lipSyncVideoUrl?: string | null
+  audioMixedVideoUrl?: string | null
   lipSyncTaskRunning?: boolean | null
   lipSyncErrorMessage?: string | null  // 口型同步错误消息
   lipSyncErrorCode?: string | null
@@ -96,6 +97,7 @@ export interface VideoPanel {
   visualQualityState?: unknown
   // 口型同步相关
   lipSyncVideoUrl?: string
+  audioMixedVideoUrl?: string
   lipSyncTaskRunning?: boolean
   lipSyncTaskId?: string
   lipSyncErrorMessage?: string  // 口型同步错误消息

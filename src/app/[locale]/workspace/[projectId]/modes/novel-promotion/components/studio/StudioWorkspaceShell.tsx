@@ -55,6 +55,7 @@ const MODE_CONFIG: Array<Omit<StudioNavItem, 'status' | 'disabled'>> = [
   { id: 'visual-kit', route: 'assets', label: '视觉资产', subtitle: '角色场景道具', icon: 'folderCards' },
   { id: 'board', route: 'storyboard', label: '分镜制作', subtitle: '规划与画面', icon: 'image' },
   { id: 'produce', route: 'videos', label: '视频制作', subtitle: '视频与配音', icon: 'video' },
+  { id: 'audio', route: 'audio', label: '音频与字幕', subtitle: '混音与字幕', icon: 'audioWave' },
   { id: 'edit', route: 'editor', label: '成片检查', subtitle: '预览', icon: 'film' },
   { id: 'export', route: 'export', label: '交付', subtitle: '导出', icon: 'download' },
 ]
@@ -68,6 +69,7 @@ function navStatus(mode: StudioModeId, model: StudioWorkspaceModel): StudioProdu
     ? 'generating'
     : statusFromCreationStage(model.workflow.stageStatuses['storyboard-preview'] || 'not_started')
   if (mode === 'produce') return statusFromCreationStage(model.workflow.stageStatuses.production || 'not_started')
+  if (mode === 'audio') return model.workflow.hasVideo ? 'drafting' : 'empty'
   if (mode === 'edit') return model.workflow.hasVideo ? 'drafting' : 'empty'
   return model.workflow.hasVideo ? 'needs_review' : 'empty'
 }
@@ -254,12 +256,13 @@ function AssistantPanel({
     'visual-kit': '视觉资产',
     board: '镜头状态',
     produce: '生产状态',
+    audio: '音频与字幕',
     edit: '成片检查',
     export: '交付状态',
   }[model.activeMode]
   const suggestions = model.activeMode === 'visual-kit'
     ? [`核心资产待确认：${model.summary.missingCoreVisualAssets}`, activeAsset ? `当前资产：${activeAsset.name}` : '暂无核心资产']
-    : model.activeMode === 'board' || model.activeMode === 'produce'
+    : model.activeMode === 'board' || model.activeMode === 'produce' || model.activeMode === 'audio'
       ? [activeShot ? `当前镜头：第 ${activeShot.number} 镜` : '暂无镜头', `失败镜头：${model.summary.failedShots}`]
       : [`内容段落：${model.draftSegments.length}`, `预计时长：${model.summary.totalDurationSec || '-'} 秒`]
 
@@ -299,6 +302,9 @@ function AssistantPanel({
               <div className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-xs leading-5 text-stone-400">
                 页面顶部提供“批量生成单图视频”和“批量生成首尾帧视频”两个入口，提交前都会先预检并二次确认。
               </div>
+            ) : null}
+            {model.activeMode === 'audio' ? (
+              <ActionButton icon="video" label="返回视频制作" onClick={() => onNavigate('videos')} />
             ) : null}
           </div>
         </section>

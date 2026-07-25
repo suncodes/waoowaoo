@@ -18,6 +18,7 @@ import { resolveBuiltinCapabilitiesByModelKey } from '@/lib/model-capabilities/l
 import { parseModelKeyStrict } from '@/lib/model-config-contract'
 import { getProviderConfig } from '@/lib/api-config'
 import { mergeProjectVideosToStorage } from '@/lib/novel-promotion/video-merge-export'
+import { mixPanelAudioToStorage } from '@/lib/novel-promotion/audio-mix'
 import { createCreativeQualityHash } from '@/lib/creative-quality/contracts'
 import { createOptionalGenerationSnapshotArtifact } from '@/lib/creative-quality/runtime-artifacts'
 import {
@@ -347,7 +348,7 @@ function readPanelPreferences(value: unknown): Record<string, boolean> {
       result[key] = raw
     }
   }
-  return result
+  return { ...result }
 }
 
 async function handleVideoMergeExportTask(job: Job<TaskJobData>) {
@@ -375,6 +376,36 @@ async function handleVideoMergeExportTask(job: Job<TaskJobData>) {
   }
 }
 
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return Array.from(new Set(value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).map((item) => item.trim())))
+}
+
+async function handleAudioMixTask(job: Job<TaskJobData>) {
+  const payload = (job.data.payload || {}) as AnyObj
+  const panelId = job.data.targetType === 'NovelPromotionPanel'
+    ? job.data.targetId
+    : (typeof payload.panelId === 'string' ? payload.panelId.trim() : '')
+  if (!panelId) {
+    throw new Error('AUDIO_MIX_PANEL_ID_REQUIRED')
+  }
+
+  const result = await mixPanelAudioToStorage({
+    projectId: job.data.projectId,
+    panelId,
+    voiceLineIds: readStringArray(payload.voiceLineIds),
+  }, async (progress, progressPayload) => {
+    await reportTaskProgress(job, progress, progressPayload)
+  })
+
+  await reportTaskProgress(job, 95, {
+    stage: 'audio_mix_upload',
+    outputUrl: result.outputUrl,
+  })
+
+  return { ...result }
+}
+
 async function processVideoTask(job: Job<TaskJobData>) {
   await reportTaskProgress(job, 5, { stage: 'received' })
 
@@ -383,6 +414,8 @@ async function processVideoTask(job: Job<TaskJobData>) {
       return await handleVideoPanelTask(job)
     case TASK_TYPE.VIDEO_MERGE_EXPORT:
       return await handleVideoMergeExportTask(job)
+    case TASK_TYPE.AUDIO_MIX:
+      return await handleAudioMixTask(job)
     case TASK_TYPE.LIP_SYNC:
       return await handleLipSyncTask(job)
     default:

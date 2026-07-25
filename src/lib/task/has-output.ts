@@ -130,6 +130,19 @@ export async function hasPanelLipSyncOutput(panelId: string | null | undefined) 
   return isNonEmptyString(panel.lipSyncVideoUrl) || !!panel.lipSyncVideoMediaId
 }
 
+export async function hasPanelAudioMixOutput(panelId: string | null | undefined) {
+  if (!isNonEmptyString(panelId)) return false
+  const panel = await prisma.novelPromotionPanel.findUnique({
+    where: { id: panelId },
+    select: {
+      audioMixedVideoUrl: true,
+      audioMixedVideoMediaId: true,
+    },
+  })
+  if (!panel) return false
+  return isNonEmptyString(panel.audioMixedVideoUrl) || !!panel.audioMixedVideoMediaId
+}
+
 export async function hasVoiceLineAudioOutput(lineId: string | null | undefined) {
   if (!isNonEmptyString(lineId)) return false
   const line = await prisma.novelPromotionVoiceLine.findUnique({

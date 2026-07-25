@@ -73,7 +73,7 @@ export function useVideoMergeActions({
   )
 
   const mergedVideosCount = useMemo(
-    () => allPanels.filter((panel) => !!panel.videoUrl || !!panel.lipSyncVideoUrl).length,
+    () => allPanels.filter((panel) => !!panel.videoUrl || !!panel.audioMixedVideoUrl || !!panel.lipSyncVideoUrl).length,
     [allPanels],
   )
 

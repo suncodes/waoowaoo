@@ -77,6 +77,7 @@ export function useVideoPanelActions({
     videoRatio,
     imageUrl: panel.imageUrl,
     videoUrl: visibleBaseVideoUrl,
+    audioMixedVideoUrl: panel.audioMixedVideoUrl,
     lipSyncVideoUrl: panel.lipSyncVideoUrl,
     showLipSyncVideo,
     onPreviewImage,

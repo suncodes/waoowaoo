@@ -98,6 +98,7 @@ async function attachMediaFieldsToPanel<T extends Record<string, unknown>>(panel
   const imageMedia = await resolveMediaRef(panel.imageMediaId, panel.imageUrl)
   const videoMedia = await resolveMediaRef(panel.videoMediaId, panel.videoUrl)
   const lipSyncVideoMedia = await resolveMediaRef(panel.lipSyncVideoMediaId, panel.lipSyncVideoUrl)
+  const audioMixedVideoMedia = await resolveMediaRef(panel.audioMixedVideoMediaId, panel.audioMixedVideoUrl)
   const sketchImageMedia = await resolveMediaRef(panel.sketchImageMediaId, panel.sketchImageUrl)
   const previousImageMedia = await resolveMediaRef(panel.previousImageMediaId, panel.previousImageUrl)
 
@@ -113,11 +114,13 @@ async function attachMediaFieldsToPanel<T extends Record<string, unknown>>(panel
     imageMedia,
     videoMedia,
     lipSyncVideoMedia,
+    audioMixedVideoMedia,
     sketchImageMedia,
     previousImageMedia,
     imageUrl: imageMedia?.url || panel.imageUrl || null,
     videoUrl: videoMedia?.url || panel.videoUrl || null,
     lipSyncVideoUrl: lipSyncVideoMedia?.url || panel.lipSyncVideoUrl || null,
+    audioMixedVideoUrl: audioMixedVideoMedia?.url || panel.audioMixedVideoUrl || null,
     sketchImageUrl: sketchImageMedia?.url || panel.sketchImageUrl || null,
     previousImageUrl: previousImageMedia?.url || panel.previousImageUrl || null,
     candidateImages: candidateRaw.length > 0 ? JSON.stringify(candidateMediaUrls) : panel.candidateImages,

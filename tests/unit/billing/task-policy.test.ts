@@ -34,6 +34,11 @@ describe('billing/task-policy', () => {
     expect(buildDefaultTaskBillingInfo(fake, {})).toBeNull()
   })
 
+  it('does not bill local audio mix tasks', () => {
+    expect(isBillableTaskType(TASK_TYPE.AUDIO_MIX)).toBe(false)
+    expect(buildDefaultTaskBillingInfo(TASK_TYPE.AUDIO_MIX, {})).toBeNull()
+  })
+
   it('builds text billing info from explicit model payload', () => {
     const info = expectBillableInfo(buildDefaultTaskBillingInfo(TASK_TYPE.ANALYZE_NOVEL, {
       analysisModel: 'anthropic/claude-sonnet-4',

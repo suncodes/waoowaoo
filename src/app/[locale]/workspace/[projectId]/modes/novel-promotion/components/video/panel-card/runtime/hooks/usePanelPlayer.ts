@@ -5,6 +5,7 @@ interface UsePanelPlayerParams {
   videoRatio: string
   imageUrl?: string
   videoUrl?: string
+  audioMixedVideoUrl?: string
   lipSyncVideoUrl?: string
   showLipSyncVideo: boolean
   onPreviewImage?: (imageUrl: string) => void
@@ -14,6 +15,7 @@ export function usePanelPlayer({
   videoRatio,
   imageUrl,
   videoUrl,
+  audioMixedVideoUrl,
   lipSyncVideoUrl,
   showLipSyncVideo,
   onPreviewImage,
@@ -21,9 +23,9 @@ export function usePanelPlayer({
   const [isPlaying, setIsPlaying] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const cssAspectRatio = videoRatio.replace(':', '/')
-  const currentVideoUrl = videoUrl
-    ? (showLipSyncVideo && lipSyncVideoUrl ? lipSyncVideoUrl : videoUrl)
-    : undefined
+  const currentVideoUrl = showLipSyncVideo
+    ? (lipSyncVideoUrl || audioMixedVideoUrl || videoUrl)
+    : (videoUrl || audioMixedVideoUrl)
 
   const handlePreviewImage = useCallback((event?: MouseEvent) => {
     if (event) event.stopPropagation()

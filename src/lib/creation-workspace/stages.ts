@@ -125,6 +125,7 @@ const LEGACY_STAGE_ROUTES: Record<string, Omit<CreationStageRoute, 'isAlias'>> =
   storyboard: { stageId: 'storyboard-preview' },
   videos: { stageId: 'production', view: 'shots' },
   voice: { stageId: 'production', view: 'voice' },
+  audio: { stageId: 'production', view: 'audio' },
   editor: { stageId: 'edit' },
   export: { stageId: 'edit', view: 'export' },
 }

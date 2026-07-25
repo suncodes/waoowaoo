@@ -97,7 +97,7 @@ export function buildBatchVideoPreflight(
 }
 
 export function panelVideoUrl(panel: NovelPromotionPanel) {
-  return panel.lipSyncVideoUrl || panel.videoUrl || null
+  return panel.lipSyncVideoUrl || panel.audioMixedVideoUrl || panel.videoUrl || null
 }
 
 export function panelVideoError(panel: NovelPromotionPanel) {
@@ -146,6 +146,7 @@ export function resolveVideoStatus(panel: NovelPromotionPanel): StudioProductSta
 export function resolveVoiceStatus(panel: NovelPromotionPanel): StudioProductStatus {
   if (panelLipSyncTaskRunning(panel)) return 'generating'
   if (panel.lipSyncVideoUrl) return 'locked'
+  if (panel.audioMixedVideoUrl) return 'locked'
   return 'empty'
 }
 
@@ -167,6 +168,7 @@ export function toVideoPanels(items: ProduceItem[]): VideoPanel[] {
     panelIndex: item.panel.panelIndex,
     imageUrl: item.panel.imageUrl || undefined,
     videoUrl: item.panel.videoUrl || undefined,
+    audioMixedVideoUrl: item.panel.audioMixedVideoUrl || undefined,
     videoGenerationMode: item.panel.videoGenerationMode || undefined,
     videoTaskRunning: !!item.panel.videoTaskRunning,
     videoModel: panelVideoModel(item.panel) || undefined,
