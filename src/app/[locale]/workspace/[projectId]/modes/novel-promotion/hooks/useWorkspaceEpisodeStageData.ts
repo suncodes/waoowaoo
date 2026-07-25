@@ -19,6 +19,13 @@ interface EpisodeStagePayload {
     matchedPanelId?: string | null
     matchedStoryboardId?: string | null
     matchedPanelIndex?: number | null
+    panelSpans?: Array<{
+      panelId: string
+      panel?: {
+        storyboardId?: string | null
+        panelIndex?: number | null
+      } | null
+    }>
   }>
   creativeBrief?: unknown
   contentPlan?: unknown

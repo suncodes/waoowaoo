@@ -392,6 +392,7 @@ export default function StudioWorkspaceShell({
     || shot.status === 'needs_review'
   )).length
   const productionReady = model.shots.length > 0 && incompleteShotCount === 0
+  const narrationReady = model.summary.voiceLines > 0 && model.summary.voiceAudioLines >= model.summary.voiceLines
   const navigate = (route: string) => {
     if (route === 'voice' && !model.workflow.hasStoryboard) {
       window.alert('请先完成分镜制作。旁白配音会基于已确认分镜分析台词并绑定镜头。')
@@ -402,6 +403,14 @@ export default function StudioWorkspaceShell({
         ? '请先生成并确认分镜。'
         : `还有 ${incompleteShotCount} 个镜头缺少定稿图片、正在生成或生成失败，暂时不能进入生产台。`)
       return
+    }
+    if (route === 'videos' && model.workflow.hasStoryboard && !narrationReady) {
+      const continueWithoutVoice = window.confirm(
+        model.summary.voiceLines > 0
+          ? `当前还有 ${Math.max(0, model.summary.voiceLines - model.summary.voiceAudioLines)} 条台词未生成音频。继续进入视频制作可能导致视频时长和最终旁白不一致，是否继续？`
+          : '当前还没有分析并生成旁白配音。继续进入视频制作可能导致视频时长和最终旁白不一致，是否继续？',
+      )
+      if (!continueWithoutVoice) return
     }
     onStageChange(route)
   }

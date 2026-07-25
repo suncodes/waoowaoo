@@ -24,10 +24,18 @@ function normalizePanelPreferences(value: unknown): Record<string, boolean> {
   return preferences
 }
 
-function buildDedupeKey(projectId: string, episodeId: string | null, panelPreferences: Record<string, boolean>): string {
+function buildDedupeKey(
+  projectId: string,
+  episodeId: string | null,
+  panelPreferences: Record<string, boolean>,
+  audioStrategy: 'timeline' | 'none',
+): string {
   const preferenceHash = crypto
     .createHash('sha1')
-    .update(JSON.stringify(Object.keys(panelPreferences).sort().map((key) => [key, panelPreferences[key]])))
+    .update(JSON.stringify({
+      audioStrategy,
+      panelPreferences: Object.keys(panelPreferences).sort().map((key) => [key, panelPreferences[key]]),
+    }))
     .digest('hex')
     .slice(0, 16)
   return `video_merge_export:${projectId}:${episodeId || 'project'}:${preferenceHash}`
@@ -80,7 +88,7 @@ export const POST = apiHandler(async (
       audioStrategy,
       hasOutputAtStart: false,
     },
-    dedupeKey: buildDedupeKey(projectId, episodeId, panelPreferences),
+    dedupeKey: buildDedupeKey(projectId, episodeId, panelPreferences, audioStrategy),
     maxAttempts: 1,
   })
 

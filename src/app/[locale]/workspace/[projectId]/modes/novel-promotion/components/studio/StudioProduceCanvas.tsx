@@ -11,13 +11,11 @@ import { isRunningPhase } from '@/lib/task/presentation'
 import { useWorkspaceProvider } from '../../WorkspaceProvider'
 import { useWorkspaceStageRuntime } from '../../WorkspaceStageRuntimeContext'
 import { useWorkspaceEpisodeStageData } from '../../hooks/useWorkspaceEpisodeStageData'
-import VoiceStageRoute from '../VoiceStageRoute'
 import { useStoryboardTaskAwareStoryboards } from '../storyboard/hooks/useStoryboardTaskAwareStoryboards'
 import {
   StudioButton,
   StudioEmptyState,
   StudioMetric,
-  StudioPanel,
   StudioSectionHeader,
   StudioStageHeader,
   StudioStatusBadge,
@@ -154,7 +152,7 @@ function EmptyProduce({ onNavigate }: { onNavigate: (route: string) => void }) {
     <StudioEmptyState
       icon="video"
       title="没有可制作的镜头"
-      description="先确认分镜图片，再进入单图视频、首尾帧视频和配音制作。"
+      description="先确认分镜图片，再进入单图视频和首尾帧视频制作。"
       action={<StudioButton onClick={() => onNavigate('storyboard')}>返回分镜制作</StudioButton>}
     />
   )
@@ -422,7 +420,6 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
   })
   const updatePanelLinkMutation = useUpdateProjectPanelLink(projectId)
   const [selectedId, setSelectedId] = useState('')
-  const [showVoiceWorkbench, setShowVoiceWorkbench] = useState(false)
   const [batchPreview, setBatchPreview] = useState<BatchPreviewState | null>(null)
   const [generatingMode, setGeneratingMode] = useState<BatchVideoMode | null>(null)
   const [linkSavingKey, setLinkSavingKey] = useState('')
@@ -532,7 +529,7 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
 
         <div className="grid min-h-[620px] gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_440px]">
           <div className="min-h-0 overflow-hidden rounded-lg border border-white/10 bg-[#10110f]">
-            <div className="border-b border-white/10 px-4 py-4"><StudioSectionHeader title="镜头队列" description="按执行顺序查看图片、视频、配音和首尾帧连接状态。" /></div>
+            <div className="border-b border-white/10 px-4 py-4"><StudioSectionHeader title="镜头队列" description="按执行顺序查看图片、视频和首尾帧连接状态。" /></div>
             <div className="space-y-3 p-3">
               {items.map((item, index) => {
                 const key = `${item.storyboard.id}-${item.panel.panelIndex}`
@@ -575,21 +572,6 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
         </div>
       </section>
 
-      <StudioPanel padding="none">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
-          <StudioSectionHeader title="配音与口型" description="在独立工作台中处理说话人音色、台词音频和口型同步。" />
-          <StudioButton size="sm" variant="secondary" icon={showVoiceWorkbench ? 'chevronUp' : 'mic'} onClick={() => setShowVoiceWorkbench((value) => !value)}>{showVoiceWorkbench ? '收起配音工作台' : '打开配音工作台'}</StudioButton>
-        </div>
-        {showVoiceWorkbench ? (
-          <div className="bg-[#10110f] p-4 text-stone-100"><VoiceStageRoute embedded /></div>
-        ) : (
-          <div className="grid gap-3 px-5 py-5 md:grid-cols-3">
-            <StudioMetric label="工作范围" value="音色、台词、口型" />
-            <StudioMetric label="进入方式" value="按需打开" helper="不与视频队列重复展示" />
-            <StudioMetric label="输出" value="音频与口型视频" />
-          </div>
-        )}
-      </StudioPanel>
       {batchPreview ? (
         <BatchVideoConfirmDialog
           preview={batchPreview}

@@ -26,6 +26,7 @@ interface MergeResult {
   fileName: string
   videoCount: number
   sizeBytes?: number
+  audioTrackApplied?: boolean
 }
 
 function formatBytes(value?: number) {
@@ -155,6 +156,7 @@ export default function StudioExportCanvas({ model }: StudioExportCanvasProps) {
       const result = await mergeMutation.mutateAsync({
         episodeId,
         panelPreferences: {},
+        audioStrategy: 'timeline',
       })
       setMergeResult(result)
     } catch (cause) {
@@ -245,7 +247,7 @@ export default function StudioExportCanvas({ model }: StudioExportCanvasProps) {
               下载镜头包
               </StudioButton>
               <StudioButton icon="film" loading={mergeMutation.isPending} onClick={() => { void mergeVideo() }} disabled={!canExport}>
-              合并成片
+              合并带旁白成片
               </StudioButton>
             </>
           )}
@@ -321,8 +323,8 @@ export default function StudioExportCanvas({ model }: StudioExportCanvasProps) {
             <StudioEmptyState
               icon="film"
               title="还没有导出成片"
-              description="点击“合并成片”后，导出任务会把当前剧集已完成镜头按顺序拼接成 MP4。"
-              action={<StudioButton icon="film" loading={mergeMutation.isPending} onClick={() => { void mergeVideo() }} disabled={!canExport}>合并成片</StudioButton>}
+              description="点击“合并带旁白成片”后，导出任务会把当前剧集镜头按顺序拼接，并按旁白时间轴叠加音频。"
+              action={<StudioButton icon="film" loading={mergeMutation.isPending} onClick={() => { void mergeVideo() }} disabled={!canExport}>合并带旁白成片</StudioButton>}
             />
           )}
         </StudioPanel>
@@ -337,6 +339,7 @@ export default function StudioExportCanvas({ model }: StudioExportCanvasProps) {
                   <p className="mt-2 break-all text-sm leading-6 text-stone-200">{mergeResult.fileName}</p>
                 </div>
                 <DeliveryCheckRow label="片段数量" value={`${mergeResult.videoCount} 个`} status="locked" />
+                <DeliveryCheckRow label="旁白音轨" value={mergeResult.audioTrackApplied ? '已叠加' : '未叠加'} status={mergeResult.audioTrackApplied ? 'locked' : 'needs_review'} />
                 <DeliveryCheckRow label="文件大小" value={formatBytes(mergeResult.sizeBytes)} status="locked" />
                 <StudioButton icon="download" onClick={() => window.open(mergeResult.downloadUrl || mergeResult.outputUrl, '_blank')}>
                   下载成片

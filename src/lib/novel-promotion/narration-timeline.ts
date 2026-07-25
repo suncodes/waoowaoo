@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { logWarn as _ulogWarn } from '@/lib/logging/core'
-import { getPrismaErrorCode } from '@/lib/prisma-error'
+import { isPanelVoiceSpanTableMissing } from './panel-voice-spans'
 
 const DEFAULT_MIN_LINE_DURATION_MS = 1200
 const DEFAULT_CHAR_DURATION_MS = 180
@@ -144,14 +144,6 @@ function intersectSpan(panel: TimedPanel, line: TimedVoiceLine) {
     voiceEndMs: endMs - line.startMs,
     segmentText: line.content,
   }
-}
-
-function isPanelVoiceSpanTableMissing(error: unknown) {
-  const code = getPrismaErrorCode(error)
-  if (code === 'P2021') return true
-  const message = error instanceof Error ? error.message : String(error)
-  return message.includes('novel_promotion_panel_voice_spans')
-    && message.toLowerCase().includes('does not exist')
 }
 
 export async function rebuildEpisodeNarrationTimeline(episodeId: string): Promise<NarrationTimelineResult> {

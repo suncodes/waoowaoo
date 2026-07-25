@@ -14,6 +14,8 @@ import {
 } from './voice-analyze-helpers'
 import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
 import { resolveAnalysisModel } from './resolve-analysis-model'
+import { resolveVoiceAnalysisSource } from '@/lib/voice/voice-analysis-source'
+import { rebuildEpisodeNarrationTimeline } from '@/lib/novel-promotion/narration-timeline'
 
 const MAX_VOICE_ANALYZE_ATTEMPTS = 2
 
@@ -55,6 +57,14 @@ export async function handleVoiceAnalyzeTask(job: Job<TaskJobData>) {
   const episode = await prisma.novelPromotionEpisode.findUnique({
     where: { id: episodeId },
     include: {
+      clips: {
+        orderBy: [{ start: 'asc' }, { createdAt: 'asc' }],
+        select: {
+          content: true,
+          screenplay: true,
+          summary: true,
+        },
+      },
       storyboards: {
         include: {
           clip: true,
@@ -73,10 +83,12 @@ export async function handleVoiceAnalyzeTask(job: Job<TaskJobData>) {
     throw new Error('Episode does not belong to this project')
   }
 
-  const novelText = episode.novelText
-  if (!novelText) {
-    throw new Error('No novel text to analyze')
-  }
+  const voiceSource = resolveVoiceAnalysisSource({
+    contentPlan: episode.contentPlan,
+    clips: episode.clips,
+    storyboards: episode.storyboards,
+    novelText: episode.novelText,
+  })
 
   const analysisModel = await resolveAnalysisModel({
     userId: job.data.userId,
@@ -93,7 +105,7 @@ export async function handleVoiceAnalyzeTask(job: Job<TaskJobData>) {
     promptId: PROMPT_IDS.NP_VOICE_ANALYSIS,
     locale: job.data.locale,
     variables: {
-      input: novelText,
+      input: voiceSource.text,
       characters_lib_name: charactersLibName,
       characters_introduction: charactersIntroduction,
       storyboard_json: storyboardJson,
@@ -104,6 +116,7 @@ export async function handleVoiceAnalyzeTask(job: Job<TaskJobData>) {
     stage: 'voice_analyze_prepare',
     stageLabel: '准备台词分析参数',
     displayMode: 'detail',
+    message: `配音文本来源：${voiceSource.sourceType}，${voiceSource.unitCount} 个单元`,
   })
   await assertTaskActive(job, 'voice_analyze_prepare')
 
@@ -329,6 +342,7 @@ export async function handleVoiceAnalyzeTask(job: Job<TaskJobData>) {
     speakerStats[line.speaker] = (speakerStats[line.speaker] || 0) + 1
   }
   const matchedCount = createdVoiceLines.filter((line) => line.matchedStoryboardId).length
+  await rebuildEpisodeNarrationTimeline(episodeId)
 
   await reportTaskProgress(job, 96, {
     stage: 'voice_analyze_persist_done',

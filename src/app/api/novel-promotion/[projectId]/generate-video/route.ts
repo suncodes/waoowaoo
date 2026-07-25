@@ -17,6 +17,10 @@ import { resolveBuiltinPricing } from '@/lib/model-pricing/lookup'
 import { resolveProjectModelCapabilityGenerationOptions } from '@/lib/config-service'
 import { evaluateVisualReadiness } from '@/lib/visual-readiness'
 import { hasUnconfirmedVisualCandidates } from '@/lib/quality-workflow'
+import {
+  pickVideoDurationSeconds,
+  readPanelTargetDurationMs,
+} from '@/lib/video-generation-duration'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
@@ -201,6 +205,42 @@ function assertVisualReady(panel: { id: string; candidateImages?: unknown; visua
   })
 }
 
+function buildPayloadWithPanelTargetDuration(
+  payload: Record<string, unknown>,
+  panel: {
+    targetDurationMs?: number | null
+    duration?: number | null
+  },
+): Record<string, unknown> {
+  const modelKey = resolveVideoModelKeyFromPayload(payload)
+  if (!modelKey) return payload
+
+  const capabilities = resolveBuiltinCapabilitiesByModelKey('video', modelKey)
+  const duration = pickVideoDurationSeconds({
+    targetDurationMs: readPanelTargetDurationMs(panel),
+    supportedDurations: capabilities?.video?.durationOptions,
+  })
+  if (duration === undefined) return payload
+
+  const generationOptions = isRecord(payload.generationOptions)
+    ? payload.generationOptions
+    : {}
+  const nextPayload = {
+    ...payload,
+    generationOptions: {
+      ...generationOptions,
+      duration,
+    },
+  }
+
+  try {
+    buildVideoPanelBillingInfoOrThrow(nextPayload)
+    return nextPayload
+  } catch {
+    return payload
+  }
+}
+
 export const POST = apiHandler(async (
   request: NextRequest,
   context: { params: Promise<{ projectId: string }> },
@@ -264,6 +304,8 @@ export const POST = apiHandler(async (
             visualQualityState: true,
             linkedToNextPanel: true,
             firstLastFramePrompt: true,
+            targetDurationMs: true,
+            duration: true,
           },
         },
       },
@@ -308,11 +350,11 @@ export const POST = apiHandler(async (
       if (batchMode === 'normal') {
         targets.push({
           panelId: panel.id,
-          payload: {
+          payload: buildPayloadWithPanelTargetDuration({
             ...basePayload,
             storyboardId: panel.storyboardId,
             panelIndex: panel.panelIndex,
-          },
+          }, panel),
         })
         return
       }
@@ -339,7 +381,7 @@ export const POST = apiHandler(async (
       }
       targets.push({
         panelId: panel.id,
-        payload: {
+        payload: buildPayloadWithPanelTargetDuration({
           ...basePayload,
           storyboardId: panel.storyboardId,
           panelIndex: panel.panelIndex,
@@ -351,7 +393,7 @@ export const POST = apiHandler(async (
               ? { customPrompt: panel.firstLastFramePrompt.trim() }
               : {}),
           },
-        },
+        }, panel),
       })
     })
 
@@ -392,7 +434,13 @@ export const POST = apiHandler(async (
 
   const panel = await prisma.novelPromotionPanel.findFirst({
     where: { storyboardId, panelIndex: Number(panelIndex) },
-    select: { id: true, candidateImages: true, visualQualityState: true },
+    select: {
+      id: true,
+      candidateImages: true,
+      visualQualityState: true,
+      targetDurationMs: true,
+      duration: true,
+    },
   })
 
   if (!panel) {
@@ -425,7 +473,7 @@ export const POST = apiHandler(async (
     type: TASK_TYPE.VIDEO_PANEL,
     targetType: 'NovelPromotionPanel',
     targetId: panel.id,
-    payload: withTaskUiPayload(body, {
+    payload: withTaskUiPayload(buildPayloadWithPanelTargetDuration(body, panel), {
       hasOutputAtStart: await hasPanelVideoOutput(panel.id),
     }),
     dedupeKey: `video_panel:${panel.id}`,

@@ -174,6 +174,9 @@ export interface NovelPromotionPanel {
   srtStart: number | null
   srtEnd: number | null
   duration: number | null
+  timelineStartMs?: number | null
+  timelineEndMs?: number | null
+  targetDurationMs?: number | null
   imagePrompt: string | null
   imageUrl: string | null
   candidateImages?: string | null

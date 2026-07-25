@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { resolveMediaRef, resolveMediaRefFromLegacyValue } from '@/lib/media/service'
+import { isPanelVoiceSpanTableMissing } from '@/lib/novel-promotion/panel-voice-spans'
+import { rebuildEpisodeNarrationTimeline } from '@/lib/novel-promotion/narration-timeline'
 
 async function resolveMatchedPanelData(
   matchedPanelId: string | null | undefined,
@@ -73,6 +75,51 @@ async function withVoiceLineMedia<T extends Record<string, unknown>>(line: T) {
     matchedPanelIndex: matchedPanel?.panelIndex ?? line.matchedPanelIndex}
 }
 
+async function findEpisodeVoiceLines(episodeId: string) {
+  const baseQuery = {
+    where: { episodeId },
+    orderBy: { lineIndex: 'asc' as const },
+    include: {
+      matchedPanel: {
+        select: {
+          id: true,
+          storyboardId: true,
+          panelIndex: true
+        }
+      }
+    }
+  }
+
+  try {
+    return await prisma.novelPromotionVoiceLine.findMany({
+      ...baseQuery,
+      include: {
+        ...baseQuery.include,
+        panelSpans: {
+          orderBy: { startMs: 'asc' as const },
+          select: {
+            panelId: true,
+            startMs: true,
+            endMs: true,
+            voiceStartMs: true,
+            voiceEndMs: true,
+            segmentText: true,
+            panel: {
+              select: {
+                storyboardId: true,
+                panelIndex: true
+              }
+            }
+          }
+        }
+      }
+    })
+  } catch (error) {
+    if (!isPanelVoiceSpanTableMissing(error)) throw error
+    return await prisma.novelPromotionVoiceLine.findMany(baseQuery)
+  }
+}
+
 /**
  * GET /api/novel-promotion/[projectId]/voice-lines?episodeId=xxx
  * 获取剧集的台词列表
@@ -121,19 +168,7 @@ export const GET = apiHandler(async (
   }
 
   // 获取台词列表（包含匹配的 Panel 信息）
-  const voiceLines = await prisma.novelPromotionVoiceLine.findMany({
-    where: { episodeId },
-    orderBy: { lineIndex: 'asc' },
-    include: {
-      matchedPanel: {
-        select: {
-          id: true,
-          storyboardId: true,
-          panelIndex: true
-        }
-      }
-    }
-  })
+  const voiceLines = await findEpisodeVoiceLines(episodeId)
 
   // 转换为稳定媒体 URL，并添加兼容字段
   const voiceLinesWithUrls = await Promise.all(voiceLines.map(withVoiceLineMedia))
@@ -230,6 +265,7 @@ export const POST = apiHandler(async (
   })
 
   const voiceLine = await withVoiceLineMedia(created)
+  await rebuildEpisodeNarrationTimeline(episodeId)
 
   return NextResponse.json({
     success: true,
@@ -319,6 +355,7 @@ export const PATCH = apiHandler(async (
         }
       }
     })
+    await rebuildEpisodeNarrationTimeline(updated.episodeId)
     return NextResponse.json({
       success: true,
       voiceLine: await withVoiceLineMedia(updated)
@@ -395,6 +432,7 @@ export const DELETE = apiHandler(async (
       })
     }
   }
+  await rebuildEpisodeNarrationTimeline(lineToDelete.episodeId)
 
   return NextResponse.json({
     success: true,

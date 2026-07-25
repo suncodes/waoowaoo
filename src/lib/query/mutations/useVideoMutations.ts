@@ -32,6 +32,7 @@ export function useMergeProjectEpisodeVideo(projectId: string) {
     mutationFn: async (payload: {
       episodeId: string
       panelPreferences: Record<string, boolean>
+      audioStrategy?: 'timeline' | 'none'
     }) => {
       const response = await requestTaskResponseWithError(
         `/api/novel-promotion/${projectId}/merge-videos`,

@@ -8,6 +8,67 @@ import { attachMediaFieldsToProject } from '@/lib/media/attach'
 import { resolveMediaRefFromLegacyValue } from '@/lib/media/service'
 import { executeWorkspaceArtifactCommand } from '@/lib/creation-workspace/server-commands'
 import type { WorkspaceArtifactCommand } from '@/lib/creation-workspace/commands'
+import { isPanelVoiceSpanTableMissing } from '@/lib/novel-promotion/panel-voice-spans'
+
+async function findEpisodeWithStageData(episodeId: string) {
+  const baseInclude = {
+    clips: {
+      orderBy: [{ start: 'asc' as const }, { createdAt: 'asc' as const }]
+    },
+    storyboards: {
+      include: {
+        clip: true,
+        panels: { orderBy: { panelIndex: 'asc' as const } }
+      },
+      orderBy: { createdAt: 'asc' as const }
+    },
+    shots: {
+      orderBy: { shotId: 'asc' as const }
+    }
+  }
+
+  try {
+    return await prisma.novelPromotionEpisode.findUnique({
+      where: { id: episodeId },
+      include: {
+        ...baseInclude,
+        voiceLines: {
+          orderBy: { lineIndex: 'asc' as const },
+          include: {
+            panelSpans: {
+              orderBy: { startMs: 'asc' as const },
+              select: {
+                panelId: true,
+                startMs: true,
+                endMs: true,
+                voiceStartMs: true,
+                voiceEndMs: true,
+                segmentText: true,
+                panel: {
+                  select: {
+                    storyboardId: true,
+                    panelIndex: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    })
+  } catch (error) {
+    if (!isPanelVoiceSpanTableMissing(error)) throw error
+    return await prisma.novelPromotionEpisode.findUnique({
+      where: { id: episodeId },
+      include: {
+        ...baseInclude,
+        voiceLines: {
+          orderBy: { lineIndex: 'asc' as const }
+        }
+      }
+    })
+  }
+}
 
 /**
  * GET - 获取单个剧集的完整数据
@@ -23,27 +84,7 @@ export const GET = apiHandler(async (
   if (isErrorResponse(authResult)) return authResult
 
   // 获取剧集及其关联数据
-  const episode = await prisma.novelPromotionEpisode.findUnique({
-    where: { id: episodeId },
-    include: {
-      clips: {
-        orderBy: [{ start: 'asc' }, { createdAt: 'asc' }]
-      },
-      storyboards: {
-        include: {
-          clip: true,
-          panels: { orderBy: { panelIndex: 'asc' } }
-        },
-        orderBy: { createdAt: 'asc' }
-      },
-      shots: {
-        orderBy: { shotId: 'asc' }
-      },
-      voiceLines: {
-        orderBy: { lineIndex: 'asc' }
-      }
-    }
-  })
+  const episode = await findEpisodeWithStageData(episodeId)
 
   if (!episode) {
     throw new ApiError('NOT_FOUND')

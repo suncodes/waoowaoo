@@ -38,6 +38,8 @@ import {
   parseStoryboardRetryTarget,
   runScriptToStoryboardAtomicRetry,
 } from './script-to-storyboard-atomic-retry'
+import { resolveVoiceAnalysisSource } from '@/lib/voice/voice-analysis-source'
+import { rebuildEpisodeNarrationTimeline } from '@/lib/novel-promotion/narration-timeline'
 
 type AnyObj = Record<string, unknown>
 const MAX_VOICE_ANALYZE_ATTEMPTS = 2
@@ -474,15 +476,17 @@ export async function handleScriptToStoryboardTask(job: Job<TaskJobData>) {
         }
       }
 
-      if (!episode.novelText || !episode.novelText.trim()) {
-        throw new Error('No novel text to analyze')
-      }
+      const voiceSource = resolveVoiceAnalysisSource({
+        contentPlan: episode.contentPlan,
+        clips,
+        novelText: episode.novelText,
+      })
 
       const voicePrompt = buildPrompt({
         promptId: PROMPT_IDS.NP_VOICE_ANALYSIS,
         locale: job.data.locale,
         variables: {
-          input: episode.novelText,
+          input: voiceSource.text,
           characters_lib_name: (novelData.characters || []).length > 0
             ? (novelData.characters || []).map((item) => item.name).join('、')
             : '无',
@@ -556,6 +560,7 @@ export async function handleScriptToStoryboardTask(job: Job<TaskJobData>) {
         clipPanels: orchestratorResult.clipPanels,
         voiceLineRows,
       })
+      await rebuildEpisodeNarrationTimeline(episodeId)
       const persistedVoiceLines = Array.isArray(persisted.voiceLines) ? persisted.voiceLines : []
       const scriptReview = reviewScriptDraftQuality({
         episodeId,

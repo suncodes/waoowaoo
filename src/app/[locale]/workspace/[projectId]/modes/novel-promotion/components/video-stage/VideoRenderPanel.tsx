@@ -156,7 +156,9 @@ export default function VideoRenderPanel({
                 projectId={projectId}
                 episodeId={episodeId}
                 runningVoiceLineIds={runningVoiceLineIds}
-                matchedVoiceLines={panelVoiceLines.get(panelKey) || []}
+                matchedVoiceLines={(panel.panelId ? panelVoiceLines.get(panel.panelId) : undefined)
+                  || panelVoiceLines.get(panelKey)
+                  || []}
                 onLipSync={onLipSync}
                 showLipSyncVideo={panelVideoPreference.get(panelKey) ?? true}
                 onToggleLipSyncVideo={onToggleLipSyncVideo}

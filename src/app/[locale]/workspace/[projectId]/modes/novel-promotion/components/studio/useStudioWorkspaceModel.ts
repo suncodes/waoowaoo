@@ -69,6 +69,28 @@ function voicePanelKey(storyboardId: string | null | undefined, panelIndex: numb
   return `${storyboardId}:${panelIndex}`
 }
 
+function voiceLinePanelBindingKeys(line: ReturnType<typeof useWorkspaceEpisodeStageData>['voiceLines'][number]) {
+  const panelIds: string[] = []
+  const panelKeys: string[] = []
+  for (const span of line.panelSpans || []) {
+    if (span.panelId) {
+      panelIds.push(span.panelId)
+      continue
+    }
+    const key = voicePanelKey(span.panel?.storyboardId, span.panel?.panelIndex)
+    if (key) panelKeys.push(key)
+  }
+  if (panelIds.length === 0 && panelKeys.length === 0) {
+    if (line.matchedPanelId) panelIds.push(line.matchedPanelId)
+    const key = voicePanelKey(line.matchedStoryboardId, line.matchedPanelIndex)
+    if (key) panelKeys.push(key)
+  }
+  return {
+    panelIds: Array.from(new Set(panelIds)),
+    panelKeys: Array.from(new Set(panelKeys)),
+  }
+}
+
 function voiceStatusForShot(
   shot: StudioShot,
   voiceLinesByPanelId: Map<string, ReturnType<typeof useWorkspaceEpisodeStageData>['voiceLines']>,
@@ -300,13 +322,13 @@ export function useStudioWorkspaceModel({
     const voiceLinesByPanelId = new Map<string, typeof voiceLines>()
     const voiceLinesByPanelKey = new Map<string, typeof voiceLines>()
     for (const line of voiceLines) {
-      if (line.matchedPanelId) {
-        const list = voiceLinesByPanelId.get(line.matchedPanelId) || []
+      const bindingKeys = voiceLinePanelBindingKeys(line)
+      for (const panelId of bindingKeys.panelIds) {
+        const list = voiceLinesByPanelId.get(panelId) || []
         list.push(line)
-        voiceLinesByPanelId.set(line.matchedPanelId, list)
+        voiceLinesByPanelId.set(panelId, list)
       }
-      const key = voicePanelKey(line.matchedStoryboardId, line.matchedPanelIndex)
-      if (key) {
+      for (const key of bindingKeys.panelKeys) {
         const list = voiceLinesByPanelKey.get(key) || []
         list.push(line)
         voiceLinesByPanelKey.set(key, list)

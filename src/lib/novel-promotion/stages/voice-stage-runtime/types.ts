@@ -18,6 +18,18 @@ export interface VoiceLine {
   matchedPanelId?: string | null
   matchedStoryboardId?: string | null
   matchedPanelIndex?: number | null
+  panelSpans?: Array<{
+    panelId: string
+    startMs?: number | null
+    endMs?: number | null
+    voiceStartMs?: number | null
+    voiceEndMs?: number | null
+    segmentText?: string | null
+    panel?: {
+      storyboardId?: string | null
+      panelIndex?: number | null
+    } | null
+  }>
 }
 
 export type PendingVoiceTaskStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'canceled' | null

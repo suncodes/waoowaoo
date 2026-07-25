@@ -41,6 +41,9 @@ export interface Panel {
   textSegment?: string | null
   srtSegment?: string | null  // SRT 原文片段
   duration?: number | null
+  timelineStartMs?: number | null
+  timelineEndMs?: number | null
+  targetDurationMs?: number | null
   imagePrompt?: string | null
   imageUrl?: string | null  // 图片URL
   videoPrompt?: string | null
@@ -85,6 +88,7 @@ export interface VideoPanel {
   storyboardId: string
   panelIndex: number
   textPanel?: TextPanel
+  targetDurationMs?: number
   firstLastFramePrompt?: string
   imageUrl?: string
   videoUrl?: string

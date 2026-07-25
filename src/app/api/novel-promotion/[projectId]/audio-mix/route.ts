@@ -8,6 +8,7 @@ import { submitTask } from '@/lib/task/submitter'
 import { TASK_TYPE } from '@/lib/task/types'
 import { hasPanelAudioMixOutput } from '@/lib/task/has-output'
 import { withTaskUiPayload } from '@/lib/task/ui-payload'
+import { isPanelVoiceSpanTableMissing } from '@/lib/novel-promotion/panel-voice-spans'
 
 type AudioMixBody = {
   all?: boolean
@@ -56,6 +57,30 @@ function buildVoiceLineDedupeSegment(voiceLineIds: string[]) {
 }
 
 async function countUsableVoiceLines(panel: PanelCandidate, episodeId: string, voiceLineIds: string[]) {
+  if (voiceLineIds.length === 0) {
+    try {
+      const spanVoiceLineRows = await prisma.novelPromotionPanelVoiceSpan.findMany({
+        where: { episodeId, panelId: panel.id },
+        select: { voiceLineId: true },
+      })
+      const spanVoiceLineIds = Array.from(new Set(spanVoiceLineRows.map((span) => span.voiceLineId)))
+      if (spanVoiceLineIds.length > 0) {
+        return await prisma.novelPromotionVoiceLine.count({
+          where: {
+            episodeId,
+            id: { in: spanVoiceLineIds },
+            OR: [
+              { audioUrl: { not: null } },
+              { audioMediaId: { not: null } },
+            ],
+          },
+        })
+      }
+    } catch (error) {
+      if (!isPanelVoiceSpanTableMissing(error)) throw error
+    }
+  }
+
   const matchFilter = voiceLineIds.length > 0
     ? { id: { in: voiceLineIds } }
     : {

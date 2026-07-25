@@ -166,6 +166,7 @@ export function toVideoPanels(items: ProduceItem[]): VideoPanel[] {
     panelId: item.panel.id,
     storyboardId: item.storyboard.id,
     panelIndex: item.panel.panelIndex,
+    targetDurationMs: item.panel.targetDurationMs || undefined,
     imageUrl: item.panel.imageUrl || undefined,
     videoUrl: item.panel.videoUrl || undefined,
     audioMixedVideoUrl: item.panel.audioMixedVideoUrl || undefined,

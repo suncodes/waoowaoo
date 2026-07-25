@@ -1,9 +1,10 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { AppIcon } from '@/components/ui/icons'
 import {
   useMatchedVoiceLines,
+  useMergeProjectEpisodeVideo,
   useMixProjectEpisodeAudio,
   useMixProjectPanelAudio,
   useVideoTaskPresentation,
@@ -20,7 +21,7 @@ import {
   StudioStageHeader,
   StudioStatusBadge,
 } from './StudioPrimitives'
-import { buildProduceItems, panelVideoUrl, type ProduceItem } from './studio-produce-model'
+import { buildProduceItems, type ProduceItem } from './studio-produce-model'
 import type { StudioProductStatus, StudioWorkspaceModel } from './studio-types'
 
 interface StudioAudioCanvasProps {
@@ -32,9 +33,34 @@ interface AudioPanelItem extends ProduceItem {
   voiceLines: MatchedVoiceLine[]
 }
 
+interface MergeResult {
+  outputUrl: string
+  downloadUrl: string
+  fileName: string
+  videoCount: number
+  sizeBytes?: number
+  audioTrackApplied?: boolean
+}
+
 function panelKey(storyboardId: string | null | undefined, panelIndex: number | null | undefined) {
   if (!storyboardId || panelIndex === null || panelIndex === undefined) return ''
   return `${storyboardId}:${panelIndex}`
+}
+
+function voiceLinePanelKeys(line: MatchedVoiceLine) {
+  const keys: string[] = []
+  for (const span of line.panelSpans || []) {
+    if (span.panelId?.trim()) {
+      keys.push(span.panelId.trim())
+      continue
+    }
+    const key = panelKey(span.panel?.storyboardId, span.panel?.panelIndex)
+    if (key) keys.push(key)
+  }
+  if (keys.length === 0 && line.matchedPanelId?.trim()) keys.push(line.matchedPanelId.trim())
+  const fallbackKey = panelKey(line.matchedStoryboardId, line.matchedPanelIndex)
+  if (keys.length === 0 && fallbackKey) keys.push(fallbackKey)
+  return Array.from(new Set(keys))
 }
 
 function estimateSubtitleDurationMs(content: string) {
@@ -64,6 +90,22 @@ function formatSrtTime(ms: number) {
 function formatDuration(ms: number | null | undefined) {
   if (typeof ms !== 'number' || !Number.isFinite(ms) || ms <= 0) return '-'
   return `${(ms / 1000).toFixed(1)}s`
+}
+
+function formatBytes(value?: number) {
+  if (!value || value <= 0) return '-'
+  if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`
+  return `${(value / 1024 / 1024).toFixed(1)} MB`
+}
+
+function linePanelSpan(line: MatchedVoiceLine, item: AudioPanelItem) {
+  return (line.panelSpans || []).find((span) => (
+    span.panelId === item.panel.id
+    || (
+      span.panel?.storyboardId === item.storyboard.id
+      && span.panel?.panelIndex === item.panel.panelIndex
+    )
+  )) || null
 }
 
 function subtitleText(line: MatchedVoiceLine) {
@@ -152,7 +194,7 @@ function AudioPanelRow({
   running: boolean
   onMix: () => void
 }) {
-  const baseVideoUrl = panelVideoUrl(item.panel)
+  const baseVideoUrl = item.panel.videoUrl || null
   const hasVoiceAudio = item.voiceLines.some((line) => !!line.audioUrl)
   const mixedVideoUrl = item.panel.audioMixedVideoUrl || null
   const disabled = !baseVideoUrl || !hasVoiceAudio || running
@@ -175,17 +217,21 @@ function AudioPanelRow({
           </h3>
 
           <div className="mt-3 space-y-2">
-            {item.voiceLines.length > 0 ? item.voiceLines.map((line) => (
-              <div key={line.id} className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2">
-                <div className="flex flex-wrap items-center gap-2 text-[11px] text-stone-500">
-                  <span>台词 {line.lineIndex}</span>
-                  <span>{line.speaker || '未命名说话人'}</span>
-                  <span>{formatDuration(line.audioDuration)}</span>
-                  {line.audioUrl ? <span className="text-emerald-300">音频已生成</span> : <span className="text-amber-200">音频未生成</span>}
+            {item.voiceLines.length > 0 ? item.voiceLines.map((line) => {
+              const span = linePanelSpan(line, item)
+              return (
+                <div key={`${line.id}:${span?.startMs ?? 'direct'}`} className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2">
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-stone-500">
+                    <span>台词 {line.lineIndex}</span>
+                    <span>{line.speaker || '未命名说话人'}</span>
+                    <span>{formatDuration(line.audioDuration)}</span>
+                    {span ? <span>覆盖 {formatDuration(span.endMs - span.startMs)}</span> : null}
+                    {line.audioUrl ? <span className="text-emerald-300">音频已生成</span> : <span className="text-amber-200">音频未生成</span>}
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-stone-300">{line.content}</p>
                 </div>
-                <p className="mt-1 line-clamp-2 text-xs leading-5 text-stone-300">{line.content}</p>
-              </div>
-            )) : (
+              )
+            }) : (
               <div className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-stone-500">
                 当前镜头没有匹配台词。
               </div>
@@ -225,6 +271,8 @@ export default function StudioAudioCanvas({ model, onNavigate }: StudioAudioCanv
   const matchedVoiceLinesQuery = useMatchedVoiceLines(projectId, episodeId || null)
   const mixPanelMutation = useMixProjectPanelAudio(projectId, episodeId)
   const mixEpisodeMutation = useMixProjectEpisodeAudio(projectId, episodeId)
+  const mergeEpisodeVideoMutation = useMergeProjectEpisodeVideo(projectId)
+  const [mergeResult, setMergeResult] = useState<MergeResult | null>(null)
   const voiceLines = useMemo(
     () => matchedVoiceLinesQuery.data?.voiceLines || [],
     [matchedVoiceLinesQuery.data?.voiceLines],
@@ -233,11 +281,12 @@ export default function StudioAudioCanvas({ model, onNavigate }: StudioAudioCanv
   const voiceLinesByPanel = useMemo(() => {
     const map = new Map<string, MatchedVoiceLine[]>()
     for (const line of voiceLines) {
-      const key = panelKey(line.matchedStoryboardId, line.matchedPanelIndex)
-      if (!key) continue
-      const list = map.get(key) || []
-      list.push(line)
-      map.set(key, list)
+      for (const key of voiceLinePanelKeys(line)) {
+        if (!key) continue
+        const list = map.get(key) || []
+        list.push(line)
+        map.set(key, list)
+      }
     }
     for (const list of map.values()) {
       list.sort((left, right) => left.lineIndex - right.lineIndex)
@@ -248,7 +297,9 @@ export default function StudioAudioCanvas({ model, onNavigate }: StudioAudioCanv
   const items = useMemo<AudioPanelItem[]>(() => (
     buildProduceItems(storyboards).map((item) => ({
       ...item,
-      voiceLines: voiceLinesByPanel.get(panelKey(item.storyboard.id, item.panel.panelIndex)) || [],
+      voiceLines: voiceLinesByPanel.get(item.panel.id)
+        || voiceLinesByPanel.get(panelKey(item.storyboard.id, item.panel.panelIndex))
+        || [],
     }))
   ), [storyboards, voiceLinesByPanel])
 
@@ -265,12 +316,14 @@ export default function StudioAudioCanvas({ model, onNavigate }: StudioAudioCanv
   })
 
   const stats = useMemo(() => {
-    const withVideo = items.filter((item) => !!panelVideoUrl(item.panel)).length
-    const withVoiceAudio = items.filter((item) => item.voiceLines.some((line) => !!line.audioUrl)).length
+    const withVideo = items.filter((item) => !!item.panel.videoUrl).length
     const mixed = items.filter((item) => !!item.panel.audioMixedVideoUrl).length
     const subtitleLines = voiceLines.length
-    return { withVideo, withVoiceAudio, mixed, subtitleLines }
-  }, [items, voiceLines.length])
+    const voiceAudioLines = voiceLines.filter((line) => !!line.audioUrl).length
+    return { withVideo, mixed, subtitleLines, voiceAudioLines }
+  }, [items, voiceLines])
+
+  const allVoiceAudioReady = stats.subtitleLines === 0 || stats.voiceAudioLines >= stats.subtitleLines
 
   const submitBatchMix = async () => {
     if (!episodeId) return
@@ -293,6 +346,21 @@ export default function StudioAudioCanvas({ model, onNavigate }: StudioAudioCanv
     downloadTextFile(`${episodeName || model.draftTitle || 'subtitles'}.srt`, srt)
   }
 
+  const submitNarratedMerge = async () => {
+    if (!episodeId) return
+    try {
+      const result = await mergeEpisodeVideoMutation.mutateAsync({
+        episodeId,
+        panelPreferences: {},
+        audioStrategy: 'timeline',
+      })
+      setMergeResult(result)
+      window.alert(result.audioTrackApplied ? '带旁白成片已生成。' : '成片已生成，但未检测到可用旁白音频。')
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : '生成带旁白成片失败')
+    }
+  }
+
   if (items.length === 0) {
     return (
       <StudioEmptyState
@@ -309,15 +377,18 @@ export default function StudioAudioCanvas({ model, onNavigate }: StudioAudioCanv
       <section className="rounded-lg border border-white/10 bg-[#151613]">
         <StudioStageHeader
           eyebrow="音频与字幕"
-          title="镜头音频整合"
-          description="将已生成配音混合到对应镜头视频，并生成可下载的字幕文件。"
+          title="成片音频与字幕"
+          description="主流程会按全片旁白时间轴合成最终视频；单镜头混音仅用于局部预览。"
           actions={(
             <div className="flex flex-wrap gap-2">
               <StudioButton variant="secondary" icon="download" onClick={downloadSrt} disabled={stats.subtitleLines === 0}>
                 下载 SRT
               </StudioButton>
-              <StudioButton icon="merge" loading={mixEpisodeMutation.isPending} onClick={() => { void submitBatchMix() }} disabled={!episodeId || mixEpisodeMutation.isPending}>
-                批量混音可用镜头
+              <StudioButton variant="secondary" icon="merge" loading={mixEpisodeMutation.isPending} onClick={() => { void submitBatchMix() }} disabled={!episodeId || mixEpisodeMutation.isPending}>
+                批量单镜头预览
+              </StudioButton>
+              <StudioButton icon="film" loading={mergeEpisodeVideoMutation.isPending} onClick={() => { void submitNarratedMerge() }} disabled={!episodeId || mergeEpisodeVideoMutation.isPending || stats.withVideo === 0 || !allVoiceAudioReady}>
+                生成带旁白成片
               </StudioButton>
             </div>
           )}
@@ -326,9 +397,33 @@ export default function StudioAudioCanvas({ model, onNavigate }: StudioAudioCanv
         <div className="grid gap-3 border-b border-white/10 px-6 py-4 sm:grid-cols-4">
           <StudioMetric label="镜头" value={items.length} />
           <StudioMetric label="有基础视频" value={stats.withVideo} />
-          <StudioMetric label="有配音镜头" value={stats.withVoiceAudio} />
-          <StudioMetric label="已混音" value={stats.mixed} />
+          <StudioMetric label="旁白音频" value={`${stats.voiceAudioLines}/${stats.subtitleLines}`} />
+          <StudioMetric label="单镜头预览" value={stats.mixed} />
         </div>
+
+        {mergeResult ? (
+          <div className="grid gap-4 border-b border-white/10 px-6 py-4 lg:grid-cols-[minmax(0,1fr)_220px]">
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-stone-100">带旁白成片</div>
+              <div className="mt-1 text-xs text-stone-500">
+                {mergeResult.videoCount} 段 · {formatBytes(mergeResult.sizeBytes)} · {mergeResult.audioTrackApplied ? '已叠加旁白音轨' : '未叠加旁白音轨'}
+              </div>
+              <p className="mt-2 break-all text-xs leading-5 text-stone-500">{mergeResult.fileName}</p>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <StudioButton size="sm" variant="secondary" icon="download" onClick={() => window.open(mergeResult.downloadUrl || mergeResult.outputUrl, '_blank')}>
+                下载成片
+              </StudioButton>
+              <StudioButton size="sm" icon="film" onClick={() => onNavigate('export')}>
+                去交付
+              </StudioButton>
+            </div>
+          </div>
+        ) : !allVoiceAudioReady ? (
+          <div className="border-b border-amber-400/20 bg-amber-400/10 px-6 py-3 text-sm text-amber-100">
+            还有 {Math.max(0, stats.subtitleLines - stats.voiceAudioLines)} 条台词缺少音频，生成带旁白成片前请先回到旁白配音补齐。
+          </div>
+        ) : null}
 
         <div className="space-y-3 p-4">
           {items.map((item) => {
@@ -339,7 +434,7 @@ export default function StudioAudioCanvas({ model, onNavigate }: StudioAudioCanv
               hasOutput: !!item.panel.audioMixedVideoUrl,
               isRunning: running,
               isFailed: failed,
-              hasVideo: !!panelVideoUrl(item.panel),
+              hasVideo: !!item.panel.videoUrl,
               hasVoiceAudio: item.voiceLines.some((line) => !!line.audioUrl),
             })
             return (

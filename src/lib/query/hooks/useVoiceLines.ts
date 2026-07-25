@@ -34,6 +34,18 @@ export interface MatchedVoiceLine {
     matchedPanelId?: string | null
     matchedStoryboardId: string | null
     matchedPanelIndex: number | null
+    panelSpans?: Array<{
+        panelId: string
+        startMs: number
+        endMs: number
+        voiceStartMs: number
+        voiceEndMs: number
+        segmentText?: string | null
+        panel?: {
+            storyboardId?: string | null
+            panelIndex?: number | null
+        } | null
+    }>
 }
 
 export interface MatchedVoiceLinesData {

@@ -16,11 +16,42 @@ interface MatchedVoiceLinesQueryLike {
       content: string
       audioUrl: string | null
       audioDuration?: number | null
+      matchedPanelId?: string | null
       matchedStoryboardId: string | null
       matchedPanelIndex: number | null
+      panelSpans?: Array<{
+        panelId: string
+        panel?: {
+          storyboardId?: string | null
+          panelIndex?: number | null
+        } | null
+      }>
     }>
   }
   refetch: () => Promise<unknown>
+}
+
+type MatchedVoiceLineQueryRow = NonNullable<NonNullable<MatchedVoiceLinesQueryLike['data']>['voiceLines']>[number]
+
+function panelKey(storyboardId: string | null | undefined, panelIndex: number | null | undefined) {
+  if (!storyboardId || panelIndex === null || panelIndex === undefined) return ''
+  return `${storyboardId}-${panelIndex}`
+}
+
+function voiceLinePanelKeys(voiceLine: MatchedVoiceLineQueryRow) {
+  const keys = new Set<string>()
+  for (const span of voiceLine.panelSpans || []) {
+    if (span.panelId?.trim()) {
+      keys.add(span.panelId.trim())
+      continue
+    }
+    const key = panelKey(span.panel?.storyboardId, span.panel?.panelIndex)
+    if (key) keys.add(key)
+  }
+  if (keys.size === 0 && voiceLine.matchedPanelId?.trim()) keys.add(voiceLine.matchedPanelId.trim())
+  const fallbackKey = panelKey(voiceLine.matchedStoryboardId, voiceLine.matchedPanelIndex)
+  if (keys.size === 0 && fallbackKey) keys.add(fallbackKey)
+  return keys
 }
 
 interface UseVideoVoiceLinesParams {
@@ -40,18 +71,18 @@ export function useVideoVoiceLines({
     const panelMap = new Map<string, MatchedVoiceLine[]>()
 
     for (const voiceLine of voiceLines) {
-      if (voiceLine.matchedStoryboardId && voiceLine.matchedPanelIndex !== null) {
-        const panelKey = `${voiceLine.matchedStoryboardId}-${voiceLine.matchedPanelIndex}`
-        const existing = panelMap.get(panelKey) || []
-        existing.push({
-          id: voiceLine.id,
-          lineIndex: voiceLine.lineIndex,
-          speaker: voiceLine.speaker,
-          content: voiceLine.content,
-          audioUrl: voiceLine.audioUrl || undefined,
-          audioDuration: voiceLine.audioDuration || undefined,
-        })
-        panelMap.set(panelKey, existing)
+      const matchedLine = {
+        id: voiceLine.id,
+        lineIndex: voiceLine.lineIndex,
+        speaker: voiceLine.speaker,
+        content: voiceLine.content,
+        audioUrl: voiceLine.audioUrl || undefined,
+        audioDuration: voiceLine.audioDuration || undefined,
+      }
+      for (const key of voiceLinePanelKeys(voiceLine)) {
+        const existing = panelMap.get(key) || []
+        existing.push(matchedLine)
+        panelMap.set(key, existing)
       }
     }
 
