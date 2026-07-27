@@ -45,6 +45,16 @@ type GenerateProjectVoiceResponse = {
     results?: Array<{ lineId?: string; taskId?: string; audioUrl?: string }>
 }
 
+export type ProjectSpeechPlanSummary = {
+    total: number
+    ready: number
+    invalid: number
+    withSpeech: number
+    silent: number
+    missingVoiceSpeakers: string[]
+    warningCount: number
+}
+
 export function useDesignProjectVoice(projectId: string) {
     return useMutation({
         mutationFn: async (payload: {
@@ -129,6 +139,29 @@ export function useAnalyzeProjectVoice(projectId: string) {
             )
             return resolveTaskResponse(response)
         },
+    })
+}
+
+/**
+ * 重建镜头级台词与声音计划
+ */
+export function useRebuildProjectSpeechPlans(projectId: string) {
+    return useMutation({
+        mutationFn: async ({ episodeId, source = 'manual' }: { episodeId: string; source?: string }) =>
+            await requestJsonWithError<{
+                available: boolean
+                plans?: unknown[]
+                summary?: ProjectSpeechPlanSummary
+                message?: string
+            }>(
+                `/api/novel-promotion/${projectId}/speech-plans`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ episodeId, source }),
+                },
+                'rebuild speech plans failed',
+            ),
     })
 }
 

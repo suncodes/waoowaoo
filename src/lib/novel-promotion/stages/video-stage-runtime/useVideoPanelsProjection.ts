@@ -91,6 +91,7 @@ export function useVideoPanelsProjection({
           videoModel: panel.videoModel || undefined,
           linkedToNextPanel: panel.linkedToNextPanel || false,
           visualQualityState: panel.visualQualityState,
+          speechPlan: panel.speechPlan || null,
           lipSyncVideoUrl: panel.lipSyncVideoUrl || undefined,
           lipSyncTaskRunning: panelLipState?.phase === 'queued' || panelLipState?.phase === 'processing',
           lipSyncErrorCode:

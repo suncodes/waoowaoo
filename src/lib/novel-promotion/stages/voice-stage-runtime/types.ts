@@ -84,4 +84,5 @@ export interface VoiceStageShellProps {
   onVoiceLineClick?: (storyboardId: string, panelIndex: number) => void
   onVoiceLinesChanged?: () => void
   onOpenAssetLibraryForCharacter?: (characterId?: string | null) => void
+  nativeAudioMode?: boolean
 }

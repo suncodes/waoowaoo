@@ -5,6 +5,7 @@ import EmptyVoiceState from '../voice/EmptyVoiceState'
 
 interface VoiceLineListProps {
   voiceLines: VoiceLine[]
+  nativeAudioMode?: boolean
   runningLineIds: Set<string>
   voiceStatusStateByLineId: Map<string, TaskPresentationState>
   playingLineId: string | null
@@ -23,6 +24,7 @@ interface VoiceLineListProps {
 
 export default function VoiceLineList({
   voiceLines,
+  nativeAudioMode = false,
   runningLineIds,
   voiceStatusStateByLineId,
   playingLineId,
@@ -48,6 +50,7 @@ export default function VoiceLineList({
         <VoiceLineCard
           key={line.id}
           line={line}
+          nativeAudioMode={nativeAudioMode}
           isVoiceTaskRunning={runningLineIds.has(line.id)}
           statusState={voiceStatusStateByLineId.get(line.id) || null}
           isPlaying={playingLineId === line.id}

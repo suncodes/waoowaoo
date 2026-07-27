@@ -200,6 +200,17 @@ function buildShots(storyboards: ReturnType<typeof useWorkspaceEpisodeStageData>
   })
 }
 
+function summarizeSpeechPlans(storyboards: ReturnType<typeof useWorkspaceEpisodeStageData>['storyboards']) {
+  const plans = storyboards.flatMap((storyboard) =>
+    (storyboard.panels || []).flatMap((panel) => panel.speechPlan ? [panel.speechPlan] : []),
+  )
+  return {
+    ready: plans.filter((plan) => plan.status === 'ready').length,
+    invalid: plans.filter((plan) => plan.status === 'invalid').length,
+    withSpeech: plans.filter((plan) => plan.mode !== 'none').length,
+  }
+}
+
 function buildJobs(streams: Array<{ id: string; label: string; stream: WorkspaceRunStreamState }>): StudioGenerationJob[] {
   return streams.flatMap(({ id, label, stream }) => {
     const status = runStatus(stream)
@@ -319,6 +330,7 @@ export function useStudioWorkspaceModel({
     const shots = buildShots(episodeData.storyboards)
     const voiceLines = episodeData.voiceLines
     const voiceAudioCount = voiceLines.filter(hasVoiceAudio).length
+    const speechPlanSummary = summarizeSpeechPlans(episodeData.storyboards)
     const voiceLinesByPanelId = new Map<string, typeof voiceLines>()
     const voiceLinesByPanelKey = new Map<string, typeof voiceLines>()
     for (const line of voiceLines) {
@@ -377,6 +389,9 @@ export function useStudioWorkspaceModel({
         failedShots: shots.filter((shot) => shot.status === 'failed').length,
         voiceLines: voiceLines.length,
         voiceAudioLines: voiceAudioCount,
+        speechPlanReady: speechPlanSummary.ready,
+        speechPlanInvalid: speechPlanSummary.invalid,
+        speechPlanWithSpeech: speechPlanSummary.withSpeech,
       },
       workflow: {
         isBookGuide: workflowState.facts.isBookGuide,

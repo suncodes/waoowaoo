@@ -23,6 +23,7 @@ interface VoiceLine {
 
 interface VoiceLineCardProps {
     line: VoiceLine
+    nativeAudioMode?: boolean
     isVoiceTaskRunning: boolean
     statusState?: TaskPresentationState | null
     isPlaying: boolean
@@ -39,6 +40,7 @@ interface VoiceLineCardProps {
 
 export default function VoiceLineCard({
     line,
+    nativeAudioMode = false,
     isVoiceTaskRunning,
     statusState,
     isPlaying,
@@ -75,7 +77,12 @@ export default function VoiceLineCard({
                 ? 'bg-emerald-400/10'
                 : 'bg-white/[0.04]'
                 }`}>
-                {line.audioUrl ? (
+                {nativeAudioMode ? (
+                    <div className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-stone-200">
+                        <AppIcon name="mic" className="h-4 w-4 text-[#e8d18a]" />
+                        <span>台词计划</span>
+                    </div>
+                ) : line.audioUrl ? (
                     <div className="flex items-center justify-center gap-3">
                         {/* 播放按钮 */}
                         <button
@@ -138,7 +145,7 @@ export default function VoiceLineCard({
 
             {/* 状态标签+删除配音按钮 */}
             {
-                line.audioUrl && (
+                line.audioUrl && !nativeAudioMode && (
                     <div className="absolute top-2 right-2 flex items-center gap-1">
                         <div className="flex items-center justify-center rounded bg-emerald-500 px-2 py-0.5 text-xs font-medium text-white">
                             <AppIcon name="checkXs" className="h-3 w-3" />
@@ -211,6 +218,7 @@ export default function VoiceLineCard({
                                 onSave={onSaveEmotionSettings}
                                 onGenerate={onGenerate}
                                 isVoiceGenerationRunning={isVoiceTaskRunning}
+                                nativeAudioMode={nativeAudioMode}
                             />
                         )}
                     </>

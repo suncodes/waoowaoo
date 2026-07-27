@@ -22,6 +22,8 @@ import {
   canAutoBackfillRequirement,
   isBlockingMissingRequirement,
 } from '@/lib/visual-production/asset-reference-policy'
+import { rebuildEpisodeNarrationTimeline } from '@/lib/novel-promotion/narration-timeline'
+import { rebuildEpisodeSpeechPlans } from '@/lib/novel-promotion/speech-plan'
 
 function asInputJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
@@ -132,6 +134,10 @@ export async function persistVisualPlan(params: {
     if (!params.isBookGuide || params.deferStoryboard) return
     await materializeGuideStoryboards(tx, params)
   }, { timeout: 30000 })
+  if (params.isBookGuide && !params.deferStoryboard) {
+    await rebuildEpisodeNarrationTimeline(params.episodeId)
+    await rebuildEpisodeSpeechPlans(params.episodeId, 'visual_plan_persist')
+  }
 }
 
 export async function materializeGuideStoryboards(

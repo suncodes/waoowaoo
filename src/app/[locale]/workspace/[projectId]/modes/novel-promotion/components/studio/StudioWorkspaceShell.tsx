@@ -54,11 +54,11 @@ const MODE_CONFIG: Array<Omit<StudioNavItem, 'status' | 'disabled'>> = [
   { id: 'draft', route: 'script', label: '成稿制作', subtitle: '剧本与导读稿', icon: 'bookOpen' },
   { id: 'visual-kit', route: 'assets', label: '视觉资产', subtitle: '角色场景道具', icon: 'folderCards' },
   { id: 'board', route: 'storyboard', label: '分镜制作', subtitle: '规划与画面', icon: 'image' },
-  { id: 'narration', route: 'voice', label: '旁白配音', subtitle: '音色与台词', icon: 'mic' },
+  { id: 'narration', route: 'voice', label: '台词与声音', subtitle: '台词计划与音色', icon: 'mic' },
   { id: 'produce', route: 'videos', label: '视频制作', subtitle: '生成镜头视频', icon: 'video' },
-  { id: 'audio', route: 'audio', label: '音频与字幕', subtitle: '混音与字幕', icon: 'audioWave' },
   { id: 'edit', route: 'editor', label: '成片检查', subtitle: '预览', icon: 'film' },
   { id: 'export', route: 'export', label: '交付', subtitle: '导出', icon: 'download' },
+  { id: 'audio', route: 'audio', label: '音频与字幕', subtitle: '待过期', icon: 'audioWave' },
 ]
 
 function navStatus(mode: StudioModeId, model: StudioWorkspaceModel): StudioProductStatus {
@@ -67,7 +67,7 @@ function navStatus(mode: StudioModeId, model: StudioWorkspaceModel): StudioProdu
   if (mode === 'draft') return statusFromCreationStage(model.workflow.stageStatuses.content || 'not_started')
   if (mode === 'narration') {
     if (!model.workflow.hasStoryboard) return 'empty'
-    if (model.summary.voiceLines > 0 && model.summary.voiceAudioLines >= model.summary.voiceLines) return 'locked'
+    if (model.summary.voiceLines > 0 && model.summary.speechPlanInvalid === 0) return 'locked'
     if (model.summary.voiceLines > 0) return 'needs_review'
     return 'drafting'
   }
@@ -260,7 +260,7 @@ function AssistantPanel({
     overview: '项目概览',
     planning: '内容策划',
     draft: model.workflow.isBookGuide ? '导读稿制作' : '剧本制作',
-    narration: '旁白配音',
+    narration: '台词与声音',
     'visual-kit': '视觉资产',
     board: '镜头状态',
     produce: '生产状态',
@@ -271,7 +271,7 @@ function AssistantPanel({
   const suggestions = model.activeMode === 'visual-kit'
     ? [`核心资产待确认：${model.summary.missingCoreVisualAssets}`, activeAsset ? `当前资产：${activeAsset.name}` : '暂无核心资产']
     : model.activeMode === 'narration'
-      ? [`台词：${model.summary.voiceLines}`, `已生成音频：${model.summary.voiceAudioLines}`]
+      ? [`台词：${model.summary.voiceLines}`, `异常计划：${model.summary.speechPlanInvalid}`]
     : model.activeMode === 'board' || model.activeMode === 'produce' || model.activeMode === 'audio'
       ? [activeShot ? `当前镜头：第 ${activeShot.number} 镜` : '暂无镜头', `失败镜头：${model.summary.failedShots}`]
       : [`内容段落：${model.draftSegments.length}`, `预计时长：${model.summary.totalDurationSec || '-'} 秒`]
@@ -392,10 +392,9 @@ export default function StudioWorkspaceShell({
     || shot.status === 'needs_review'
   )).length
   const productionReady = model.shots.length > 0 && incompleteShotCount === 0
-  const narrationReady = model.summary.voiceLines > 0 && model.summary.voiceAudioLines >= model.summary.voiceLines
   const navigate = (route: string) => {
     if (route === 'voice' && !model.workflow.hasStoryboard) {
-      window.alert('请先完成分镜制作。旁白配音会基于已确认分镜分析台词并绑定镜头。')
+      window.alert('请先完成分镜制作。台词与声音会基于已确认分镜分析台词并绑定镜头。')
       return
     }
     if (route === 'videos' && !productionReady) {
@@ -403,14 +402,6 @@ export default function StudioWorkspaceShell({
         ? '请先生成并确认分镜。'
         : `还有 ${incompleteShotCount} 个镜头缺少定稿图片、正在生成或生成失败，暂时不能进入生产台。`)
       return
-    }
-    if (route === 'videos' && model.workflow.hasStoryboard && !narrationReady) {
-      const continueWithoutVoice = window.confirm(
-        model.summary.voiceLines > 0
-          ? `当前还有 ${Math.max(0, model.summary.voiceLines - model.summary.voiceAudioLines)} 条台词未生成音频。继续进入视频制作可能导致视频时长和最终旁白不一致，是否继续？`
-          : '当前还没有分析并生成旁白配音。继续进入视频制作可能导致视频时长和最终旁白不一致，是否继续？',
-      )
-      if (!continueWithoutVoice) return
     }
     onStageChange(route)
   }

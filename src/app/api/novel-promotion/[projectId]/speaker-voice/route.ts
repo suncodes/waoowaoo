@@ -9,6 +9,7 @@ import {
   type SpeakerVoiceEntry,
   type SpeakerVoiceMap,
 } from '@/lib/voice/provider-voice-binding'
+import { rebuildEpisodeSpeechPlans } from '@/lib/novel-promotion/speech-plan'
 
 function readTrimmedString(input: unknown): string | null {
   if (typeof input !== 'string') return null
@@ -164,6 +165,7 @@ export const PATCH = apiHandler(async (
     where: { id: episodeId },
     data: { speakerVoices: JSON.stringify(speakerVoices) },
   })
+  await rebuildEpisodeSpeechPlans(episodeId, 'speaker_voice_update')
 
   return NextResponse.json({ success: true })
 })

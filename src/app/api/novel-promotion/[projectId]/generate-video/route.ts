@@ -21,6 +21,11 @@ import {
   pickVideoDurationSeconds,
   readPanelTargetDurationMs,
 } from '@/lib/video-generation-duration'
+import {
+  ensureEpisodeSpeechPlans,
+  panelSpeechPlanHasSpeech,
+  validatePanelSpeechReadyForVideo,
+} from '@/lib/novel-promotion/speech-plan'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
@@ -205,11 +210,60 @@ function assertVisualReady(panel: { id: string; candidateImages?: unknown; visua
   })
 }
 
-function buildPayloadWithPanelTargetDuration(
+function speechPlanReady(plan: { mode?: string | null; status?: string | null } | null | undefined) {
+  if (!plan || plan.mode === 'none') return true
+  return plan.status === 'ready'
+}
+
+function readSpeechPlanProjection(value: unknown): {
+  mode?: string | null
+  status?: string | null
+  linesJson?: unknown
+} | null {
+  if (!isRecord(value)) return null
+  const plan = value.speechPlan
+  return isRecord(plan) ? plan : null
+}
+
+async function assertPanelSpeechReady(panelId: string) {
+  const readiness = await validatePanelSpeechReadyForVideo(panelId)
+  if (readiness.ready) return readiness
+  throw new ApiError('CONFLICT', {
+    code: 'SPEECH_PLAN_NOT_READY',
+    panelId,
+    reasons: readiness.reasons,
+  })
+}
+
+function resolveNativeAudioDefault(input: {
+  payload: Record<string, unknown>
+  speechPlan?: { mode?: string | null; linesJson?: unknown } | null
+}): boolean | undefined {
+  const modelKey = resolveVideoModelKeyFromPayload(input.payload)
+  if (!modelKey) return undefined
+
+  const generationOptions = isRecord(input.payload.generationOptions)
+    ? input.payload.generationOptions
+    : {}
+  if (typeof generationOptions.generateAudio === 'boolean') {
+    return undefined
+  }
+
+  const capabilities = resolveBuiltinCapabilitiesByModelKey('video', modelKey)
+  const options = capabilities?.video?.generateAudioOptions
+  if (!Array.isArray(options) || !options.includes(true)) return undefined
+
+  const hasSpeech = panelSpeechPlanHasSpeech(input.speechPlan)
+  if (hasSpeech) return true
+  return options.includes(false) ? false : undefined
+}
+
+function buildPayloadWithPanelGenerationDefaults(
   payload: Record<string, unknown>,
   panel: {
     targetDurationMs?: number | null
     duration?: number | null
+    speechPlan?: { mode?: string | null; linesJson?: unknown } | null
   },
 ): Record<string, unknown> {
   const modelKey = resolveVideoModelKeyFromPayload(payload)
@@ -220,17 +274,26 @@ function buildPayloadWithPanelTargetDuration(
     targetDurationMs: readPanelTargetDurationMs(panel),
     supportedDurations: capabilities?.video?.durationOptions,
   })
-  if (duration === undefined) return payload
-
+  const generateAudio = resolveNativeAudioDefault({
+    payload,
+    speechPlan: panel.speechPlan,
+  })
   const generationOptions = isRecord(payload.generationOptions)
     ? payload.generationOptions
     : {}
+  const nextGenerationOptions = {
+    ...generationOptions,
+    ...(duration !== undefined ? { duration } : {}),
+    ...(typeof generateAudio === 'boolean' ? { generateAudio } : {}),
+  }
+  const unchanged = (duration === undefined || generationOptions.duration === duration)
+    && (typeof generateAudio !== 'boolean' || generationOptions.generateAudio === generateAudio)
+  if (unchanged) {
+    return payload
+  }
   const nextPayload = {
     ...payload,
-    generationOptions: {
-      ...generationOptions,
-      duration,
-    },
+    generationOptions: nextGenerationOptions,
   }
 
   try {
@@ -264,11 +327,6 @@ export const POST = apiHandler(async (
       ? { flModel: body?.videoModel }
       : body?.firstLastFrame,
   )
-  await validateVideoCapabilityCombination({
-    payload: body,
-    projectId,
-    userId: session.user.id,
-  })
 
   if (isBatch) {
     const episodeId = body?.episodeId
@@ -284,6 +342,7 @@ export const POST = apiHandler(async (
       select: { id: true },
     })
     if (!episode) throw new ApiError('NOT_FOUND')
+    const speechPlansState = await ensureEpisodeSpeechPlans(episodeId)
 
     const storyboards = await prisma.novelPromotionStoryboard.findMany({
       where: { episodeId },
@@ -306,6 +365,17 @@ export const POST = apiHandler(async (
             firstLastFramePrompt: true,
             targetDurationMs: true,
             duration: true,
+            ...(speechPlansState.available
+              ? {
+                speechPlan: {
+                  select: {
+                    mode: true,
+                    status: true,
+                    linesJson: true,
+                  },
+                },
+              }
+              : {}),
           },
         },
       },
@@ -347,14 +417,23 @@ export const POST = apiHandler(async (
         skip('quality_not_ready')
         return
       }
+      const panelSpeechPlan = readSpeechPlanProjection(panel)
+      if (!speechPlanReady(panelSpeechPlan)) {
+        skip('speech_not_ready')
+        return
+      }
       if (batchMode === 'normal') {
+        const payload = buildPayloadWithPanelGenerationDefaults({
+          ...basePayload,
+          storyboardId: panel.storyboardId,
+          panelIndex: panel.panelIndex,
+        }, {
+          ...panel,
+          speechPlan: panelSpeechPlan,
+        })
         targets.push({
           panelId: panel.id,
-          payload: buildPayloadWithPanelTargetDuration({
-            ...basePayload,
-            storyboardId: panel.storyboardId,
-            panelIndex: panel.panelIndex,
-          }, panel),
+          payload,
         })
         return
       }
@@ -379,23 +458,38 @@ export const POST = apiHandler(async (
         skip('last_quality_not_ready')
         return
       }
+      const nextPanelSpeechPlan = readSpeechPlanProjection(nextPanel)
+      if (!speechPlanReady(nextPanelSpeechPlan)) {
+        skip('speech_not_ready')
+        return
+      }
+      const payload = buildPayloadWithPanelGenerationDefaults({
+        ...basePayload,
+        storyboardId: panel.storyboardId,
+        panelIndex: panel.panelIndex,
+        firstLastFrame: {
+          lastFrameStoryboardId: nextPanel.storyboardId,
+          lastFramePanelIndex: nextPanel.panelIndex,
+          flModel: body.videoModel,
+          ...(panel.firstLastFramePrompt?.trim()
+            ? { customPrompt: panel.firstLastFramePrompt.trim() }
+            : {}),
+        },
+      }, {
+        ...panel,
+        speechPlan: panelSpeechPlan,
+      })
       targets.push({
         panelId: panel.id,
-        payload: buildPayloadWithPanelTargetDuration({
-          ...basePayload,
-          storyboardId: panel.storyboardId,
-          panelIndex: panel.panelIndex,
-          firstLastFrame: {
-            lastFrameStoryboardId: nextPanel.storyboardId,
-            lastFramePanelIndex: nextPanel.panelIndex,
-            flModel: body.videoModel,
-            ...(panel.firstLastFramePrompt?.trim()
-              ? { customPrompt: panel.firstLastFramePrompt.trim() }
-              : {}),
-          },
-        }, panel),
+        payload,
       })
     })
+
+    await Promise.all(targets.map((target) => validateVideoCapabilityCombination({
+      payload: target.payload,
+      projectId,
+      userId: session.user.id,
+    })))
 
     const results = await Promise.all(
       targets.map(async (target) =>
@@ -447,6 +541,7 @@ export const POST = apiHandler(async (
     throw new ApiError('NOT_FOUND')
   }
   assertVisualReady(panel)
+  const speechReadiness = await assertPanelSpeechReady(panel.id)
 
   const firstLastFrame = isRecord(body?.firstLastFrame) ? body.firstLastFrame : null
   if (
@@ -463,7 +558,18 @@ export const POST = apiHandler(async (
     })
     if (!lastFramePanel) throw new ApiError('NOT_FOUND')
     assertVisualReady(lastFramePanel)
+    await assertPanelSpeechReady(lastFramePanel.id)
   }
+
+  const taskPayload = buildPayloadWithPanelGenerationDefaults(body, {
+    ...panel,
+    speechPlan: speechReadiness.plan,
+  })
+  await validateVideoCapabilityCombination({
+    payload: taskPayload,
+    projectId,
+    userId: session.user.id,
+  })
 
   const result = await submitTask({
     userId: session.user.id,
@@ -473,11 +579,11 @@ export const POST = apiHandler(async (
     type: TASK_TYPE.VIDEO_PANEL,
     targetType: 'NovelPromotionPanel',
     targetId: panel.id,
-    payload: withTaskUiPayload(buildPayloadWithPanelTargetDuration(body, panel), {
+    payload: withTaskUiPayload(taskPayload, {
       hasOutputAtStart: await hasPanelVideoOutput(panel.id),
     }),
     dedupeKey: `video_panel:${panel.id}`,
-    billingInfo: buildVideoPanelBillingInfoOrThrow(body),
+    billingInfo: buildVideoPanelBillingInfoOrThrow(taskPayload),
   })
 
   return NextResponse.json(result)

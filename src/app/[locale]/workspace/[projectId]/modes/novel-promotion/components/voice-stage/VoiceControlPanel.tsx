@@ -17,9 +17,11 @@ interface BindablePanelOption {
 interface VoiceControlPanelProps {
   children: ReactNode
   embedded: boolean
+  nativeAudioMode?: boolean
   onBack?: () => void
   analyzing: boolean
   isBatchSubmittingAll: boolean
+  isRebuildingSpeechPlan?: boolean
   isDownloading: boolean
   runningLineCount: number
   allSpeakersHaveVoice: boolean
@@ -38,6 +40,7 @@ interface VoiceControlPanelProps {
   bindablePanelOptions: BindablePanelOption[]
   savingLineEditorState: TaskPresentationState | null
   onAnalyze: () => Promise<void>
+  onRebuildSpeechPlans?: () => Promise<void>
   onGenerateAll: () => Promise<void>
   onDownloadAll: () => Promise<void>
   onStartAdd: () => void
@@ -55,9 +58,11 @@ interface VoiceControlPanelProps {
 export default function VoiceControlPanel({
   children,
   embedded,
+  nativeAudioMode = false,
   onBack,
   analyzing,
   isBatchSubmittingAll,
+  isRebuildingSpeechPlan = false,
   isDownloading,
   runningLineCount,
   allSpeakersHaveVoice,
@@ -76,6 +81,7 @@ export default function VoiceControlPanel({
   bindablePanelOptions,
   savingLineEditorState,
   onAnalyze,
+  onRebuildSpeechPlans,
   onGenerateAll,
   onDownloadAll,
   onStartAdd,
@@ -114,12 +120,15 @@ export default function VoiceControlPanel({
           totalLines={totalLines}
           linesWithAudio={linesWithAudio}
           analyzing={analyzing}
+          rebuildingSpeechPlan={isRebuildingSpeechPlan}
           isDownloading={isDownloading}
           isBatchSubmitting={isBatchSubmittingAll}
           runningCount={runningLineCount}
           allSpeakersHaveVoice={allSpeakersHaveVoice}
+          nativeAudioMode={nativeAudioMode}
           onAddLine={onStartAdd}
           onAnalyze={onAnalyze}
+          onRebuildSpeechPlans={onRebuildSpeechPlans}
           onDownloadAll={onDownloadAll}
           onGenerateAll={onGenerateAll}
         />

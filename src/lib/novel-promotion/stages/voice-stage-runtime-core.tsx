@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
+import { shouldShowError } from '@/lib/error-utils'
 import { useProjectAssets } from '@/lib/query/hooks/useProjectAssets'
 import { useEpisodeData } from '@/lib/query/hooks/useProjectData'
 import {
@@ -11,6 +12,7 @@ import {
   useDeleteProjectVoiceLine,
   useDownloadProjectVoices,
   useGenerateProjectVoice,
+  useRebuildProjectSpeechPlans,
   useUpdateProjectVoiceLine,
   useUpdateSpeakerVoice,
 } from '@/lib/query/hooks'
@@ -34,6 +36,7 @@ import { useVoiceGenerationActions } from './voice-stage-runtime/useVoiceGenerat
 import { useVoiceLineCrudActions } from './voice-stage-runtime/useVoiceLineCrudActions'
 import { useVoiceRuntimeSync } from './voice-stage-runtime/useVoiceRuntimeSync'
 import { useVoiceLineBindings } from './voice-stage-runtime/useVoiceLineBindings'
+import { getErrorMessage } from './voice-stage-runtime/utils'
 
 export type { VoiceStageShellProps } from './voice-stage-runtime/types'
 
@@ -42,6 +45,7 @@ export function useVoiceStageRuntime({
   episodeId,
   onBack,
   embedded = false,
+  nativeAudioMode = false,
   onVoiceLineClick,
   onVoiceLinesChanged,
   onOpenAssetLibraryForCharacter,
@@ -60,6 +64,7 @@ export function useVoiceStageRuntime({
   const { data: episodeData } = useEpisodeData(projectId, episodeId)
   const analyzeVoiceMutation = useAnalyzeProjectVoice(projectId)
   const generateVoiceMutation = useGenerateProjectVoice(projectId)
+  const rebuildSpeechPlansMutation = useRebuildProjectSpeechPlans(projectId)
   const createVoiceLineMutation = useCreateProjectVoiceLine(projectId)
   const updateVoiceLineMutation = useUpdateProjectVoiceLine(projectId)
   const deleteVoiceLineMutation = useDeleteProjectVoiceLine(projectId)
@@ -252,6 +257,21 @@ export function useVoiceStageRuntime({
     setInlineBindingSpeaker(null)
   }, [episodeId, loadData, updateSpeakerVoiceMutation])
 
+  const handleRebuildSpeechPlans = useCallback(async () => {
+    try {
+      await rebuildSpeechPlansMutation.mutateAsync({
+        episodeId,
+        source: 'manual_ui',
+      })
+      await loadData()
+      notifyVoiceLinesChanged()
+    } catch (error: unknown) {
+      if (shouldShowError(error)) {
+        alert(`重建台词计划失败: ${getErrorMessage(error)}`)
+      }
+    }
+  }, [episodeId, loadData, notifyVoiceLinesChanged, rebuildSpeechPlansMutation])
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -264,9 +284,11 @@ export function useVoiceStageRuntime({
     <>
       <VoiceControlPanel
         embedded={embedded}
+        nativeAudioMode={nativeAudioMode}
         onBack={onBack}
         analyzing={analyzing}
         isBatchSubmittingAll={isBatchSubmittingAll}
+        isRebuildingSpeechPlan={rebuildSpeechPlansMutation.isPending}
         isDownloading={isDownloading}
         runningLineCount={runningLineIds.size}
         allSpeakersHaveVoice={allSpeakersHaveVoice}
@@ -285,6 +307,7 @@ export function useVoiceStageRuntime({
         bindablePanelOptions={bindablePanelOptions}
         savingLineEditorState={savingLineEditorState}
         onAnalyze={handleAnalyze}
+        onRebuildSpeechPlans={handleRebuildSpeechPlans}
         onGenerateAll={handleGenerateAll}
         onDownloadAll={handleDownloadAll}
         onStartAdd={handleStartAdd}
@@ -300,6 +323,7 @@ export function useVoiceStageRuntime({
       >
         <VoiceLineList
           voiceLines={voiceLines}
+          nativeAudioMode={nativeAudioMode}
           runningLineIds={runningLineIds}
           voiceStatusStateByLineId={voiceStatusStateByLineId}
           playingLineId={playingLineId}

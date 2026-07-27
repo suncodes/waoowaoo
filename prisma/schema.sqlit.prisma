@@ -134,6 +134,7 @@ model NovelPromotionEpisode {
   storyboards             NovelPromotionStoryboard[]
   voiceLines              NovelPromotionVoiceLine[]
   voiceSpans              NovelPromotionPanelVoiceSpan[]
+  speechPlans             NovelPromotionPanelSpeechPlan[]
   editorProject           VideoEditorProject?
 
   @@unique([novelPromotionProjectId, episodeNumber])
@@ -176,6 +177,7 @@ model NovelPromotionClip {
   episode    NovelPromotionEpisode     @relation(fields: [episodeId], references: [id], onDelete: Cascade)
   shots      NovelPromotionShot[]
   storyboard NovelPromotionStoryboard?
+  speechPlans NovelPromotionPanelSpeechPlan[]
 
   @@index([episodeId])
   @@map("novel_promotion_clips")
@@ -232,6 +234,7 @@ model NovelPromotionPanel {
   storyboard        NovelPromotionStoryboard  @relation(fields: [storyboardId], references: [id], onDelete: Cascade)
   matchedVoiceLines NovelPromotionVoiceLine[]
   voiceSpans        NovelPromotionPanelVoiceSpan[]
+  speechPlan        NovelPromotionPanelSpeechPlan?
 
   @@unique([storyboardId, panelIndex])
   @@index([storyboardId])
@@ -540,6 +543,32 @@ model NovelPromotionPanelVoiceSpan {
   @@index([voiceLineId])
   @@index([startMs])
   @@map("novel_promotion_panel_voice_spans")
+}
+
+model NovelPromotionPanelSpeechPlan {
+  id              String                @id @default(uuid())
+  projectId       String
+  episodeId       String
+  clipId          String?
+  panelId         String                @unique
+  mode            String                @default("none")
+  status          String                @default("draft")
+  linesJson       Json?
+  voiceConfigJson Json?
+  timingJson      Json?
+  warningsJson    Json?
+  source          String                @default("system")
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @default(now()) @updatedAt
+  episode         NovelPromotionEpisode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  clip            NovelPromotionClip?   @relation(fields: [clipId], references: [id], onDelete: SetNull)
+  panel           NovelPromotionPanel   @relation(fields: [panelId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([episodeId])
+  @@index([clipId])
+  @@index([status])
+  @@map("novel_promotion_panel_speech_plans")
 }
 
 model VoicePreset {

@@ -7,12 +7,15 @@ interface EmbeddedVoiceToolbarProps {
     totalLines: number
     linesWithAudio: number
     analyzing: boolean
+    rebuildingSpeechPlan?: boolean
     isDownloading: boolean
     isBatchSubmitting: boolean
     runningCount: number
     allSpeakersHaveVoice: boolean
+    nativeAudioMode?: boolean
     onAddLine: () => void
     onAnalyze: () => void
+    onRebuildSpeechPlans?: () => void
     onDownloadAll: () => void
     onGenerateAll: () => void
 }
@@ -21,12 +24,15 @@ export default function EmbeddedVoiceToolbar({
     totalLines,
     linesWithAudio,
     analyzing,
+    rebuildingSpeechPlan = false,
     isDownloading,
     isBatchSubmitting,
     runningCount,
     allSpeakersHaveVoice,
+    nativeAudioMode = false,
     onAddLine,
     onAnalyze,
+    onRebuildSpeechPlans,
     onDownloadAll,
     onGenerateAll
 }: EmbeddedVoiceToolbarProps) {
@@ -45,6 +51,14 @@ export default function EmbeddedVoiceToolbar({
             intent: 'generate',
             resource: 'text',
             hasOutput: false,
+        })
+        : null
+    const speechPlanRebuildingState = rebuildingSpeechPlan
+        ? resolveTaskPresentationState({
+            phase: 'processing',
+            intent: 'process',
+            resource: 'text',
+            hasOutput: totalLines > 0,
         })
         : null
     const voiceDownloadingState = isDownloading
@@ -66,9 +80,11 @@ export default function EmbeddedVoiceToolbar({
 
     return (
         <div className="flex items-center justify-between gap-3 border-b border-white/10 bg-[#151613] px-4 py-3">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
                 <div className="text-xs text-stone-500">
-                    {t("embedded.linesStats", { total: totalLines, audio: linesWithAudio })}
+                    {nativeAudioMode
+                        ? `台词 ${totalLines} 条，视频生成时使用支持模型的原生音频`
+                        : t("embedded.linesStats", { total: totalLines, audio: linesWithAudio })}
                 </div>
 
                 {/* 重新分析按钮 */}
@@ -90,41 +106,57 @@ export default function EmbeddedVoiceToolbar({
                     {t("embedded.addLine")}
                 </button>
 
-                {/* 下载按钮 */}
-                <button
-                    onClick={onDownloadAll}
-                    disabled={linesWithAudio === 0 || isDownloading}
-                    className="inline-flex h-9 items-center gap-2 rounded-md border border-cyan-400/30 bg-cyan-400/10 px-3 text-xs font-semibold text-cyan-100 hover:bg-cyan-400/20 disabled:cursor-not-allowed disabled:opacity-50"
-                    title={linesWithAudio === 0 ? t("toolbar.noDownload") : t("toolbar.downloadCount", { count: linesWithAudio })}
-                >
-                    {isDownloading ? (
-                        <TaskStatusInline state={voiceDownloadingState} className="text-white [&>span]:text-white [&_svg]:text-white" />
-                    ) : (
-                        <>{t("embedded.downloadVoice")}</>
-                    )}
-                </button>
+                {nativeAudioMode && onRebuildSpeechPlans ? (
+                    <button
+                        onClick={onRebuildSpeechPlans}
+                        disabled={rebuildingSpeechPlan}
+                        className="inline-flex h-9 items-center gap-2 rounded-md border border-cyan-400/30 bg-cyan-400/10 px-3 text-xs font-semibold text-cyan-100 hover:bg-cyan-400/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        {rebuildingSpeechPlan ? (
+                            <TaskStatusInline state={speechPlanRebuildingState} className="text-white [&>span]:text-white [&_svg]:text-white" />
+                        ) : '重建台词计划'}
+                    </button>
+                ) : null}
 
-                {/* 生成全部按钮 */}
-                <button
-                    onClick={onGenerateAll}
-                    disabled={isBatchSubmitting || !allSpeakersHaveVoice || totalLines === 0}
-                    className="inline-flex h-9 items-center gap-2 rounded-md border border-emerald-400/30 bg-emerald-400/10 px-3 text-xs font-semibold text-emerald-100 hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-50"
-                    title={getGenerateButtonTitle()}
-                >
-                    {isBatchSubmitting ? (
-                        <>
-                            <TaskStatusInline state={voiceTaskRunningState} className="text-white [&>span]:text-white [&_svg]:text-white" />
-                            <span className="text-xs text-white/90">{t("embedded.generatingProgress", { current: runningCount, total: totalLines - linesWithAudio })}</span>
-                        </>
-                    ) : (
-                        <>
-                            {t("embedded.generateAllVoice")}
-                            {linesWithAudio > 0 && (
-                                <span className="text-xs opacity-75">{t("embedded.pendingCount", { count: totalLines - linesWithAudio })}</span>
+                {!nativeAudioMode ? (
+                    <>
+                        {/* 下载按钮 */}
+                        <button
+                            onClick={onDownloadAll}
+                            disabled={linesWithAudio === 0 || isDownloading}
+                            className="inline-flex h-9 items-center gap-2 rounded-md border border-cyan-400/30 bg-cyan-400/10 px-3 text-xs font-semibold text-cyan-100 hover:bg-cyan-400/20 disabled:cursor-not-allowed disabled:opacity-50"
+                            title={linesWithAudio === 0 ? t("toolbar.noDownload") : t("toolbar.downloadCount", { count: linesWithAudio })}
+                        >
+                            {isDownloading ? (
+                                <TaskStatusInline state={voiceDownloadingState} className="text-white [&>span]:text-white [&_svg]:text-white" />
+                            ) : (
+                                <>{t("embedded.downloadVoice")}</>
                             )}
-                        </>
-                    )}
-                </button>
+                        </button>
+
+                        {/* 生成全部按钮 */}
+                        <button
+                            onClick={onGenerateAll}
+                            disabled={isBatchSubmitting || !allSpeakersHaveVoice || totalLines === 0}
+                            className="inline-flex h-9 items-center gap-2 rounded-md border border-emerald-400/30 bg-emerald-400/10 px-3 text-xs font-semibold text-emerald-100 hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-50"
+                            title={getGenerateButtonTitle()}
+                        >
+                            {isBatchSubmitting ? (
+                                <>
+                                    <TaskStatusInline state={voiceTaskRunningState} className="text-white [&>span]:text-white [&_svg]:text-white" />
+                                    <span className="text-xs text-white/90">{t("embedded.generatingProgress", { current: runningCount, total: totalLines - linesWithAudio })}</span>
+                                </>
+                            ) : (
+                                <>
+                                    {t("embedded.generateAllVoice")}
+                                    {linesWithAudio > 0 && (
+                                        <span className="text-xs opacity-75">{t("embedded.pendingCount", { count: totalLines - linesWithAudio })}</span>
+                                    )}
+                                </>
+                            )}
+                        </button>
+                    </>
+                ) : null}
             </div>
         </div>
     )

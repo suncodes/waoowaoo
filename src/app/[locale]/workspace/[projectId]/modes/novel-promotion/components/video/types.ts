@@ -1,6 +1,7 @@
 // 视频阶段共享类型定义
 import type { ModelCapabilities } from '@/lib/model-config-contract'
 import type { VideoPricingTier } from '@/lib/model-pricing/video-tier'
+import type { NovelPromotionPanelSpeechPlan } from '@/types/project'
 
 // 用户视频模型选项
 export interface VideoModelOption {
@@ -63,6 +64,7 @@ export interface Panel {
   lipSyncTaskRunning?: boolean | null
   lipSyncErrorMessage?: string | null  // 口型同步错误消息
   lipSyncErrorCode?: string | null
+  speechPlan?: NovelPromotionPanelSpeechPlan | null
 }
 
 export interface Storyboard {
@@ -106,6 +108,7 @@ export interface VideoPanel {
   lipSyncTaskId?: string
   lipSyncErrorMessage?: string  // 口型同步错误消息
   lipSyncErrorCode?: string
+  speechPlan?: NovelPromotionPanelSpeechPlan | null
 }
 
 // 匹配的配音信息

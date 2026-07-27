@@ -81,6 +81,7 @@ const ROUTE_FILES = [
   'src/app/api/novel-promotion/[projectId]/analyze-shot-variants/route.ts',
   'src/app/api/novel-promotion/[projectId]/analyze/route.ts',
   'src/app/api/novel-promotion/[projectId]/assets/route.ts',
+  'src/app/api/novel-promotion/[projectId]/audio-mix/route.ts',
   'src/app/api/novel-promotion/[projectId]/character-profile/batch-confirm/route.ts',
   'src/app/api/novel-promotion/[projectId]/character-profile/confirm/route.ts',
   'src/app/api/novel-promotion/[projectId]/character-voice/route.ts',
@@ -114,6 +115,7 @@ const ROUTE_FILES = [
   'src/app/api/novel-promotion/[projectId]/modify-asset-image/route.ts',
   'src/app/api/novel-promotion/[projectId]/modify-storyboard-image/route.ts',
   'src/app/api/novel-promotion/[projectId]/panel-link/route.ts',
+  'src/app/api/novel-promotion/[projectId]/panel-prompt-snapshot/route.ts',
   'src/app/api/novel-promotion/[projectId]/panel-variant/route.ts',
   'src/app/api/novel-promotion/[projectId]/panel/route.ts',
   'src/app/api/novel-promotion/[projectId]/panel/select-candidate/route.ts',
@@ -129,6 +131,7 @@ const ROUTE_FILES = [
   'src/app/api/novel-promotion/[projectId]/select-character-image/route.ts',
   'src/app/api/novel-promotion/[projectId]/select-location-image/route.ts',
   'src/app/api/novel-promotion/[projectId]/speaker-voice/route.ts',
+  'src/app/api/novel-promotion/[projectId]/speech-plans/route.ts',
   'src/app/api/novel-promotion/[projectId]/story-to-script-stream/route.ts',
   'src/app/api/novel-promotion/[projectId]/storyboard-group/route.ts',
   'src/app/api/novel-promotion/[projectId]/storyboards/route.ts',
@@ -222,6 +225,7 @@ function resolveContractGroup(routeFile: string): RouteContractGroup {
     || routeFile.endsWith('/modify-render/route.ts')
     || routeFile.endsWith('/voice-design/route.ts')
     || routeFile.endsWith('/insert-panel/route.ts')
+    || routeFile.endsWith('/audio-mix/route.ts')
     || routeFile.endsWith('/lip-sync/route.ts')
     || routeFile.endsWith('/merge-videos/route.ts')
     || routeFile.endsWith('/modify-asset-image/route.ts')

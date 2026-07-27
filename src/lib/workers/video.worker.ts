@@ -26,6 +26,11 @@ import {
   buildPanelVideoPromptSpec,
   compilePanelVideoPrompt,
 } from '@/lib/prompt-compiler/panel-video-prompt-compiler'
+import {
+  compileSpeechPlanPromptSection,
+  ensurePanelSpeechPlan,
+  panelSpeechPlanHasSpeech,
+} from '@/lib/novel-promotion/speech-plan'
 
 type AnyObj = Record<string, unknown>
 type VideoOptionValue = string | number | boolean
@@ -52,6 +57,23 @@ function extractGenerationOptions(payload: AnyObj): VideoOptionMap {
     }
   }
   return next
+}
+
+function resolveNativeAudioRequest(
+  modelKey: string,
+  generationOptions: VideoOptionMap,
+  speechPlan: { mode?: string | null; linesJson?: unknown } | null,
+): boolean | undefined {
+  if (typeof generationOptions.generateAudio === 'boolean') {
+    return generationOptions.generateAudio
+  }
+
+  const capabilities = resolveBuiltinCapabilitiesByModelKey('video', modelKey)
+  const options = capabilities?.video?.generateAudioOptions
+  if (!Array.isArray(options) || !options.includes(true)) return undefined
+
+  if (panelSpeechPlanHasSpeech(speechPlan)) return true
+  return options.includes(false) ? false : undefined
 }
 
 async function fetchPanelByStoryboardIndex(storyboardId: string, panelIndex: number) {
@@ -115,9 +137,6 @@ async function generateVideoForPanel(
   }
   let lastFrameImageUrl: string | undefined
   const generationMode: VideoGenerationMode = firstLastFramePayload ? 'firstlastframe' : 'normal'
-  const requestedGenerateAudio = typeof generationOptions.generateAudio === 'boolean'
-    ? generationOptions.generateAudio
-    : undefined
   let model = modelId
 
   if (firstLastFramePayload) {
@@ -146,6 +165,12 @@ async function generateVideoForPanel(
       }
     }
   }
+  const speechPlanState = await ensurePanelSpeechPlan(panel.id)
+  const speechPlan = speechPlanState.plan
+  if (speechPlan && speechPlan.mode !== 'none' && speechPlan.status !== 'ready') {
+    throw new Error(`SPEECH_PLAN_NOT_READY: ${panel.id}`)
+  }
+  const requestedGenerateAudio = resolveNativeAudioRequest(model, generationOptions, speechPlan)
   const promptSpec = buildPanelVideoPromptSpec({
     context: {
       panel: {
@@ -168,7 +193,19 @@ async function generateVideoForPanel(
     },
     locale: job.data.locale === 'en' ? 'en' : 'zh',
   })
-  const prompt = compilePanelVideoPrompt(promptSpec, job.data.locale === 'en' ? 'en' : 'zh')
+  const speechPromptSection = speechPlan
+    ? compileSpeechPlanPromptSection({
+      mode: speechPlan.mode,
+      status: speechPlan.status,
+      linesJson: speechPlan.linesJson,
+      voiceConfigJson: speechPlan.voiceConfigJson,
+      locale: job.data.locale === 'en' ? 'en' : 'zh',
+    })
+    : ''
+  const prompt = [
+    compilePanelVideoPrompt(promptSpec, job.data.locale === 'en' ? 'en' : 'zh'),
+    speechPromptSection,
+  ].filter(Boolean).join('\n\n')
   const promptSnapshot = buildPanelVideoGenerationSnapshot({
     targetId: panel.id,
     modelKey: model,
@@ -180,6 +217,15 @@ async function generateVideoForPanel(
       sourceImageUrl,
       lastFrameImageUrl: lastFrameImageUrl || null,
       generationMode,
+      speechPlan: speechPlan
+        ? {
+          mode: speechPlan.mode,
+          status: speechPlan.status,
+          linesJson: speechPlan.linesJson,
+          voiceConfigJson: speechPlan.voiceConfigJson,
+          updatedAt: speechPlan.updatedAt?.toISOString?.() || null,
+        }
+        : null,
     }),
   })
   await createOptionalGenerationSnapshotArtifact({

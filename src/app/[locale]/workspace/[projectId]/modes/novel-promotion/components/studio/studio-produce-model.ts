@@ -18,6 +18,7 @@ export type BatchVideoSkipReason =
   | 'video_running'
   | 'image_missing'
   | 'quality_not_ready'
+  | 'speech_not_ready'
   | 'not_linked'
   | 'last_panel'
   | 'last_image_missing'
@@ -62,6 +63,10 @@ export function buildBatchVideoPreflight(
       addReason(reasonCounts, 'quality_not_ready')
       return
     }
+    if (!isPanelSpeechReadyForVideo(item.panel)) {
+      addReason(reasonCounts, 'speech_not_ready')
+      return
+    }
     if (mode === 'normal') {
       eligibleCount += 1
       return
@@ -83,6 +88,10 @@ export function buildBatchVideoPreflight(
     }
     if (!isPanelVisualReadyForVideo(nextItem.panel)) {
       addReason(reasonCounts, 'last_quality_not_ready')
+      return
+    }
+    if (!isPanelSpeechReadyForVideo(nextItem.panel)) {
+      addReason(reasonCounts, 'speech_not_ready')
       return
     }
     eligibleCount += 1
@@ -115,6 +124,13 @@ export function panelVideoModel(panel: NovelPromotionPanel) {
   return record.videoModel || null
 }
 
+export function isPanelSpeechReadyForVideo(panel: NovelPromotionPanel) {
+  const plan = panel.speechPlan
+  if (!plan) return true
+  if (plan.mode === 'none') return true
+  return plan.status === 'ready'
+}
+
 export function panelLinkedToNext(panel: NovelPromotionPanel) {
   const record = panel as NovelPromotionPanel & { linkedToNextPanel?: boolean | null }
   return !!record.linkedToNextPanel
@@ -144,6 +160,9 @@ export function resolveVideoStatus(panel: NovelPromotionPanel): StudioProductSta
 }
 
 export function resolveVoiceStatus(panel: NovelPromotionPanel): StudioProductStatus {
+  if (panel.speechPlan?.mode === 'none') return 'empty'
+  if (panel.speechPlan?.status === 'invalid') return 'failed'
+  if (panel.speechPlan?.status === 'ready') return 'locked'
   if (panelLipSyncTaskRunning(panel)) return 'generating'
   if (panel.lipSyncVideoUrl) return 'locked'
   if (panel.audioMixedVideoUrl) return 'locked'
@@ -176,6 +195,7 @@ export function toVideoPanels(items: ProduceItem[]): VideoPanel[] {
     linkedToNextPanel: panelLinkedToNext(item.panel),
     firstLastFramePrompt: item.panel.firstLastFramePrompt || undefined,
     visualQualityState: item.panel.visualQualityState,
+    speechPlan: item.panel.speechPlan || null,
     textPanel: {
       panel_number: item.number,
       shot_type: item.panel.shotType || '',

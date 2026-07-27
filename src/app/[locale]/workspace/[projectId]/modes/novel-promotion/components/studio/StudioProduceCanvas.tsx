@@ -24,6 +24,7 @@ import StudioProduceQueueRow from './StudioProduceQueueRow'
 import {
   buildProduceItems,
   buildBatchVideoPreflight,
+  isPanelSpeechReadyForVideo,
   isPanelVisualReadyForVideo,
   panelLinkedToNext,
   panelLipSyncTaskRunning,
@@ -51,6 +52,7 @@ const BATCH_REASON_LABELS: Record<BatchVideoSkipReason, string> = {
   video_running: '视频正在生成',
   image_missing: '缺少首帧图片',
   quality_not_ready: '首帧尚未完成质量确认',
+  speech_not_ready: '台词与声音未就绪',
   not_linked: '未连接下一镜头',
   last_panel: '最后一个镜头没有尾帧',
   last_image_missing: '尾帧图片缺失',
@@ -191,10 +193,16 @@ function ProductionDetailPanel({
     || defaultFirstLastPrompt
   const currentVisualReady = isPanelVisualReadyForVideo(item.panel)
   const nextVisualReady = nextItem ? isPanelVisualReadyForVideo(nextItem.panel) : null
-  const visualQualityMessage = !currentVisualReady
+  const currentSpeechReady = isPanelSpeechReadyForVideo(item.panel)
+  const nextSpeechReady = nextItem ? isPanelSpeechReadyForVideo(nextItem.panel) : true
+  const readinessMessage = !currentVisualReady
     ? (mode === 'firstlastframe' ? '首帧需要完成画面质量确认' : '当前画面需要完成质量确认')
     : mode === 'firstlastframe' && nextVisualReady === false
       ? '尾帧需要完成画面质量确认'
+      : !currentSpeechReady
+        ? '当前镜头台词与声音未就绪'
+        : mode === 'firstlastframe' && !nextSpeechReady
+          ? '尾帧镜头台词与声音未就绪'
       : ''
   const missingFirstLastFrameSetup = !nextItem
     || !item.panel.imageUrl
@@ -242,8 +250,8 @@ function ProductionDetailPanel({
   const generate = async () => {
     setGenerating(true)
     try {
-      if (visualQualityMessage) {
-        window.alert(`${visualQualityMessage}，请返回分镜制作处理。`)
+      if (readinessMessage) {
+        window.alert(`${readinessMessage}，请先处理前置问题。`)
         return
       }
       if (mode === 'firstlastframe') {
@@ -396,10 +404,10 @@ function ProductionDetailPanel({
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs text-stone-500">{savingPrompt ? '提示词保存中' : visualQualityMessage || (mode === 'firstlastframe' && !linked ? '连接下一镜头后可生成' : '生成参数已就绪')}</span>
+          <span className="text-xs text-stone-500">{savingPrompt ? '提示词保存中' : readinessMessage || (mode === 'firstlastframe' && !linked ? '连接下一镜头后可生成' : '生成参数已就绪')}</span>
           <div className="flex gap-2">
             <StudioButton size="sm" variant="secondary" onClick={() => { void (mode === 'normal' ? saveNormalPrompt() : saveFirstLastPrompt()) }} disabled={savingPrompt}>保存提示词</StudioButton>
-            <StudioButton size="sm" icon="video" loading={generating || !!item.panel.videoTaskRunning} onClick={() => { void generate() }} disabled={!!visualQualityMessage || (mode === 'normal' ? !item.panel.imageUrl : missingFirstLastFrameSetup)}>
+            <StudioButton size="sm" icon="video" loading={generating || !!item.panel.videoTaskRunning} onClick={() => { void generate() }} disabled={!!readinessMessage || (mode === 'normal' ? !item.panel.imageUrl : missingFirstLastFrameSetup)}>
               {videoUrl ? '重新生成' : mode === 'firstlastframe' ? '生成首尾帧视频' : '生成单图视频'}
             </StudioButton>
           </div>
@@ -507,7 +515,7 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
         <StudioStageHeader
           eyebrow="视频制作"
           title="镜头视频控制台"
-          description="逐镜头选择单图或首尾帧模式，配置提示词、模型和连接关系，并跟进视频与配音状态。"
+          description="逐镜头选择单图或首尾帧模式，配置提示词、模型和连接关系，并跟进视频生成状态。"
           actions={(
             <div className="flex flex-wrap gap-2">
               <StudioButton variant="secondary" icon="video" loading={generatingMode === 'normal'} onClick={() => openBatchPreview('normal')} disabled={runtime.isTransitioning || !!generatingMode}>

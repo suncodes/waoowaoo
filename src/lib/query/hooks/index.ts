@@ -135,6 +135,7 @@ export {
     useUpdateProjectClip,
     useFetchProjectVoiceStageData,
     useAnalyzeProjectVoice,
+    useRebuildProjectSpeechPlans,
     useGenerateProjectVoice,
     useCreateProjectVoiceLine,
     useUpdateProjectVoiceLine,

@@ -6,6 +6,12 @@ import { apiHandler, ApiError } from '@/lib/api-errors'
 import { resolveMediaRef, resolveMediaRefFromLegacyValue } from '@/lib/media/service'
 import { isPanelVoiceSpanTableMissing } from '@/lib/novel-promotion/panel-voice-spans'
 import { rebuildEpisodeNarrationTimeline } from '@/lib/novel-promotion/narration-timeline'
+import { rebuildEpisodeSpeechPlans } from '@/lib/novel-promotion/speech-plan'
+
+async function rebuildEpisodeVoiceDerivedState(episodeId: string, source: string) {
+  await rebuildEpisodeNarrationTimeline(episodeId)
+  await rebuildEpisodeSpeechPlans(episodeId, source)
+}
 
 async function resolveMatchedPanelData(
   matchedPanelId: string | null | undefined,
@@ -265,7 +271,7 @@ export const POST = apiHandler(async (
   })
 
   const voiceLine = await withVoiceLineMedia(created)
-  await rebuildEpisodeNarrationTimeline(episodeId)
+  await rebuildEpisodeVoiceDerivedState(episodeId, 'voice_line_create')
 
   return NextResponse.json({
     success: true,
@@ -355,7 +361,7 @@ export const PATCH = apiHandler(async (
         }
       }
     })
-    await rebuildEpisodeNarrationTimeline(updated.episodeId)
+    await rebuildEpisodeVoiceDerivedState(updated.episodeId, 'voice_line_update')
     return NextResponse.json({
       success: true,
       voiceLine: await withVoiceLineMedia(updated)
@@ -432,7 +438,7 @@ export const DELETE = apiHandler(async (
       })
     }
   }
-  await rebuildEpisodeNarrationTimeline(lineToDelete.episodeId)
+  await rebuildEpisodeVoiceDerivedState(lineToDelete.episodeId, 'voice_line_delete')
 
   return NextResponse.json({
     success: true,

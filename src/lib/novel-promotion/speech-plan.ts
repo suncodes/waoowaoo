@@ -1,0 +1,670 @@
+import { prisma } from '@/lib/prisma'
+import type { Prisma } from '@prisma/client'
+import { getPrismaErrorCode } from '@/lib/prisma-error'
+import { estimateNarrationDurationMs } from './narration-timeline'
+import { hasAnyVoiceBinding, parseSpeakerVoiceMap, type SpeakerVoiceEntry } from '@/lib/voice/provider-voice-binding'
+
+export type PanelSpeechMode = 'none' | 'voiceover' | 'single_speaker' | 'sequential_dialogue' | 'unsupported'
+export type PanelSpeechStatus = 'draft' | 'ready' | 'invalid'
+
+export interface PanelSpeechLine {
+  voiceLineId: string
+  lineIndex: number
+  speaker: string
+  content: string
+  order: number
+  estimatedDurationMs: number
+  emotionPrompt?: string | null
+  emotionStrength?: number | null
+}
+
+export interface PanelSpeechVoiceConfig {
+  speaker: string
+  hasVoice: boolean
+  source: 'character' | 'speaker' | 'none'
+  provider?: string
+  voiceType?: string
+  voiceId?: string
+  previewAudioUrl?: string
+}
+
+export interface PanelSpeechWarning {
+  code: string
+  message: string
+  severity: 'info' | 'warning' | 'blocking'
+}
+
+export interface PanelSpeechTiming {
+  panelDurationMs: number | null
+  targetDurationMs: number | null
+  estimatedSpeechDurationMs: number
+}
+
+export interface PanelSpeechPlanPayload {
+  mode: PanelSpeechMode
+  status: PanelSpeechStatus
+  lines: PanelSpeechLine[]
+  voiceConfig: PanelSpeechVoiceConfig[]
+  timing: PanelSpeechTiming
+  warnings: PanelSpeechWarning[]
+}
+
+export interface PanelSpeechPlanSummary {
+  total: number
+  ready: number
+  invalid: number
+  withSpeech: number
+  silent: number
+  missingVoiceSpeakers: string[]
+  warningCount: number
+}
+
+type CharacterVoiceLike = {
+  id: string
+  name: string
+  aliases?: string | null
+  customVoiceUrl?: string | null
+  voiceId?: string | null
+  voiceType?: string | null
+}
+
+type VoiceLineLike = {
+  id: string
+  lineIndex: number
+  speaker: string
+  content: string
+  emotionPrompt?: string | null
+  emotionStrength?: number | null
+  estimatedDurationMs?: number | null
+}
+
+type PanelLike = {
+  id: string
+  duration?: number | null
+  targetDurationMs?: number | null
+}
+
+export function isPanelSpeechPlanTableMissing(error: unknown) {
+  const code = getPrismaErrorCode(error)
+  if (code === 'P2021') return true
+  const message = error instanceof Error ? error.message : String(error)
+  return message.includes('novel_promotion_panel_speech_plans')
+    && message.toLowerCase().includes('does not exist')
+}
+
+function readTrimmedString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function asInputJson(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
+}
+
+function parseAliasList(raw: string | null | undefined): string[] {
+  const value = readTrimmedString(raw)
+  if (!value) return []
+  try {
+    const parsed = JSON.parse(value) as unknown
+    if (Array.isArray(parsed)) {
+      return parsed.flatMap((item) => typeof item === 'string' && item.trim() ? [item.trim()] : [])
+    }
+  } catch {
+    // 兼容历史逗号分隔别名。
+  }
+  return value.split(/[，、,;；|]/g).map((item) => item.trim()).filter(Boolean)
+}
+
+function matchCharacterBySpeaker(speaker: string, characters: CharacterVoiceLike[]): CharacterVoiceLike | null {
+  const normalized = speaker.trim()
+  if (!normalized) return null
+
+  const exact = characters.find((character) => character.name === normalized)
+  if (exact) return exact
+
+  const aliasMatch = characters.find((character) => parseAliasList(character.aliases).includes(normalized))
+  if (aliasMatch) return aliasMatch
+
+  return characters.find((character) => character.name.includes(normalized) || normalized.includes(character.name)) || null
+}
+
+function voicePreviewUrl(entry: SpeakerVoiceEntry | undefined): string | undefined {
+  if (!entry) return undefined
+  if (entry.provider === 'fal') return entry.audioUrl
+  return entry.previewAudioUrl
+}
+
+function buildVoiceConfig(params: {
+  speaker: string
+  characters: CharacterVoiceLike[]
+  speakerVoices: Record<string, SpeakerVoiceEntry>
+}): PanelSpeechVoiceConfig {
+  const character = matchCharacterBySpeaker(params.speaker, params.characters)
+  const speakerVoice = params.speakerVoices[params.speaker]
+  const hasVoice = hasAnyVoiceBinding({ character, speakerVoice })
+
+  if (character?.customVoiceUrl || character?.voiceId) {
+    return {
+      speaker: params.speaker,
+      hasVoice,
+      source: 'character',
+      provider: character.voiceId ? 'bailian' : 'fal',
+      voiceType: character.voiceType || undefined,
+      voiceId: character.voiceId || undefined,
+      previewAudioUrl: character.customVoiceUrl || undefined,
+    }
+  }
+
+  if (speakerVoice) {
+    return {
+      speaker: params.speaker,
+      hasVoice,
+      source: 'speaker',
+      provider: speakerVoice.provider,
+      voiceType: speakerVoice.voiceType,
+      voiceId: speakerVoice.provider === 'bailian' ? speakerVoice.voiceId : undefined,
+      previewAudioUrl: voicePreviewUrl(speakerVoice),
+    }
+  }
+
+  return {
+    speaker: params.speaker,
+    hasVoice,
+    source: 'none',
+  }
+}
+
+function isNarratorSpeaker(speaker: string): boolean {
+  return /旁白|叙述|解说|导读|narrator|voiceover/i.test(speaker)
+}
+
+function resolvePanelDurationMs(panel: PanelLike): number | null {
+  if (typeof panel.targetDurationMs === 'number' && Number.isFinite(panel.targetDurationMs) && panel.targetDurationMs > 0) {
+    return Math.round(panel.targetDurationMs)
+  }
+  if (typeof panel.duration === 'number' && Number.isFinite(panel.duration) && panel.duration > 0) {
+    return Math.round(panel.duration > 1000 ? panel.duration : panel.duration * 1000)
+  }
+  return null
+}
+
+function uniqueSpeakers(lines: PanelSpeechLine[]): string[] {
+  return Array.from(new Set(lines.map((line) => line.speaker).filter(Boolean)))
+}
+
+function resolveMode(lines: PanelSpeechLine[], warnings: PanelSpeechWarning[]): PanelSpeechMode {
+  if (lines.length === 0) return 'none'
+  const speakers = uniqueSpeakers(lines)
+  if (speakers.every(isNarratorSpeaker)) return 'voiceover'
+  if (lines.length === 1 && speakers.length === 1) return 'single_speaker'
+  if (lines.length <= 2 && speakers.length <= 2) return 'sequential_dialogue'
+
+  warnings.push({
+    code: 'COMPLEX_DIALOGUE_DOWNGRADED',
+    severity: 'warning',
+    message: '单镜头台词过多或说话人过多，已降级为旁白式提示，避免原生音频生成多人同时说话。',
+  })
+  return 'voiceover'
+}
+
+export function buildPanelSpeechPlanPayload(params: {
+  panel: PanelLike
+  voiceLines: VoiceLineLike[]
+  characters?: CharacterVoiceLike[]
+  speakerVoices?: Record<string, SpeakerVoiceEntry>
+}): PanelSpeechPlanPayload {
+  const characters = params.characters || []
+  const speakerVoices = params.speakerVoices || {}
+  const warnings: PanelSpeechWarning[] = []
+  const lines = [...params.voiceLines]
+    .sort((left, right) => left.lineIndex - right.lineIndex)
+    .map((line, index): PanelSpeechLine => {
+      const estimatedDurationMs = typeof line.estimatedDurationMs === 'number' && Number.isFinite(line.estimatedDurationMs) && line.estimatedDurationMs > 0
+        ? Math.round(line.estimatedDurationMs)
+        : estimateNarrationDurationMs(line.content)
+      return {
+        voiceLineId: line.id,
+        lineIndex: line.lineIndex,
+        speaker: line.speaker.trim(),
+        content: line.content.trim(),
+        order: index + 1,
+        estimatedDurationMs,
+        emotionPrompt: line.emotionPrompt ?? null,
+        emotionStrength: line.emotionStrength ?? null,
+      }
+    })
+    .filter((line) => line.speaker && line.content)
+
+  const panelDurationMs = resolvePanelDurationMs(params.panel)
+  const estimatedSpeechDurationMs = lines.reduce((sum, line) => sum + line.estimatedDurationMs, 0)
+  if (panelDurationMs && estimatedSpeechDurationMs > panelDurationMs * 1.35) {
+    warnings.push({
+      code: 'SPEECH_LONGER_THAN_PANEL',
+      severity: 'warning',
+      message: `台词预计 ${Math.round(estimatedSpeechDurationMs / 1000)}s，明显长于镜头 ${Math.round(panelDurationMs / 1000)}s；建议缩短台词或拆分镜头。`,
+    })
+  }
+
+  for (const line of lines) {
+    if (line.content.replace(/\s+/g, '').length > 80) {
+      warnings.push({
+        code: 'LINE_TOO_LONG',
+        severity: 'warning',
+        message: `台词 #${line.lineIndex} 偏长，原生音频可能压缩语速或忽略部分内容。`,
+      })
+    }
+  }
+
+  const mode = resolveMode(lines, warnings)
+  const voiceConfig = uniqueSpeakers(lines).map((speaker) => buildVoiceConfig({ speaker, characters, speakerVoices }))
+  for (const config of voiceConfig) {
+    if (!config.hasVoice) {
+      warnings.push({
+        code: 'SPEAKER_VOICE_MISSING',
+        severity: 'blocking',
+        message: `发言人「${config.speaker}」未配置音色。`,
+      })
+    }
+  }
+
+  return {
+    mode,
+    status: warnings.some((warning) => warning.severity === 'blocking') ? 'invalid' : 'ready',
+    lines,
+    voiceConfig,
+    timing: {
+      panelDurationMs,
+      targetDurationMs: typeof params.panel.targetDurationMs === 'number' ? params.panel.targetDurationMs : null,
+      estimatedSpeechDurationMs,
+    },
+    warnings,
+  }
+}
+
+function safeParseSpeakerVoices(raw: string | null | undefined): Record<string, SpeakerVoiceEntry> {
+  try {
+    return parseSpeakerVoiceMap(raw)
+  } catch {
+    return {}
+  }
+}
+
+function sortStoryboards<T extends { createdAt: Date; clip: { start: number | null; createdAt: Date } | null }>(storyboards: T[]): T[] {
+  return [...storyboards].sort((left, right) => (
+    (left.clip?.start ?? Number.MAX_SAFE_INTEGER) - (right.clip?.start ?? Number.MAX_SAFE_INTEGER)
+    || (left.clip?.createdAt.getTime() ?? 0) - (right.clip?.createdAt.getTime() ?? 0)
+    || left.createdAt.getTime() - right.createdAt.getTime()
+  ))
+}
+
+function groupVoiceLinesByPanel(params: {
+  voiceLines: Array<VoiceLineLike & {
+    matchedPanelId: string | null
+    matchedStoryboardId: string | null
+    matchedPanelIndex: number | null
+  }>
+}) {
+  const byPanelId = new Map<string, VoiceLineLike[]>()
+  const byStoryboardPanel = new Map<string, VoiceLineLike[]>()
+  for (const line of params.voiceLines) {
+    if (line.matchedPanelId) {
+      byPanelId.set(line.matchedPanelId, [...(byPanelId.get(line.matchedPanelId) || []), line])
+      continue
+    }
+    if (line.matchedStoryboardId && line.matchedPanelIndex !== null && line.matchedPanelIndex !== undefined) {
+      const key = `${line.matchedStoryboardId}:${line.matchedPanelIndex}`
+      byStoryboardPanel.set(key, [...(byStoryboardPanel.get(key) || []), line])
+    }
+  }
+  return { byPanelId, byStoryboardPanel }
+}
+
+export function summarizePanelSpeechPlans(plans: Array<{
+  mode: string
+  status: string
+  warningsJson?: unknown
+}>): PanelSpeechPlanSummary {
+  const missingVoiceSpeakers = new Set<string>()
+  let warningCount = 0
+  for (const plan of plans) {
+    const warnings = Array.isArray(plan.warningsJson) ? plan.warningsJson : []
+    warningCount += warnings.length
+    for (const warning of warnings) {
+      if (!warning || typeof warning !== 'object') continue
+      const record = warning as Record<string, unknown>
+      if (record.code !== 'SPEAKER_VOICE_MISSING') continue
+      const message = readTrimmedString(record.message)
+      const match = message.match(/「(.+?)」/)
+      if (match?.[1]) missingVoiceSpeakers.add(match[1])
+    }
+  }
+  return {
+    total: plans.length,
+    ready: plans.filter((plan) => plan.status === 'ready').length,
+    invalid: plans.filter((plan) => plan.status === 'invalid').length,
+    withSpeech: plans.filter((plan) => plan.mode !== 'none').length,
+    silent: plans.filter((plan) => plan.mode === 'none').length,
+    missingVoiceSpeakers: Array.from(missingVoiceSpeakers),
+    warningCount,
+  }
+}
+
+export async function rebuildEpisodeSpeechPlans(episodeId: string, source = 'system') {
+  try {
+    const episode = await prisma.novelPromotionEpisode.findUnique({
+      where: { id: episodeId },
+      select: {
+        id: true,
+        speakerVoices: true,
+        novelPromotionProject: {
+          select: {
+            projectId: true,
+            characters: {
+              select: {
+                id: true,
+                name: true,
+                aliases: true,
+                customVoiceUrl: true,
+                voiceId: true,
+                voiceType: true,
+              },
+            },
+          },
+        },
+        voiceLines: {
+          orderBy: { lineIndex: 'asc' },
+          select: {
+            id: true,
+            lineIndex: true,
+            speaker: true,
+            content: true,
+            emotionPrompt: true,
+            emotionStrength: true,
+            estimatedDurationMs: true,
+            matchedPanelId: true,
+            matchedStoryboardId: true,
+            matchedPanelIndex: true,
+          },
+        },
+        storyboards: {
+          select: {
+            id: true,
+            clipId: true,
+            createdAt: true,
+            clip: {
+              select: {
+                start: true,
+                createdAt: true,
+              },
+            },
+            panels: {
+              orderBy: { panelIndex: 'asc' },
+              select: {
+                id: true,
+                storyboardId: true,
+                panelIndex: true,
+                duration: true,
+                targetDurationMs: true,
+              },
+            },
+          },
+        },
+      },
+    })
+
+    if (!episode) {
+      throw new Error('SPEECH_PLAN_EPISODE_NOT_FOUND')
+    }
+
+    const speakerVoices = safeParseSpeakerVoices(episode.speakerVoices)
+    const grouped = groupVoiceLinesByPanel({ voiceLines: episode.voiceLines })
+    const rows = sortStoryboards(episode.storyboards).flatMap((storyboard) => (
+      storyboard.panels.map((panel) => {
+        const voiceLines = grouped.byPanelId.get(panel.id)
+          || grouped.byStoryboardPanel.get(`${storyboard.id}:${panel.panelIndex}`)
+          || []
+        const payload = buildPanelSpeechPlanPayload({
+          panel,
+          voiceLines,
+          characters: episode.novelPromotionProject.characters,
+          speakerVoices,
+        })
+        return {
+          projectId: episode.novelPromotionProject.projectId,
+          episodeId: episode.id,
+          clipId: storyboard.clipId,
+          panelId: panel.id,
+          mode: payload.mode,
+          status: payload.status,
+          linesJson: payload.lines,
+          voiceConfigJson: payload.voiceConfig,
+          timingJson: payload.timing,
+          warningsJson: payload.warnings,
+          source,
+        }
+      })
+    ))
+
+    await prisma.$transaction(async (tx) => {
+      const panelIds = rows.map((row) => row.panelId)
+      await tx.novelPromotionPanelSpeechPlan.deleteMany({
+        where: {
+          episodeId,
+          ...(panelIds.length > 0 ? { panelId: { notIn: panelIds } } : {}),
+        },
+      })
+      for (const row of rows) {
+        await tx.novelPromotionPanelSpeechPlan.upsert({
+          where: { panelId: row.panelId },
+          create: {
+            ...row,
+            linesJson: asInputJson(row.linesJson),
+            voiceConfigJson: asInputJson(row.voiceConfigJson),
+            timingJson: asInputJson(row.timingJson),
+            warningsJson: asInputJson(row.warningsJson),
+          },
+          update: {
+            projectId: row.projectId,
+            episodeId: row.episodeId,
+            clipId: row.clipId,
+            mode: row.mode,
+            status: row.status,
+            linesJson: asInputJson(row.linesJson),
+            voiceConfigJson: asInputJson(row.voiceConfigJson),
+            timingJson: asInputJson(row.timingJson),
+            warningsJson: asInputJson(row.warningsJson),
+            source: row.source,
+          },
+        })
+      }
+    }, { timeout: 30000 })
+
+    return {
+      episodeId,
+      available: true,
+      plans: rows,
+      summary: summarizePanelSpeechPlans(rows),
+    }
+  } catch (error) {
+    if (!isPanelSpeechPlanTableMissing(error)) throw error
+    return {
+      episodeId,
+      available: false,
+      plans: [],
+      summary: summarizePanelSpeechPlans([]),
+    }
+  }
+}
+
+export async function listEpisodeSpeechPlans(episodeId: string) {
+  try {
+    const plans = await prisma.novelPromotionPanelSpeechPlan.findMany({
+      where: { episodeId },
+      orderBy: { createdAt: 'asc' },
+    })
+    return {
+      available: true,
+      plans,
+      summary: summarizePanelSpeechPlans(plans),
+    }
+  } catch (error) {
+    if (!isPanelSpeechPlanTableMissing(error)) throw error
+    return {
+      available: false,
+      plans: [],
+      summary: summarizePanelSpeechPlans([]),
+    }
+  }
+}
+
+export async function ensurePanelSpeechPlan(panelId: string) {
+  try {
+    const existing = await prisma.novelPromotionPanelSpeechPlan.findUnique({ where: { panelId } })
+    if (existing) return { available: true, plan: existing }
+  } catch (error) {
+    if (!isPanelSpeechPlanTableMissing(error)) throw error
+    return { available: false, plan: null }
+  }
+
+  const panel = await prisma.novelPromotionPanel.findUnique({
+    where: { id: panelId },
+    select: {
+      storyboard: {
+        select: {
+          episodeId: true,
+        },
+      },
+    },
+  })
+  if (!panel) throw new Error('SPEECH_PLAN_PANEL_NOT_FOUND')
+
+  const rebuilt = await rebuildEpisodeSpeechPlans(panel.storyboard.episodeId)
+  if (!rebuilt.available) return { available: false, plan: null }
+  const plan = await prisma.novelPromotionPanelSpeechPlan.findUnique({ where: { panelId } })
+  return { available: true, plan }
+}
+
+export async function ensureEpisodeSpeechPlans(episodeId: string) {
+  const existing = await listEpisodeSpeechPlans(episodeId)
+  if (!existing.available || existing.plans.length > 0) return existing
+  return await rebuildEpisodeSpeechPlans(episodeId)
+}
+
+function readSpeechLines(raw: unknown): PanelSpeechLine[] {
+  return Array.isArray(raw)
+    ? raw.flatMap((item) => {
+      if (!item || typeof item !== 'object') return []
+      const record = item as Record<string, unknown>
+      const voiceLineId = readTrimmedString(record.voiceLineId)
+      const speaker = readTrimmedString(record.speaker)
+      const content = readTrimmedString(record.content)
+      if (!voiceLineId || !speaker || !content) return []
+      return [{
+        voiceLineId,
+        speaker,
+        content,
+        lineIndex: typeof record.lineIndex === 'number' ? record.lineIndex : 0,
+        order: typeof record.order === 'number' ? record.order : 0,
+        estimatedDurationMs: typeof record.estimatedDurationMs === 'number' ? record.estimatedDurationMs : estimateNarrationDurationMs(content),
+        emotionPrompt: typeof record.emotionPrompt === 'string' ? record.emotionPrompt : null,
+        emotionStrength: typeof record.emotionStrength === 'number' ? record.emotionStrength : null,
+      }]
+    })
+    : []
+}
+
+export function panelSpeechPlanHasSpeech(plan: {
+  mode?: string | null
+  linesJson?: unknown
+} | null | undefined): boolean {
+  if (!plan || plan.mode === 'none') return false
+  return readSpeechLines(plan.linesJson).length > 0
+}
+
+function readVoiceConfig(raw: unknown): PanelSpeechVoiceConfig[] {
+  return Array.isArray(raw)
+    ? raw.flatMap((item) => {
+      if (!item || typeof item !== 'object') return []
+      const record = item as Record<string, unknown>
+      const speaker = readTrimmedString(record.speaker)
+      if (!speaker) return []
+      return [{
+        speaker,
+        hasVoice: record.hasVoice === true,
+        source: record.source === 'character' || record.source === 'speaker' ? record.source : 'none',
+        provider: readTrimmedString(record.provider) || undefined,
+        voiceType: readTrimmedString(record.voiceType) || undefined,
+        voiceId: readTrimmedString(record.voiceId) || undefined,
+        previewAudioUrl: readTrimmedString(record.previewAudioUrl) || undefined,
+      }]
+    })
+    : []
+}
+
+export function compileSpeechPlanPromptSection(params: {
+  mode: string | null
+  status: string | null
+  linesJson: unknown
+  voiceConfigJson?: unknown
+  locale?: 'zh' | 'en'
+}): string {
+  const locale = params.locale || 'zh'
+  const lines = readSpeechLines(params.linesJson)
+  if (lines.length === 0 || params.mode === 'none') return ''
+  const configs = readVoiceConfig(params.voiceConfigJson)
+  const configBySpeaker = new Map(configs.map((config) => [config.speaker, config]))
+  const lineText = lines
+    .sort((left, right) => left.order - right.order || left.lineIndex - right.lineIndex)
+    .map((line) => `${line.speaker}: ${line.content}`)
+  const voiceText = uniqueSpeakers(lines).map((speaker) => {
+    const config = configBySpeaker.get(speaker)
+    if (!config?.hasVoice) return locale === 'en' ? `${speaker}: voice not configured` : `${speaker}: 未配置音色`
+    return locale === 'en'
+      ? `${speaker}: use configured ${config.source} voice${config.voiceType ? ` (${config.voiceType})` : ''}`
+      : `${speaker}: 使用已配置${config.source === 'character' ? '角色' : '发言人'}音色${config.voiceType ? `（${config.voiceType}）` : ''}`
+  })
+
+  if (locale === 'en') {
+    return [
+      'Native audio and speech plan:',
+      `Mode: ${params.mode}. Generate natural audio only when the selected video model supports native audio.`,
+      `Lines: ${lineText.join(' | ')}`,
+      `Voices: ${voiceText.join(' | ')}`,
+      'Keep speech synchronized with this shot. Do not add subtitles, captions, watermarks, or extra on-screen text.',
+      'For book-guide voiceover shots, prefer clear voiceover over forced lip synchronization.',
+    ].join('\n')
+  }
+
+  return [
+    '原生音频与台词计划：',
+    `模式：${params.mode}。仅在所选视频模型支持原生音频时生成自然声音。`,
+    `台词：${lineText.join(' | ')}`,
+    `音色：${voiceText.join(' | ')}`,
+    '声音要贴合本镜头节奏，不要生成字幕、说明文字、水印或额外屏幕文字。',
+    '导读旁白镜头优先保持清晰旁白，不强制做精准口型同步。',
+  ].join('\n')
+}
+
+export async function validatePanelSpeechReadyForVideo(panelId: string) {
+  const { available, plan } = await ensurePanelSpeechPlan(panelId)
+  if (!available || !plan) {
+    return { ready: true, available, plan: null, reasons: [] as string[] }
+  }
+  if (plan.mode === 'none') {
+    return { ready: true, available, plan, reasons: [] as string[] }
+  }
+  if (plan.status === 'ready') {
+    return { ready: true, available, plan, reasons: [] as string[] }
+  }
+  const warnings = Array.isArray(plan.warningsJson) ? plan.warningsJson : []
+  const reasons = warnings.flatMap((warning) => {
+    if (!warning || typeof warning !== 'object') return []
+    const message = readTrimmedString((warning as Record<string, unknown>).message)
+    return message ? [message] : []
+  })
+  return {
+    ready: false,
+    available,
+    plan,
+    reasons: reasons.length > 0 ? reasons : ['台词与声音计划未就绪。'],
+  }
+}

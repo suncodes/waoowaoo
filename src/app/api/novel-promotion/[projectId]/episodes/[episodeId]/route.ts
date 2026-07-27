@@ -9,8 +9,12 @@ import { resolveMediaRefFromLegacyValue } from '@/lib/media/service'
 import { executeWorkspaceArtifactCommand } from '@/lib/creation-workspace/server-commands'
 import type { WorkspaceArtifactCommand } from '@/lib/creation-workspace/commands'
 import { isPanelVoiceSpanTableMissing } from '@/lib/novel-promotion/panel-voice-spans'
+import { isPanelSpeechPlanTableMissing } from '@/lib/novel-promotion/speech-plan'
 
-async function findEpisodeWithStageData(episodeId: string) {
+function buildStageDataInclude(options: {
+  includeVoiceSpans: boolean
+  includeSpeechPlans: boolean
+}) {
   const baseInclude = {
     clips: {
       orderBy: [{ start: 'asc' as const }, { createdAt: 'asc' as const }]
@@ -18,7 +22,16 @@ async function findEpisodeWithStageData(episodeId: string) {
     storyboards: {
       include: {
         clip: true,
-        panels: { orderBy: { panelIndex: 'asc' as const } }
+        panels: {
+          orderBy: { panelIndex: 'asc' as const },
+          ...(options.includeSpeechPlans
+            ? {
+              include: {
+                speechPlan: true,
+              },
+            }
+            : {}),
+        }
       },
       orderBy: { createdAt: 'asc' as const }
     },
@@ -27,13 +40,12 @@ async function findEpisodeWithStageData(episodeId: string) {
     }
   }
 
-  try {
-    return await prisma.novelPromotionEpisode.findUnique({
-      where: { id: episodeId },
-      include: {
-        ...baseInclude,
-        voiceLines: {
-          orderBy: { lineIndex: 'asc' as const },
+  return {
+    ...baseInclude,
+    voiceLines: {
+      orderBy: { lineIndex: 'asc' as const },
+      ...(options.includeVoiceSpans
+        ? {
           include: {
             panelSpans: {
               orderBy: { startMs: 'asc' as const },
@@ -54,19 +66,33 @@ async function findEpisodeWithStageData(episodeId: string) {
             }
           }
         }
-      }
-    })
-  } catch (error) {
-    if (!isPanelVoiceSpanTableMissing(error)) throw error
+        : {}),
+    }
+  }
+}
+
+async function findEpisodeWithStageData(episodeId: string) {
+  try {
     return await prisma.novelPromotionEpisode.findUnique({
       where: { id: episodeId },
-      include: {
-        ...baseInclude,
-        voiceLines: {
-          orderBy: { lineIndex: 'asc' as const }
-        }
-      }
+      include: buildStageDataInclude({ includeVoiceSpans: true, includeSpeechPlans: true })
     })
+  } catch (error) {
+    if (!isPanelSpeechPlanTableMissing(error) && !isPanelVoiceSpanTableMissing(error)) throw error
+    const includeSpeechPlans = !isPanelSpeechPlanTableMissing(error)
+    const includeVoiceSpans = !isPanelVoiceSpanTableMissing(error)
+    try {
+      return await prisma.novelPromotionEpisode.findUnique({
+        where: { id: episodeId },
+        include: buildStageDataInclude({ includeVoiceSpans, includeSpeechPlans })
+      })
+    } catch (fallbackError) {
+      if (!isPanelSpeechPlanTableMissing(fallbackError) && !isPanelVoiceSpanTableMissing(fallbackError)) throw fallbackError
+      return await prisma.novelPromotionEpisode.findUnique({
+        where: { id: episodeId },
+        include: buildStageDataInclude({ includeVoiceSpans: false, includeSpeechPlans: false })
+      })
+    }
   }
 }
 

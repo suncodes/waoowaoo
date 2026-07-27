@@ -4,7 +4,13 @@ import VoiceStage from './VoiceStage'
 import { useWorkspaceStageRuntime } from '../WorkspaceStageRuntimeContext'
 import { useWorkspaceProvider } from '../WorkspaceProvider'
 
-export default function VoiceStageRoute({ embedded = false }: { embedded?: boolean }) {
+export default function VoiceStageRoute({
+  embedded = false,
+  nativeAudioMode = false,
+}: {
+  embedded?: boolean
+  nativeAudioMode?: boolean
+}) {
   const runtime = useWorkspaceStageRuntime()
   const { projectId, episodeId } = useWorkspaceProvider()
 
@@ -15,6 +21,7 @@ export default function VoiceStageRoute({ embedded = false }: { embedded?: boole
       projectId={projectId}
       episodeId={episodeId}
       embedded={embedded}
+      nativeAudioMode={nativeAudioMode}
       onBack={() => runtime.onStageChange('videos')}
       onOpenAssetLibraryForCharacter={(characterId) =>
         characterId

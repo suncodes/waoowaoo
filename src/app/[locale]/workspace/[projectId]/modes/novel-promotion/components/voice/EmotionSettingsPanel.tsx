@@ -11,6 +11,7 @@ interface EmotionSettingsPanelProps {
     onSave: (lineId: string, emotionPrompt: string | null, emotionStrength: number) => void
     onGenerate: (lineId: string) => void
     isVoiceGenerationRunning: boolean
+    nativeAudioMode?: boolean
 }
 
 export default function EmotionSettingsPanel({
@@ -19,7 +20,8 @@ export default function EmotionSettingsPanel({
     emotionStrength,
     onSave,
     onGenerate,
-    isVoiceGenerationRunning
+    isVoiceGenerationRunning,
+    nativeAudioMode = false
 }: EmotionSettingsPanelProps) {
     const t = useTranslations('voice')
     const voiceGenerationState = isVoiceGenerationRunning
@@ -44,6 +46,10 @@ export default function EmotionSettingsPanel({
     const handleGenerate = () => {
         onSave(lineId, prompt.trim() || null, strength)
         onGenerate(lineId)
+    }
+
+    const handleSaveOnly = () => {
+        onSave(lineId, prompt.trim() || null, strength)
     }
 
     return (
@@ -82,15 +88,15 @@ export default function EmotionSettingsPanel({
                 </div>
             </div>
 
-            {/* 生成语音按钮 */}
+            {/* 保存/生成语音按钮 */}
             <button
-                onClick={handleGenerate}
-                disabled={isVoiceGenerationRunning}
+                onClick={nativeAudioMode ? handleSaveOnly : handleGenerate}
+                disabled={!nativeAudioMode && isVoiceGenerationRunning}
                 className="w-full rounded-md bg-emerald-500 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
             >
-                {isVoiceGenerationRunning ? (
+                {!nativeAudioMode && isVoiceGenerationRunning ? (
                     <TaskStatusInline state={voiceGenerationState} className="justify-center text-white [&>span]:text-white [&_svg]:text-white" />
-                ) : t("generateVoice")}
+                ) : nativeAudioMode ? '保存声音提示' : t("generateVoice")}
             </button>
         </div>
     )

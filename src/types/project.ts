@@ -206,6 +206,7 @@ export interface NovelPromotionPanel {
   noReferenceReason?: string | null
   promptSpec?: unknown
   referencePlan?: unknown
+  speechPlan?: NovelPromotionPanelSpeechPlan | null
   // 任务态字段（由 tasks + hook 派生，不再依赖数据库持久化）
   imageTaskRunning?: boolean
   imageTaskIntent?: string | null
@@ -226,6 +227,26 @@ export interface NovelPromotionPanel {
   } | null
   videoTaskRunning?: boolean
   imageErrorMessage?: string | null  // 图片生成错误消息
+}
+
+export type PanelSpeechMode = 'none' | 'voiceover' | 'single_speaker' | 'sequential_dialogue' | 'unsupported'
+export type PanelSpeechStatus = 'draft' | 'ready' | 'invalid'
+
+export interface NovelPromotionPanelSpeechPlan {
+  id: string
+  projectId: string
+  episodeId: string
+  clipId: string | null
+  panelId: string
+  mode: PanelSpeechMode | string
+  status: PanelSpeechStatus | string
+  linesJson?: unknown
+  voiceConfigJson?: unknown
+  timingJson?: unknown
+  warningsJson?: unknown
+  source: string
+  createdAt?: string | Date
+  updatedAt?: string | Date
 }
 
 export interface NovelPromotionStoryboard {

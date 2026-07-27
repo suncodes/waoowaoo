@@ -16,6 +16,7 @@ import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
 import { resolveAnalysisModel } from './resolve-analysis-model'
 import { resolveVoiceAnalysisSource } from '@/lib/voice/voice-analysis-source'
 import { rebuildEpisodeNarrationTimeline } from '@/lib/novel-promotion/narration-timeline'
+import { rebuildEpisodeSpeechPlans } from '@/lib/novel-promotion/speech-plan'
 
 const MAX_VOICE_ANALYZE_ATTEMPTS = 2
 
@@ -343,6 +344,7 @@ export async function handleVoiceAnalyzeTask(job: Job<TaskJobData>) {
   }
   const matchedCount = createdVoiceLines.filter((line) => line.matchedStoryboardId).length
   await rebuildEpisodeNarrationTimeline(episodeId)
+  const speechPlanResult = await rebuildEpisodeSpeechPlans(episodeId, 'voice_analyze')
 
   await reportTaskProgress(job, 96, {
     stage: 'voice_analyze_persist_done',
@@ -355,5 +357,6 @@ export async function handleVoiceAnalyzeTask(job: Job<TaskJobData>) {
     count: createdVoiceLines.length,
     matchedCount,
     speakerStats,
+    speechPlanSummary: speechPlanResult.summary,
   }
 }

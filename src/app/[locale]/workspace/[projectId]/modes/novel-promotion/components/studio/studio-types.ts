@@ -109,6 +109,9 @@ export interface StudioWorkspaceModel {
     failedShots: number
     voiceLines: number
     voiceAudioLines: number
+    speechPlanReady: number
+    speechPlanInvalid: number
+    speechPlanWithSpeech: number
   }
   workflow: {
     isBookGuide: boolean
