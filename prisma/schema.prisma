@@ -319,12 +319,12 @@ model NovelPromotionProject {
 
 model NovelPromotionAssetRelation {
   id        String                 @id @default(uuid())
-  projectId String
-  fromType  String
-  fromId    String
-  toType    String
-  toId      String
-  relation  String
+  projectId String                 @db.VarChar(64)
+  fromType  String                 @db.VarChar(64)
+  fromId    String                 @db.VarChar(64)
+  toType    String                 @db.VarChar(64)
+  toId      String                 @db.VarChar(64)
+  relation  String                 @db.VarChar(64)
   reason    String?                @db.Text
   createdAt DateTime               @default(now())
   updatedAt DateTime               @updatedAt
