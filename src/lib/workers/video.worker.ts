@@ -31,6 +31,7 @@ import {
   ensurePanelSpeechPlan,
   panelSpeechPlanHasSpeech,
 } from '@/lib/novel-promotion/speech-plan'
+import { resolvePanelVideoReferenceAudios } from './panel-video-reference-audio'
 
 type AnyObj = Record<string, unknown>
 type VideoOptionValue = string | number | boolean
@@ -171,6 +172,12 @@ async function generateVideoForPanel(
     throw new Error(`SPEECH_PLAN_NOT_READY: ${panel.id}`)
   }
   const requestedGenerateAudio = resolveNativeAudioRequest(model, generationOptions, speechPlan)
+  const { referenceAudios, referenceAudioSummary } = await resolvePanelVideoReferenceAudios({
+    job,
+    modelKey: model,
+    requestedGenerateAudio,
+    speechPlan,
+  })
   const promptSpec = buildPanelVideoPromptSpec({
     context: {
       panel: {
@@ -213,10 +220,12 @@ async function generateVideoForPanel(
     referenceImages: [sourceImageUrl, ...(lastFrameImageUrl ? [lastFrameImageUrl] : [])],
     promptSpec,
     compiledPrompt: prompt,
+    referenceAudioSummary,
     assetVersionHash: createCreativeQualityHash({
       sourceImageUrl,
       lastFrameImageUrl: lastFrameImageUrl || null,
       generationMode,
+      referenceAudioSummary,
       speechPlan: speechPlan
         ? {
           mode: speechPlan.mode,
@@ -247,6 +256,7 @@ async function generateVideoForPanel(
       ...generationOptions,
       generationMode,
       ...(typeof requestedGenerateAudio === 'boolean' ? { generateAudio: requestedGenerateAudio } : {}),
+      ...(referenceAudios.length > 0 ? { referenceAudios } : {}),
       ...(lastFrameImageUrl ? { lastFrameImageUrl } : {}),
     },
   })

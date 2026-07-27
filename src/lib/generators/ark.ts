@@ -26,6 +26,7 @@ import {
 import { getProviderConfig } from '@/lib/api-config'
 import { arkImageGeneration, arkCreateVideoTask } from '@/lib/ark-api'
 import { normalizeToBase64ForGeneration } from '@/lib/media/outbound-image'
+import type { OutboundAudioReference } from '@/lib/media/outbound-audio'
 
 interface ArkImageOptions {
     aspectRatio?: string
@@ -51,6 +52,7 @@ interface ArkVideoOptions {
     seed?: number
     cameraFixed?: boolean
     watermark?: boolean
+    referenceAudios?: OutboundAudioReference[]
     provider?: string
     modelKey?: string
 }
@@ -78,6 +80,7 @@ interface ArkSeedanceModelSpec {
     durationMax: number
     supportsFirstLastFrame: boolean
     supportsGenerateAudio: boolean
+    supportsReferenceAudio: boolean
     supportsDraft: boolean
     supportsFrames: boolean
     resolutionOptions: ReadonlyArray<'480p' | '720p' | '1080p'>
@@ -89,6 +92,7 @@ const ARK_SEEDANCE_MODEL_SPECS: Record<string, ArkSeedanceModelSpec> = {
         durationMax: 12,
         supportsFirstLastFrame: false,
         supportsGenerateAudio: false,
+        supportsReferenceAudio: false,
         supportsDraft: false,
         supportsFrames: true,
         resolutionOptions: ['480p', '720p', '1080p'],
@@ -98,6 +102,7 @@ const ARK_SEEDANCE_MODEL_SPECS: Record<string, ArkSeedanceModelSpec> = {
         durationMax: 12,
         supportsFirstLastFrame: true,
         supportsGenerateAudio: false,
+        supportsReferenceAudio: false,
         supportsDraft: false,
         supportsFrames: true,
         resolutionOptions: ['480p', '720p', '1080p'],
@@ -107,6 +112,7 @@ const ARK_SEEDANCE_MODEL_SPECS: Record<string, ArkSeedanceModelSpec> = {
         durationMax: 12,
         supportsFirstLastFrame: true,
         supportsGenerateAudio: false,
+        supportsReferenceAudio: false,
         supportsDraft: false,
         supportsFrames: true,
         resolutionOptions: ['480p', '720p', '1080p'],
@@ -116,6 +122,7 @@ const ARK_SEEDANCE_MODEL_SPECS: Record<string, ArkSeedanceModelSpec> = {
         durationMax: 12,
         supportsFirstLastFrame: true,
         supportsGenerateAudio: true,
+        supportsReferenceAudio: false,
         supportsDraft: true,
         supportsFrames: false,
         resolutionOptions: ['480p', '720p', '1080p'],
@@ -125,6 +132,7 @@ const ARK_SEEDANCE_MODEL_SPECS: Record<string, ArkSeedanceModelSpec> = {
         durationMax: 15,
         supportsFirstLastFrame: true,
         supportsGenerateAudio: true,
+        supportsReferenceAudio: true,
         supportsDraft: false,
         supportsFrames: false,
         resolutionOptions: ['480p', '720p'],
@@ -134,6 +142,7 @@ const ARK_SEEDANCE_MODEL_SPECS: Record<string, ArkSeedanceModelSpec> = {
         durationMax: 15,
         supportsFirstLastFrame: true,
         supportsGenerateAudio: true,
+        supportsReferenceAudio: true,
         supportsDraft: false,
         supportsFrames: false,
         resolutionOptions: ['480p', '720p'],
@@ -144,6 +153,43 @@ const ARK_VIDEO_ALLOWED_RATIOS = new Set(['16:9', '4:3', '1:1', '3:4', '9:16', '
 
 function isInteger(value: unknown): value is number {
     return typeof value === 'number' && Number.isInteger(value)
+}
+
+function resolveArkSeedanceRealModel(modelIdOrKey: string): string {
+    const modelId = modelIdOrKey.includes('::')
+        ? modelIdOrKey.split('::').pop() || modelIdOrKey
+        : modelIdOrKey
+    return modelId.endsWith('-batch') ? modelId.replace('-batch', '') : modelId
+}
+
+export function arkSeedanceSupportsReferenceAudio(modelIdOrKey: string): boolean {
+    const realModel = resolveArkSeedanceRealModel(modelIdOrKey)
+    return ARK_SEEDANCE_MODEL_SPECS[realModel]?.supportsReferenceAudio === true
+}
+
+function normalizeReferenceAudios(value: unknown): OutboundAudioReference[] {
+    if (value === undefined) return []
+    if (!Array.isArray(value)) {
+        throw new Error('ARK_VIDEO_OPTION_INVALID: referenceAudios must be array')
+    }
+    if (value.length > 3) {
+        throw new Error('ARK_VIDEO_OPTION_VALUE_UNSUPPORTED: referenceAudios max 3')
+    }
+
+    return value.flatMap((item) => {
+        if (!item || typeof item !== 'object') {
+            throw new Error('ARK_VIDEO_OPTION_INVALID: referenceAudios item must be object')
+        }
+        const reference = item as OutboundAudioReference
+        const url = typeof reference.url === 'string' ? reference.url.trim() : ''
+        if (!url) {
+            throw new Error('ARK_VIDEO_OPTION_INVALID: referenceAudios.url is required')
+        }
+        return [{
+            ...reference,
+            url,
+        }]
+    })
 }
 
 // ============================================================
@@ -324,6 +370,7 @@ export class ArkVideoGenerator extends BaseVideoGenerator {
             seed,
             cameraFixed,
             watermark,
+            referenceAudios: rawReferenceAudios,
         } = options as ArkVideoOptions
 
         const allowedOptionKeys = new Set([
@@ -343,6 +390,7 @@ export class ArkVideoGenerator extends BaseVideoGenerator {
             'seed',
             'cameraFixed',
             'watermark',
+            'referenceAudios',
         ])
         for (const [key, value] of Object.entries(options)) {
             if (value === undefined) continue
@@ -394,6 +442,16 @@ export class ArkVideoGenerator extends BaseVideoGenerator {
         if (generateAudio !== undefined && !modelSpec.supportsGenerateAudio) {
             throw new Error(`ARK_VIDEO_OPTION_UNSUPPORTED: generateAudio for ${realModel}`)
         }
+        const referenceAudios = normalizeReferenceAudios(rawReferenceAudios)
+        if (referenceAudios.length > 0 && !modelSpec.supportsReferenceAudio) {
+            throw new Error(`ARK_VIDEO_OPTION_UNSUPPORTED: referenceAudios for ${realModel}`)
+        }
+        if (referenceAudios.length > 0 && generateAudio === false) {
+            throw new Error('ARK_VIDEO_OPTION_INVALID: referenceAudios requires generateAudio')
+        }
+        const effectiveGenerateAudio = referenceAudios.length > 0 && generateAudio === undefined
+            ? true
+            : generateAudio
         if (serviceTier !== undefined && serviceTier !== 'default' && serviceTier !== 'flex') {
             throw new Error(`ARK_VIDEO_OPTION_VALUE_UNSUPPORTED: serviceTier=${serviceTier}`)
         }
@@ -460,6 +518,17 @@ export class ArkVideoGenerator extends BaseVideoGenerator {
             })
         }
 
+        for (const audio of referenceAudios) {
+            content.push({
+                type: 'audio_url',
+                audio_url: { url: audio.url },
+                role: 'reference_audio'
+            })
+        }
+        if (referenceAudios.length > 0) {
+            _ulogInfo(`[ARK Video] 参考音频=${referenceAudios.length}: ${referenceAudios.map((audio) => `${audio.speaker || 'unknown'}:${audio.hash}:${audio.byteSize}`).join(',')}`)
+        }
+
         const requestBody: {
             model: string
             content: ArkVideoContentItem[]
@@ -523,9 +592,9 @@ export class ArkVideoGenerator extends BaseVideoGenerator {
             _ulogInfo('[ARK Video] 批量模式: service_tier=flex')
         }
 
-        // 音频生成（仅 Seedance 1.5 Pro）
-        if (generateAudio !== undefined) {
-            requestBody.generate_audio = generateAudio
+        // 音频生成（Seedance 原生音频）
+        if (effectiveGenerateAudio !== undefined) {
+            requestBody.generate_audio = effectiveGenerateAudio
         }
 
         try {

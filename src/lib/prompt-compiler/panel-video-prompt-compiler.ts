@@ -324,6 +324,7 @@ export function buildPanelVideoGenerationSnapshot(params: {
   modelKey: string
   promptTemplateId: string
   referenceImages: string[]
+  referenceAudioSummary?: unknown
   promptSpec: PanelVideoPromptSpec
   compiledPrompt: string
   assetVersionHash?: string | null
@@ -334,6 +335,7 @@ export function buildPanelVideoGenerationSnapshot(params: {
     promptTemplateId: params.promptTemplateId,
     promptSpecHash: specHash,
     referenceImages: params.referenceImages,
+    referenceAudioSummary: params.referenceAudioSummary || null,
     assetVersionHash: params.assetVersionHash || null,
   })
   return {
@@ -348,6 +350,7 @@ export function buildPanelVideoGenerationSnapshot(params: {
     inputHash,
     assetVersionHash: params.assetVersionHash || null,
     referenceImages: Array.from(new Set(params.referenceImages.filter(Boolean))),
+    ...(params.referenceAudioSummary ? { structuredReferences: { referenceAudioSummary: params.referenceAudioSummary } } : {}),
     promptSpec: params.promptSpec,
     compiledPrompt: params.compiledPrompt,
     createdAt: new Date().toISOString(),

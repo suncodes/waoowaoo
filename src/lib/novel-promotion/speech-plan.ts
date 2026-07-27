@@ -572,6 +572,10 @@ function readSpeechLines(raw: unknown): PanelSpeechLine[] {
     : []
 }
 
+export function readPanelSpeechLines(raw: unknown): PanelSpeechLine[] {
+  return readSpeechLines(raw)
+}
+
 export function panelSpeechPlanHasSpeech(plan: {
   mode?: string | null
   linesJson?: unknown
@@ -598,6 +602,41 @@ function readVoiceConfig(raw: unknown): PanelSpeechVoiceConfig[] {
       }]
     })
     : []
+}
+
+export function readPanelSpeechVoiceConfig(raw: unknown): PanelSpeechVoiceConfig[] {
+  return readVoiceConfig(raw)
+}
+
+export function getPanelSpeechReferenceVoiceConfigs(
+  linesJson: unknown,
+  voiceConfigJson: unknown,
+  maxCount = 3,
+): PanelSpeechVoiceConfig[] {
+  const lines = readSpeechLines(linesJson)
+  if (lines.length === 0) return []
+
+  const speakerOrder = uniqueSpeakers(lines)
+  const configs = readVoiceConfig(voiceConfigJson)
+  const configBySpeaker = new Map(configs.map((config) => [config.speaker, config]))
+  const references: PanelSpeechVoiceConfig[] = []
+  const seenAudioUrls = new Set<string>()
+
+  for (const speaker of speakerOrder) {
+    if (references.length >= maxCount) break
+    const config = configBySpeaker.get(speaker)
+    const previewAudioUrl = readTrimmedString(config?.previewAudioUrl)
+    if (!config?.hasVoice || !previewAudioUrl) continue
+    if (config.source !== 'character' && config.source !== 'speaker') continue
+    if (seenAudioUrls.has(previewAudioUrl)) continue
+    seenAudioUrls.add(previewAudioUrl)
+    references.push({
+      ...config,
+      previewAudioUrl,
+    })
+  }
+
+  return references
 }
 
 export function compileSpeechPlanPromptSection(params: {

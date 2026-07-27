@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildPanelSpeechPlanPayload,
   compileSpeechPlanPromptSection,
+  getPanelSpeechReferenceVoiceConfigs,
   panelSpeechPlanHasSpeech,
 } from '@/lib/novel-promotion/speech-plan'
 
@@ -147,5 +148,23 @@ describe('panel speech plan', () => {
     expect(prompt).toContain('原生音频与台词计划')
     expect(prompt).toContain('鹦鹉螺号穿过黑暗的海沟')
     expect(prompt).toContain('不要生成字幕')
+  })
+
+  it('selects only current panel speakers with preview audio as Seedance reference candidates', () => {
+    const references = getPanelSpeechReferenceVoiceConfigs(
+      [
+        { voiceLineId: 'line-1', lineIndex: 1, order: 1, speaker: '旁白', content: '海底的阴影逼近。' },
+        { voiceLineId: 'line-2', lineIndex: 2, order: 2, speaker: '尼摩', content: '保持航向。' },
+      ],
+      [
+        { speaker: '旁白', hasVoice: true, source: 'speaker', provider: 'fal', previewAudioUrl: 'voice/narrator.wav' },
+        { speaker: '尼摩', hasVoice: true, source: 'character', provider: 'fal', previewAudioUrl: 'voice/nemo.wav' },
+        { speaker: '阿龙纳斯', hasVoice: true, source: 'character', provider: 'fal', previewAudioUrl: 'voice/unused.wav' },
+        { speaker: '康塞尔', hasVoice: true, source: 'character', provider: 'bailian' },
+      ],
+    )
+
+    expect(references.map((item) => item.speaker)).toEqual(['旁白', '尼摩'])
+    expect(references.map((item) => item.previewAudioUrl)).toEqual(['voice/narrator.wav', 'voice/nemo.wav'])
   })
 })

@@ -47,7 +47,7 @@ const concurrencyGateMock = vi.hoisted(() => ({
   }) => await input.run()),
 }))
 const artifactMock = vi.hoisted(() => ({
-  createArtifact: vi.fn(async () => undefined),
+  createArtifact: vi.fn(async (_input: Record<string, unknown>) => undefined),
 }))
 const audioMixMock = vi.hoisted(() => ({
   mixPanelAudioToStorage: vi.fn(async () => ({
@@ -59,6 +59,27 @@ const audioMixMock = vi.hoisted(() => ({
     outputDurationMs: 5200,
     voiceLineCount: 1,
   })),
+}))
+const speechPlanMock = vi.hoisted(() => ({
+  ensurePanelSpeechPlan: vi.fn<() => Promise<{ available: boolean; plan: Record<string, unknown> | null }>>(async () => ({ available: true, plan: null })),
+  compileSpeechPlanPromptSection: vi.fn(() => ''),
+  getPanelSpeechReferenceVoiceConfigs: vi.fn<() => Array<Record<string, unknown>>>(() => []),
+  panelSpeechPlanHasSpeech: vi.fn(() => false),
+}))
+const outboundAudioMock = vi.hoisted(() => ({
+  resolveOutboundAudioReferences: vi.fn<() => Promise<{ references: Array<Record<string, unknown>>; issues: unknown[] }>>(async () => ({ references: [], issues: [] })),
+  summarizeOutboundAudioReferences: vi.fn((references: Array<Record<string, unknown>>) => (
+    references.map((reference) => ({
+      speaker: reference.speaker,
+      source: reference.source,
+      provider: reference.provider,
+      voiceType: reference.voiceType,
+      mimeType: reference.mimeType,
+      byteSize: reference.byteSize,
+      hash: reference.hash,
+      sourceKind: reference.sourceKind,
+    }))
+  )),
 }))
 
 const prismaMock = vi.hoisted(() => ({
@@ -108,7 +129,13 @@ vi.mock('@/lib/model-capabilities/lookup', () => ({
   resolveBuiltinCapabilitiesByModelKey: vi.fn(() => ({ video: { firstlastframe: true } })),
 }))
 vi.mock('@/lib/model-config-contract', () => ({
-  parseModelKeyStrict: vi.fn(() => ({ provider: 'fal' })),
+  parseModelKeyStrict: vi.fn((modelKey: string | null | undefined) => {
+    if (typeof modelKey === 'string' && modelKey.includes('::')) {
+      const [provider, modelId] = modelKey.split('::')
+      return { provider, modelId, modelKey }
+    }
+    return { provider: 'fal', modelId: modelKey || '', modelKey: modelKey || '' }
+  }),
 }))
 vi.mock('@/lib/api-config', () => ({
   getProviderConfig: vi.fn(async () => ({ apiKey: 'api-key' })),
@@ -117,6 +144,8 @@ vi.mock('@/lib/config-service', () => configServiceMock)
 vi.mock('@/lib/workers/user-concurrency-gate', () => concurrencyGateMock)
 vi.mock('@/lib/run-runtime/service', () => artifactMock)
 vi.mock('@/lib/novel-promotion/audio-mix', () => audioMixMock)
+vi.mock('@/lib/novel-promotion/speech-plan', () => speechPlanMock)
+vi.mock('@/lib/media/outbound-audio', () => outboundAudioMock)
 
 function buildPanel(overrides?: Partial<PanelRow>): PanelRow {
   return {
@@ -166,6 +195,23 @@ describe('worker video processor behavior', () => {
       audioUrl: 'cos/line-1.mp3',
       audioDuration: 1200,
     })
+    speechPlanMock.ensurePanelSpeechPlan.mockResolvedValue({ available: true, plan: null })
+    speechPlanMock.compileSpeechPlanPromptSection.mockReturnValue('')
+    speechPlanMock.getPanelSpeechReferenceVoiceConfigs.mockReturnValue([])
+    speechPlanMock.panelSpeechPlanHasSpeech.mockReturnValue(false)
+    outboundAudioMock.resolveOutboundAudioReferences.mockResolvedValue({ references: [], issues: [] })
+    outboundAudioMock.summarizeOutboundAudioReferences.mockImplementation((references: Array<Record<string, unknown>>) => (
+      references.map((reference) => ({
+        speaker: reference.speaker,
+        source: reference.source,
+        provider: reference.provider,
+        voiceType: reference.voiceType,
+        mimeType: reference.mimeType,
+        byteSize: reference.byteSize,
+        hash: reference.hash,
+        sourceKind: reference.sourceKind,
+      }))
+    ))
 
     const mod = await import('@/lib/workers/video.worker')
     mod.createVideoWorker()
@@ -294,6 +340,68 @@ describe('worker video processor behavior', () => {
       artifactType: 'prompt.panel_video.snapshot',
       refId: 'panel-1',
     }))
+  })
+
+  it('VIDEO_PANEL: Seedance 2.0 原生音频传入参考音频并在快照中只记录摘要', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+
+    const referenceAudio = {
+      url: 'data:audio/wav;base64,AAAA',
+      speaker: '旁白',
+      source: 'speaker',
+      provider: 'fal',
+      voiceType: 'narration',
+      mimeType: 'audio/wav',
+      byteSize: 4,
+      hash: 'audiohash',
+      sourceKind: 'storage',
+    }
+    speechPlanMock.ensurePanelSpeechPlan.mockResolvedValueOnce({
+      available: true,
+      plan: {
+        mode: 'voiceover',
+        status: 'ready',
+        linesJson: [{ voiceLineId: 'line-1', lineIndex: 1, order: 1, speaker: '旁白', content: '海底的阴影逼近。' }],
+        voiceConfigJson: [{ speaker: '旁白', hasVoice: true, source: 'speaker', provider: 'fal', previewAudioUrl: 'voice/ref.wav' }],
+        updatedAt: new Date('2026-07-23T00:00:00.000Z'),
+      },
+    })
+    speechPlanMock.getPanelSpeechReferenceVoiceConfigs.mockReturnValueOnce([
+      { speaker: '旁白', hasVoice: true, source: 'speaker', provider: 'fal', voiceType: 'narration', previewAudioUrl: 'voice/ref.wav' },
+    ])
+    outboundAudioMock.resolveOutboundAudioReferences.mockResolvedValueOnce({
+      references: [referenceAudio],
+      issues: [],
+    })
+
+    const job = buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: {
+        runId: 'run-video-audio',
+        videoModel: 'ark::doubao-seedance-2-0-260128',
+        generationOptions: {
+          generateAudio: true,
+          duration: 4,
+        },
+      },
+    })
+
+    await processor!(job)
+
+    const generationCall = utilsMock.resolveVideoSourceFromGeneration.mock.calls[0]?.[1] as {
+      options?: Record<string, unknown>
+    }
+    expect(generationCall.options).toMatchObject({
+      generateAudio: true,
+      referenceAudios: [referenceAudio],
+    })
+
+    const artifactPayload = artifactMock.createArtifact.mock.calls[0]?.[0]?.payload as {
+      structuredReferences?: { referenceAudioSummary?: unknown }
+    }
+    expect(JSON.stringify(artifactPayload.structuredReferences?.referenceAudioSummary)).toContain('audiohash')
+    expect(JSON.stringify(artifactPayload.structuredReferences?.referenceAudioSummary)).not.toContain('base64')
   })
 
   it('LIP_SYNC: 缺少 panel 时显式失败', async () => {
