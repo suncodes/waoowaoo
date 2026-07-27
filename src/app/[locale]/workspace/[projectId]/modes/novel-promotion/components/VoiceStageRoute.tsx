@@ -22,7 +22,7 @@ export default function VoiceStageRoute({
       episodeId={episodeId}
       embedded={embedded}
       nativeAudioMode={nativeAudioMode}
-      onBack={() => runtime.onStageChange('videos')}
+      onBack={() => runtime.onStageChange('storyboard-images')}
       onOpenAssetLibraryForCharacter={(characterId) =>
         characterId
           ? runtime.onOpenAssetLibraryForCharacter(characterId, false)

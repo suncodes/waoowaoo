@@ -17,8 +17,8 @@ import PanelBindingPlanSummary from '../storyboard/PanelBindingPlanSummary'
 import { resolveConfirmedCandidateIndex } from '../storyboard/hooks/panel-candidate-runtime'
 import { useStoryboardModalRuntime } from '../storyboard/hooks/useStoryboardModalRuntime'
 import { useStoryboardStageController } from '../storyboard/hooks/useStoryboardStageController'
-import { StudioButton, StudioEmptyState, StudioMetric, StudioSectionHeader, StudioStageHeader } from './StudioPrimitives'
-import { type StudioWorkspaceModel } from './studio-types'
+import { StudioButton, StudioEmptyState, StudioMetric, StudioSectionHeader, StudioStageHeader, StudioStatusBadge } from './StudioPrimitives'
+import { type StudioProductStatus, type StudioWorkspaceModel } from './studio-types'
 import {
   buildPanelCandidateDisplayGroups,
   resolvePanelImageWorkflowPresentation,
@@ -39,11 +39,13 @@ function BoardDetailPanel({
   controller,
   confirmLabel,
   onCandidateConfirmed,
+  generationBlocked = false,
 }: {
   item: BoardItem
   controller: ReturnType<typeof useStoryboardStageController>
   confirmLabel?: string
   onCandidateConfirmed?: () => void
+  generationBlocked?: boolean
 }) {
   const panelData = controller.getPanelEditData(item.panel)
   const saveState = controller.saveStateByPanel[item.panel.id]
@@ -63,7 +65,7 @@ function BoardDetailPanel({
   const workflowNotice = workflowPresentation.progress !== null
     ? `${workflowPresentation.label} · ${workflowPresentation.progress}%`
     : workflowPresentation.label
-  const disabled = workflowPresentation.blocksConfirmation
+  const disabled = workflowPresentation.blocksConfirmation || generationBlocked
   const referenceBlocked = !selectedImageUrl
     && (item.sourcePanel.generationRoute === 'asset_backfill' || item.sourcePanel.generationRoute === 'human_required')
     && !isSubmitting
@@ -139,6 +141,7 @@ function BoardDetailPanel({
               variant="secondary"
               icon="sparkles"
               onClick={() => { void controller.regeneratePanelImage(item.panel.id, 2, true, { forceNoReference: true }) }}
+              disabled={generationBlocked}
             >
               无参考生成
             </StudioButton>
@@ -401,6 +404,75 @@ function BoardDetailPanel({
   )
 }
 
+interface StoryboardImageSpeechGate {
+  status: StudioProductStatus
+  label: string
+  title: string
+  description: string
+  blocksGeneration: boolean
+  canOverride: boolean
+}
+
+function resolveStoryboardImageSpeechGate(
+  model: StudioWorkspaceModel,
+  noSpeechOverride: boolean,
+): StoryboardImageSpeechGate {
+  if (model.summary.voiceLines === 0) {
+    return {
+      status: noSpeechOverride ? 'needs_review' : 'drafting',
+      label: noSpeechOverride ? '已选择无台词继续' : '待分析台词',
+      title: noSpeechOverride ? '当前按无台词分镜图片继续' : '建议先完成台词与声音',
+      description: noSpeechOverride
+        ? '本次会跳过台词节拍约束，后续如果再补台词，可能需要重新拆镜或重做图片。'
+        : '台词会影响镜头节奏和关键帧取舍。先分析台词并绑定镜头，可以减少图片生成后再返工。',
+      blocksGeneration: !noSpeechOverride,
+      canOverride: true,
+    }
+  }
+
+  if (model.summary.speechPlanTotal === 0) {
+    return {
+      status: 'failed',
+      label: '台词计划缺失',
+      title: '已有台词，但镜头级台词计划缺失',
+      description: '请回到“台词与声音”点击“重建台词计划”。否则后续视频生成无法知道每个镜头应携带哪些台词和音色。',
+      blocksGeneration: true,
+      canOverride: false,
+    }
+  }
+
+  if (model.summary.speechPlanInvalid > 0) {
+    return {
+      status: 'failed',
+      label: '计划异常',
+      title: `${model.summary.speechPlanInvalid} 个镜头的台词与声音计划异常`,
+      description: '请先处理音色缺失、台词绑定或其他阻断问题，再生成分镜图片。',
+      blocksGeneration: true,
+      canOverride: false,
+    }
+  }
+
+  if (model.summary.speechPlanWarnings > 0) {
+    return {
+      status: 'needs_review',
+      label: '有节奏警告',
+      title: `${model.summary.speechPlanWarnings} 条台词节奏警告`,
+      description: '通常意味着单镜头台词偏长，视频阶段可能出现语速过快。可以继续生成图片，但建议优先压缩台词或拆分镜头。',
+      blocksGeneration: false,
+      canOverride: false,
+    }
+  }
+
+  return {
+    status: 'locked',
+    label: '台词计划就绪',
+    title: '台词节拍已通过',
+    description: '可以开始生成和确认分镜图片。',
+    blocksGeneration: false,
+    canOverride: false,
+  }
+}
+
 function StudioBoardRuntime({
   model,
   onNavigate,
@@ -411,8 +483,9 @@ function StudioBoardRuntime({
   const runtime = useWorkspaceStageRuntime()
   const { clips, storyboards } = useWorkspaceEpisodeStageData()
   const [selectedPanelId, setSelectedPanelId] = useState('')
-  const [activeStep, setActiveStep] = useState<'plan' | 'images'>(model.workflow.hasStoryboard ? 'images' : 'plan')
+  const activeStep: 'plan' | 'images' = model.activeMode === 'storyboard-images' ? 'images' : 'plan'
   const [reviewMode, setReviewMode] = useState(false)
+  const [noSpeechOverride, setNoSpeechOverride] = useState(false)
   const controller = useStoryboardStageController({
     projectId,
     episodeId,
@@ -447,6 +520,8 @@ function StudioBoardRuntime({
     })
   }).length
   const productionReady = items.length > 0 && blockedProductionCount === 0 && controller.runningCount === 0
+  const speechGate = resolveStoryboardImageSpeechGate(model, noSpeechOverride)
+  const imageGenerationBlocked = speechGate.blocksGeneration
 
   const modalRuntime = useStoryboardModalRuntime({
     projectId,
@@ -479,6 +554,12 @@ function StudioBoardRuntime({
     }
   }, [selectedItem, selectedPanelId])
 
+  useEffect(() => {
+    if (model.summary.voiceLines > 0 && noSpeechOverride) {
+      setNoSpeechOverride(false)
+    }
+  }, [model.summary.voiceLines, noSpeechOverride])
+
   const advanceReview = () => {
     if (!selectedItem) return
     const currentIndex = reviewItems.findIndex((item) => item.panel.id === selectedItem.panel.id)
@@ -497,16 +578,25 @@ function StudioBoardRuntime({
       ) : null}
       <section className="rounded-lg border border-white/10 bg-[#151613]">
         <StudioStageHeader
-          eyebrow="分镜制作"
-          title="镜头规划与分镜画面"
-          description="分两步完成：先查看、编辑并确认镜头规划，再生成和确认分镜图片。"
+          eyebrow={activeStep === 'plan' ? '分镜文稿' : '分镜图片'}
+          title={activeStep === 'plan' ? '镜头规划与资产绑定' : '关键帧候选与定稿'}
+          description={activeStep === 'plan'
+            ? '先查看、编辑并确认镜头文稿。这里不会生成图片，确认后进入台词与声音，完成节拍检查后再制作图片。'
+            : '在台词计划明确后生成和确认分镜图片，避免图片完成后才发现镜头台词过长或声音计划缺失。'}
           actions={activeStep === 'images' ? (
             <>
-              <StudioButton size="sm" variant="secondary" icon="sparkles" loading={controller.isEpisodeBatchSubmitting} onClick={() => { void controller.handleGenerateAllPanels() }}>
-              生成缺失图片
+              <StudioButton
+                size="sm"
+                variant="secondary"
+                icon="sparkles"
+                loading={controller.isEpisodeBatchSubmitting}
+                onClick={() => { void controller.handleGenerateAllPanels() }}
+                disabled={imageGenerationBlocked}
+              >
+                {imageGenerationBlocked ? '先处理台词' : '生成缺失图片'}
               </StudioButton>
-              <StudioButton size="sm" icon="check" onClick={() => onNavigate('videos')} disabled={!productionReady}>
-              {productionReady ? '确认并进入制作' : `${blockedProductionCount} 个镜头待确认`}
+              <StudioButton size="sm" icon="check" onClick={() => onNavigate('videos')} disabled={!productionReady || imageGenerationBlocked}>
+                {imageGenerationBlocked ? '台词未就绪' : productionReady ? '确认并进入制作' : `${blockedProductionCount} 个镜头待确认`}
               </StudioButton>
             </>
           ) : undefined}
@@ -515,24 +605,32 @@ function StudioBoardRuntime({
         <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-6 py-3">
           <button
             type="button"
-            onClick={() => setActiveStep('plan')}
+            onClick={() => onNavigate('storyboard-script')}
             className={`rounded-md px-4 py-2 text-sm font-semibold transition-colors ${activeStep === 'plan' ? 'bg-[#f3e9cf] text-[#161512]' : 'bg-white/[0.04] text-stone-400 hover:bg-white/[0.08]'}`}
           >
-            1. 镜头规划
+            1. 分镜文稿
           </button>
           <AppIcon name="arrowRight" className="h-4 w-4 text-stone-600" />
           <button
             type="button"
-            onClick={() => setActiveStep('images')}
+            onClick={() => onNavigate('voice')}
+            className="rounded-md bg-white/[0.04] px-4 py-2 text-sm font-semibold text-stone-400 transition-colors hover:bg-white/[0.08]"
+          >
+            2. 台词与声音
+          </button>
+          <AppIcon name="arrowRight" className="h-4 w-4 text-stone-600" />
+          <button
+            type="button"
+            onClick={() => onNavigate('storyboard-images')}
             className={`rounded-md px-4 py-2 text-sm font-semibold transition-colors ${activeStep === 'images' ? 'bg-[#f3e9cf] text-[#161512]' : 'bg-white/[0.04] text-stone-400 hover:bg-white/[0.08]'}`}
           >
-            2. 分镜图片
+            3. 分镜图片
           </button>
         </div>
 
         {activeStep === 'plan' ? (
           <div className="p-4">
-            <StudioShotPlanEditor model={model} workflowState={workflowState} onOpenImages={() => setActiveStep('images')} />
+            <StudioShotPlanEditor model={model} workflowState={workflowState} onStoryboardReady={() => onNavigate('voice')} />
           </div>
         ) : (
           <>
@@ -541,6 +639,33 @@ function StudioBoardRuntime({
               <StudioMetric label="图片完成" value={`${items.filter(itemReadyForProduction).length}/${items.length}`} />
               <StudioMetric label="生成中" value={controller.runningCount} />
               <StudioMetric label="待生成" value={controller.pendingPanelCount} />
+            </div>
+
+            <div className={`border-b px-6 py-4 ${imageGenerationBlocked ? 'border-amber-400/20 bg-amber-400/[0.07]' : 'border-white/10 bg-white/[0.02]'}`}>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StudioStatusBadge status={speechGate.status} label={speechGate.label} />
+                    <h2 className="text-sm font-semibold text-stone-100">{speechGate.title}</h2>
+                  </div>
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-400">{speechGate.description}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <StudioButton size="sm" variant="secondary" icon="mic" onClick={() => onNavigate('voice')}>
+                    台词与声音
+                  </StudioButton>
+                  {speechGate.canOverride ? (
+                    <StudioButton
+                      size="sm"
+                      variant={noSpeechOverride ? 'ghost' : 'secondary'}
+                      icon={noSpeechOverride ? 'closeSm' : 'check'}
+                      onClick={() => setNoSpeechOverride((value) => !value)}
+                    >
+                      {noSpeechOverride ? '取消无台词继续' : '无台词继续'}
+                    </StudioButton>
+                  ) : null}
+                </div>
+              </div>
             </div>
 
             {!productionReady && items.length > 0 ? (
@@ -554,8 +679,8 @@ function StudioBoardRuntime({
                 <StudioEmptyState
                   icon="image"
                   title="还没有可制作的分镜图片"
-                  description="先在“镜头规划”中生成并确认初稿，系统生成正式分镜后再进入这里。"
-                  action={<StudioButton icon="chevronLeft" variant="secondary" onClick={() => setActiveStep('plan')}>返回镜头规划</StudioButton>}
+                  description="先在“分镜文稿”中生成并确认镜头，完成台词与声音后再进入这里。"
+                  action={<StudioButton icon="chevronLeft" variant="secondary" onClick={() => onNavigate('storyboard-script')}>返回分镜文稿</StudioButton>}
                 />
               </div>
             ) : (
@@ -610,6 +735,7 @@ function StudioBoardRuntime({
                     controller={controller}
                     confirmLabel={reviewMode && reviewItems.length > 1 ? '确认并查看下一个' : undefined}
                     onCandidateConfirmed={reviewMode ? advanceReview : undefined}
+                    generationBlocked={imageGenerationBlocked}
                   />
                 ) : null}
               </div>

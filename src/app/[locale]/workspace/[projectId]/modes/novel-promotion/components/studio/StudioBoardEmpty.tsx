@@ -12,7 +12,7 @@ export default function StudioBoardEmpty() {
       title={generating ? '镜头规划初稿正在生成' : '还没有镜头规划初稿'}
       description={generating
         ? '任务会在后台持续执行，切换页面不会中断。完成后可以查看、编辑或让 AI 重写。'
-        : '先生成可编辑的镜头规划初稿，确认规划后再生成正式分镜和图片。'}
+        : '先生成可编辑的镜头规划初稿，确认后形成分镜文稿，再进入台词与声音和分镜图片。'}
       action={(
         <StudioButton
           icon="sparkles"

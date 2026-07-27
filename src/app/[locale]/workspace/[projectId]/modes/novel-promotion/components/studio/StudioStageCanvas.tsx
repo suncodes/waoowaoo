@@ -25,7 +25,9 @@ export default function StudioStageCanvas({ model, onNavigate, workflowState }: 
   if (model.activeMode === 'draft') return <StudioDraftCanvas model={model} onNavigate={onNavigate} />
   if (model.activeMode === 'narration') return <StudioNarrationCanvas model={model} onNavigate={onNavigate} />
   if (model.activeMode === 'visual-kit') return <StudioVisualKitCanvas model={model} />
-  if (model.activeMode === 'board') return <StudioBoardCanvas model={model} onNavigate={onNavigate} workflowState={workflowState} />
+  if (model.activeMode === 'storyboard-script' || model.activeMode === 'storyboard-images') {
+    return <StudioBoardCanvas model={model} onNavigate={onNavigate} workflowState={workflowState} />
+  }
   if (model.activeMode === 'produce') return <StudioProduceCanvas model={model} onNavigate={onNavigate} />
   if (model.activeMode === 'audio') return <StudioAudioCanvas model={model} onNavigate={onNavigate} />
   if (model.activeMode === 'edit') return <StudioEditCanvas model={model} onNavigate={onNavigate} />

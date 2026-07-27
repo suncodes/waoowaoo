@@ -14,7 +14,8 @@ describe('studio information architecture', () => {
 
   it('keeps downstream production modes stable', () => {
     expect(resolveStudioMode('visual-design')).toBe('visual-kit')
-    expect(resolveStudioMode('storyboard-preview')).toBe('board')
+    expect(resolveStudioMode('storyboard-preview')).toBe('storyboard-script')
+    expect(resolveStudioMode('storyboard-preview', 'images')).toBe('storyboard-images')
     expect(resolveStudioMode('production')).toBe('produce')
     expect(resolveStudioMode('edit')).toBe('edit')
     expect(resolveStudioMode('edit', 'export')).toBe('export')

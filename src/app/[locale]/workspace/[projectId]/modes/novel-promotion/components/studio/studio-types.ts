@@ -9,7 +9,8 @@ export type StudioModeId =
   | 'draft'
   | 'narration'
   | 'visual-kit'
-  | 'board'
+  | 'storyboard-script'
+  | 'storyboard-images'
   | 'produce'
   | 'audio'
   | 'edit'
@@ -109,9 +110,11 @@ export interface StudioWorkspaceModel {
     failedShots: number
     voiceLines: number
     voiceAudioLines: number
+    speechPlanTotal: number
     speechPlanReady: number
     speechPlanInvalid: number
     speechPlanWithSpeech: number
+    speechPlanWarnings: number
   }
   workflow: {
     isBookGuide: boolean
@@ -145,7 +148,8 @@ export function resolveStudioMode(currentStage: string, stageView?: string | nul
   if (currentStage === 'content' && stageView === 'plan') return 'planning'
   if (currentStage === 'content') return 'draft'
   if (currentStage === 'visual-design') return 'visual-kit'
-  if (currentStage === 'storyboard-preview') return 'board'
+  if (currentStage === 'storyboard-preview' && stageView === 'images') return 'storyboard-images'
+  if (currentStage === 'storyboard-preview') return 'storyboard-script'
   if (currentStage === 'production' && stageView === 'voice') return 'narration'
   if (currentStage === 'production' && stageView === 'audio') return 'audio'
   if (currentStage === 'production') return 'produce'

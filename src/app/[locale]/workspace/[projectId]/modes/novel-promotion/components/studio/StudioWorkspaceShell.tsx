@@ -53,8 +53,9 @@ const MODE_CONFIG: Array<Omit<StudioNavItem, 'status' | 'disabled'>> = [
   { id: 'planning', route: 'config', label: '内容策划', subtitle: '输入与方案', icon: 'brain' },
   { id: 'draft', route: 'script', label: '成稿制作', subtitle: '剧本与导读稿', icon: 'bookOpen' },
   { id: 'visual-kit', route: 'assets', label: '视觉资产', subtitle: '角色场景道具', icon: 'folderCards' },
-  { id: 'board', route: 'storyboard', label: '分镜制作', subtitle: '规划与画面', icon: 'image' },
+  { id: 'storyboard-script', route: 'storyboard-script', label: '分镜文稿', subtitle: '镜头规划与绑定', icon: 'clapperboard' },
   { id: 'narration', route: 'voice', label: '台词与声音', subtitle: '台词计划与音色', icon: 'mic' },
+  { id: 'storyboard-images', route: 'storyboard-images', label: '分镜图片', subtitle: '关键帧与候选', icon: 'image' },
   { id: 'produce', route: 'videos', label: '视频制作', subtitle: '生成镜头视频', icon: 'video' },
   { id: 'edit', route: 'editor', label: '成片检查', subtitle: '预览', icon: 'film' },
   { id: 'export', route: 'export', label: '交付', subtitle: '导出', icon: 'download' },
@@ -67,14 +68,28 @@ function navStatus(mode: StudioModeId, model: StudioWorkspaceModel): StudioProdu
   if (mode === 'draft') return statusFromCreationStage(model.workflow.stageStatuses.content || 'not_started')
   if (mode === 'narration') {
     if (!model.workflow.hasStoryboard) return 'empty'
-    if (model.summary.voiceLines > 0 && model.summary.speechPlanInvalid === 0) return 'locked'
+    if (
+      model.summary.voiceLines > 0
+      && model.summary.speechPlanTotal > 0
+      && model.summary.speechPlanInvalid === 0
+      && model.summary.speechPlanWarnings === 0
+    ) return 'locked'
     if (model.summary.voiceLines > 0) return 'needs_review'
     return 'drafting'
   }
   if (mode === 'visual-kit') return statusFromCreationStage(model.workflow.stageStatuses['visual-design'] || 'not_started')
-  if (mode === 'board') return model.workflow.storyboardGenerating
+  if (mode === 'storyboard-script') return model.workflow.storyboardGenerating
     ? 'generating'
     : statusFromCreationStage(model.workflow.stageStatuses['storyboard-preview'] || 'not_started')
+  if (mode === 'storyboard-images') {
+    if (!model.workflow.hasStoryboard) return 'empty'
+    if (model.workflow.storyboardGenerating) return 'generating'
+    if (model.shots.some((shot) => shot.status === 'generating')) return 'generating'
+    if (model.shots.some((shot) => shot.status === 'failed')) return 'failed'
+    if (model.shots.length > 0 && model.shots.every((shot) => shot.imageUrl && shot.status === 'locked')) return 'locked'
+    if (model.shots.some((shot) => shot.imageUrl || shot.status === 'needs_review')) return 'needs_review'
+    return 'drafting'
+  }
   if (mode === 'produce') return statusFromCreationStage(model.workflow.stageStatuses.production || 'not_started')
   if (mode === 'audio') return model.workflow.hasVideo ? 'drafting' : 'empty'
   if (mode === 'edit') return model.workflow.hasVideo ? 'drafting' : 'empty'
@@ -262,7 +277,8 @@ function AssistantPanel({
     draft: model.workflow.isBookGuide ? '导读稿制作' : '剧本制作',
     narration: '台词与声音',
     'visual-kit': '视觉资产',
-    board: '镜头状态',
+    'storyboard-script': '分镜文稿',
+    'storyboard-images': '分镜图片',
     produce: '生产状态',
     audio: '音频与字幕',
     edit: '成片检查',
@@ -272,7 +288,7 @@ function AssistantPanel({
     ? [`核心资产待确认：${model.summary.missingCoreVisualAssets}`, activeAsset ? `当前资产：${activeAsset.name}` : '暂无核心资产']
     : model.activeMode === 'narration'
       ? [`台词：${model.summary.voiceLines}`, `异常计划：${model.summary.speechPlanInvalid}`]
-    : model.activeMode === 'board' || model.activeMode === 'produce' || model.activeMode === 'audio'
+    : model.activeMode === 'storyboard-script' || model.activeMode === 'storyboard-images' || model.activeMode === 'produce' || model.activeMode === 'audio'
       ? [activeShot ? `当前镜头：第 ${activeShot.number} 镜` : '暂无镜头', `失败镜头：${model.summary.failedShots}`]
       : [`内容段落：${model.draftSegments.length}`, `预计时长：${model.summary.totalDurationSec || '-'} 秒`]
 
@@ -301,15 +317,21 @@ function AssistantPanel({
               <ActionButton icon="folderOpen" label="打开项目资产" onClick={runtime.onOpenAssetLibrary} />
             ) : null}
             {model.activeMode === 'narration' ? (
-              <ActionButton icon="image" label="返回分镜制作" onClick={() => onNavigate('storyboard')} />
+              <ActionButton icon="image" label="进入分镜图片" onClick={() => onNavigate('storyboard-images')} />
             ) : null}
-            {model.activeMode === 'board' ? (
+            {model.activeMode === 'storyboard-script' ? (
               <ActionButton
                 icon="sparkles"
                 label={runtime.isTransitioning ? '镜头规划处理中' : model.workflow.hasVisualPlan ? 'AI 重写镜头规划' : '生成镜头规划初稿'}
                 onClick={() => { void runtime.onRunVisualPlan() }}
                 disabled={runtime.isTransitioning}
               />
+            ) : null}
+            {model.activeMode === 'storyboard-images' ? (
+              <>
+                <ActionButton icon="clapperboard" label="返回分镜文稿" onClick={() => onNavigate('storyboard-script')} />
+                <ActionButton icon="mic" label="检查台词与声音" onClick={() => onNavigate('voice')} />
+              </>
             ) : null}
             {model.activeMode === 'produce' ? (
               <div className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-xs leading-5 text-stone-400">
@@ -392,16 +414,38 @@ export default function StudioWorkspaceShell({
     || shot.status === 'needs_review'
   )).length
   const productionReady = model.shots.length > 0 && incompleteShotCount === 0
+  const speechPlanMissing = model.summary.voiceLines > 0 && model.summary.speechPlanTotal === 0
+  const speechPlanInvalid = model.summary.speechPlanInvalid > 0
   const navigate = (route: string) => {
     if (route === 'voice' && !model.workflow.hasStoryboard) {
-      window.alert('请先完成分镜制作。台词与声音会基于已确认分镜分析台词并绑定镜头。')
+      window.alert('请先完成分镜文稿。台词与声音会基于已确认镜头分析台词并绑定镜头。')
+      return
+    }
+    if (route === 'storyboard-images' && !model.workflow.hasStoryboard) {
+      window.alert('请先完成分镜文稿，生成可绑定台词和图片的镜头。')
       return
     }
     if (route === 'videos' && !productionReady) {
       window.alert(model.shots.length === 0
-        ? '请先生成并确认分镜。'
+        ? '请先完成分镜图片。'
         : `还有 ${incompleteShotCount} 个镜头缺少定稿图片、正在生成或生成失败，暂时不能进入生产台。`)
       return
+    }
+    if (route === 'videos' && speechPlanMissing) {
+      window.alert('当前已有台词，但镜头级台词与声音计划缺失。请先回到“台词与声音”点击“重建台词计划”。')
+      return
+    }
+    if (route === 'videos' && speechPlanInvalid) {
+      window.alert(`当前有 ${model.summary.speechPlanInvalid} 个镜头的台词与声音计划异常。请先回到“台词与声音”处理音色或台词绑定。`)
+      return
+    }
+    if (route === 'videos' && model.summary.voiceLines === 0) {
+      const confirmed = window.confirm('当前项目没有台词。继续进入视频制作将按无旁白视频处理，是否继续？')
+      if (!confirmed) return
+    }
+    if (route === 'videos' && model.summary.speechPlanWarnings > 0) {
+      const confirmed = window.confirm(`当前台词计划还有 ${model.summary.speechPlanWarnings} 条警告，可能导致语速过快或节奏不稳。是否仍进入视频制作？`)
+      if (!confirmed) return
     }
     onStageChange(route)
   }

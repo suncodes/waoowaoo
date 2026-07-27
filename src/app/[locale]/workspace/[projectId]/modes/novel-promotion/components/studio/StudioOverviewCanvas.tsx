@@ -19,7 +19,13 @@ function nextRoute(model: StudioWorkspaceModel) {
   if (!model.novelText.trim() || model.draftSegments.length === 0) return 'config'
   if (!model.workflow.contentApproved) return 'script'
   if (!model.workflow.visualApproved || model.summary.missingCoreVisualAssets > 0) return 'assets'
-  if (!model.workflow.hasStoryboard) return 'storyboard'
+  if (!model.workflow.hasStoryboard) return 'storyboard-script'
+  if (
+    model.summary.voiceLines === 0
+    || (model.summary.voiceLines > 0 && model.summary.speechPlanTotal === 0)
+    || model.summary.speechPlanInvalid > 0
+  ) return 'voice'
+  if (model.shots.some((shot) => !shot.imageUrl || shot.status !== 'locked')) return 'storyboard-images'
   if (!model.workflow.hasVideo) return 'videos'
   return 'editor'
 }
@@ -28,7 +34,13 @@ function nextLabel(model: StudioWorkspaceModel) {
   if (!model.novelText.trim() || model.draftSegments.length === 0) return '继续内容策划'
   if (!model.workflow.contentApproved) return model.workflow.isBookGuide ? '继续导读稿制作' : '继续剧本制作'
   if (!model.workflow.visualApproved || model.summary.missingCoreVisualAssets > 0) return '继续视觉资产'
-  if (!model.workflow.hasStoryboard) return '继续分镜制作'
+  if (!model.workflow.hasStoryboard) return '继续分镜文稿'
+  if (
+    model.summary.voiceLines === 0
+    || (model.summary.voiceLines > 0 && model.summary.speechPlanTotal === 0)
+    || model.summary.speechPlanInvalid > 0
+  ) return '继续台词与声音'
+  if (model.shots.some((shot) => !shot.imageUrl || shot.status !== 'locked')) return '继续分镜图片'
   if (!model.workflow.hasVideo) return '继续视频制作'
   return '进入成片检查'
 }
@@ -46,11 +58,31 @@ function stageStatus(model: StudioWorkspaceModel, stage: string): StudioProductS
 
 export default function StudioOverviewCanvas({ model, onNavigate }: StudioOverviewCanvasProps) {
   const activeJobs = model.generationJobs.filter((job) => job.status === 'generating' || job.status === 'failed')
+  const narrationStatus: StudioProductStatus = model.summary.voiceLines > 0
+    && model.summary.speechPlanTotal > 0
+    && model.summary.speechPlanInvalid === 0
+    && model.summary.speechPlanWarnings === 0
+    ? 'locked'
+    : model.workflow.hasStoryboard
+      ? model.summary.voiceLines > 0 ? 'needs_review' : 'drafting'
+      : 'empty'
+  const storyboardImageStatus: StudioProductStatus = model.shots.length > 0
+    && model.shots.every((shot) => shot.imageUrl && shot.status === 'locked')
+    ? 'locked'
+    : model.workflow.hasStoryboard
+      ? model.shots.some((shot) => shot.status === 'failed')
+        ? 'failed'
+        : model.shots.some((shot) => shot.status === 'generating')
+          ? 'generating'
+          : 'drafting'
+      : 'empty'
   const stages = [
     { label: '内容策划', status: model.draftSegments.length > 0 ? 'locked' as const : model.novelText.trim() ? 'drafting' as const : 'empty' as const, route: 'config' },
     { label: '成稿制作', status: stageStatus(model, 'content'), route: 'script' },
     { label: '视觉资产', status: stageStatus(model, 'visual-design'), route: 'assets' },
-    { label: '分镜制作', status: model.workflow.storyboardGenerating ? 'generating' as const : stageStatus(model, 'storyboard-preview'), route: 'storyboard' },
+    { label: '分镜文稿', status: model.workflow.storyboardGenerating ? 'generating' as const : stageStatus(model, 'storyboard-preview'), route: 'storyboard-script' },
+    { label: '台词与声音', status: narrationStatus, route: 'voice' },
+    { label: '分镜图片', status: storyboardImageStatus, route: 'storyboard-images' },
     { label: '视频制作', status: stageStatus(model, 'production'), route: 'videos' },
   ]
 

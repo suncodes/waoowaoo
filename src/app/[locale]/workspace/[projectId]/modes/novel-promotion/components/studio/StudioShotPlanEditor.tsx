@@ -92,13 +92,13 @@ function planStatusLabel(status: WorkspaceArtifactStatus) {
 interface StudioShotPlanEditorProps {
   model: StudioWorkspaceModel
   workflowState: CreationWorkflowState
-  onOpenImages: () => void
+  onStoryboardReady: () => void
 }
 
 export default function StudioShotPlanEditor({
   model,
   workflowState,
-  onOpenImages,
+  onStoryboardReady,
 }: StudioShotPlanEditorProps) {
   const runtime = useWorkspaceStageRuntime()
   const { clips, productionBible } = useWorkspaceEpisodeStageData()
@@ -192,7 +192,7 @@ export default function StudioShotPlanEditor({
       } else {
         await runtime.onRunScriptToStoryboard({ visualApprovalConfirmed: true })
       }
-      onOpenImages()
+      onStoryboardReady()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '生成分镜失败')
     } finally {
@@ -234,7 +234,7 @@ export default function StudioShotPlanEditor({
       <StudioPanel>
         <StudioSectionHeader
           title="镜头规划初稿"
-          description="先检查整体节奏与逐镜头内容；保存不会生成图片，确认规划后才进入分镜图片步骤。"
+          description="先检查整体节奏与逐镜头内容；保存不会生成图片，确认规划后进入台词与声音，再进入分镜图片。"
           actions={(
             <div className="flex flex-wrap gap-2">
               <StudioButton size="sm" variant="secondary" icon="sparkles" loading={running} onClick={() => { void rewrite() }} disabled={running || saving || confirming}>
@@ -247,7 +247,7 @@ export default function StudioShotPlanEditor({
                 保存修改
               </StudioButton>
               <StudioButton size="sm" icon="arrowRight" loading={confirming} onClick={() => { void confirmAndGenerate() }} disabled={running || saving}>
-                {model.workflow.hasStoryboard ? '确认并重新生成分镜' : '确认规划并生成分镜'}
+                {model.workflow.hasStoryboard ? '确认并重新生成分镜文稿' : '确认规划并生成分镜文稿'}
               </StudioButton>
             </div>
           )}

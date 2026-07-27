@@ -204,10 +204,15 @@ function summarizeSpeechPlans(storyboards: ReturnType<typeof useWorkspaceEpisode
   const plans = storyboards.flatMap((storyboard) =>
     (storyboard.panels || []).flatMap((panel) => panel.speechPlan ? [panel.speechPlan] : []),
   )
+  const warningCount = plans.reduce((sum, plan) => (
+    sum + (Array.isArray(plan.warningsJson) ? plan.warningsJson.length : 0)
+  ), 0)
   return {
+    total: plans.length,
     ready: plans.filter((plan) => plan.status === 'ready').length,
     invalid: plans.filter((plan) => plan.status === 'invalid').length,
     withSpeech: plans.filter((plan) => plan.mode !== 'none').length,
+    warnings: warningCount,
   }
 }
 
@@ -389,9 +394,11 @@ export function useStudioWorkspaceModel({
         failedShots: shots.filter((shot) => shot.status === 'failed').length,
         voiceLines: voiceLines.length,
         voiceAudioLines: voiceAudioCount,
+        speechPlanTotal: speechPlanSummary.total,
         speechPlanReady: speechPlanSummary.ready,
         speechPlanInvalid: speechPlanSummary.invalid,
         speechPlanWithSpeech: speechPlanSummary.withSpeech,
+        speechPlanWarnings: speechPlanSummary.warnings,
       },
       workflow: {
         isBookGuide: workflowState.facts.isBookGuide,
