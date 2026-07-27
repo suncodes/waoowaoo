@@ -64,9 +64,12 @@ export const POST = apiHandler(async (
   const source = readTrimmedString(body?.source) || 'manual'
   const result = await rebuildEpisodeSpeechPlans(episodeId, source)
   if (!result.available) {
-    return NextResponse.json({
-      ...result,
-      message: 'novel_promotion_panel_speech_plans table is not available; run database migrations.',
+    throw new ApiError('CONFLICT', {
+      code: 'DB_SCHEMA_OUT_OF_DATE',
+      episodeId,
+      message: '数据库结构不是最新版本，缺少镜头级台词计划表。请在部署环境执行 prisma db push 后重启应用。',
+      table: 'novel_promotion_panel_speech_plans',
+      available: false,
     })
   }
 

@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
+import { useToast } from '@/contexts/ToastContext'
 import { shouldShowError } from '@/lib/error-utils'
 import { useProjectAssets } from '@/lib/query/hooks/useProjectAssets'
 import { useEpisodeData } from '@/lib/query/hooks/useProjectData'
@@ -51,6 +52,7 @@ export function useVoiceStageRuntime({
   onOpenAssetLibraryForCharacter,
 }: VoiceStageShellProps) {
   const t = useTranslations('voice')
+  const { showToast } = useToast()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -265,12 +267,13 @@ export function useVoiceStageRuntime({
       })
       await loadData()
       notifyVoiceLinesChanged()
+      showToast('台词计划已重建，可以回到视频制作继续生成。', 'success')
     } catch (error: unknown) {
       if (shouldShowError(error)) {
         alert(`重建台词计划失败: ${getErrorMessage(error)}`)
       }
     }
-  }, [episodeId, loadData, notifyVoiceLinesChanged, rebuildSpeechPlansMutation])
+  }, [episodeId, loadData, notifyVoiceLinesChanged, rebuildSpeechPlansMutation, showToast])
 
   if (loading) {
     return (

@@ -147,8 +147,8 @@ export function useAnalyzeProjectVoice(projectId: string) {
  */
 export function useRebuildProjectSpeechPlans(projectId: string) {
     return useMutation({
-        mutationFn: async ({ episodeId, source = 'manual' }: { episodeId: string; source?: string }) =>
-            await requestJsonWithError<{
+        mutationFn: async ({ episodeId, source = 'manual' }: { episodeId: string; source?: string }) => {
+            const result = await requestJsonWithError<{
                 available: boolean
                 plans?: unknown[]
                 summary?: ProjectSpeechPlanSummary
@@ -161,7 +161,12 @@ export function useRebuildProjectSpeechPlans(projectId: string) {
                     body: JSON.stringify({ episodeId, source }),
                 },
                 'rebuild speech plans failed',
-            ),
+            )
+            if (!result.available) {
+                throw new Error(result.message || '数据库结构不是最新版本，缺少镜头级台词计划表。请先执行数据库迁移。')
+            }
+            return result
+        },
     })
 }
 
