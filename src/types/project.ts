@@ -202,6 +202,10 @@ export interface NovelPromotionPanel {
   onScreenText?: string | null
   sourceAnchor?: unknown
   visualQualityState?: unknown
+  generationRoute?: string | null
+  noReferenceReason?: string | null
+  promptSpec?: unknown
+  referencePlan?: unknown
   // 任务态字段（由 tasks + hook 派生，不再依赖数据库持久化）
   imageTaskRunning?: boolean
   imageTaskIntent?: string | null

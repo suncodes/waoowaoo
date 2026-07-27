@@ -2,7 +2,10 @@ import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getProjectModelConfig, buildImageBillingPayload } from '@/lib/config-service'
 import { createProjectLocationBackedAsset } from '@/lib/assets/services/location-backed-assets'
+import { buildAssetMeta } from '@/lib/assets/asset-semantics'
+import { decodeImageUrlsFromDb } from '@/lib/contracts/image-urls-contract'
 import { ensureProjectLocationImageSlots } from '@/lib/image-generation/location-slots'
+import { PRIMARY_APPEARANCE_INDEX } from '@/lib/constants'
 import { TASK_TYPE } from '@/lib/task/types'
 import { withTaskUiPayload } from '@/lib/task/ui-payload'
 import type { Locale } from '@/i18n/routing'
@@ -12,6 +15,7 @@ import type {
   ShotAssetRequirement,
   ShotAssetRequirementPlan,
 } from './shot-asset-requirements'
+import { canAutoBackfillRequirement } from './asset-reference-policy'
 
 export type MissingAssetBackfillPriority = 'blocking' | 'warning'
 export type MissingAssetBackfillStatus =
@@ -52,6 +56,10 @@ function isLocationBackedKind(kind: ShotAssetRequirement['kind']): kind is 'loca
   return kind === 'location' || kind === 'prop'
 }
 
+function isAutoBackfillKind(kind: ShotAssetRequirement['kind']): kind is 'character' | 'location' | 'prop' {
+  return kind === 'character' || isLocationBackedKind(kind)
+}
+
 function requestMatchesRequirement(
   request: MissingAssetBackfillRequest,
   requirement: ShotAssetRequirement,
@@ -69,20 +77,26 @@ function requirementNeedsBackfill(
   decision: PanelGenerationRouteDecision,
 ): boolean {
   const blockedNames = blockedRequirementNames(decision)
-  if (blockedNames.has(normalizeName(requirement.name))) return true
-  return (requirement.required || requirement.mustLock) && !requirement.assetId
+  return blockedNames.has(normalizeName(requirement.name))
 }
 
 function buildDescription(params: {
   requirement: ShotAssetRequirement
   bindingPlan: PanelAssetBindingPlan
 }): string {
+  const kindLabel = params.requirement.kind === 'character'
+    ? '角色'
+    : params.requirement.kind === 'prop'
+      ? '道具'
+      : '场景'
   return [
-    `${params.requirement.name}，用于分镜镜头的稳定${params.requirement.kind === 'prop' ? '道具' : '场景'}参考。`,
+    `${params.requirement.name}，用于分镜镜头的稳定${kindLabel}参考。`,
     params.requirement.semanticType ? `语义类型：${params.requirement.semanticType}。` : '',
     params.requirement.reason ? `镜头需求：${params.requirement.reason}。` : '',
     params.bindingPlan.primarySubject ? `关联主视觉主体：${params.bindingPlan.primarySubject}。` : '',
-    '生成为可复用资产参考图，主体清晰、无文字、无水印、无标志。',
+    params.requirement.kind === 'character'
+      ? '生成为可复用角色形象参考图，面部、服装、轮廓和关键识别特征清晰稳定，无文字、无水印、无标志。'
+      : '生成为可复用资产参考图，主体清晰、无文字、无水印、无标志。',
   ].filter(Boolean).join('\n')
 }
 
@@ -114,10 +128,12 @@ export function planMissingAssetBackfill(params: {
       }),
       sourcePanelIds: [params.panelId],
       priority: 'blocking',
-      autoGenerate: isLocationBackedKind(requirement.kind),
+      autoGenerate: canAutoBackfillRequirement(requirement),
       reason: requirement.reason,
       assetId: requirement.assetId || null,
-      status: isLocationBackedKind(requirement.kind) ? 'planned' : 'human_required',
+      status: canAutoBackfillRequirement(requirement) && isAutoBackfillKind(requirement.kind)
+        ? 'planned'
+        : 'human_required',
     }))
 
   if (planned.some((request) => request.status === 'human_required')) {
@@ -173,6 +189,115 @@ function hasUsableImage(asset: Awaited<ReturnType<typeof findExistingLocationBac
   return !!asset?.images?.some((image) => typeof image.imageUrl === 'string' && image.imageUrl.trim())
 }
 
+async function findExistingCharacterAsset(params: {
+  projectDbId: string
+  assetId?: string | null
+  name: string
+}) {
+  if (params.assetId) {
+    const existing = await prisma.novelPromotionCharacter.findFirst({
+      where: {
+        id: params.assetId,
+        novelPromotionProjectId: params.projectDbId,
+      },
+      include: { appearances: { orderBy: { appearanceIndex: 'asc' } } },
+    })
+    if (existing) return existing
+  }
+
+  return await prisma.novelPromotionCharacter.findFirst({
+    where: {
+      novelPromotionProjectId: params.projectDbId,
+      name: params.name,
+    },
+    include: { appearances: { orderBy: { appearanceIndex: 'asc' } } },
+  })
+}
+
+function characterAppearanceHasUsableImage(
+  appearance: NonNullable<Awaited<ReturnType<typeof findExistingCharacterAsset>>>['appearances'][number],
+): boolean {
+  if (typeof appearance.imageUrl === 'string' && appearance.imageUrl.trim()) return true
+  return decodeImageUrlsFromDb(appearance.imageUrls, 'characterAppearance.imageUrls')
+    .some((url) => typeof url === 'string' && url.trim().length > 0)
+}
+
+function hasUsableCharacterImage(asset: Awaited<ReturnType<typeof findExistingCharacterAsset>>): boolean {
+  return !!asset?.appearances?.some(characterAppearanceHasUsableImage)
+}
+
+async function ensurePrimaryCharacterAppearance(params: {
+  characterId: string
+  description: string
+}) {
+  const existing = await prisma.characterAppearance.findFirst({
+    where: {
+      characterId: params.characterId,
+      appearanceIndex: PRIMARY_APPEARANCE_INDEX,
+    },
+  })
+  if (existing) return existing
+  return await prisma.characterAppearance.create({
+    data: {
+      characterId: params.characterId,
+      appearanceIndex: PRIMARY_APPEARANCE_INDEX,
+      changeReason: '初始形象',
+      description: params.description,
+      descriptions: JSON.stringify([params.description]),
+      selectedIndex: null,
+    },
+  })
+}
+
+async function createProjectCharacterBackfillAsset(params: {
+  projectDbId: string
+  request: MissingAssetBackfillRequest
+}) {
+  const assetMeta = buildAssetMeta({
+    assetKind: 'character',
+    name: params.request.name,
+    description: params.request.description,
+    importance: 'supporting',
+    explicitSemanticType: params.request.semanticType,
+    explicitUsageScope: 'identity_lock',
+  })
+  const created = await prisma.novelPromotionCharacter.create({
+    data: {
+      novelPromotionProjectId: params.projectDbId,
+      name: params.request.name,
+      aliases: JSON.stringify([]),
+      introduction: params.request.summary,
+      profileData: JSON.stringify({
+        source: 'missing_asset_backfill',
+        summary: params.request.summary,
+        description: params.request.description,
+        sourcePanelIds: params.request.sourcePanelIds,
+      }),
+      semanticType: assetMeta.semanticType,
+      assetTier: assetMeta.assetTier,
+      usageScope: assetMeta.usageScope,
+      assetMeta: asInputJson({
+        ...assetMeta,
+        source: 'missing_asset_backfill',
+        sourcePanelIds: params.request.sourcePanelIds,
+        reason: params.request.reason,
+      }),
+      profileConfirmed: false,
+      appearances: {
+        create: {
+          appearanceIndex: PRIMARY_APPEARANCE_INDEX,
+          changeReason: '初始形象',
+          description: params.request.description,
+          descriptions: JSON.stringify([params.request.description]),
+          selectedIndex: null,
+        },
+      },
+    },
+    include: { appearances: { orderBy: { appearanceIndex: 'asc' } } },
+  })
+  return created
+}
+
 export function applyBackfillRequestsToRequirementPlan(
   requirementPlan: ShotAssetRequirementPlan | null | undefined,
   requests: MissingAssetBackfillRequest[],
@@ -204,7 +329,7 @@ export async function ensureMissingAssetBackfill(params: {
     bindingPlan: params.bindingPlan,
     decision: params.decision,
   })
-  const autoRequests = plan.requests.filter((request) => request.autoGenerate && isLocationBackedKind(request.kind))
+  const autoRequests = plan.requests.filter((request) => request.autoGenerate && isAutoBackfillKind(request.kind))
   if (autoRequests.length === 0) return plan
 
   const project = await prisma.novelPromotionProject.findUnique({
@@ -225,8 +350,80 @@ export async function ensureMissingAssetBackfill(params: {
   const nextRequests: MissingAssetBackfillRequest[] = []
 
   for (const request of plan.requests) {
-    if (!request.autoGenerate || !isLocationBackedKind(request.kind)) {
+    if (!request.autoGenerate || !isAutoBackfillKind(request.kind)) {
       nextRequests.push(request)
+      continue
+    }
+
+    if (request.kind === 'character') {
+      let asset = await findExistingCharacterAsset({
+        projectDbId: project.id,
+        assetId: request.assetId,
+        name: request.name,
+      })
+      let status: MissingAssetBackfillStatus = hasUsableCharacterImage(asset)
+        ? 'existing_asset_ready'
+        : 'existing_asset_queued'
+
+      if (!asset) {
+        asset = await createProjectCharacterBackfillAsset({
+          projectDbId: project.id,
+          request,
+        })
+        status = 'created_asset_queued'
+      }
+
+      const appearance = asset.appearances[0] || await ensurePrimaryCharacterAppearance({
+        characterId: asset.id,
+        description: request.description,
+      })
+
+      let taskId: string | null = null
+      if (!hasUsableCharacterImage(asset) && modelConfig.characterModel) {
+        const payloadBase = {
+          type: 'character',
+          id: asset.id,
+          appearanceId: appearance.id,
+          count: 1,
+          source: 'asset_backfill',
+          sourcePanelIds: request.sourcePanelIds,
+          backfillPanelId: params.panelId,
+        }
+        const billingPayload = await buildImageBillingPayload({
+          projectId: params.projectId,
+          userId: params.userId,
+          imageModel: modelConfig.characterModel,
+          basePayload: payloadBase,
+        })
+        const { submitTask } = await import('@/lib/task/submitter')
+        const submitted = await submitTask({
+          userId: params.userId,
+          locale: params.locale,
+          projectId: params.projectId,
+          type: TASK_TYPE.IMAGE_CHARACTER,
+          targetType: 'CharacterAppearance',
+          targetId: appearance.id,
+          payload: withTaskUiPayload(billingPayload, {
+            intent: 'generate',
+            hasOutputAtStart: false,
+            source: 'asset_backfill',
+          }),
+          dedupeKey: `asset_backfill:${params.projectId}:character:${asset.id}:1`,
+        })
+        taskId = submitted.taskId || null
+      }
+
+      nextRequests.push({
+        ...request,
+        assetId: asset.id,
+        taskId,
+        status: hasUsableCharacterImage(asset)
+          ? 'existing_asset_ready'
+          : modelConfig.characterModel ? status : 'human_required',
+        reason: modelConfig.characterModel
+          ? request.reason
+          : `${request.reason}; character model not configured`,
+      })
       continue
     }
 

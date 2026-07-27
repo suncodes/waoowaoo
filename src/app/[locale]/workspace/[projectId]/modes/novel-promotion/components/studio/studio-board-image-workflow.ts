@@ -30,6 +30,57 @@ export type PanelCandidateDisplayGroup = {
   cards: PanelCandidateCard[]
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item) => typeof item === 'string' && item.trim() ? [item.trim()] : [])
+}
+
+function readBlockingAssetNames(panel: NovelPromotionPanel): string[] {
+  const referencePlan = asRecord(panel.referencePlan)
+  const decision = asRecord(referencePlan.decision)
+  const decisionNames = readStringArray(decision.blockingAssetNames)
+  if (decisionNames.length > 0) return decisionNames
+  const backfill = asRecord(referencePlan.backfill)
+  const requests = Array.isArray(backfill.requests) ? backfill.requests : []
+  return requests.flatMap((item) => {
+    const request = asRecord(item)
+    const name = request.name
+    return typeof name === 'string' && name.trim() ? [name.trim()] : []
+  })
+}
+
+function buildReferenceBlockedPresentation(panel: NovelPromotionPanel): PanelImageWorkflowPresentation | null {
+  if (panel.imageUrl) return null
+  const route = panel.generationRoute
+  if (route !== 'asset_backfill' && route !== 'human_required') return null
+  const names = readBlockingAssetNames(panel)
+  const suffix = names.length > 0 ? `：${names.join('、')}` : ''
+  if (route === 'asset_backfill') {
+    return {
+      phase: 'generating',
+      status: 'generating',
+      label: `等待补齐资产${suffix}`,
+      blocksConfirmation: true,
+      progress: null,
+      activeTaskType: 'image_panel',
+    }
+  }
+  return {
+    phase: 'human_required',
+    status: 'needs_review',
+    label: `缺少稳定参考${suffix}`,
+    blocksConfirmation: true,
+    progress: null,
+    activeTaskType: 'image_panel',
+  }
+}
+
 export function resolvePanelImageWorkflowPresentation(params: {
   panel: NovelPromotionPanel
   hasCandidates: boolean
@@ -41,7 +92,7 @@ export function resolvePanelImageWorkflowPresentation(params: {
     candidateImages: params.panel.candidateImages,
   })
   const taskState = params.panel.imageTaskState || null
-  return resolveVisualWorkflowPresentation({
+  const presentation = resolveVisualWorkflowPresentation({
     isSubmitting: params.isSubmitting,
     isModifying: params.isModifying,
     taskStates: [
@@ -62,6 +113,16 @@ export function resolvePanelImageWorkflowPresentation(params: {
     hasError: !!params.panel.imageErrorMessage,
     emptyLabel: '未生成',
   }) as PanelImageWorkflowPresentation
+  const hasActiveTask = presentation.blocksConfirmation
+    || taskState?.phase === 'queued'
+    || taskState?.phase === 'processing'
+    || params.isSubmitting
+    || params.isModifying
+  const noImageOutput = !params.panel.imageUrl && !params.hasCandidates && candidateUrls.length === 0
+  if (!hasActiveTask && noImageOutput) {
+    return buildReferenceBlockedPresentation(params.panel) || presentation
+  }
+  return presentation
 }
 
 function compareCandidateGroups(a: VisualCandidateGroup, b: VisualCandidateGroup) {

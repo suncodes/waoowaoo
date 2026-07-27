@@ -317,7 +317,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
 
   if (!panel) throw new Error('Panel not found')
 
-  const projectData = await resolveNovelData(job.data.projectId)
+  let projectData = await resolveNovelData(job.data.projectId)
   const modelConfig = await getProjectModels(job.data.projectId, job.data.userId)
   const modelKey = modelConfig.storyboardModel
   if (!modelKey) throw new Error('Storyboard model not configured')
@@ -331,21 +331,25 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
     artStyleReferenceEnabled: modelConfig.artStyleReferenceEnabled,
     locale: job.data.locale,
   })
-  const visualBindingPlan = resolvePanelAssetBindingPlan(panel)
-  const visualBindings = panelVisualBindingsFromPlan(visualBindingPlan)
-  const visualReferences = await collectPanelVisualReferences(projectData, panel)
-  const structuredReferences = visualReferencesForPrompt(visualReferences)
-  const generationRouteDecision = decidePanelGenerationRoute({
-    panel,
+  let panelForGeneration = panel
+  let visualBindingPlan = resolvePanelAssetBindingPlan(panelForGeneration)
+  let visualBindings = panelVisualBindingsFromPlan(visualBindingPlan)
+  let visualReferences = await collectPanelVisualReferences(projectData, panelForGeneration)
+  let structuredReferences = visualReferencesForPrompt(visualReferences)
+  const forceNoReference = payload.forceNoReference === true
+  let generationRouteDecision = decidePanelGenerationRoute({
+    panel: panelForGeneration,
     bindingPlan: visualBindingPlan,
     references: visualReferences,
+    forceNoReference,
   })
-  const refs = visualReferencesToImageUrls(visualReferences)
-  const referenceImages = prependStyleReferenceImage(
+  let refs = visualReferencesToImageUrls(visualReferences)
+  let referenceImages = prependStyleReferenceImage(
     refs,
     resolvedArtStyle.referenceImage,
     resolvedArtStyle.referenceEnabled,
   )
+  const runId = readOptionalTaskRunId(job)
 
   const logger = createScopedLogger({
     module: 'worker.panel-image',
@@ -377,6 +381,121 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
     },
   })
 
+  if (generationRouteDecision.route === 'asset_backfill' || generationRouteDecision.route === 'human_required') {
+    const backfillPlan = await ensureMissingAssetBackfill({
+      projectId: job.data.projectId,
+      userId: job.data.userId,
+      locale: job.data.locale,
+      panelId: panel.id,
+      bindingPlan: visualBindingPlan,
+      decision: generationRouteDecision,
+    })
+    const updatedRequirementPlan = applyBackfillRequestsToRequirementPlan(
+      visualBindingPlan.requirementPlan,
+      backfillPlan.requests,
+    )
+    const updatedBindingPlan = refreshBindingPlanWithRequirementPlan({
+      panel: panelForGeneration,
+      requirementPlan: updatedRequirementPlan || visualBindingPlan.requirementPlan || null,
+    })
+    const blockedReferencePlan = buildPanelReferencePlan({
+      bindingPlan: updatedBindingPlan,
+      references: structuredReferences,
+      decision: generationRouteDecision,
+      backfill: backfillPlan,
+    })
+    const updatedPhotographyRules = mergeBackfillRequirementPlanIntoPhotographyRules({
+      raw: panelForGeneration.photographyRules,
+      requirementPlan: updatedBindingPlan.requirementPlan || null,
+      bindingPlan: updatedBindingPlan,
+    })
+    await prisma.novelPromotionPanel.update({
+      where: { id: panel.id },
+      data: {
+        generationRoute: generationRouteDecision.route,
+        noReferenceReason: generationRouteDecision.noReferenceReason,
+        referencePlan: asInputJson(blockedReferencePlan),
+        photographyRules: updatedPhotographyRules,
+      },
+    })
+
+    if (backfillPlan.status === 'queued' || backfillPlan.status === 'human_required') {
+      if (runId) {
+        try {
+          await createArtifact({
+            runId,
+            stepKey: 'visual_binding_plan',
+            artifactType: 'visual.binding.plan',
+            refId: panel.id,
+            versionHash: createCreativeQualityHash(updatedBindingPlan),
+            payload: toJsonRecord(updatedBindingPlan),
+          })
+          await createArtifact({
+            runId,
+            stepKey: 'panel_generation_route',
+            artifactType: 'visual.generation.route',
+            refId: panel.id,
+            versionHash: createCreativeQualityHash(generationRouteDecision),
+            payload: toJsonRecord(generationRouteDecision),
+          })
+          await createArtifact({
+            runId,
+            stepKey: 'missing_asset_backfill',
+            artifactType: 'visual.missing_asset_backfill',
+            refId: panel.id,
+            versionHash: createCreativeQualityHash(backfillPlan),
+            payload: toJsonRecord(backfillPlan),
+          })
+        } catch (error) {
+          logger.warn({
+            message: 'missing asset backfill artifact failed',
+            details: { panelId: panel.id, runId },
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
+      }
+
+      return {
+        panelId: panel.id,
+        candidateCount: 0,
+        imageUrl: panel.imageUrl,
+        status: backfillPlan.status === 'human_required' ? 'human_required' : 'waiting_asset_backfill',
+        generationRouteDecision,
+        backfillPlan,
+      }
+    }
+
+    panelForGeneration = {
+      ...panelForGeneration,
+      photographyRules: updatedPhotographyRules,
+    }
+    projectData = await resolveNovelData(job.data.projectId)
+    visualBindingPlan = updatedBindingPlan
+    visualBindings = panelVisualBindingsFromPlan(visualBindingPlan)
+    visualReferences = await collectPanelVisualReferences(projectData, panelForGeneration)
+    structuredReferences = visualReferencesForPrompt(visualReferences)
+    generationRouteDecision = decidePanelGenerationRoute({
+      panel: panelForGeneration,
+      bindingPlan: visualBindingPlan,
+      references: visualReferences,
+      forceNoReference: forceNoReference || backfillPlan.status === 'not_needed',
+    })
+    if (generationRouteDecision.route === 'asset_backfill' || generationRouteDecision.route === 'human_required') {
+      generationRouteDecision = decidePanelGenerationRoute({
+        panel: panelForGeneration,
+        bindingPlan: visualBindingPlan,
+        references: visualReferences,
+        forceNoReference: true,
+      })
+    }
+    refs = visualReferencesToImageUrls(visualReferences)
+    referenceImages = prependStyleReferenceImage(
+      refs,
+      resolvedArtStyle.referenceImage,
+      resolvedArtStyle.referenceEnabled,
+    )
+  }
+
   const styleText = joinPromptSegments([
     resolvedArtStyle.prompt,
     resolvedArtStyle.referenceInstruction,
@@ -388,22 +507,22 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
   const aspectRatio = projectData.videoRatio
   const promptContext = buildPanelPromptContext({
     panel: {
-      id: panel.id,
-      shotType: panel.shotType,
-      cameraMove: panel.cameraMove,
-      description: panel.description,
-      imagePrompt: panel.imagePrompt,
-      videoPrompt: panel.videoPrompt,
-      location: panel.location,
-      characters: panel.characters,
-      props: panel.props,
-      sourceAnchor: panel.sourceAnchor,
-      srtSegment: panel.srtSegment,
-      photographyRules: panel.photographyRules,
-      actingNotes: panel.actingNotes,
-      visualType: panel.visualType,
-      renderMode: panel.renderMode,
-      onScreenText: panel.onScreenText,
+      id: panelForGeneration.id,
+      shotType: panelForGeneration.shotType,
+      cameraMove: panelForGeneration.cameraMove,
+      description: panelForGeneration.description,
+      imagePrompt: panelForGeneration.imagePrompt,
+      videoPrompt: panelForGeneration.videoPrompt,
+      location: panelForGeneration.location,
+      characters: panelForGeneration.characters,
+      props: panelForGeneration.props,
+      sourceAnchor: panelForGeneration.sourceAnchor,
+      srtSegment: panelForGeneration.srtSegment,
+      photographyRules: panelForGeneration.photographyRules,
+      actingNotes: panelForGeneration.actingNotes,
+      visualType: panelForGeneration.visualType,
+      renderMode: panelForGeneration.renderMode,
+      onScreenText: panelForGeneration.onScreenText,
     },
     projectData,
     visualBindings,
@@ -446,7 +565,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
     locale: job.data.locale,
     aspectRatio,
     styleText: resolvedStyleText,
-    sourceText: panel.srtSegment || panel.description || '',
+    sourceText: panelForGeneration.srtSegment || panelForGeneration.description || '',
     contextJson,
   })
   logger.info({
@@ -466,7 +585,6 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
     compiledPrompt: prompt,
     assetVersionHash,
   })
-  const runId = readOptionalTaskRunId(job)
   if (runId) {
     try {
       await createArtifact({
@@ -512,74 +630,6 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
     },
   })
 
-  if (generationRouteDecision.route === 'asset_backfill' || generationRouteDecision.route === 'human_required') {
-    const backfillPlan = await ensureMissingAssetBackfill({
-      projectId: job.data.projectId,
-      userId: job.data.userId,
-      locale: job.data.locale,
-      panelId: panel.id,
-      bindingPlan: visualBindingPlan,
-      decision: generationRouteDecision,
-    })
-    const updatedRequirementPlan = applyBackfillRequestsToRequirementPlan(
-      visualBindingPlan.requirementPlan,
-      backfillPlan.requests,
-    )
-    const updatedBindingPlan = refreshBindingPlanWithRequirementPlan({
-      panel,
-      requirementPlan: updatedRequirementPlan || visualBindingPlan.requirementPlan || null,
-    })
-    const referencePlan = {
-      schemaVersion: 1,
-      shotAssetRequirementPlan: updatedBindingPlan.requirementPlan || null,
-      bindingPlan: updatedBindingPlan,
-      references: structuredReferences,
-      decision: generationRouteDecision,
-      backfill: backfillPlan,
-    }
-    await prisma.novelPromotionPanel.update({
-      where: { id: panel.id },
-      data: {
-        generationRoute: generationRouteDecision.route,
-        noReferenceReason: generationRouteDecision.noReferenceReason,
-        referencePlan: asInputJson(referencePlan),
-        photographyRules: mergeBackfillRequirementPlanIntoPhotographyRules({
-          raw: panel.photographyRules,
-          requirementPlan: updatedBindingPlan.requirementPlan || null,
-          bindingPlan: updatedBindingPlan,
-        }),
-      },
-    })
-    if (runId) {
-      try {
-        await createArtifact({
-          runId,
-          stepKey: 'missing_asset_backfill',
-          artifactType: 'visual.missing_asset_backfill',
-          refId: panel.id,
-          versionHash: createCreativeQualityHash(backfillPlan),
-          payload: toJsonRecord(backfillPlan),
-        })
-      } catch (error) {
-        logger.warn({
-          message: 'missing asset backfill artifact failed',
-          details: { panelId: panel.id, runId },
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
-    }
-
-    return {
-      panelId: panel.id,
-      candidateCount: 0,
-      imageUrl: panel.imageUrl,
-      status: backfillPlan.status === 'human_required' ? 'human_required' : 'waiting_asset_backfill',
-      generationRouteDecision,
-      backfillPlan,
-      promptSnapshot,
-    }
-  }
-
   assertPanelGenerationRouteAllowed(generationRouteDecision)
 
   const candidates: string[] = []
@@ -607,12 +657,12 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
     candidates.push(cosKey)
   }
 
-  const isFirstGeneration = !panel.imageUrl
+  const isFirstGeneration = !panelForGeneration.imageUrl
 
   await assertTaskActive(job, 'persist_panel_image')
   const quality = await persistPanelCandidatesAndScheduleReview({
     job,
-    panel,
+    panel: panelForGeneration,
     candidates,
     isFirstGeneration,
   })

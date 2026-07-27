@@ -66,6 +66,33 @@ function routeDecision(route: 'asset_backfill' | 'human_required'): PanelGenerat
   }
 }
 
+function characterRequirementPlan(): ShotAssetRequirementPlan {
+  return {
+    schemaVersion: 1,
+    panelId: 'visual_2',
+    primarySubject: '主角',
+    subjectType: 'character',
+    visualIntent: 'character_action',
+    referencePolicy: 'required',
+    noReferenceAllowed: false,
+    noReferenceReason: null,
+    requirements: [{
+      name: '主角',
+      kind: 'character',
+      semanticType: 'person',
+      assetId: null,
+      role: 'primary_identity',
+      required: true,
+      mustLock: true,
+      reuseExpected: true,
+      reason: '主角需要跨镜保持外观一致',
+    }],
+    confidence: 0.9,
+    source: 'llm',
+    warnings: [],
+  }
+}
+
 describe('missing asset backfill planner', () => {
   it('plans auto-generation for missing location-backed assets', () => {
     const plan = planMissingAssetBackfill({
@@ -103,5 +130,29 @@ describe('missing asset backfill planner', () => {
 
     expect(updated?.requirements[0].assetId).toBe('prop-created')
     expect(original.requirements[0].assetId).toBeNull()
+  })
+
+  it('plans auto-generation for missing stable character assets', () => {
+    const characterPlan = characterRequirementPlan()
+    const decision: PanelGenerationRouteDecision = {
+      ...routeDecision('asset_backfill'),
+      blockingAssetNames: ['主角'],
+      noReferenceReason: 'character_asset_backfill_required',
+    }
+    const plan = planMissingAssetBackfill({
+      panelId: 'panel-2',
+      bindingPlan: bindingPlan(characterPlan),
+      decision,
+    })
+
+    expect(plan).toMatchObject({
+      status: 'queued',
+      requests: [{
+        name: '主角',
+        kind: 'character',
+        autoGenerate: true,
+        status: 'planned',
+      }],
+    })
   })
 })

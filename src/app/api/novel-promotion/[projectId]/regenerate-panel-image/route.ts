@@ -27,6 +27,7 @@ export const POST = apiHandler(async (
   const panelId = body?.panelId
   const count = body?.count
   const candidateCount = normalizeImageGenerationCount('storyboard-candidates', count)
+  const forceNoReference = body?.forceNoReference === true
 
   if (!panelId) {
     throw new ApiError('INVALID_PARAMS')
@@ -54,6 +55,7 @@ export const POST = apiHandler(async (
   const billingPayload = {
     ...body,
     candidateCount,
+    forceNoReference,
     imageModel: projectModelConfig.storyboardModel,
     ...(Object.keys(capabilityOptions).length > 0 ? { generationOptions: capabilityOptions } : {})}
 
@@ -70,7 +72,7 @@ export const POST = apiHandler(async (
     payload: withTaskUiPayload(billingPayload, {
       intent: 'regenerate',
       hasOutputAtStart}),
-    dedupeKey: `image_panel:${panelId}:${candidateCount}`,
+    dedupeKey: `image_panel:${panelId}:${candidateCount}${forceNoReference ? ':force_no_reference' : ''}`,
     billingInfo: buildDefaultTaskBillingInfo(TASK_TYPE.IMAGE_PANEL, billingPayload)})
 
   return NextResponse.json(result)

@@ -15,8 +15,13 @@ import {
 } from '@/lib/visual-production/binding-plan'
 import {
   findShotAssetRequirementPlan,
+  type ShotAssetRequirement,
   type ShotAssetRequirementPlanResult,
 } from '@/lib/visual-production/shot-asset-requirements'
+import {
+  canAutoBackfillRequirement,
+  isBlockingMissingRequirement,
+} from '@/lib/visual-production/asset-reference-policy'
 
 function asInputJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
@@ -35,6 +40,41 @@ function resolveContinuityGroupId(unit: VisualUnit): string {
   const primaryAsset = unit.assetRefs?.find((asset) => asset.kind !== 'location') || unit.assetRefs?.[0]
   const subject = primaryAsset?.id || unit.shotSpec.primarySubject || unit.clipId
   return `cg-${safeGroupPart(subject)}`
+}
+
+function initialRouteFromPlanningPrecheck(bindingPlan: ReturnType<typeof resolvePanelAssetBindingPlan>): {
+  generationRoute: string
+  noReferenceReason: string | null
+  blockingAssetNames: string[]
+} {
+  const blockers = (bindingPlan.unresolvedRequirements || []).filter((requirement: ShotAssetRequirement) => (
+    isBlockingMissingRequirement(requirement)
+  ))
+  if (blockers.length > 0) {
+    const canAutoBackfill = blockers.every(canAutoBackfillRequirement)
+    const hasCharacter = blockers.some((requirement) => requirement.kind === 'character')
+    return {
+      generationRoute: canAutoBackfill ? 'asset_backfill' : 'human_required',
+      noReferenceReason: canAutoBackfill
+        ? hasCharacter ? 'character_asset_backfill_required' : 'asset_backfill_required'
+        : 'manual_reference_required',
+      blockingAssetNames: blockers.map((requirement) => requirement.name),
+    }
+  }
+  if (bindingPlan.complexity.recommendedAction === 'composite') {
+    return {
+      generationRoute: 'composite',
+      noReferenceReason: 'text_or_cover_clean_plate',
+      blockingAssetNames: [],
+    }
+  }
+  return {
+    generationRoute: 'generate',
+    noReferenceReason: bindingPlan.bindings.length === 0
+      ? bindingPlan.requirementPlan?.noReferenceReason || 'one_off_broll'
+      : null,
+    blockingAssetNames: [],
+  }
 }
 
 export async function persistVisualPlan(params: {
@@ -165,6 +205,7 @@ export async function materializeGuideStoryboards(
         duration: unit.durationSec,
       })
       const bindings = panelVisualBindingsFromPlan(bindingPlan)
+      const planningPrecheck = initialRouteFromPlanningPrecheck(bindingPlan)
       const assetRefs = bindings.visibleAssets.map((item) => ({
         id: item.id,
         kind: item.kind,
@@ -199,13 +240,14 @@ export async function materializeGuideStoryboards(
           shotFunction: unit.shotSpec.shotFunction,
           primarySubject: unit.shotSpec.primarySubject,
           continuityGroupId: unit.continuityGroupId || resolveContinuityGroupId(unit),
-          generationRoute: bindingPlan.complexity.recommendedAction === 'composite' ? 'composite' : 'generate',
-          noReferenceReason: bindingPlan.bindings.length === 0 ? 'one_off_broll' : null,
+          generationRoute: planningPrecheck.generationRoute,
+          noReferenceReason: planningPrecheck.noReferenceReason,
           referencePlan: asInputJson({
             schemaVersion: 1,
             shotAssetRequirementPlan,
             bindingPlan,
             references: [],
+            planningPrecheck,
           }),
           onScreenText: unit.onScreenText || null,
           sourceAnchor: sourceAnchor ? asInputJson(sourceAnchor) : undefined,

@@ -181,7 +181,7 @@ describe('panel generation router', () => {
     })
   })
 
-  it('uses requirement plans to route missing character references to human review', () => {
+  it('uses requirement plans to route missing stable character references to backfill', () => {
     const requirementPlan = buildRequirementPlan({
       primarySubject: '主角',
       subjectType: 'character',
@@ -208,9 +208,77 @@ describe('panel generation router', () => {
     })
 
     expect(decision).toMatchObject({
-      route: 'human_required',
-      noReferenceReason: 'character_reference_required',
+      route: 'asset_backfill',
+      noReferenceReason: 'character_asset_backfill_required',
       blockingAssetNames: ['主角'],
+    })
+  })
+
+  it('allows one-off generic characters without stable reference images', () => {
+    const requirementPlan = buildRequirementPlan({
+      primarySubject: '成年读者',
+      subjectType: 'character',
+      visualIntent: 'character_action',
+      requirements: [{
+        name: '成年读者',
+        kind: 'character',
+        assetId: null,
+        role: 'primary_identity',
+        required: true,
+        mustLock: false,
+        reuseExpected: false,
+        semanticType: 'person',
+        reason: '一次性读者视角，不需要跨镜保持身份',
+      }],
+    })
+    const decision = decidePanelGenerationRoute({
+      panel: { id: 'panel-generic-reader', visualType: 'character_action', renderMode: 'generated_image' },
+      bindingPlan: buildBindingPlan({
+        primarySubject: '成年读者',
+        requirementPlan,
+        unresolvedRequirements: requirementPlan.requirements,
+      }),
+      references: [],
+    })
+
+    expect(decision).toMatchObject({
+      route: 'generate',
+      noReferenceReason: 'generic_character_no_reference_allowed',
+      blockingAssetNames: [],
+    })
+  })
+
+  it('supports manual no-reference fallback for blocked shots', () => {
+    const requirementPlan = buildRequirementPlan({
+      primarySubject: '主角',
+      subjectType: 'character',
+      visualIntent: 'character_action',
+      requirements: [{
+        name: '主角',
+        kind: 'character',
+        assetId: 'character-1',
+        role: 'primary_identity',
+        required: true,
+        mustLock: true,
+        reuseExpected: true,
+        reason: '角色脸和服装必须稳定',
+      }],
+    })
+    const decision = decidePanelGenerationRoute({
+      panel: { id: 'panel-force', visualType: 'character_action', renderMode: 'generated_image' },
+      bindingPlan: buildBindingPlan({
+        primarySubject: '主角',
+        requirementPlan,
+        unresolvedRequirements: [],
+      }),
+      references: [],
+      forceNoReference: true,
+    })
+
+    expect(decision).toMatchObject({
+      route: 'generate',
+      noReferenceReason: 'forced_no_reference',
+      blockingAssetNames: [],
     })
   })
 

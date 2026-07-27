@@ -1,6 +1,13 @@
 import type { PanelAssetBindingPlan } from './binding-plan'
 import type { VisualReference } from './references'
 import type { ShotAssetRequirement } from './shot-asset-requirements'
+import {
+  canAutoBackfillRequirement,
+  isBlockingMissingRequirement,
+  noReferenceAllowedReason,
+  requirementNeedsCoverage,
+  requiresStableReference,
+} from './asset-reference-policy'
 
 export type PanelGenerationRoute =
   | 'generate'
@@ -51,8 +58,8 @@ function primarySubjectNeedsReference(bindingPlan: PanelAssetBindingPlan): boole
   if (bindingPlan.requirementPlan) {
     if (bindingPlan.requirementPlan.noReferenceAllowed) return false
     return bindingPlan.requirementPlan.requirements.some((requirement) => (
-      requirement.required
-      && requirement.mustLock
+      requirementNeedsCoverage(requirement)
+      && requiresStableReference(requirement)
       && (
         requirement.role === 'primary_identity'
         || requirement.role === 'prop_detail'
@@ -94,13 +101,11 @@ function missingReferenceRequirements(params: {
   const requirementPlan = params.bindingPlan.requirementPlan
   if (!requirementPlan || requirementPlan.noReferenceAllowed) return []
   return requirementPlan.requirements.filter((requirement) => {
-    if (!requirement.required && !requirement.mustLock) return false
-    const requiresUsableImage = requirement.mustLock
-      || requirement.role === 'primary_identity'
-      || requirement.role === 'prop_detail'
-      || requirement.role === 'cover_motif'
-    if (!requiresUsableImage) return !bindingMatchesRequirement(params.bindingPlan, requirement)
-    return !params.references.some((reference) => referenceMatchesRequirement(reference, requirement))
+    if (!isBlockingMissingRequirement(requirement)) return false
+    if (requiresStableReference(requirement)) {
+      return !params.references.some((reference) => referenceMatchesRequirement(reference, requirement))
+    }
+    return !bindingMatchesRequirement(params.bindingPlan, requirement)
   })
 }
 
@@ -124,6 +129,7 @@ export function decidePanelGenerationRoute(params: {
   panel: PanelForGenerationRoute
   bindingPlan: PanelAssetBindingPlan
   references: VisualReference[]
+  forceNoReference?: boolean
 }): PanelGenerationRouteDecision {
   const reasons: string[] = []
   const blockingAssetNames: string[] = []
@@ -134,6 +140,21 @@ export function decidePanelGenerationRoute(params: {
     reasons.push('文字、书封或合成类镜头应生成干净底图，由下游叠加准确文字')
   }
 
+  if (params.forceNoReference) {
+    return {
+      schemaVersion: 1,
+      panelId: params.panel.id,
+      route: textOrCoverProne ? 'composite' : 'generate',
+      reasons: [
+        ...reasons,
+        '用户选择强制无参考生成，本次跳过缺失资产阻断',
+      ],
+      blockingAssetNames,
+      noReferenceReason: textOrCoverProne ? 'text_or_cover_clean_plate' : 'forced_no_reference',
+      suggestedFix: textOrCoverProne ? '生成无字干净底图，文字交给后期合成' : undefined,
+    }
+  }
+
   if (requirementPlan) {
     const blockers = missingReferenceRequirements({
       bindingPlan: params.bindingPlan,
@@ -141,22 +162,44 @@ export function decidePanelGenerationRoute(params: {
     })
     if (blockers.length > 0) {
       blockingAssetNames.push(...blockers.map((requirement) => requirement.name))
+      const canAutoBackfill = blockers.every(canAutoBackfillRequirement)
       const hasCharacterBlocker = blockers.some((requirement) => requirement.kind === 'character')
       return {
         schemaVersion: 1,
         panelId: params.panel.id,
-        route: hasCharacterBlocker ? 'human_required' : 'asset_backfill',
+        route: canAutoBackfill ? 'asset_backfill' : 'human_required',
         reasons: [
           ...reasons,
-          hasCharacterBlocker
-            ? '镜头需要稳定角色身份参考，但角色资产缺少可用形象图'
-            : '镜头需要稳定场景或道具参考，但资产缺失或尚无可用图片',
+          canAutoBackfill
+            ? hasCharacterBlocker
+              ? '镜头需要稳定角色身份参考，系统将自动补齐角色资产和形象图'
+              : '镜头需要稳定场景或道具参考，系统将自动补建缺失资产并生成参考图'
+            : '镜头缺少无法自动补齐的稳定参考，需要人工处理',
         ],
         blockingAssetNames,
-        noReferenceReason: hasCharacterBlocker ? 'character_reference_required' : 'asset_backfill_required',
-        suggestedFix: hasCharacterBlocker
-          ? '先补齐角色档案和形象图，再生成分镜图片'
-          : '自动补建缺失场景/道具资产并生成参考图后，再生成分镜图片',
+        noReferenceReason: canAutoBackfill
+          ? hasCharacterBlocker ? 'character_asset_backfill_required' : 'asset_backfill_required'
+          : 'manual_reference_required',
+        suggestedFix: canAutoBackfill
+          ? '自动补齐缺失资产参考图后，再生成分镜图片'
+          : '手动选择已有资产、补充资产图，或使用无参考生成兜底',
+      }
+    }
+
+    const allowedNoReferenceReasons = requirementPlan.requirements
+      .map(noReferenceAllowedReason)
+      .filter((value): value is string => !!value)
+    if (allowedNoReferenceReasons.length > 0 && params.bindingPlan.bindings.length === 0 && params.references.length === 0) {
+      return {
+        schemaVersion: 1,
+        panelId: params.panel.id,
+        route: 'generate',
+        reasons: [
+          ...reasons,
+          '镜头只包含一次性泛人物或背景主体，允许不绑定稳定资产参考',
+        ],
+        blockingAssetNames,
+        noReferenceReason: allowedNoReferenceReasons[0],
       }
     }
   }

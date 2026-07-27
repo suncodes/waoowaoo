@@ -86,12 +86,15 @@ export function useRegeneratePanelImage(projectId: string | null, episodeId: str
     const queryClient = useQueryClient()
 
     return useMutation({
-        mutationFn: async ({ panelId }: { panelId: string }) => {
+        mutationFn: async ({ panelId, forceNoReference }: { panelId: string; forceNoReference?: boolean }) => {
             if (!projectId) throw new Error('Project ID is required')
             const res = await apiFetch(`/api/novel-promotion/${projectId}/regenerate-panel-image`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ panelId }),
+                body: JSON.stringify({
+                    panelId,
+                    ...(forceNoReference ? { forceNoReference: true } : {}),
+                }),
             })
             if (!res.ok) {
                 const error = await res.json()

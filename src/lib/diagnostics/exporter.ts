@@ -22,7 +22,7 @@ import { reviewPromptSnapshotQuality } from '@/lib/creative-quality/prompt-revie
 
 const DEFAULT_MAX_FILE_BYTES = 25 * 1024 * 1024
 const DEFAULT_MAX_ARCHIVE_BYTES = 400 * 1024 * 1024
-const DIAGNOSTIC_SCHEMA_VERSION = 7
+const DIAGNOSTIC_SCHEMA_VERSION = 8
 const PROMPT_SNAPSHOT_ARTIFACT_TYPES = new Set(['prompt.panel_image.snapshot', 'prompt.panel_video.snapshot', 'prompt.asset_image.snapshot'])
 const ASSET_BIBLE_REUSE_ARTIFACT_TYPES = new Set(['asset.bible.reuse'])
 const CONTENT_QUALITY_REVIEW_ARTIFACT_TYPES = new Set(['content.quality.review'])
@@ -917,6 +917,112 @@ function buildQualitySignals(params: {
   }
 }
 
+function parseJsonRecord(value: unknown): AnyRecord {
+  if (!value) return {}
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value) as unknown
+      return asRecord(parsed)
+    } catch {
+      return {}
+    }
+  }
+  return asRecord(value)
+}
+
+function parseCandidateCount(value: unknown): number {
+  if (!value) return 0
+  if (Array.isArray(value)) return value.length
+  if (typeof value !== 'string') return 0
+  try {
+    const parsed = JSON.parse(value) as unknown
+    return Array.isArray(parsed) ? parsed.length : 0
+  } catch {
+    return value.trim() ? 1 : 0
+  }
+}
+
+function readStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item) => typeof item === 'string' && item.trim() ? [item.trim()] : [])
+}
+
+function buildVisualGenerationSummary(storyboards: AnyRecord[]) {
+  const panels = storyboards.flatMap((storyboard) => {
+    const storyboardPanels = Array.isArray(storyboard.panels) ? storyboard.panels as AnyRecord[] : []
+    return storyboardPanels.map((panel) => {
+      const referencePlan = parseJsonRecord(panel.referencePlan)
+      const decision = asRecord(referencePlan.decision)
+      const backfill = asRecord(referencePlan.backfill)
+      const requests = Array.isArray(backfill.requests) ? backfill.requests.map((item) => {
+        const request = asRecord(item)
+        return {
+          name: request.name || null,
+          kind: request.kind || null,
+          assetId: request.assetId || null,
+          status: request.status || null,
+          taskId: request.taskId || null,
+        }
+      }) : []
+      const blockingAssetNames = readStringList(decision.blockingAssetNames)
+      const hasImage = typeof panel.imageUrl === 'string' && panel.imageUrl.trim().length > 0
+      const candidateCount = parseCandidateCount(panel.candidateImages)
+      const route = typeof panel.generationRoute === 'string' ? panel.generationRoute : null
+      const status = hasImage
+        ? 'generated'
+        : candidateCount > 0
+          ? 'candidate_pending_confirmation'
+          : route === 'asset_backfill'
+            ? 'waiting_asset_backfill'
+            : route === 'human_required'
+              ? 'human_required'
+              : 'missing_output'
+      return {
+        storyboardId: storyboard.id || null,
+        panelId: panel.id || null,
+        panelNumber: panel.panelNumber ?? null,
+        panelIndex: panel.panelIndex ?? null,
+        status,
+        generationRoute: route,
+        noReferenceReason: panel.noReferenceReason || null,
+        blockingAssetNames: blockingAssetNames.length > 0
+          ? blockingAssetNames
+          : requests.flatMap((request) => typeof request.name === 'string' && request.name ? [request.name] : []),
+        backfillStatus: backfill.status || null,
+        backfillRequests: requests,
+        candidateCount,
+        hasImage,
+        suggestedFix: decision.suggestedFix || null,
+      }
+    })
+  })
+  const countByStatus = panels.reduce<Record<string, number>>((acc, panel) => {
+    acc[panel.status] = (acc[panel.status] || 0) + 1
+    return acc
+  }, {})
+  const countByRoute = panels.reduce<Record<string, number>>((acc, panel) => {
+    const route = panel.generationRoute || 'unknown'
+    acc[route] = (acc[route] || 0) + 1
+    return acc
+  }, {})
+  const blockedPanels = panels.filter((panel) => panel.status === 'waiting_asset_backfill' || panel.status === 'human_required')
+  return {
+    generatedAt: new Date(),
+    summary: {
+      panelCount: panels.length,
+      generatedCount: countByStatus.generated || 0,
+      candidatePendingCount: countByStatus.candidate_pending_confirmation || 0,
+      waitingAssetBackfillCount: countByStatus.waiting_asset_backfill || 0,
+      humanRequiredCount: countByStatus.human_required || 0,
+      missingOutputCount: countByStatus.missing_output || 0,
+      countByStatus,
+      countByRoute,
+    },
+    blockedPanels,
+    panels,
+  }
+}
+
 async function createArchive(params: {
   taskId: string
   projectId: string
@@ -1127,6 +1233,8 @@ async function createArchive(params: {
       pickupList: 'quality/pickup-list.jsonl',
     },
   }), { name: 'quality/quality-index.json' })
+  const visualGenerationSummary = buildVisualGenerationSummary(data.domain.storyboards as unknown as AnyRecord[])
+  archive.append(stringifyJson(visualGenerationSummary), { name: 'summary/visual-generation-summary.json' })
   const validationChecks = buildValidationChecks(data.tasks as unknown as AnyRecord[], data.runs as unknown as AnyRecord[], mediaIndex)
   archive.append(stringifyJson(validationChecks), { name: 'validation/checks.json' })
   archive.append(stringifyJson(buildQualitySignals({
@@ -1190,6 +1298,7 @@ async function createArchive(params: {
     'This package is intended for offline analysis of the complete creation workflow.',
     'It contains project snapshots, task and Graph events, correlated model invocation records, validation checks, media indexes and selected media files.',
     'Quality-focused traces are also grouped under quality/: content, script, asset, storyboard, prompt, visual and rough-cut reviews, prompt snapshots, asset/content/visual plan reuse, auto repairs, repair lineage and pickup lists.',
+    'For storyboard image closure, start with summary/visual-generation-summary.json before drilling into quality/visual-generation-routes.jsonl.',
     'Use invocationId, runId, stepKey and artifact references to distinguish prompt/model issues from workflow/state issues.',
     'Secrets and credentials are redacted during export.',
     `Reasoning included: ${options.includeReasoning ? 'yes' : 'no'}.`,

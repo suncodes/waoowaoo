@@ -64,6 +64,10 @@ function BoardDetailPanel({
     ? `${workflowPresentation.label} · ${workflowPresentation.progress}%`
     : workflowPresentation.label
   const disabled = workflowPresentation.blocksConfirmation
+  const referenceBlocked = !selectedImageUrl
+    && (item.sourcePanel.generationRoute === 'asset_backfill' || item.sourcePanel.generationRoute === 'human_required')
+    && !isSubmitting
+    && !localSubmitting
   const selectedCandidateUrl = candidates?.candidates[candidates.selectedIndex] || null
   const candidateDisplayGroups = candidates
     ? buildPanelCandidateDisplayGroups({
@@ -129,6 +133,16 @@ function BoardDetailPanel({
           <StudioButton size="sm" icon="sparkles" loading={isSubmitting} onClick={() => { void controller.regeneratePanelImage(item.panel.id, 2, false) }} disabled={disabled}>
             生成候选图
           </StudioButton>
+          {referenceBlocked ? (
+            <StudioButton
+              size="sm"
+              variant="secondary"
+              icon="sparkles"
+              onClick={() => { void controller.regeneratePanelImage(item.panel.id, 2, true, { forceNoReference: true }) }}
+            >
+              无参考生成
+            </StudioButton>
+          ) : null}
           <StudioButton
             size="sm"
             variant="secondary"
