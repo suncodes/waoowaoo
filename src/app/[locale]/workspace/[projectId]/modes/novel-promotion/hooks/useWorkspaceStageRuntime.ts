@@ -55,6 +55,7 @@ interface UseWorkspaceStageRuntimeParams {
     },
     generationOptions?: VideoGenerationOptions,
     panelId?: string,
+    requestOptions?: { allowSpeechPlanMissing?: boolean; allowSpeechlessVideo?: boolean },
   ) => Promise<void>
   handleGenerateAllVideos: (options?: BatchVideoGenerationParams) => Promise<void>
   handleUpdateVideoPrompt: (

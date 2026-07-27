@@ -50,6 +50,7 @@ export function useWorkspaceVideoActions({
     },
     generationOptions?: VideoGenerationOptions,
     panelId?: string,
+    requestOptions?: { allowSpeechPlanMissing?: boolean; allowSpeechlessVideo?: boolean },
   ) => {
     const normalizedVideoModel = typeof videoModel === 'string' ? videoModel.trim() : ''
     if (!normalizedVideoModel) {
@@ -64,6 +65,8 @@ export function useWorkspaceVideoActions({
         videoModel: normalizedVideoModel,
         firstLastFrame,
         generationOptions,
+        allowSpeechPlanMissing: requestOptions?.allowSpeechPlanMissing,
+        allowSpeechlessVideo: requestOptions?.allowSpeechlessVideo,
       })
     } catch (err: unknown) {
       if (isAbortError(err)) {

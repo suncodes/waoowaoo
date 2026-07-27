@@ -56,6 +56,8 @@ interface BatchVideoGenerationParams {
     videoModel: string
     mode?: 'normal' | 'firstlastframe'
     generationOptions?: VideoGenerationOptions
+    allowSpeechPlanMissing?: boolean
+    allowSpeechlessVideo?: boolean
 }
 
 // ============ 查询 Hooks ============
@@ -163,6 +165,8 @@ export function useGenerateVideo(projectId: string | null, episodeId: string | n
             panelId?: string
             videoModel: string
             generationOptions?: VideoGenerationOptions
+            allowSpeechPlanMissing?: boolean
+            allowSpeechlessVideo?: boolean
             firstLastFrame?: {
                 lastFrameStoryboardId: string
                 lastFramePanelIndex: number
@@ -184,6 +188,8 @@ export function useGenerateVideo(projectId: string | null, episodeId: string | n
                 }
                 videoModel: string
                 generationOptions?: VideoGenerationOptions
+                allowSpeechPlanMissing?: boolean
+                allowSpeechlessVideo?: boolean
             } = {
                 storyboardId: params.storyboardId,
                 panelIndex: params.panelIndex,
@@ -197,6 +203,12 @@ export function useGenerateVideo(projectId: string | null, episodeId: string | n
 
             if (params.generationOptions && typeof params.generationOptions === 'object') {
                 requestBody.generationOptions = params.generationOptions
+            }
+            if (params.allowSpeechPlanMissing === true) {
+                requestBody.allowSpeechPlanMissing = true
+            }
+            if (params.allowSpeechlessVideo === true) {
+                requestBody.allowSpeechlessVideo = true
             }
 
             const res = await apiFetch(`/api/novel-promotion/${projectId}/generate-video`, {
@@ -256,6 +268,8 @@ export function useBatchGenerateVideos(projectId: string | null, episodeId: stri
                 videoModel: string
                 batchMode: 'normal' | 'firstlastframe'
                 generationOptions?: VideoGenerationOptions
+                allowSpeechPlanMissing?: boolean
+                allowSpeechlessVideo?: boolean
             } = {
                 all: true,
                 episodeId,
@@ -264,6 +278,12 @@ export function useBatchGenerateVideos(projectId: string | null, episodeId: stri
             }
             if (params.generationOptions && typeof params.generationOptions === 'object') {
                 requestBody.generationOptions = params.generationOptions
+            }
+            if (params.allowSpeechPlanMissing === true) {
+                requestBody.allowSpeechPlanMissing = true
+            }
+            if (params.allowSpeechlessVideo === true) {
+                requestBody.allowSpeechlessVideo = true
             }
 
             const res = await apiFetch(`/api/novel-promotion/${projectId}/generate-video`, {

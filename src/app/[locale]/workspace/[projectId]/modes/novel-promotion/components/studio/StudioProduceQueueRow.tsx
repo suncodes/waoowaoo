@@ -15,16 +15,18 @@ export default function StudioProduceQueueRow({
   item,
   selected,
   linked,
+  voiceLineCount,
   onSelect,
 }: {
   item: ProduceItem
   selected: boolean
   linked: boolean
+  voiceLineCount: number
   onSelect: () => void
 }) {
   const imageStatus = resolveImageStatus(item.panel)
   const videoStatus = resolveVideoStatus(item.panel)
-  const voiceStatus = resolveVoiceStatus(item.panel)
+  const voiceStatus = resolveVoiceStatus(item.panel, { hasVoiceLines: voiceLineCount > 0 })
 
   return (
     <button
@@ -56,7 +58,7 @@ export default function StudioProduceQueueRow({
         <div className="mt-3 flex flex-wrap gap-1.5 text-[11px]">
           <span className={`rounded border px-2 py-0.5 ${studioStatusClass(imageStatus)}`}>图 {statusLabel(imageStatus)}</span>
           <span className={`rounded border px-2 py-0.5 ${studioStatusClass(videoStatus)}`}>视频 {statusLabel(videoStatus)}</span>
-          <span className={`rounded border px-2 py-0.5 ${studioStatusClass(voiceStatus)}`}>配音 {statusLabel(voiceStatus)}</span>
+          <span className={`rounded border px-2 py-0.5 ${studioStatusClass(voiceStatus)}`}>台词 {voiceLineCount > 0 ? `${voiceLineCount}条` : '无'}</span>
         </div>
       </div>
     </button>

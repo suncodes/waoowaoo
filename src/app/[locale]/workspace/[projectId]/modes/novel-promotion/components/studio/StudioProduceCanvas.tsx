@@ -24,6 +24,7 @@ import StudioProduceQueueRow from './StudioProduceQueueRow'
 import {
   buildProduceItems,
   buildBatchVideoPreflight,
+  hasMissingSpeechPlanForVoiceLines,
   isPanelSpeechReadyForVideo,
   isPanelVisualReadyForVideo,
   panelLinkedToNext,
@@ -52,6 +53,8 @@ const BATCH_REASON_LABELS: Record<BatchVideoSkipReason, string> = {
   video_running: '视频正在生成',
   image_missing: '缺少首帧图片',
   quality_not_ready: '首帧尚未完成质量确认',
+  speech_lines_missing: '未匹配台词',
+  speech_plan_missing: '有台词但未生成声音计划',
   speech_not_ready: '台词与声音未就绪',
   not_linked: '未连接下一镜头',
   last_panel: '最后一个镜头没有尾帧',
@@ -65,6 +68,10 @@ interface BatchPreviewState {
   skippedCount: number
   reasonCounts: Partial<Record<BatchVideoSkipReason, number>>
   issues: string[]
+  allowSpeechPlanMissing: boolean
+  allowSpeechlessVideo: boolean
+  speechPlanMissingCount: number
+  silentPanelCount: number
 }
 
 function BatchVideoConfirmDialog({
@@ -72,11 +79,15 @@ function BatchVideoConfirmDialog({
   loading,
   onCancel,
   onConfirm,
+  onAllowSpeechPlanMissingChange,
+  onAllowSpeechlessVideoChange,
 }: {
   preview: BatchPreviewState
   loading: boolean
   onCancel: () => void
   onConfirm: () => void
+  onAllowSpeechPlanMissingChange: (value: boolean) => void
+  onAllowSpeechlessVideoChange: (value: boolean) => void
 }) {
   const title = preview.mode === 'firstlastframe' ? '批量生成首尾帧视频' : '批量生成单图视频'
   const [mounted, setMounted] = useState(false)
@@ -117,8 +128,37 @@ function BatchVideoConfirmDialog({
               {preview.issues.map((issue) => <div key={issue}>{issue}</div>)}
             </div>
           ) : (
-            <div className="rounded-md border border-amber-400/25 bg-amber-400/10 px-3 py-3 text-sm leading-6 text-amber-100">
-              点击确认后会为 {preview.eligibleCount} 个镜头创建独立生成任务，已存在的视频不会覆盖。
+            <div className="space-y-3">
+              <div className="rounded-md border border-amber-400/25 bg-amber-400/10 px-3 py-3 text-sm leading-6 text-amber-100">
+                点击确认后会为 {preview.eligibleCount} 个镜头创建独立生成任务，已存在的视频不会覆盖。
+                {preview.silentPanelCount > 0 ? <div>当前队列有 {preview.silentPanelCount} 个生成项没有匹配台词；默认会跳过这些生成项。</div> : null}
+              </div>
+              {preview.silentPanelCount > 0 ? (
+                <label className="flex gap-2 rounded-md border border-cyan-400/25 bg-cyan-400/10 px-3 py-3 text-sm leading-6 text-cyan-50">
+                  <input
+                    type="checkbox"
+                    checked={preview.allowSpeechlessVideo}
+                    onChange={(event) => onAllowSpeechlessVideoChange(event.target.checked)}
+                    className="mt-1 h-4 w-4 accent-cyan-300"
+                  />
+                  <span>
+                    我确认这 {preview.silentPanelCount} 个生成项按无台词、无旁白视频继续生成。
+                  </span>
+                </label>
+              ) : null}
+              {preview.speechPlanMissingCount > 0 ? (
+                <label className="flex gap-2 rounded-md border border-cyan-400/25 bg-cyan-400/10 px-3 py-3 text-sm leading-6 text-cyan-50">
+                  <input
+                    type="checkbox"
+                    checked={preview.allowSpeechPlanMissing}
+                    onChange={(event) => onAllowSpeechPlanMissingChange(event.target.checked)}
+                    className="mt-1 h-4 w-4 accent-cyan-300"
+                  />
+                  <span>
+                    有 {preview.speechPlanMissingCount} 个镜头已有台词，但镜头级台词与声音计划缺失。默认会跳过这些镜头；勾选后这些镜头会按无旁白视频继续生成。
+                  </span>
+                </label>
+              ) : null}
             </div>
           )}
         </div>
@@ -167,6 +207,7 @@ function ProductionDetailPanel({
   linkSaving,
   onToggleLink,
   firstLastFrameFlow,
+  voiceLineCountForItem,
 }: {
   item: ProduceItem
   nextItem: ProduceItem | null
@@ -174,6 +215,7 @@ function ProductionDetailPanel({
   linkSaving: boolean
   onToggleLink: () => Promise<void>
   firstLastFrameFlow: FirstLastFrameFlow
+  voiceLineCountForItem: (item: ProduceItem) => number
 }) {
   const runtime = useWorkspaceStageRuntime()
   const initialModel = panelVideoModel(item.panel) || runtime.videoModel || runtime.userVideoModels[0]?.value || ''
@@ -184,6 +226,8 @@ function ProductionDetailPanel({
   const [selectedModel, setSelectedModel] = useState(initialModel)
   const [savingPrompt, setSavingPrompt] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [allowSpeechPlanMissing, setAllowSpeechPlanMissing] = useState(false)
+  const [allowSpeechlessVideo, setAllowSpeechlessVideo] = useState(false)
   const videoUrl = panelVideoUrl(item.panel)
   const videoStatus = resolveVideoStatus(item.panel)
   const error = panelVideoError(item.panel)
@@ -191,18 +235,42 @@ function ProductionDetailPanel({
   const firstLastPrompt = firstLastFrameFlow.flCustomPrompts.get(panelKey)
     || item.panel.firstLastFramePrompt
     || defaultFirstLastPrompt
+  const currentVoiceLineCount = voiceLineCountForItem(item)
+  const nextVoiceLineCount = nextItem ? voiceLineCountForItem(nextItem) : 0
+  const currentSpeechless = currentVoiceLineCount === 0
+  const nextSpeechless = mode === 'firstlastframe' && !!nextItem && nextVoiceLineCount === 0
+  const currentSpeechPlanMissing = hasMissingSpeechPlanForVoiceLines(item.panel, currentVoiceLineCount > 0)
+  const nextSpeechPlanMissing = nextItem ? hasMissingSpeechPlanForVoiceLines(nextItem.panel, nextVoiceLineCount > 0) : false
   const currentVisualReady = isPanelVisualReadyForVideo(item.panel)
   const nextVisualReady = nextItem ? isPanelVisualReadyForVideo(nextItem.panel) : null
-  const currentSpeechReady = isPanelSpeechReadyForVideo(item.panel)
-  const nextSpeechReady = nextItem ? isPanelSpeechReadyForVideo(nextItem.panel) : true
+  const currentSpeechReady = isPanelSpeechReadyForVideo(item.panel, {
+    hasVoiceLines: currentVoiceLineCount > 0,
+    allowSpeechPlanMissing,
+    allowSpeechlessVideo,
+  })
+  const nextSpeechReady = nextItem ? isPanelSpeechReadyForVideo(nextItem.panel, {
+    hasVoiceLines: nextVoiceLineCount > 0,
+    allowSpeechPlanMissing,
+    allowSpeechlessVideo,
+  }) : true
+  const speechlessMessage = currentSpeechless
+    ? '当前镜头没有匹配台词'
+    : nextSpeechless
+      ? '尾帧镜头没有匹配台词'
+      : ''
+  const speechPlanMissingMessage = currentSpeechPlanMissing
+    ? `当前镜头有 ${currentVoiceLineCount} 条台词，但台词与声音计划缺失`
+    : mode === 'firstlastframe' && nextSpeechPlanMissing
+      ? `尾帧镜头有 ${nextVoiceLineCount} 条台词，但台词与声音计划缺失`
+      : ''
   const readinessMessage = !currentVisualReady
     ? (mode === 'firstlastframe' ? '首帧需要完成画面质量确认' : '当前画面需要完成质量确认')
     : mode === 'firstlastframe' && nextVisualReady === false
       ? '尾帧需要完成画面质量确认'
       : !currentSpeechReady
-        ? '当前镜头台词与声音未就绪'
+        ? (speechlessMessage || speechPlanMissingMessage || '当前镜头台词与声音未就绪')
         : mode === 'firstlastframe' && !nextSpeechReady
-          ? '尾帧镜头台词与声音未就绪'
+          ? (speechlessMessage || speechPlanMissingMessage || '尾帧镜头台词与声音未就绪')
       : ''
   const missingFirstLastFrameSetup = !nextItem
     || !item.panel.imageUrl
@@ -215,6 +283,8 @@ function ProductionDetailPanel({
     setMode(initialMode)
     setPrompt(item.panel.videoPrompt || '')
     setSelectedModel(initialModel)
+    setAllowSpeechPlanMissing(false)
+    setAllowSpeechlessVideo(false)
   }, [
     initialMode,
     initialModel,
@@ -247,6 +317,13 @@ function ProductionDetailPanel({
     if (value.trim()) await runtime.onUpdatePanelVideoModel(item.storyboard.id, item.panel.panelIndex, value)
   }
 
+  const buildVideoRequestOptions = () => {
+    const options: { allowSpeechPlanMissing?: boolean; allowSpeechlessVideo?: boolean } = {}
+    if (allowSpeechPlanMissing) options.allowSpeechPlanMissing = true
+    if (allowSpeechlessVideo) options.allowSpeechlessVideo = true
+    return Object.keys(options).length > 0 ? options : undefined
+  }
+
   const generate = async () => {
     setGenerating(true)
     try {
@@ -269,6 +346,7 @@ function ProductionDetailPanel({
           },
           firstLastFrameFlow.flGenerationOptions,
           item.panel.id,
+          buildVideoRequestOptions(),
         )
         return
       }
@@ -278,7 +356,15 @@ function ProductionDetailPanel({
         window.alert('请先在设置中配置视频模型。')
         return
       }
-      await runtime.onGenerateVideo(item.storyboard.id, item.panel.panelIndex, selectedModel, undefined, undefined, item.panel.id)
+      await runtime.onGenerateVideo(
+        item.storyboard.id,
+        item.panel.panelIndex,
+        selectedModel,
+        undefined,
+        undefined,
+        item.panel.id,
+        buildVideoRequestOptions(),
+      )
     } catch {
       // Workspace video actions already surface the request error.
     } finally {
@@ -403,6 +489,36 @@ function ProductionDetailPanel({
           </div>
         )}
 
+        <div className="rounded-md border border-white/10 bg-[#0f100e] px-3 py-3 text-xs leading-5 text-stone-400">
+          <div className="font-semibold text-stone-300">台词与声音</div>
+          <div className="mt-1">当前镜头：{currentVoiceLineCount > 0 ? `${currentVoiceLineCount} 条台词` : '无匹配台词，默认不生成无旁白视频'}</div>
+          {mode === 'firstlastframe' && nextItem ? (
+            <div>尾帧镜头：{nextVoiceLineCount > 0 ? `${nextVoiceLineCount} 条台词` : '无匹配台词'}</div>
+          ) : null}
+          {currentSpeechless || nextSpeechless ? (
+            <label className="mt-2 flex gap-2 rounded border border-cyan-400/25 bg-cyan-400/10 px-2 py-2 text-cyan-50">
+              <input
+                type="checkbox"
+                checked={allowSpeechlessVideo}
+                onChange={(event) => setAllowSpeechlessVideo(event.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-cyan-300"
+              />
+              <span>我确认本次按无台词、无旁白视频继续生成。</span>
+            </label>
+          ) : null}
+          {currentSpeechPlanMissing || (mode === 'firstlastframe' && nextSpeechPlanMissing) ? (
+            <label className="mt-2 flex gap-2 rounded border border-cyan-400/25 bg-cyan-400/10 px-2 py-2 text-cyan-50">
+              <input
+                type="checkbox"
+                checked={allowSpeechPlanMissing}
+                onChange={(event) => setAllowSpeechPlanMissing(event.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-cyan-300"
+              />
+              <span>我确认本次按无旁白视频继续生成。</span>
+            </label>
+          ) : null}
+        </div>
+
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs text-stone-500">{savingPrompt ? '提示词保存中' : readinessMessage || (mode === 'firstlastframe' && !linked ? '连接下一镜头后可生成' : '生成参数已就绪')}</span>
           <div className="flex gap-2">
@@ -420,7 +536,7 @@ function ProductionDetailPanel({
 export default function StudioProduceCanvas({ model, onNavigate }: StudioProduceCanvasProps) {
   const runtime = useWorkspaceStageRuntime()
   const { projectId } = useWorkspaceProvider()
-  const { storyboards: rawStoryboards } = useWorkspaceEpisodeStageData()
+  const { storyboards: rawStoryboards, voiceLines } = useWorkspaceEpisodeStageData()
   const { taskAwareStoryboards } = useStoryboardTaskAwareStoryboards({
     projectId,
     initialStoryboards: rawStoryboards,
@@ -440,6 +556,44 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
   const effectiveSelectedIndex = selectedItem ? items.findIndex((item) => item.id === selectedItem.id) : -1
   const nextItem = effectiveSelectedIndex >= 0 && effectiveSelectedIndex < items.length - 1 ? items[effectiveSelectedIndex + 1] : null
   const videoModel = runtime.videoModel || runtime.userVideoModels[0]?.value || ''
+  const voiceLineCountForItem = useMemo(() => {
+    const idsByPanelId = new Map<string, Set<string>>()
+    const idsByPanelKey = new Map<string, Set<string>>()
+    const add = (map: Map<string, Set<string>>, key: string, id: string) => {
+      const set = map.get(key) || new Set<string>()
+      set.add(id)
+      map.set(key, set)
+    }
+    for (const line of voiceLines) {
+      let usedSpan = false
+      for (const span of line.panelSpans || []) {
+        if (span.panelId) {
+          add(idsByPanelId, span.panelId, line.id)
+          usedSpan = true
+          continue
+        }
+        const key = span.panel?.storyboardId && span.panel?.panelIndex !== null && span.panel?.panelIndex !== undefined
+          ? `${span.panel.storyboardId}:${span.panel.panelIndex}`
+          : ''
+        if (key) {
+          add(idsByPanelKey, key, line.id)
+          usedSpan = true
+        }
+      }
+      if (usedSpan) continue
+      if (line.matchedPanelId) add(idsByPanelId, line.matchedPanelId, line.id)
+      if (line.matchedStoryboardId && line.matchedPanelIndex !== null && line.matchedPanelIndex !== undefined) {
+        add(idsByPanelKey, `${line.matchedStoryboardId}:${line.matchedPanelIndex}`, line.id)
+      }
+    }
+    return (item: ProduceItem) => {
+      const ids = new Set<string>()
+      for (const id of idsByPanelId.get(item.panel.id) || []) ids.add(id)
+      for (const id of idsByPanelKey.get(`${item.storyboard.id}:${item.panel.panelIndex}`) || []) ids.add(id)
+      return ids.size
+    }
+  }, [voiceLines])
+  const hasVoiceLinesForItem = (item: ProduceItem) => voiceLineCountForItem(item) > 0
   const firstLastFrameFlow = useVideoFirstLastFrameFlow({
     allPanels: videoPanels,
     linkedPanels,
@@ -472,8 +626,23 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
     }
   }
 
-  const openBatchPreview = (mode: BatchVideoMode) => {
-    const preflight = buildBatchVideoPreflight(items, linkedPanels, mode)
+  const buildBatchPreviewState = (
+    mode: BatchVideoMode,
+    allowSpeechPlanMissing: boolean,
+    allowSpeechlessVideo: boolean,
+  ): BatchPreviewState => {
+    const blockedPreflight = buildBatchVideoPreflight(items, linkedPanels, mode, {
+      hasVoiceLinesForItem,
+      allowSpeechPlanMissing: false,
+      allowSpeechlessVideo: false,
+    })
+    const preflight = allowSpeechPlanMissing || allowSpeechlessVideo
+      ? buildBatchVideoPreflight(items, linkedPanels, mode, {
+        hasVoiceLinesForItem,
+        allowSpeechPlanMissing,
+        allowSpeechlessVideo,
+      })
+      : blockedPreflight
     const issues: string[] = []
     if (mode === 'normal' && !videoModel.trim()) issues.push('请先在设置中配置单图视频模型。')
     if (mode === 'firstlastframe') {
@@ -482,7 +651,18 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
         issues.push(`首尾帧参数尚未完整：${firstLastFrameFlow.flMissingCapabilityFields.join('、')}`)
       }
     }
-    setBatchPreview({ ...preflight, issues })
+    return {
+      ...preflight,
+      issues,
+      allowSpeechPlanMissing,
+      allowSpeechlessVideo,
+      speechPlanMissingCount: blockedPreflight.reasonCounts.speech_plan_missing || 0,
+      silentPanelCount: blockedPreflight.reasonCounts.speech_lines_missing || 0,
+    }
+  }
+
+  const openBatchPreview = (mode: BatchVideoMode) => {
+    setBatchPreview(buildBatchPreviewState(mode, false, false))
   }
 
   const confirmBatchGeneration = async () => {
@@ -498,6 +678,8 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
         ...(mode === 'firstlastframe'
           ? { generationOptions: firstLastFrameFlow.flGenerationOptions }
           : {}),
+        allowSpeechPlanMissing: batchPreview.allowSpeechPlanMissing,
+        allowSpeechlessVideo: batchPreview.allowSpeechlessVideo,
       })
       setBatchPreview(null)
     } catch {
@@ -547,7 +729,7 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
                 const followingImageReady = followingItem ? isPanelVisualReadyForVideo(followingItem.panel) : false
                 return (
                   <div key={item.id}>
-                    <StudioProduceQueueRow item={item} linked={linked} selected={selectedItem?.id === item.id} onSelect={() => setSelectedId(item.id)} />
+                    <StudioProduceQueueRow item={item} linked={linked} selected={selectedItem?.id === item.id} voiceLineCount={voiceLineCountForItem(item)} onSelect={() => setSelectedId(item.id)} />
                     {followingItem ? (
                       <div className="flex items-center justify-center py-2">
                         <button
@@ -575,6 +757,7 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
               linkSaving={linkSavingKey === `${selectedItem.storyboard.id}-${selectedItem.panel.panelIndex}`}
               onToggleLink={() => toggleLink(selectedItem)}
               firstLastFrameFlow={firstLastFrameFlow}
+              voiceLineCountForItem={voiceLineCountForItem}
             />
           ) : null}
         </div>
@@ -586,6 +769,8 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
           loading={generatingMode === batchPreview.mode}
           onCancel={() => setBatchPreview(null)}
           onConfirm={() => { void confirmBatchGeneration() }}
+          onAllowSpeechPlanMissingChange={(value) => setBatchPreview((current) => current ? buildBatchPreviewState(current.mode, value, current.allowSpeechlessVideo) : current)}
+          onAllowSpeechlessVideoChange={(value) => setBatchPreview((current) => current ? buildBatchPreviewState(current.mode, current.allowSpeechPlanMissing, value) : current)}
         />
       ) : null}
     </div>

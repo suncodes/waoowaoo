@@ -136,4 +136,6 @@ export interface BatchVideoGenerationParams {
   videoModel: string
   mode?: VideoGenerationMode
   generationOptions?: VideoGenerationOptions
+  allowSpeechPlanMissing?: boolean
+  allowSpeechlessVideo?: boolean
 }

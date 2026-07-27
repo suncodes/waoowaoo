@@ -59,6 +59,13 @@ export interface PanelSpeechPlanSummary {
   warningCount: number
 }
 
+export type PanelSpeechReadinessCode =
+  | 'READY'
+  | 'NO_SPEECH'
+  | 'SPEECH_PLAN_MISSING'
+  | 'SPEECH_PLAN_EMPTY'
+  | 'SPEECH_PLAN_NOT_READY'
+
 type CharacterVoiceLike = {
   id: string
   name: string
@@ -549,6 +556,39 @@ export async function ensureEpisodeSpeechPlans(episodeId: string) {
   return await rebuildEpisodeSpeechPlans(episodeId)
 }
 
+export async function countPanelMatchedVoiceLines(panelId: string): Promise<number> {
+  const panel = await prisma.novelPromotionPanel.findUnique({
+    where: { id: panelId },
+    select: {
+      id: true,
+      storyboardId: true,
+      panelIndex: true,
+      storyboard: {
+        select: {
+          episodeId: true,
+        },
+      },
+    },
+  })
+  if (!panel) throw new Error('SPEECH_PLAN_PANEL_NOT_FOUND')
+
+  const lines = await prisma.novelPromotionVoiceLine.findMany({
+    where: {
+      episodeId: panel.storyboard.episodeId,
+      OR: [
+        { matchedPanelId: panel.id },
+        {
+          matchedStoryboardId: panel.storyboardId,
+          matchedPanelIndex: panel.panelIndex,
+        },
+      ],
+    },
+    select: { id: true },
+  })
+
+  return new Set(lines.map((line) => line.id)).size
+}
+
 function readSpeechLines(raw: unknown): PanelSpeechLine[] {
   return Array.isArray(raw)
     ? raw.flatMap((item) => {
@@ -686,13 +726,60 @@ export function compileSpeechPlanPromptSection(params: {
 export async function validatePanelSpeechReadyForVideo(panelId: string) {
   const { available, plan } = await ensurePanelSpeechPlan(panelId)
   if (!available || !plan) {
-    return { ready: true, available, plan: null, reasons: [] as string[] }
+    const voiceLineCount = await countPanelMatchedVoiceLines(panelId)
+    if (voiceLineCount > 0) {
+      return {
+        ready: false,
+        available,
+        plan: null,
+        reasons: [
+          available
+            ? `当前镜头已有 ${voiceLineCount} 条台词，但镜头级台词与声音计划缺失；继续生成将不会携带旁白。`
+            : `当前数据库缺少镜头级台词与声音计划表，已有 ${voiceLineCount} 条台词无法注入视频；请先执行数据库迁移，或明确选择无旁白继续生成。`,
+        ],
+        code: 'SPEECH_PLAN_MISSING' as PanelSpeechReadinessCode,
+        voiceLineCount,
+      }
+    }
+    return {
+      ready: true,
+      available,
+      plan: null,
+      reasons: ['当前镜头没有匹配台词；继续生成将不会携带旁白。'],
+      code: 'NO_SPEECH' as PanelSpeechReadinessCode,
+      voiceLineCount,
+    }
   }
   if (plan.mode === 'none') {
-    return { ready: true, available, plan, reasons: [] as string[] }
+    const voiceLineCount = await countPanelMatchedVoiceLines(panelId)
+    if (voiceLineCount > 0) {
+      return {
+        ready: false,
+        available,
+        plan,
+        reasons: [`当前镜头已有 ${voiceLineCount} 条台词，但台词计划为空；继续生成将不会携带旁白。`],
+        code: 'SPEECH_PLAN_EMPTY' as PanelSpeechReadinessCode,
+        voiceLineCount,
+      }
+    }
+    return {
+      ready: true,
+      available,
+      plan,
+      reasons: ['当前镜头没有匹配台词；继续生成将不会携带旁白。'],
+      code: 'NO_SPEECH' as PanelSpeechReadinessCode,
+      voiceLineCount,
+    }
   }
   if (plan.status === 'ready') {
-    return { ready: true, available, plan, reasons: [] as string[] }
+    return {
+      ready: true,
+      available,
+      plan,
+      reasons: [] as string[],
+      code: 'READY' as PanelSpeechReadinessCode,
+      voiceLineCount: readSpeechLines(plan.linesJson).length,
+    }
   }
   const warnings = Array.isArray(plan.warningsJson) ? plan.warningsJson : []
   const reasons = warnings.flatMap((warning) => {
@@ -705,5 +792,7 @@ export async function validatePanelSpeechReadyForVideo(panelId: string) {
     available,
     plan,
     reasons: reasons.length > 0 ? reasons : ['台词与声音计划未就绪。'],
+    code: 'SPEECH_PLAN_NOT_READY' as PanelSpeechReadinessCode,
+    voiceLineCount: readSpeechLines(plan.linesJson).length,
   }
 }

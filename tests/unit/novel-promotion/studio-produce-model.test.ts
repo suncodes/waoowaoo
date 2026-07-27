@@ -6,6 +6,7 @@ import {
   panelVideoUrl,
   resolveImageStatus,
   resolveVideoStatus,
+  resolveVoiceStatus,
 } from '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/studio/studio-produce-model'
 import type { ProduceItem } from '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/studio/studio-produce-model'
 import { createVisualQualityState } from '@/lib/quality-workflow'
@@ -121,5 +122,81 @@ describe('studio video production model', () => {
       eligibleCount: 2,
       reasonCounts: { quality_not_ready: 1 },
     })
+  })
+
+  it('does not silently pass panels that have lines but no speech plan', () => {
+    const readyState = createVisualQualityState({
+      mode: 'auto',
+      status: 'approved',
+      versionHash: 'version-ready',
+      candidateUrls: ['frame.png'],
+      humanConfirmedAt: '2026-07-22T10:00:00.000Z',
+    })
+    const item: ProduceItem = {
+      id: 'panel-1',
+      number: 1,
+      storyboard: { id: 'storyboard-1' } as ProduceItem['storyboard'],
+      panel: panel({
+        id: 'panel-1',
+        panelIndex: 0,
+        imageUrl: 'frame.png',
+        visualQualityState: readyState,
+        speechPlan: null,
+      }),
+    }
+    const links = new Map<string, boolean>()
+    const options = { hasVoiceLinesForItem: () => true }
+
+    expect(buildBatchVideoPreflight([item], links, 'normal', options)).toMatchObject({
+      eligibleCount: 0,
+      skippedCount: 1,
+      reasonCounts: { speech_plan_missing: 1 },
+    })
+    expect(buildBatchVideoPreflight([item], links, 'normal', {
+      ...options,
+      allowSpeechPlanMissing: true,
+    })).toMatchObject({
+      eligibleCount: 1,
+      skippedCount: 0,
+    })
+    expect(resolveVoiceStatus(item.panel, { hasVoiceLines: true })).toBe('needs_review')
+  })
+
+  it('does not silently pass panels without matched voice lines', () => {
+    const readyState = createVisualQualityState({
+      mode: 'auto',
+      status: 'approved',
+      versionHash: 'version-ready',
+      candidateUrls: ['frame.png'],
+      humanConfirmedAt: '2026-07-22T10:00:00.000Z',
+    })
+    const item: ProduceItem = {
+      id: 'panel-1',
+      number: 1,
+      storyboard: { id: 'storyboard-1' } as ProduceItem['storyboard'],
+      panel: panel({
+        id: 'panel-1',
+        panelIndex: 0,
+        imageUrl: 'frame.png',
+        visualQualityState: readyState,
+        speechPlan: null,
+      }),
+    }
+    const links = new Map<string, boolean>()
+    const options = { hasVoiceLinesForItem: () => false }
+
+    expect(buildBatchVideoPreflight([item], links, 'normal', options)).toMatchObject({
+      eligibleCount: 0,
+      skippedCount: 1,
+      reasonCounts: { speech_lines_missing: 1 },
+    })
+    expect(buildBatchVideoPreflight([item], links, 'normal', {
+      ...options,
+      allowSpeechlessVideo: true,
+    })).toMatchObject({
+      eligibleCount: 1,
+      skippedCount: 0,
+    })
+    expect(resolveVoiceStatus(item.panel, { hasVoiceLines: false })).toBe('needs_review')
   })
 })
