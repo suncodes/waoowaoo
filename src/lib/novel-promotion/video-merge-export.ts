@@ -199,6 +199,18 @@ function buildStorageKey(
   return `videos/merged/${sanitizeStorageSegment(projectId)}/${scope}-${timestamp}-${random}${suffix}.mp4`
 }
 
+export function buildMergedVideoAccessUrls(params: {
+  projectId: string
+  outputKey: string
+  fileName: string
+}): { outputUrl: string; downloadUrl: string } {
+  const outputUrl = `/api/novel-promotion/${encodeURIComponent(params.projectId)}/video-proxy?key=${encodeURIComponent(params.outputKey)}`
+  return {
+    outputUrl,
+    downloadUrl: `${outputUrl}&download=1&filename=${encodeURIComponent(params.fileName)}`,
+  }
+}
+
 function toFfmpegConcatPath(filePath: string): string {
   return path.resolve(filePath).replace(/\\/g, '/')
 }
@@ -833,10 +845,14 @@ export async function mergeProjectVideosToStorage(
     }
 
     const fileName = `${sanitizeFileName(source.projectName)}_${subtitleTrackApplied ? 'merged_subtitled' : 'merged'}.mp4`
+    const accessUrls = buildMergedVideoAccessUrls({
+      projectId: input.projectId,
+      outputKey,
+      fileName,
+    })
     return {
       outputKey,
-      outputUrl: outputKey,
-      downloadUrl: `/api/novel-promotion/${input.projectId}/video-proxy?key=${encodeURIComponent(outputKey)}&download=1&filename=${encodeURIComponent(fileName)}`,
+      ...accessUrls,
       fileName,
       videoCount: source.candidates.length,
       sizeBytes: outputBuffer.length,
