@@ -16,7 +16,11 @@ import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
 import { resolveAnalysisModel } from './resolve-analysis-model'
 import { resolveVoiceAnalysisSource } from '@/lib/voice/voice-analysis-source'
 import { rebuildEpisodeNarrationTimeline } from '@/lib/novel-promotion/narration-timeline'
-import { rebuildEpisodeSpeechPlans } from '@/lib/novel-promotion/speech-plan'
+import {
+  isStoryboardSpeechPlanSource,
+  listEpisodeSpeechPlans,
+  rebuildEpisodeSpeechPlans,
+} from '@/lib/novel-promotion/speech-plan'
 
 const MAX_VOICE_ANALYZE_ATTEMPTS = 2
 
@@ -75,6 +79,14 @@ export async function handleVoiceAnalyzeTask(job: Job<TaskJobData>) {
         },
         orderBy: { createdAt: 'asc' },
       },
+      voiceLines: {
+        orderBy: { lineIndex: 'asc' },
+        select: {
+          speaker: true,
+          matchedPanelId: true,
+          matchedStoryboardId: true,
+        },
+      },
     },
   })
   if (!episode) {
@@ -82,6 +94,44 @@ export async function handleVoiceAnalyzeTask(job: Job<TaskJobData>) {
   }
   if (episode.novelPromotionProjectId !== novelPromotionData.id) {
     throw new Error('Episode does not belong to this project')
+  }
+
+  const existingSpeechPlans = await listEpisodeSpeechPlans(episodeId)
+  const usesStoryboardSpeechContract = existingSpeechPlans.available
+    && existingSpeechPlans.plans.some((plan) => isStoryboardSpeechPlanSource(plan.source))
+  if (usesStoryboardSpeechContract) {
+    await reportTaskProgress(job, 20, {
+      stage: 'voice_analyze_prepare',
+      stageLabel: '准备台词分析参数',
+      displayMode: 'detail',
+      message: '当前分镜已有镜头级台词，正在同步台词与声音计划。',
+    })
+    await assertTaskActive(job, 'voice_analyze_prepare')
+
+    await rebuildEpisodeNarrationTimeline(episodeId)
+    const speechPlanResult = await rebuildEpisodeSpeechPlans(episodeId, 'storyboard')
+    const speakerStats: Record<string, number> = {}
+    for (const line of episode.voiceLines) {
+      speakerStats[line.speaker] = (speakerStats[line.speaker] || 0) + 1
+    }
+    const matchedCount = episode.voiceLines.filter((line) => (
+      !!line.matchedStoryboardId || !!line.matchedPanelId
+    )).length
+
+    await reportTaskProgress(job, 96, {
+      stage: 'voice_analyze_persist_done',
+      stageLabel: '台词分析结果已保存',
+      displayMode: 'detail',
+      message: '镜头台词与声音计划已同步。',
+    })
+
+    return {
+      episodeId,
+      count: episode.voiceLines.length,
+      matchedCount,
+      speakerStats,
+      speechPlanSummary: speechPlanResult.summary,
+    }
   }
 
   const voiceSource = resolveVoiceAnalysisSource({

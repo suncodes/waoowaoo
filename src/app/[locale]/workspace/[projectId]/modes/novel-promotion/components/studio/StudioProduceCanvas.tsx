@@ -7,6 +7,7 @@ import VisualQualityBadge from '@/components/visual-quality/VisualQualityBadge'
 import { AppIcon } from '@/components/ui/icons'
 import { useUpdateProjectPanelLink } from '@/lib/query/hooks'
 import { useVideoFirstLastFrameFlow } from '@/lib/novel-promotion/stages/video-stage-runtime/useVideoFirstLastFrameFlow'
+import { resolveVoiceLinePanelBindings } from '@/lib/novel-promotion/voice-line-binding'
 import { isRunningPhase } from '@/lib/task/presentation'
 import { useWorkspaceProvider } from '../../WorkspaceProvider'
 import { useWorkspaceStageRuntime } from '../../WorkspaceStageRuntimeContext'
@@ -462,25 +463,11 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
       map.set(key, set)
     }
     for (const line of voiceLines) {
-      let usedSpan = false
-      for (const span of line.panelSpans || []) {
-        if (span.panelId) {
-          add(idsByPanelId, span.panelId, line.id)
-          usedSpan = true
-          continue
+      for (const binding of resolveVoiceLinePanelBindings(line)) {
+        if (binding.panelId) add(idsByPanelId, binding.panelId, line.id)
+        if (binding.storyboardId && binding.panelIndex !== undefined) {
+          add(idsByPanelKey, `${binding.storyboardId}:${binding.panelIndex}`, line.id)
         }
-        const key = span.panel?.storyboardId && span.panel?.panelIndex !== null && span.panel?.panelIndex !== undefined
-          ? `${span.panel.storyboardId}:${span.panel.panelIndex}`
-          : ''
-        if (key) {
-          add(idsByPanelKey, key, line.id)
-          usedSpan = true
-        }
-      }
-      if (usedSpan) continue
-      if (line.matchedPanelId) add(idsByPanelId, line.matchedPanelId, line.id)
-      if (line.matchedStoryboardId && line.matchedPanelIndex !== null && line.matchedPanelIndex !== undefined) {
-        add(idsByPanelKey, `${line.matchedStoryboardId}:${line.matchedPanelIndex}`, line.id)
       }
     }
     return (item: ProduceItem) => {

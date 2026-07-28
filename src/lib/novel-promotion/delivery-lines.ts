@@ -68,6 +68,7 @@ interface PanelForDelivery {
     status: string
     linesJson: unknown
     voiceConfigJson: unknown
+    source: string
   } | null
 }
 
@@ -215,6 +216,7 @@ async function loadEpisodePanels(projectId: string, episodeId: string) {
                   status: true,
                   linesJson: true,
                   voiceConfigJson: true,
+                  source: true,
                 },
               },
             },
@@ -397,7 +399,7 @@ export async function generateEpisodeDeliveryLines(params: {
           linesJson: asInputJson(payload.lines),
           timingJson: asInputJson(payload.timing),
           warningsJson: asInputJson(payload.warnings),
-          source: 'manual_delivery_generation',
+          source: plan.source || 'manual_delivery_generation',
         },
       })
       updatedCount += result.updatedCount

@@ -4,6 +4,14 @@ import type { StoryboardPanel } from '@/lib/storyboard-phases'
 
 export type JsonRecord = Record<string, unknown>
 
+const DEFAULT_PANEL_DURATION_SECONDS = 4
+
+type DirectStoryboardSpeechLine = {
+  speaker: string
+  content: string
+  emotionStrength: number
+}
+
 export type ClipPanelsResult = {
   clipId: string
   clipIndex: number
@@ -76,6 +84,81 @@ function readPanelString(value: unknown): string {
 
 function readPanelField(panel: StoryboardPanel, snakeKey: string, camelKey: string): unknown {
   return panel[snakeKey] ?? panel[camelKey]
+}
+
+function readPanelSpeechLines(panel: StoryboardPanel): DirectStoryboardSpeechLine[] | null {
+  const rawLines = readPanelField(panel, 'speech_lines', 'speechLines')
+  if (!Array.isArray(rawLines)) return null
+
+  const lines: DirectStoryboardSpeechLine[] = []
+  for (const rawLine of rawLines) {
+    const line = asJsonRecord(rawLine)
+    const content = readPanelString(line?.content)
+    if (!line || !content) return null
+
+    const speaker = readPanelString(line.speaker) || '旁白'
+    const rawEmotionStrength = line.emotion_strength ?? line.emotionStrength
+    const emotionStrength = typeof rawEmotionStrength === 'number' && Number.isFinite(rawEmotionStrength)
+      ? Math.min(0.5, Math.max(0.1, rawEmotionStrength))
+      : 0.15
+    lines.push({ speaker, content, emotionStrength })
+  }
+
+  return lines
+}
+
+function joinSpeechContent(current: string, next: string): string {
+  if (!current) return next
+  if (/[。！？!?…]$/.test(current)) return `${current}${next}`
+  return `${current}，${next}`
+}
+
+function mergePanelSpeechLines(lines: DirectStoryboardSpeechLine[]): DirectStoryboardSpeechLine[] {
+  const merged: DirectStoryboardSpeechLine[] = []
+  for (const line of lines) {
+    const previous = merged[merged.length - 1]
+    if (previous && previous.speaker === line.speaker) {
+      previous.content = joinSpeechContent(previous.content, line.content)
+      previous.emotionStrength = Math.max(previous.emotionStrength, line.emotionStrength)
+      continue
+    }
+    merged.push({ ...line })
+  }
+  return merged
+}
+
+function resolvePanelDurationSeconds(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_PANEL_DURATION_SECONDS
+  return Math.max(DEFAULT_PANEL_DURATION_SECONDS, Math.round(value * 10) / 10)
+}
+
+export function buildVoiceLineRowsFromClipPanels(clipPanels: ClipPanelsResult[]): JsonRecord[] | null {
+  const rows: JsonRecord[] = []
+  let lineIndex = 1
+
+  for (const clipEntry of clipPanels) {
+    for (let panelIndex = 0; panelIndex < clipEntry.finalPanels.length; panelIndex += 1) {
+      const panel = clipEntry.finalPanels[panelIndex]
+      const speechLines = readPanelSpeechLines(panel)
+      if (speechLines === null) return null
+
+      for (const line of mergePanelSpeechLines(speechLines)) {
+        rows.push({
+          lineIndex,
+          speaker: line.speaker,
+          content: line.content,
+          emotionStrength: line.emotionStrength,
+          matchedPanel: {
+            storyboardId: clipEntry.clipId,
+            panelIndex,
+          },
+        })
+        lineIndex += 1
+      }
+    }
+  }
+
+  return rows
 }
 
 function readPanelShotFunction(panel: StoryboardPanel): string {
@@ -156,6 +239,7 @@ function readPanelSingleImageFeasibility(panel: StoryboardPanel): JsonRecord {
 
 function buildPanelShotSpec(panel: StoryboardPanel): JsonRecord {
   const description = readPanelString(panel.description)
+  const speechLines = readPanelSpeechLines(panel) || []
   return {
     narrativeIntent: description || readPanelString(panel.source_text) || '当前分镜目的',
     shotFunction: readPanelShotFunction(panel),
@@ -173,7 +257,7 @@ function buildPanelShotSpec(panel: StoryboardPanel): JsonRecord {
     camera: [readPanelString(panel.shot_type), readPanelString(panel.camera_move)].filter(Boolean).join('，') || 'locked camera',
     sceneLightingBaseline: 'follow photography plan',
     colorGrade: 'follow photography plan',
-    dialogueAudio: '',
+    dialogueAudio: speechLines.map((line) => `${line.speaker}: ${line.content}`).join(' '),
     constraints: ['one time, one place, one composition, one primary visual event'],
     durationIntent: typeof panel.duration === 'number' && Number.isFinite(panel.duration)
       ? `${panel.duration} seconds`
@@ -330,7 +414,8 @@ export async function persistStoryboardsAndPanels(params: {
             srtSegment: panel.source_text || null,
             photographyRules: JSON.stringify(buildPanelPhotographyPlan(panel)),
             actingNotes: panel.actingNotes ? JSON.stringify(panel.actingNotes) : null,
-            duration: panel.duration || null,
+            duration: resolvePanelDurationSeconds(panel.duration),
+            targetDurationMs: Math.round(resolvePanelDurationSeconds(panel.duration) * 1000),
           },
           select: {
             id: true,
@@ -424,7 +509,8 @@ export async function persistStoryboardOutputs(params: {
             srtSegment: panel.source_text || null,
             photographyRules: JSON.stringify(buildPanelPhotographyPlan(panel)),
             actingNotes: panel.actingNotes ? JSON.stringify(panel.actingNotes) : null,
-            duration: panel.duration || null,
+            duration: resolvePanelDurationSeconds(panel.duration),
+            targetDurationMs: Math.round(resolvePanelDurationSeconds(panel.duration) * 1000),
           },
           select: {
             id: true,

@@ -41,7 +41,14 @@ describe('script-to-storyboard atomic retry', () => {
           refId: 'clip-1',
           versionHash: null,
           payload: {
-            panels: [{ panel_number: 1, description: 'p1', location: 'Office', source_text: 'src', characters: [] }],
+            panels: [{
+              panel_number: 1,
+              description: 'p1',
+              location: 'Office',
+              source_text: 'src',
+              characters: [],
+              speech_lines: [{ speaker: 'Narrator', content: 'phase1 speech', emotion_strength: 0.2 }],
+            }],
           },
           createdAt: '2026-03-03T00:00:00.000Z',
         }]
@@ -92,7 +99,14 @@ describe('script-to-storyboard atomic retry', () => {
         throw new Error(`unexpected action ${action}`)
       }
       return {
-        text: JSON.stringify([{ panel_number: 1, description: 'phase3-new', location: 'Office', source_text: 'src', characters: [] }]),
+        text: JSON.stringify([{
+          panel_number: 1,
+          description: 'phase3-new',
+          location: 'Office',
+          source_text: 'src',
+          characters: [],
+          speech_lines: [],
+        }]),
         reasoning: '',
       }
     })
@@ -133,7 +147,14 @@ describe('script-to-storyboard atomic retry', () => {
     expect(result.phase2CinematographyByClipId).toEqual({})
     expect(result.phase2ActingByClipId).toEqual({})
     expect(result.phase3PanelsByClipId['clip-1']).toEqual([
-      { panel_number: 1, description: 'phase3-new', location: 'Office', source_text: 'src', characters: [] },
+      {
+        panel_number: 1,
+        description: 'phase3-new',
+        location: 'Office',
+        source_text: 'src',
+        characters: [],
+        speech_lines: [],
+      },
     ])
     expect(result.clipPanels).toHaveLength(1)
     expect(result.clipPanels[0]?.finalPanels[0]).toEqual(expect.objectContaining({
@@ -144,6 +165,7 @@ describe('script-to-storyboard atomic retry', () => {
         lighting: '顶光',
       }),
       actingNotes: [{ name: 'Narrator', expression: 'serious' }],
+      speech_lines: [{ speaker: 'Narrator', content: 'phase1 speech', emotion_strength: 0.2 }],
     }))
     expect(result.totalPanelCount).toBe(1)
   })

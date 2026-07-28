@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma'
 import type { Prisma } from '@prisma/client'
 import { getPrismaErrorCode } from '@/lib/prisma-error'
 import { estimateNarrationDurationMs } from './narration-timeline'
+import { resolveVoiceLinePanelBindings } from './voice-line-binding'
 import { hasAnyVoiceBinding, parseSpeakerVoiceMap, type SpeakerVoiceEntry } from '@/lib/voice/provider-voice-binding'
 
 export type PanelSpeechMode = 'none' | 'voiceover' | 'single_speaker' | 'sequential_dialogue' | 'unsupported'
@@ -9,6 +10,7 @@ export type PanelSpeechStatus = 'draft' | 'ready' | 'invalid'
 
 export interface PanelSpeechLine {
   voiceLineId: string
+  voiceLineIds?: string[]
   lineIndex: number
   speaker: string
   content: string
@@ -106,6 +108,10 @@ export function isPanelSpeechPlanTableMissing(error: unknown) {
 
 function readTrimmedString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+export function isStoryboardSpeechPlanSource(value: string | null | undefined): boolean {
+  return readTrimmedString(value) === 'storyboard'
 }
 
 function readPositiveNumber(value: unknown): number | null {
@@ -225,6 +231,118 @@ export function resolvePanelSpeechLineDurationMs(
   return readPositiveNumber(line.estimatedDurationMs) || estimateNarrationDurationMs(line.content)
 }
 
+function joinSpeechContent(current: string, next: string): string {
+  if (!current) return next
+  if (/[。！？!?…]$/.test(current)) return `${current}${next}`
+  return `${current}，${next}`
+}
+
+function normalizeVoiceLineIds(line: PanelSpeechLine): string[] {
+  const ids = Array.isArray(line.voiceLineIds)
+    ? line.voiceLineIds.map(readTrimmedString).filter(Boolean)
+    : []
+  if (ids.length > 0) return Array.from(new Set(ids))
+  return [line.voiceLineId]
+}
+
+function deliveryDurationMs(line: PanelSpeechLine, content: string): number {
+  return readPositiveNumber(line.deliveryDurationMs) || estimateNarrationDurationMs(content)
+}
+
+export function mergeConsecutivePanelSpeechLines(lines: PanelSpeechLine[]): PanelSpeechLine[] {
+  const merged: PanelSpeechLine[] = []
+  let previousLineIndex: number | null = null
+
+  for (const rawLine of [...lines].sort((left, right) => left.order - right.order || left.lineIndex - right.lineIndex)) {
+    const line: PanelSpeechLine = {
+      ...rawLine,
+      voiceLineIds: normalizeVoiceLineIds(rawLine),
+    }
+    const previous = merged[merged.length - 1]
+    const isContinuousSameSpeaker = previous
+      && previous.speaker === line.speaker
+      && previousLineIndex !== null
+      && line.lineIndex === previousLineIndex + 1
+
+    if (!isContinuousSameSpeaker) {
+      merged.push(line)
+      previousLineIndex = line.lineIndex
+      continue
+    }
+
+    const previousDelivery = readTrimmedString(previous.deliveryContent)
+    const lineDelivery = readTrimmedString(line.deliveryContent)
+    const hasCompleteDelivery = !!previousDelivery && !!lineDelivery
+    const previousDeliveryDurationMs = hasCompleteDelivery
+      ? deliveryDurationMs(previous, previousDelivery)
+      : null
+    const lineDeliveryDurationMs = hasCompleteDelivery
+      ? deliveryDurationMs(line, lineDelivery)
+      : null
+
+    previous.content = joinSpeechContent(previous.content, line.content)
+    previous.voiceLineIds = Array.from(new Set([
+      ...normalizeVoiceLineIds(previous),
+      ...normalizeVoiceLineIds(line),
+    ]))
+    previous.estimatedDurationMs += line.estimatedDurationMs
+    previous.emotionPrompt = previous.emotionPrompt || line.emotionPrompt || null
+    previous.emotionStrength = Math.max(previous.emotionStrength || 0, line.emotionStrength || 0) || null
+    if (hasCompleteDelivery && previousDeliveryDurationMs !== null && lineDeliveryDurationMs !== null) {
+      previous.deliveryContent = joinSpeechContent(previousDelivery, lineDelivery)
+      previous.deliveryDurationMs = previousDeliveryDurationMs + lineDeliveryDurationMs
+      previous.deliverySource = previous.deliverySource || line.deliverySource || null
+      previous.deliveryReason = previous.deliveryReason || line.deliveryReason || null
+      previous.deliveryUpdatedAt = line.deliveryUpdatedAt || previous.deliveryUpdatedAt || null
+    } else {
+      previous.deliveryContent = null
+      previous.deliveryDurationMs = null
+      previous.deliverySource = null
+      previous.deliveryReason = null
+      previous.deliveryUpdatedAt = null
+    }
+    previousLineIndex = line.lineIndex
+  }
+
+  return merged
+}
+
+function speechLineIdentity(line: PanelSpeechLine): string {
+  return normalizeVoiceLineIds(line).sort().join('|')
+}
+
+function preserveDeliveryVariants(params: {
+  panel: PanelLike
+  payload: PanelSpeechPlanPayload
+  previousLinesJson: unknown
+}): PanelSpeechPlanPayload {
+  const previousByIdentity = new Map(
+    readSpeechLines(params.previousLinesJson).map((line) => [speechLineIdentity(line), line]),
+  )
+  let changed = false
+  const lines = params.payload.lines.map((line) => {
+    const previous = previousByIdentity.get(speechLineIdentity(line))
+    if (!previous || previous.content !== line.content || !readTrimmedString(previous.deliveryContent)) {
+      return line
+    }
+    changed = true
+    return {
+      ...line,
+      deliveryContent: previous.deliveryContent,
+      deliveryDurationMs: previous.deliveryDurationMs,
+      deliverySource: previous.deliverySource,
+      deliveryReason: previous.deliveryReason,
+      deliveryUpdatedAt: previous.deliveryUpdatedAt,
+    }
+  })
+  if (!changed) return params.payload
+  return buildPanelSpeechPlanPayloadFromLines({
+    panel: params.panel,
+    lines,
+    voiceConfig: params.payload.voiceConfig,
+  })
+}
+
 function resolveMode(lines: PanelSpeechLine[], warnings: PanelSpeechWarning[]): PanelSpeechMode {
   if (lines.length === 0) return 'none'
   const speakers = uniqueSpeakers(lines)
@@ -246,7 +364,7 @@ export function buildPanelSpeechPlanPayloadFromLines(params: {
   voiceConfig: PanelSpeechVoiceConfig[]
 }): PanelSpeechPlanPayload {
   const warnings: PanelSpeechWarning[] = []
-  const lines = params.lines
+  const lines = mergeConsecutivePanelSpeechLines(params.lines)
   const panelDurationMs = resolvePanelDurationMs(params.panel)
   const estimatedSpeechDurationMs = lines.reduce((sum, line) => sum + resolvePanelSpeechLineDurationMs(line), 0)
   if (panelDurationMs && estimatedSpeechDurationMs > panelDurationMs * 1.35) {
@@ -301,7 +419,7 @@ export function buildPanelSpeechPlanPayload(params: {
 }): PanelSpeechPlanPayload {
   const characters = params.characters || []
   const speakerVoices = params.speakerVoices || {}
-  const lines = [...params.voiceLines]
+  const rawLines = [...params.voiceLines]
     .sort((left, right) => left.lineIndex - right.lineIndex)
     .map((line, index): PanelSpeechLine => {
       const estimatedDurationMs = typeof line.estimatedDurationMs === 'number' && Number.isFinite(line.estimatedDurationMs) && line.estimatedDurationMs > 0
@@ -319,6 +437,7 @@ export function buildPanelSpeechPlanPayload(params: {
       }
     })
     .filter((line) => line.speaker && line.content)
+  const lines = mergeConsecutivePanelSpeechLines(rawLines)
 
   const voiceConfig = uniqueSpeakers(lines).map((speaker) => buildVoiceConfig({ speaker, characters, speakerVoices }))
   return buildPanelSpeechPlanPayloadFromLines({
@@ -334,6 +453,13 @@ function safeParseSpeakerVoices(raw: string | null | undefined): Record<string, 
   } catch {
     return {}
   }
+}
+
+function resolveSpeechPlanSource(existingSource: string | null | undefined, requestedSource: string): string {
+  if (isStoryboardSpeechPlanSource(existingSource) && !requestedSource.startsWith('voice_analyze')) {
+    return existingSource || 'storyboard'
+  }
+  return requestedSource
 }
 
 function sortStoryboards<T extends { createdAt: Date; clip: { start: number | null; createdAt: Date } | null }>(storyboards: T[]): T[] {
@@ -354,13 +480,15 @@ function groupVoiceLinesByPanel(params: {
   const byPanelId = new Map<string, VoiceLineLike[]>()
   const byStoryboardPanel = new Map<string, VoiceLineLike[]>()
   for (const line of params.voiceLines) {
-    if (line.matchedPanelId) {
-      byPanelId.set(line.matchedPanelId, [...(byPanelId.get(line.matchedPanelId) || []), line])
+    const binding = resolveVoiceLinePanelBindings(line)[0]
+    if (!binding) continue
+    if (binding.storyboardId && binding.panelIndex !== undefined) {
+      const key = `${binding.storyboardId}:${binding.panelIndex}`
+      byStoryboardPanel.set(key, [...(byStoryboardPanel.get(key) || []), line])
       continue
     }
-    if (line.matchedStoryboardId && line.matchedPanelIndex !== null && line.matchedPanelIndex !== undefined) {
-      const key = `${line.matchedStoryboardId}:${line.matchedPanelIndex}`
-      byStoryboardPanel.set(key, [...(byStoryboardPanel.get(key) || []), line])
+    if (binding.panelId) {
+      byPanelId.set(binding.panelId, [...(byPanelId.get(binding.panelId) || []), line])
     }
   }
   return { byPanelId, byStoryboardPanel }
@@ -452,6 +580,12 @@ export async function rebuildEpisodeSpeechPlans(episodeId: string, source = 'sys
                 panelIndex: true,
                 duration: true,
                 targetDurationMs: true,
+                speechPlan: {
+                  select: {
+                    source: true,
+                    linesJson: true,
+                  },
+                },
               },
             },
           },
@@ -470,11 +604,16 @@ export async function rebuildEpisodeSpeechPlans(episodeId: string, source = 'sys
         const voiceLines = grouped.byPanelId.get(panel.id)
           || grouped.byStoryboardPanel.get(`${storyboard.id}:${panel.panelIndex}`)
           || []
-        const payload = buildPanelSpeechPlanPayload({
+        const rawPayload = buildPanelSpeechPlanPayload({
           panel,
           voiceLines,
           characters: episode.novelPromotionProject.characters,
           speakerVoices,
+        })
+        const payload = preserveDeliveryVariants({
+          panel,
+          payload: rawPayload,
+          previousLinesJson: panel.speechPlan?.linesJson,
         })
         return {
           projectId: episode.novelPromotionProject.projectId,
@@ -487,7 +626,7 @@ export async function rebuildEpisodeSpeechPlans(episodeId: string, source = 'sys
           voiceConfigJson: payload.voiceConfig,
           timingJson: payload.timing,
           warningsJson: payload.warnings,
-          source,
+          source: resolveSpeechPlanSource(panel.speechPlan?.source, source),
         }
       })
     ))
@@ -631,7 +770,7 @@ export async function countPanelMatchedVoiceLines(panelId: string): Promise<numb
 }
 
 function readSpeechLines(raw: unknown): PanelSpeechLine[] {
-  return Array.isArray(raw)
+  const lines = Array.isArray(raw)
     ? raw.flatMap((item) => {
       if (!item || typeof item !== 'object') return []
       const record = item as Record<string, unknown>
@@ -639,8 +778,12 @@ function readSpeechLines(raw: unknown): PanelSpeechLine[] {
       const speaker = readTrimmedString(record.speaker)
       const content = readTrimmedString(record.content)
       if (!voiceLineId || !speaker || !content) return []
+      const voiceLineIds = Array.isArray(record.voiceLineIds)
+        ? record.voiceLineIds.map(readTrimmedString).filter(Boolean)
+        : []
       return [{
         voiceLineId,
+        voiceLineIds: voiceLineIds.length > 0 ? Array.from(new Set(voiceLineIds)) : [voiceLineId],
         speaker,
         content,
         lineIndex: typeof record.lineIndex === 'number' ? record.lineIndex : 0,
@@ -656,6 +799,7 @@ function readSpeechLines(raw: unknown): PanelSpeechLine[] {
       }]
     })
     : []
+  return mergeConsecutivePanelSpeechLines(lines)
 }
 
 export function readPanelSpeechLines(raw: unknown): PanelSpeechLine[] {

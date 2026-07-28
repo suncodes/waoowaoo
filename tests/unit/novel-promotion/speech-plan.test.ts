@@ -3,6 +3,7 @@ import {
   buildPanelSpeechPlanPayload,
   compileSpeechPlanPromptSection,
   getPanelSpeechReferenceVoiceConfigs,
+  isStoryboardSpeechPlanSource,
   panelSpeechPlanHasSpeech,
 } from '@/lib/novel-promotion/speech-plan'
 
@@ -26,6 +27,12 @@ function line(input: {
 }
 
 describe('panel speech plan', () => {
+  it('treats only direct storyboard output as a storyboard speech contract', () => {
+    expect(isStoryboardSpeechPlanSource('storyboard')).toBe(true)
+    expect(isStoryboardSpeechPlanSource('storyboard_auto_fix')).toBe(false)
+    expect(isStoryboardSpeechPlanSource('voice_analyze')).toBe(false)
+  })
+
   it('marks silent panels ready without requiring voice audio', () => {
     const plan = buildPanelSpeechPlanPayload({
       panel,
@@ -100,6 +107,33 @@ describe('panel speech plan', () => {
 
     expect(plan.mode).toBe('sequential_dialogue')
     expect(plan.status).toBe('ready')
+  })
+
+  it('merges consecutive lines from the same speaker into one delivery unit', () => {
+    const plan = buildPanelSpeechPlanPayload({
+      panel,
+      voiceLines: [
+        line({ id: 'line-1', index: 1, speaker: '旁白', content: '潜艇穿过海沟。' }),
+        line({ id: 'line-2', index: 2, speaker: '旁白', content: '阴影随即逼近。' }),
+      ],
+      speakerVoices: {
+        旁白: { provider: 'bailian', voiceType: 'narration', voiceId: 'voice-1' },
+      },
+    })
+
+    expect(plan.lines).toHaveLength(1)
+    expect(plan.lines[0]).toMatchObject({
+      voiceLineId: 'line-1',
+      voiceLineIds: ['line-1', 'line-2'],
+      content: '潜艇穿过海沟。阴影随即逼近。',
+    })
+    const prompt = compileSpeechPlanPromptSection({
+      mode: plan.mode,
+      status: plan.status,
+      linesJson: plan.lines,
+      voiceConfigJson: plan.voiceConfig,
+    })
+    expect(prompt).toContain('旁白: 潜艇穿过海沟。阴影随即逼近。')
   })
 
   it('downgrades complex dialogue to voiceover warning instead of hard failing', () => {

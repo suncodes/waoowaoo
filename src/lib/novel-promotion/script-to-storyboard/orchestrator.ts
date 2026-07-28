@@ -178,6 +178,7 @@ function mergePanelsWithRules(params: {
   const { planPanels, finalPanels, photographyRules, actingDirections } = params
   return finalPanels.map((panel, index) => {
     const planPanel = planPanels.find((item) => item.panel_number === panel.panel_number)
+    const plannedSpeechLines = planPanel?.speech_lines ?? planPanel?.speechLines
     const rules = photographyRules.find((rule) => rule.panel_number === panel.panel_number)
     if (!rules) {
       throw new Error(`Missing photography rule for panel_number=${String(panel.panel_number)} at index=${index}`)
@@ -190,6 +191,7 @@ function mergePanelsWithRules(params: {
     return {
       ...(planPanel || {}),
       ...panel,
+      ...(plannedSpeechLines !== undefined ? { speech_lines: plannedSpeechLines } : {}),
       photographyPlan: {
         composition: rules.composition,
         lighting: rules.lighting,

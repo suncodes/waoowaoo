@@ -9,6 +9,7 @@ import { readContentArtifactMeta, readVisualArtifactMeta } from '@/lib/creation-
 import type { CreationWorkflowState } from '@/lib/creation-workspace/workflow-state'
 import { resolveVisualAnchorReadiness, resolveVisualAssetStatus, selectedVisualAssetImage } from '@/lib/creation-workspace/visual-readiness'
 import { useAssets } from '@/lib/query/hooks'
+import { resolveVoiceLinePanelBindings } from '@/lib/novel-promotion/voice-line-binding'
 import type { NovelPromotionPanel } from '@/types/project'
 import { useWorkspaceProvider } from '../../WorkspaceProvider'
 import { useWorkspaceEpisodeStageData } from '../../hooks/useWorkspaceEpisodeStageData'
@@ -72,17 +73,9 @@ function voicePanelKey(storyboardId: string | null | undefined, panelIndex: numb
 function voiceLinePanelBindingKeys(line: ReturnType<typeof useWorkspaceEpisodeStageData>['voiceLines'][number]) {
   const panelIds: string[] = []
   const panelKeys: string[] = []
-  for (const span of line.panelSpans || []) {
-    if (span.panelId) {
-      panelIds.push(span.panelId)
-      continue
-    }
-    const key = voicePanelKey(span.panel?.storyboardId, span.panel?.panelIndex)
-    if (key) panelKeys.push(key)
-  }
-  if (panelIds.length === 0 && panelKeys.length === 0) {
-    if (line.matchedPanelId) panelIds.push(line.matchedPanelId)
-    const key = voicePanelKey(line.matchedStoryboardId, line.matchedPanelIndex)
+  for (const binding of resolveVoiceLinePanelBindings(line)) {
+    if (binding.panelId) panelIds.push(binding.panelId)
+    const key = voicePanelKey(binding.storyboardId, binding.panelIndex)
     if (key) panelKeys.push(key)
   }
   return {

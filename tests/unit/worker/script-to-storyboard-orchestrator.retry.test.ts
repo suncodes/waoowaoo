@@ -166,7 +166,14 @@ describe('script-to-storyboard orchestrator retry', () => {
       actionOrder.push(action)
       if (action === 'storyboard_phase1_plan') {
         return {
-          text: JSON.stringify([{ panel_number: 1, description: '镜头', location: '场景A', source_text: '原文', characters: [] }]),
+          text: JSON.stringify([{
+            panel_number: 1,
+            description: '镜头',
+            location: '场景A',
+            source_text: '原文',
+            characters: [],
+            speech_lines: [{ speaker: '旁白', content: '规划阶段台词。', emotion_strength: 0.2 }],
+          }]),
           reasoning: '',
         }
       }
@@ -178,7 +185,14 @@ describe('script-to-storyboard orchestrator retry', () => {
       }
       if (action === 'storyboard_phase3_detail') {
         return {
-          text: JSON.stringify([{ panel_number: 1, description: '镜头', location: '场景A', source_text: '原文', characters: [] }]),
+          text: JSON.stringify([{
+            panel_number: 1,
+            description: '镜头',
+            location: '场景A',
+            source_text: '原文',
+            characters: [],
+            speech_lines: [],
+          }]),
           reasoning: '',
         }
       }
@@ -214,6 +228,9 @@ describe('script-to-storyboard orchestrator retry', () => {
     const phase2ActingIndex = actionOrder.indexOf('storyboard_phase2_acting')
     expect(phase3Index).toBeGreaterThan(phase2CineIndex)
     expect(phase3Index).toBeGreaterThan(phase2ActingIndex)
+    expect(result.clipPanels[0]?.finalPanels[0]?.speech_lines).toEqual([
+      { speaker: '旁白', content: '规划阶段台词。', emotion_strength: 0.2 },
+    ])
   })
 
   it('limits clip fan-out by configured concurrency', async () => {

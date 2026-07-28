@@ -80,6 +80,18 @@ export type StoryboardPanel = JsonRecord & {
     description?: string
     location?: string
     source_text?: string
+    speech_lines?: Array<{
+        speaker?: string
+        content?: string
+        emotion_strength?: number
+        emotionStrength?: number
+    }>
+    speechLines?: Array<{
+        speaker?: string
+        content?: string
+        emotion_strength?: number
+        emotionStrength?: number
+    }>
     characters?: unknown
     props?: unknown
     srt_range?: unknown[]

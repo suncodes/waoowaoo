@@ -10,6 +10,7 @@ import {
   useVideoTaskPresentation,
   type MatchedVoiceLine,
 } from '@/lib/query/hooks'
+import { resolveVoiceLinePanelBindings } from '@/lib/novel-promotion/voice-line-binding'
 import { useWorkspaceProvider } from '../../WorkspaceProvider'
 import { useWorkspaceEpisodeStageData } from '../../hooks/useWorkspaceEpisodeStageData'
 import {
@@ -49,17 +50,11 @@ function panelKey(storyboardId: string | null | undefined, panelIndex: number | 
 
 function voiceLinePanelKeys(line: MatchedVoiceLine) {
   const keys: string[] = []
-  for (const span of line.panelSpans || []) {
-    if (span.panelId?.trim()) {
-      keys.push(span.panelId.trim())
-      continue
-    }
-    const key = panelKey(span.panel?.storyboardId, span.panel?.panelIndex)
+  for (const binding of resolveVoiceLinePanelBindings(line)) {
+    if (binding.panelId) keys.push(binding.panelId)
+    const key = panelKey(binding.storyboardId, binding.panelIndex)
     if (key) keys.push(key)
   }
-  if (keys.length === 0 && line.matchedPanelId?.trim()) keys.push(line.matchedPanelId.trim())
-  const fallbackKey = panelKey(line.matchedStoryboardId, line.matchedPanelIndex)
-  if (keys.length === 0 && fallbackKey) keys.push(fallbackKey)
   return Array.from(new Set(keys))
 }
 

@@ -49,7 +49,20 @@ const runScriptToStoryboardOrchestratorMock = vi.hoisted(() =>
   })),
 )
 const parseVoiceLinesJsonMock = vi.hoisted(() => vi.fn())
+const buildVoiceLineRowsFromClipPanelsMock = vi.hoisted(() => vi.fn())
 const persistStoryboardOutputsMock = vi.hoisted(() => vi.fn())
+const rebuildEpisodeNarrationTimelineMock = vi.hoisted(() => vi.fn(async () => undefined))
+const rebuildEpisodeSpeechPlansMock = vi.hoisted(() => vi.fn(async () => ({
+  summary: {
+    total: 1,
+    ready: 1,
+    invalid: 0,
+    withSpeech: 1,
+    silent: 0,
+    missingVoiceSpeakers: [],
+    warningCount: 0,
+  },
+})))
 const createArtifactMock = vi.hoisted(() => vi.fn(async () => undefined))
 const parseStoryboardRetryTargetMock = vi.hoisted(() => vi.fn())
 const runScriptToStoryboardAtomicRetryMock = vi.hoisted(() => vi.fn())
@@ -161,6 +174,7 @@ vi.mock('@/lib/workers/handlers/script-to-storyboard-helpers', () => ({
     return value as Record<string, unknown>
   },
   buildStoryboardJsonFromClipPanels: vi.fn(() => '[]'),
+  buildVoiceLineRowsFromClipPanels: buildVoiceLineRowsFromClipPanelsMock,
   parseEffort: vi.fn(() => null),
   parseTemperature: vi.fn(() => 0.7),
   parseVoiceLinesJson: parseVoiceLinesJsonMock,
@@ -174,6 +188,12 @@ vi.mock('@/lib/workers/handlers/script-to-storyboard-helpers', () => ({
 vi.mock('@/lib/workers/handlers/script-to-storyboard-atomic-retry', () => ({
   parseStoryboardRetryTarget: parseStoryboardRetryTargetMock,
   runScriptToStoryboardAtomicRetry: runScriptToStoryboardAtomicRetryMock,
+}))
+vi.mock('@/lib/novel-promotion/narration-timeline', () => ({
+  rebuildEpisodeNarrationTimeline: rebuildEpisodeNarrationTimelineMock,
+}))
+vi.mock('@/lib/novel-promotion/speech-plan', () => ({
+  rebuildEpisodeSpeechPlans: rebuildEpisodeSpeechPlansMock,
 }))
 vi.mock('@/lib/run-runtime/workflow-lease', () => workflowLeaseMock)
 vi.mock('@/lib/run-runtime/service', () => ({
@@ -230,6 +250,7 @@ describe('worker script-to-storyboard behavior', () => {
     vi.clearAllMocks()
     txState.createdRows = []
     txState.deletedWhereClauses = []
+    buildVoiceLineRowsFromClipPanelsMock.mockReturnValue(null)
     parseStoryboardRetryTargetMock.mockReturnValue(null)
     runScriptToStoryboardAtomicRetryMock.mockReset()
 
@@ -404,6 +425,37 @@ describe('worker script-to-storyboard behavior', () => {
         message: '台词分析失败，准备重试 (2/2)',
       }),
     )
+  })
+
+  it('分镜包含镜头台词时直接写入语义绑定，不再二次匹配', async () => {
+    buildVoiceLineRowsFromClipPanelsMock.mockReturnValue([
+      {
+        lineIndex: 1,
+        speaker: 'Narrator',
+        content: '来自分镜规划的台词。',
+        emotionStrength: 0.2,
+        matchedPanel: {
+          storyboardId: 'clip-1',
+          panelIndex: 0,
+        },
+      },
+    ])
+
+    const result = await handleScriptToStoryboardTask(buildJob({ episodeId: 'episode-1' }))
+
+    expect(result).toEqual(expect.objectContaining({
+      episodeId: 'episode-1',
+      voiceLineCount: 1,
+    }))
+    expect(parseVoiceLinesJsonMock).not.toHaveBeenCalled()
+    expect(chatCompletionMock).not.toHaveBeenCalled()
+    expect(rebuildEpisodeSpeechPlansMock).toHaveBeenCalledWith('episode-1', 'storyboard')
+    expect(createArtifactMock).toHaveBeenCalledWith(expect.objectContaining({
+      stepKey: 'voice_analyze',
+      payload: expect.objectContaining({
+        source: 'storyboard',
+      }),
+    }))
   })
 
   it('空台词数组 -> 成功完成并清空旧台词', async () => {

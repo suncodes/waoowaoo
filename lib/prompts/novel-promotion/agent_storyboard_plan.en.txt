@@ -39,6 +39,7 @@ Output format (JSON array only):
     "location": "location name",
     "scene_type": "daily",
     "source_text": "exact or near-exact source excerpt",
+    "speech_lines": [{ "speaker": "Narrator", "content": "spoken line for this panel", "emotion_strength": 0.15 }],
     "shot_function": "hook|setup|reaction|evidence|transition|payoff|breath|cta",
     "primary_subject": "single primary visual subject",
     "continuity": {
@@ -81,3 +82,6 @@ Planning rules:
 19. Characters absent from the character library must not appear in `characters` or description. Art style controls visual language only and is not a source of characters, buildings, logos, or motifs.
 20. Every panel must include shot_function, primary_subject, continuity, and single_image_feasibility. These fields feed the downstream professional prompt compiler and must not be omitted.
 21. If single_image_feasibility.status is not feasible, keep description limited to what one still image can express and explain the split/composite risk in reason.
+22. Every panel must include `speech_lines`: an array of actual spoken lines for this panel in the form `{ speaker, content, emotion_strength }`. Use `[]` for silent panels.
+23. `speech_lines` is the sole source of spoken content for its panel. Do not copy adjacent-panel speech into it. Split guide narration across panels in chronological order without omission or repetition.
+24. Default to one speaker and one continuous spoken unit per panel. Allow multiple speakers only for necessary sequential dialogue. For a four-second panel, keep each spoken unit roughly 8-22 Chinese characters or the equivalent spoken length; split the shot or compress meaning instead of overfilling it.

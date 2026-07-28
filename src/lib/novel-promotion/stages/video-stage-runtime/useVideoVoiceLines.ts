@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { logError as _ulogError } from '@/lib/logging/core'
 import { useVoiceTaskPresentation } from '@/lib/query/hooks/useTaskPresentation'
 import type { MatchedVoiceLine } from '@/app/[locale]/workspace/[projectId]/modes/novel-promotion/components/video'
+import { resolveVoiceLinePanelBindings } from '@/lib/novel-promotion/voice-line-binding'
 import type { VoiceLine } from './types'
 import { buildVoiceLineTargets } from './task-targets'
 
@@ -38,19 +39,13 @@ function panelKey(storyboardId: string | null | undefined, panelIndex: number | 
   return `${storyboardId}-${panelIndex}`
 }
 
-function voiceLinePanelKeys(voiceLine: MatchedVoiceLineQueryRow) {
+export function voiceLinePanelKeys(voiceLine: MatchedVoiceLineQueryRow) {
   const keys = new Set<string>()
-  for (const span of voiceLine.panelSpans || []) {
-    if (span.panelId?.trim()) {
-      keys.add(span.panelId.trim())
-      continue
-    }
-    const key = panelKey(span.panel?.storyboardId, span.panel?.panelIndex)
+  for (const binding of resolveVoiceLinePanelBindings(voiceLine)) {
+    if (binding.panelId) keys.add(binding.panelId)
+    const key = panelKey(binding.storyboardId, binding.panelIndex)
     if (key) keys.add(key)
   }
-  if (keys.size === 0 && voiceLine.matchedPanelId?.trim()) keys.add(voiceLine.matchedPanelId.trim())
-  const fallbackKey = panelKey(voiceLine.matchedStoryboardId, voiceLine.matchedPanelIndex)
-  if (keys.size === 0 && fallbackKey) keys.add(fallbackKey)
   return keys
 }
 

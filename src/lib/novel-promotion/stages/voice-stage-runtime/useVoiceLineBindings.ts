@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback } from 'react'
+import { resolveVoiceLinePanelBindings } from '@/lib/novel-promotion/voice-line-binding'
 import type { BindablePanelOption, VoiceLine } from './types'
 
 interface UseVoiceLineBindingsParams {
@@ -15,12 +16,12 @@ export function useVoiceLineBindings({
   handleStartEdit,
 }: UseVoiceLineBindingsParams) {
   const getBoundPanelIdForLine = useCallback((line: VoiceLine): string => {
-    if (line.matchedPanelId) return line.matchedPanelId
-    if (!line.matchedStoryboardId || line.matchedPanelIndex === null || line.matchedPanelIndex === undefined) return ''
-
-    const matched = bindablePanelOptions.find(
-      (option) => option.storyboardId === line.matchedStoryboardId && option.panelIndex === line.matchedPanelIndex,
-    )
+    const binding = resolveVoiceLinePanelBindings(line)[0]
+    if (!binding) return ''
+    if (binding.panelId) return binding.panelId
+    const matched = bindablePanelOptions.find((option) => (
+      option.storyboardId === binding.storyboardId && option.panelIndex === binding.panelIndex
+    ))
     return matched?.id || ''
   }, [bindablePanelOptions])
 
@@ -31,15 +32,13 @@ export function useVoiceLineBindings({
   const handleLocatePanel = useCallback((voiceLine: VoiceLine) => {
     if (!onVoiceLineClick) return
 
-    let targetStoryboardId = voiceLine.matchedStoryboardId || null
-    let targetPanelIndex = voiceLine.matchedPanelIndex
-    if (voiceLine.matchedPanelId) {
-      const matchedPanel = bindablePanelOptions.find((option) => option.id === voiceLine.matchedPanelId)
-      if (matchedPanel) {
-        targetStoryboardId = matchedPanel.storyboardId
-        targetPanelIndex = matchedPanel.panelIndex
-      }
-    }
+    const binding = resolveVoiceLinePanelBindings(voiceLine)[0]
+    if (!binding) return
+    const matchedPanel = binding.panelId
+      ? bindablePanelOptions.find((option) => option.id === binding.panelId)
+      : null
+    const targetStoryboardId = binding.storyboardId || matchedPanel?.storyboardId || null
+    const targetPanelIndex = binding.panelIndex ?? matchedPanel?.panelIndex ?? null
 
     if (!targetStoryboardId || targetPanelIndex === null || targetPanelIndex === undefined) return
     onVoiceLineClick(targetStoryboardId, targetPanelIndex)

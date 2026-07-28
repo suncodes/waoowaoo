@@ -29,6 +29,26 @@ const workerMock = vi.hoisted(() => ({
   assertTaskActive: vi.fn(async () => undefined),
 }))
 
+const narrationTimelineMock = vi.hoisted(() => ({
+  rebuildEpisodeNarrationTimeline: vi.fn(async () => undefined),
+}))
+
+const speechPlanMock = vi.hoisted(() => ({
+  isStoryboardSpeechPlanSource: vi.fn((source: string | null | undefined) => source === 'storyboard'),
+  listEpisodeSpeechPlans: vi.fn(),
+  rebuildEpisodeSpeechPlans: vi.fn(async () => ({
+    summary: {
+      total: 1,
+      ready: 1,
+      invalid: 0,
+      withSpeech: 1,
+      silent: 0,
+      missingVoiceSpeakers: [],
+      warningCount: 0,
+    },
+  })),
+}))
+
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('@/lib/llm-client', () => llmMock)
 vi.mock('@/lib/llm-observe/internal-stream-context', () => ({
@@ -57,6 +77,8 @@ vi.mock('@/lib/prompt-i18n', () => ({
   PROMPT_IDS: { NP_VOICE_ANALYSIS: 'np_voice_analysis' },
   buildPrompt: vi.fn(() => 'voice-analysis-prompt'),
 }))
+vi.mock('@/lib/novel-promotion/narration-timeline', () => narrationTimelineMock)
+vi.mock('@/lib/novel-promotion/speech-plan', () => speechPlanMock)
 
 import { handleVoiceAnalyzeTask } from '@/lib/workers/handlers/voice-analyze'
 
@@ -93,6 +115,7 @@ describe('worker voice-analyze behavior', () => {
       id: 'episode-1',
       novelPromotionProjectId: 'np-project-1',
       novelText: '这是可以用于台词分析的文本',
+      voiceLines: [],
       storyboards: [
         {
           id: 'storyboard-1',
@@ -100,6 +123,12 @@ describe('worker voice-analyze behavior', () => {
           panels: [{ id: 'panel-1', panelIndex: 0 }],
         },
       ],
+    })
+
+    speechPlanMock.listEpisodeSpeechPlans.mockResolvedValue({
+      available: true,
+      plans: [],
+      summary: {},
     })
 
     helperMock.parseVoiceLinesJson.mockReturnValue([
@@ -164,7 +193,7 @@ describe('worker voice-analyze behavior', () => {
     const job = buildJob({ episodeId: 'episode-1' })
     const result = await handleVoiceAnalyzeTask(job)
 
-    expect(result).toEqual({
+    expect(result).toEqual(expect.objectContaining({
       episodeId: 'episode-1',
       count: 2,
       matchedCount: 1,
@@ -172,7 +201,7 @@ describe('worker voice-analyze behavior', () => {
         Hero: 1,
         Narrator: 1,
       },
-    })
+    }))
 
     expect(txState.createdRows[0]).toEqual(expect.objectContaining({
       episodeId: 'episode-1',
@@ -197,12 +226,12 @@ describe('worker voice-analyze behavior', () => {
     const job = buildJob({ episodeId: 'episode-1' })
     const result = await handleVoiceAnalyzeTask(job)
 
-    expect(result).toEqual({
+    expect(result).toEqual(expect.objectContaining({
       episodeId: 'episode-1',
       count: 0,
       matchedCount: 0,
       speakerStats: {},
-    })
+    }))
     expect(txState.createdRows).toEqual([])
     expect(txState.deletedWhereClauses[0]).toEqual({
       episodeId: 'episode-1',
@@ -225,5 +254,45 @@ describe('worker voice-analyze behavior', () => {
 
     const job = buildJob({ episodeId: 'episode-1' })
     await expect(handleVoiceAnalyzeTask(job)).rejects.toThrow('references non-existent panel')
+  })
+
+  it('rebuilds storyboard-owned speech plans without invoking the legacy matcher', async () => {
+    prismaMock.novelPromotionEpisode.findUnique.mockResolvedValue({
+      id: 'episode-1',
+      novelPromotionProjectId: 'np-project-1',
+      novelText: '无需重新拆分的台词文本',
+      voiceLines: [
+        {
+          speaker: '旁白',
+          matchedPanelId: 'panel-1',
+          matchedStoryboardId: 'storyboard-1',
+        },
+      ],
+      storyboards: [
+        {
+          id: 'storyboard-1',
+          clip: { id: 'clip-1' },
+          panels: [{ id: 'panel-1', panelIndex: 0 }],
+        },
+      ],
+    })
+    speechPlanMock.listEpisodeSpeechPlans.mockResolvedValue({
+      available: true,
+      plans: [{ source: 'storyboard' }],
+      summary: {},
+    })
+
+    const result = await handleVoiceAnalyzeTask(buildJob({ episodeId: 'episode-1' }))
+
+    expect(result).toEqual(expect.objectContaining({
+      episodeId: 'episode-1',
+      count: 1,
+      matchedCount: 1,
+      speakerStats: { 旁白: 1 },
+    }))
+    expect(helperMock.parseVoiceLinesJson).not.toHaveBeenCalled()
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+    expect(narrationTimelineMock.rebuildEpisodeNarrationTimeline).toHaveBeenCalledWith('episode-1')
+    expect(speechPlanMock.rebuildEpisodeSpeechPlans).toHaveBeenCalledWith('episode-1', 'storyboard')
   })
 })

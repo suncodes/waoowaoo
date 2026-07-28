@@ -88,8 +88,8 @@ async function withVoiceLineMedia<T extends Record<string, unknown>>(line: T) {
         : typeof line.updatedAt === 'string'
           ? line.updatedAt
           : null,
-    matchedStoryboardId: matchedPanel?.storyboardId ?? line.matchedStoryboardId,
-    matchedPanelIndex: matchedPanel?.panelIndex ?? line.matchedPanelIndex}
+    matchedStoryboardId: line.matchedStoryboardId ?? matchedPanel?.storyboardId ?? null,
+    matchedPanelIndex: line.matchedPanelIndex ?? matchedPanel?.panelIndex ?? null}
 }
 
 async function findEpisodeVoiceLines(episodeId: string) {
@@ -151,12 +151,15 @@ async function findEpisodeVoiceLineDeliveryFields(episodeId: string) {
       for (const line of readPanelSpeechLines(plan.linesJson)) {
         const deliveryContent = line.deliveryContent?.trim()
         if (!line.voiceLineId || !deliveryContent) continue
-        deliveryByVoiceLineId.set(line.voiceLineId, {
-          deliveryContent,
-          deliveryDurationMs: line.deliveryDurationMs ?? null,
-          deliveryReason: line.deliveryReason ?? null,
-          deliveryUpdatedAt: line.deliveryUpdatedAt ?? null,
-        })
+        const voiceLineIds = line.voiceLineIds?.length ? line.voiceLineIds : [line.voiceLineId]
+        for (const voiceLineId of voiceLineIds) {
+          deliveryByVoiceLineId.set(voiceLineId, {
+            deliveryContent,
+            deliveryDurationMs: line.deliveryDurationMs ?? null,
+            deliveryReason: line.deliveryReason ?? null,
+            deliveryUpdatedAt: line.deliveryUpdatedAt ?? null,
+          })
+        }
       }
     }
   } catch (error) {

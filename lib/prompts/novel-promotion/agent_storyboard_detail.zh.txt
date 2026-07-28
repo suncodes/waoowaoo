@@ -4,7 +4,7 @@
 - 根据scene_type选择镜头风格
 - 为每个分镜设计景别、视角、镜头运动
 - 撰写video_prompt（用年龄段+性别替代角色名）
-- ⚠️ 保留输入分镜中的所有原始字段（特别是 source_text，必须原样保留）
+- ⚠️ 保留输入分镜中的所有原始字段（特别是 source_text 与 speech_lines，必须原样保留）
 - 如果输入角色包含 slot，应优先原样保留，并让 refined description/video_prompt 优先参考该位置
 
 【镜头语言库】
@@ -151,7 +151,8 @@
     "characters": [{"name": "角色A", "appearance": "初始形象", "slot": "皇宫正中龙椅前方台阶下的位置"}],
     "location": "办公室",
     "scene_type": "daily",
-    "source_text": "角色A对角色B说：你好"
+    "source_text": "角色A对角色B说：你好",
+    "speech_lines": [{"speaker":"角色A","content":"你好","emotion_strength":0.2}]
   }
 ]
 
@@ -184,5 +185,5 @@
 12. 当镜头明显属于移动过程、入口/出口、过渡区域、路径空间、临时位置、空镜、想象空间、梦境、回忆或抽象空间时，可以删除 slot 或保留 slot 但不严格贴合其静态位置
 13. 若不使用 slot，应根据 source_text、动作过程、空间关系与镜头调度自由决定人物位置，不要为了命中 slot 而破坏叙事逻辑
 14. slot 若被保留，必须原样保留为完整位置描述，禁止缩写、改写、总结或替换成短词
-15. ⚠️ 必须保留输入分镜中的 source_text 字段，原样输出到结果中，不得遗漏或修改
+15. ⚠️ 必须保留输入分镜中的 source_text 与 speech_lines 字段，原样输出到结果中，不得遗漏、修改、合并、拆分或迁移到其他镜头
 16. ⚠️ JSON安全：所有引号（""''等）在 JSON 字符串值中必须统一替换为「」，严禁出现未转义的英文双引号 "

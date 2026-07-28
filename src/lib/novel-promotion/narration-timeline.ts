@@ -201,7 +201,6 @@ export async function rebuildEpisodeNarrationTimeline(episodeId: string): Promis
     voiceEndMs: number
     segmentText: string
   }> = []
-  const firstPanelByVoiceLine = new Map<string, string>()
 
   for (const [storyboardIndex, storyboard] of orderedStoryboards.entries()) {
     const lines = storyboardVoiceLines({ storyboard, storyboardIndex, timedLines })
@@ -219,9 +218,6 @@ export async function rebuildEpisodeNarrationTimeline(episodeId: string): Promis
       for (const line of lines) {
         const span = intersectSpan(panel, line)
         if (!span) continue
-        if (!firstPanelByVoiceLine.has(line.id)) {
-          firstPanelByVoiceLine.set(line.id, panel.id)
-        }
         spans.push({
           episodeId,
           ...span,
@@ -238,9 +234,6 @@ export async function rebuildEpisodeNarrationTimeline(episodeId: string): Promis
           estimatedDurationMs: line.estimatedMs,
           timelineStartMs: line.startMs,
           timelineEndMs: line.endMs,
-          ...(firstPanelByVoiceLine.has(line.id)
-            ? { matchedPanelId: firstPanelByVoiceLine.get(line.id) || null }
-            : {}),
         },
       })
     }
@@ -250,14 +243,11 @@ export async function rebuildEpisodeNarrationTimeline(episodeId: string): Promis
     }
 
     for (const panel of panelUpdates) {
-      const targetDurationMs = Math.max(800, panel.endMs - panel.startMs)
       await tx.novelPromotionPanel.update({
         where: { id: panel.id },
         data: {
           timelineStartMs: panel.startMs,
           timelineEndMs: panel.endMs,
-          targetDurationMs,
-          duration: Math.round((targetDurationMs / 1000) * 10) / 10,
         },
       })
     }
