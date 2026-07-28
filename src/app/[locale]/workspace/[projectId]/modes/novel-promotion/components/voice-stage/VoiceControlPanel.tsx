@@ -22,6 +22,7 @@ interface VoiceControlPanelProps {
   analyzing: boolean
   isBatchSubmittingAll: boolean
   isRebuildingSpeechPlan?: boolean
+  isGeneratingDeliveryLines?: boolean
   isDownloading: boolean
   runningLineCount: number
   allSpeakersHaveVoice: boolean
@@ -41,6 +42,7 @@ interface VoiceControlPanelProps {
   savingLineEditorState: TaskPresentationState | null
   onAnalyze: () => Promise<void>
   onRebuildSpeechPlans?: () => Promise<void>
+  onGenerateDeliveryLines?: () => Promise<void>
   onGenerateAll: () => Promise<void>
   onDownloadAll: () => Promise<void>
   onStartAdd: () => void
@@ -63,6 +65,7 @@ export default function VoiceControlPanel({
   analyzing,
   isBatchSubmittingAll,
   isRebuildingSpeechPlan = false,
+  isGeneratingDeliveryLines = false,
   isDownloading,
   runningLineCount,
   allSpeakersHaveVoice,
@@ -82,6 +85,7 @@ export default function VoiceControlPanel({
   savingLineEditorState,
   onAnalyze,
   onRebuildSpeechPlans,
+  onGenerateDeliveryLines,
   onGenerateAll,
   onDownloadAll,
   onStartAdd,
@@ -121,6 +125,7 @@ export default function VoiceControlPanel({
           linesWithAudio={linesWithAudio}
           analyzing={analyzing}
           rebuildingSpeechPlan={isRebuildingSpeechPlan}
+          generatingDeliveryLines={isGeneratingDeliveryLines}
           isDownloading={isDownloading}
           isBatchSubmitting={isBatchSubmittingAll}
           runningCount={runningLineCount}
@@ -129,6 +134,7 @@ export default function VoiceControlPanel({
           onAddLine={onStartAdd}
           onAnalyze={onAnalyze}
           onRebuildSpeechPlans={onRebuildSpeechPlans}
+          onGenerateDeliveryLines={onGenerateDeliveryLines}
           onDownloadAll={onDownloadAll}
           onGenerateAll={onGenerateAll}
         />

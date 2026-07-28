@@ -3,9 +3,7 @@
 import { useMemo, useState } from 'react'
 import { AppIcon, type AppIconName } from '@/components/ui/icons'
 import type { CreationWorkflowState } from '@/lib/creation-workspace/workflow-state'
-import { useStoryboardAutoFix, useStoryboardReadiness } from '@/lib/query/hooks/useStoryboardReadiness'
 import { VIDEO_PROFILE_PRESET, type VideoProfile } from '@/lib/video-profile'
-import { useWorkspaceProvider } from '../../WorkspaceProvider'
 import { useWorkspaceStageRuntime } from '../../WorkspaceStageRuntimeContext'
 import type { WorkspaceRunStreamState } from '../workspace-run-types'
 import type { CreationTaskDescriptor } from '../workspace-v2/CreationTaskDetails'
@@ -73,8 +71,6 @@ function navStatus(mode: StudioModeId, model: StudioWorkspaceModel): StudioProdu
     if (
       model.summary.voiceLines > 0
       && model.summary.speechPlanTotal > 0
-      && model.summary.speechPlanInvalid === 0
-      && model.summary.speechPlanWarnings === 0
     ) return 'locked'
     if (model.summary.voiceLines > 0) return 'needs_review'
     return 'drafting'
@@ -266,15 +262,9 @@ function StudioNav({
 function AssistantPanel({
   model,
   onNavigate,
-  readinessActionLabel,
-  readinessActionDisabled,
-  onReadinessAction,
 }: {
   model: StudioWorkspaceModel
   onNavigate: (route: string) => void
-  readinessActionLabel: string
-  readinessActionDisabled: boolean
-  onReadinessAction: () => void
 }) {
   const runtime = useWorkspaceStageRuntime()
   const activeAsset = model.coreVisualAssets.find((asset) => asset.status !== 'locked') || model.coreVisualAssets[0]
@@ -295,7 +285,7 @@ function AssistantPanel({
   const suggestions = model.activeMode === 'visual-kit'
     ? [`核心资产待确认：${model.summary.missingCoreVisualAssets}`, activeAsset ? `当前资产：${activeAsset.name}` : '暂无核心资产']
     : model.activeMode === 'narration'
-      ? [`台词：${model.summary.voiceLines}`, `异常计划：${model.summary.speechPlanInvalid}`]
+      ? [`台词：${model.summary.voiceLines}`, `镜头计划：${model.summary.speechPlanTotal}`]
     : model.activeMode === 'storyboard-script' || model.activeMode === 'storyboard-images' || model.activeMode === 'produce' || model.activeMode === 'audio'
       ? [activeShot ? `当前镜头：第 ${activeShot.number} 镜` : '暂无镜头', `失败镜头：${model.summary.failedShots}`]
       : [`内容段落：${model.draftSegments.length}`, `预计时长：${model.summary.totalDurationSec || '-'} 秒`]
@@ -337,19 +327,13 @@ function AssistantPanel({
             ) : null}
             {model.activeMode === 'storyboard-images' ? (
               <>
-                <ActionButton
-                  icon="sparkles"
-                  label={readinessActionLabel}
-                  onClick={onReadinessAction}
-                  disabled={readinessActionDisabled}
-                />
                 <ActionButton icon="mic" label="台词与声音" onClick={() => onNavigate('voice')} />
                 <ActionButton icon="clapperboard" label="返回分镜文稿" onClick={() => onNavigate('storyboard-script')} />
               </>
             ) : null}
             {model.activeMode === 'produce' ? (
               <div className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-xs leading-5 text-stone-400">
-                页面顶部提供“批量生成单图视频”和“批量生成首尾帧视频”两个入口，提交前都会先预检并二次确认。
+                页面顶部提供“批量生成单图视频”和“批量生成首尾帧视频”两个入口，提交前会显示本次提交信息。
               </div>
             ) : null}
             {model.activeMode === 'audio' ? (
@@ -406,7 +390,6 @@ export default function StudioWorkspaceShell({
   onRefresh,
 }: StudioWorkspaceShellProps) {
   const runtime = useWorkspaceStageRuntime()
-  const { projectId, episodeId } = useWorkspaceProvider()
   const model = useStudioWorkspaceModel({
     currentStage,
     stageView,
@@ -417,9 +400,6 @@ export default function StudioWorkspaceShell({
     scriptToStoryboardStream,
     isAssetAnalysisRunning: runtime.isAssetAnalysisRunning,
   })
-  const resolvedEpisodeId = episodeId || currentEpisodeId || null
-  const readinessQuery = useStoryboardReadiness(projectId, resolvedEpisodeId, model.activeMode === 'storyboard-images')
-  const autoFixMutation = useStoryboardAutoFix(projectId, resolvedEpisodeId)
   const navItems = useMemo<StudioNavItem[]>(
     () => MODE_CONFIG.map((item) => ({ ...item, status: navStatus(item.id, model) })),
     [model],
@@ -432,25 +412,6 @@ export default function StudioWorkspaceShell({
     || shot.status === 'needs_review'
   )).length
   const productionReady = model.shots.length > 0 && incompleteShotCount === 0
-  const speechPlanMissing = model.summary.voiceLines > 0 && model.summary.speechPlanTotal === 0
-  const speechPlanInvalid = model.summary.speechPlanInvalid > 0
-  const readiness = readinessQuery.data
-  const readinessMainActionLabel = readiness?.status === 'fix_pending_confirm'
-    ? '应用口播修复方案'
-    : readiness?.status === 'ready' || readiness?.status === 'risk_accepted'
-      ? '重新运行AI预检'
-      : '生成口播修复方案'
-  const runReadinessMainAction = () => {
-    if (readiness?.status === 'fix_pending_confirm') {
-      autoFixMutation.mutate('apply')
-      return
-    }
-    if (readiness?.status === 'ready' || readiness?.status === 'risk_accepted') {
-      void readinessQuery.refetch()
-      return
-    }
-    autoFixMutation.mutate('prepare')
-  }
   const navigate = (route: string) => {
     if (route === 'voice' && !model.workflow.hasStoryboard) {
       window.alert('请先完成分镜文稿。台词与声音会基于已确认镜头分析台词并绑定镜头。')
@@ -465,22 +426,6 @@ export default function StudioWorkspaceShell({
         ? '请先完成分镜图片。'
         : `还有 ${incompleteShotCount} 个镜头缺少定稿图片、正在生成或生成失败，暂时不能进入生产台。`)
       return
-    }
-    if (route === 'videos' && speechPlanMissing) {
-      window.alert('当前已有台词，但镜头级台词与声音计划缺失。请先回到“台词与声音”点击“重建台词计划”。')
-      return
-    }
-    if (route === 'videos' && speechPlanInvalid) {
-      window.alert(`当前有 ${model.summary.speechPlanInvalid} 个镜头的台词与声音计划异常。请先回到“台词与声音”处理音色或台词绑定。`)
-      return
-    }
-    if (route === 'videos' && model.summary.voiceLines === 0) {
-      const confirmed = window.confirm('当前项目没有台词。继续进入视频制作将按无旁白视频处理，是否继续？')
-      if (!confirmed) return
-    }
-    if (route === 'videos' && model.summary.speechPlanWarnings > 0) {
-      const confirmed = window.confirm(`当前台词计划还有 ${model.summary.speechPlanWarnings} 条警告，可能导致语速过快或节奏不稳。是否仍进入视频制作？`)
-      if (!confirmed) return
     }
     onStageChange(route)
   }
@@ -527,9 +472,6 @@ export default function StudioWorkspaceShell({
           <AssistantPanel
             model={model}
             onNavigate={navigate}
-            readinessActionLabel={autoFixMutation.isPending ? 'AI修复处理中' : readinessMainActionLabel}
-            readinessActionDisabled={autoFixMutation.isPending || readinessQuery.isFetching}
-            onReadinessAction={runReadinessMainAction}
           />
         </div>
       </div>

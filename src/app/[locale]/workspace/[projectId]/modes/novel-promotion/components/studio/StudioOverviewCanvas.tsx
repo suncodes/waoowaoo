@@ -20,11 +20,7 @@ function nextRoute(model: StudioWorkspaceModel) {
   if (!model.workflow.contentApproved) return 'script'
   if (!model.workflow.visualApproved || model.summary.missingCoreVisualAssets > 0) return 'assets'
   if (!model.workflow.hasStoryboard) return 'storyboard-script'
-  if (
-    model.summary.voiceLines === 0
-    || (model.summary.voiceLines > 0 && model.summary.speechPlanTotal === 0)
-    || model.summary.speechPlanInvalid > 0
-  ) return 'voice'
+  if (model.summary.voiceLines === 0 || (model.summary.voiceLines > 0 && model.summary.speechPlanTotal === 0)) return 'voice'
   if (model.shots.some((shot) => !shot.imageUrl || shot.status !== 'locked')) return 'storyboard-images'
   if (!model.workflow.hasVideo) return 'videos'
   return 'editor'
@@ -35,11 +31,7 @@ function nextLabel(model: StudioWorkspaceModel) {
   if (!model.workflow.contentApproved) return model.workflow.isBookGuide ? '继续导读稿制作' : '继续剧本制作'
   if (!model.workflow.visualApproved || model.summary.missingCoreVisualAssets > 0) return '继续视觉资产'
   if (!model.workflow.hasStoryboard) return '继续分镜文稿'
-  if (
-    model.summary.voiceLines === 0
-    || (model.summary.voiceLines > 0 && model.summary.speechPlanTotal === 0)
-    || model.summary.speechPlanInvalid > 0
-  ) return '继续台词与声音'
+  if (model.summary.voiceLines === 0 || (model.summary.voiceLines > 0 && model.summary.speechPlanTotal === 0)) return '继续台词与声音'
   if (model.shots.some((shot) => !shot.imageUrl || shot.status !== 'locked')) return '继续分镜图片'
   if (!model.workflow.hasVideo) return '继续视频制作'
   return '进入成片检查'
@@ -60,8 +52,6 @@ export default function StudioOverviewCanvas({ model, onNavigate }: StudioOvervi
   const activeJobs = model.generationJobs.filter((job) => job.status === 'generating' || job.status === 'failed')
   const narrationStatus: StudioProductStatus = model.summary.voiceLines > 0
     && model.summary.speechPlanTotal > 0
-    && model.summary.speechPlanInvalid === 0
-    && model.summary.speechPlanWarnings === 0
     ? 'locked'
     : model.workflow.hasStoryboard
       ? model.summary.voiceLines > 0 ? 'needs_review' : 'drafting'

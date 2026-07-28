@@ -124,7 +124,7 @@ describe('studio video production model', () => {
     })
   })
 
-  it('does not silently pass panels that have lines but no speech plan', () => {
+  it('does not block video generation when lines have no speech plan', () => {
     const readyState = createVisualQualityState({
       mode: 'auto',
       status: 'approved',
@@ -145,24 +145,15 @@ describe('studio video production model', () => {
       }),
     }
     const links = new Map<string, boolean>()
-    const options = { hasVoiceLinesForItem: () => true }
 
-    expect(buildBatchVideoPreflight([item], links, 'normal', options)).toMatchObject({
-      eligibleCount: 0,
-      skippedCount: 1,
-      reasonCounts: { speech_plan_missing: 1 },
-    })
-    expect(buildBatchVideoPreflight([item], links, 'normal', {
-      ...options,
-      allowSpeechPlanMissing: true,
-    })).toMatchObject({
+    expect(buildBatchVideoPreflight([item], links, 'normal')).toMatchObject({
       eligibleCount: 1,
       skippedCount: 0,
     })
-    expect(resolveVoiceStatus(item.panel, { hasVoiceLines: true })).toBe('needs_review')
+    expect(resolveVoiceStatus(item.panel, { hasVoiceLines: true })).toBe('locked')
   })
 
-  it('does not silently pass panels without matched voice lines', () => {
+  it('does not block video generation when panels have no matched voice lines', () => {
     const readyState = createVisualQualityState({
       mode: 'auto',
       status: 'approved',
@@ -183,20 +174,11 @@ describe('studio video production model', () => {
       }),
     }
     const links = new Map<string, boolean>()
-    const options = { hasVoiceLinesForItem: () => false }
 
-    expect(buildBatchVideoPreflight([item], links, 'normal', options)).toMatchObject({
-      eligibleCount: 0,
-      skippedCount: 1,
-      reasonCounts: { speech_lines_missing: 1 },
-    })
-    expect(buildBatchVideoPreflight([item], links, 'normal', {
-      ...options,
-      allowSpeechlessVideo: true,
-    })).toMatchObject({
+    expect(buildBatchVideoPreflight([item], links, 'normal')).toMatchObject({
       eligibleCount: 1,
       skippedCount: 0,
     })
-    expect(resolveVoiceStatus(item.panel, { hasVoiceLines: false })).toBe('needs_review')
+    expect(resolveVoiceStatus(item.panel, { hasVoiceLines: false })).toBe('empty')
   })
 })

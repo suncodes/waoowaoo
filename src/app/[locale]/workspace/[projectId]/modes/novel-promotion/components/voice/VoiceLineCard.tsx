@@ -11,6 +11,10 @@ interface VoiceLine {
     lineIndex: number
     speaker: string
     content: string
+    deliveryContent?: string | null
+    deliveryDurationMs?: number | null
+    deliveryReason?: string | null
+    deliveryUpdatedAt?: string | null
     emotionPrompt: string | null
     emotionStrength: number | null
     audioUrl: string | null
@@ -58,6 +62,10 @@ export default function VoiceLineCard({
     const [isEmotionExpanded, setIsEmotionExpanded] = useState(false)
     const hasPanelBinding = !!onLocatePanel && !!line.matchedStoryboardId && line.matchedPanelIndex !== null && line.matchedPanelIndex !== undefined
     const locateTitle = t("lineCard.locateVideo")
+    const originalContent = line.content.trim()
+    const deliveryContent = line.deliveryContent?.trim() || ''
+    const hasDeliveryContent = deliveryContent.length > 0
+    const deliveryMatchesOriginal = hasDeliveryContent && deliveryContent === originalContent
     const inlineStatusState = isVoiceTaskRunning
         ? resolveTaskPresentationState({
             phase: 'processing',
@@ -164,9 +172,29 @@ export default function VoiceLineCard({
             {/* 中间：台词内容 */}
             <div className="px-4 py-3">
                 <div className="group">
-                    <p className="line-clamp-3 text-sm leading-relaxed text-stone-300" title={line.content}>
-                        {line.content}
-                    </p>
+                    <div>
+                        <div className="mb-1 text-[11px] font-semibold text-stone-500">原始台词</div>
+                        <p className="line-clamp-3 text-sm leading-relaxed text-stone-300" title={line.content}>
+                            {line.content}
+                        </p>
+                    </div>
+                    {hasDeliveryContent ? (
+                        <div className="mt-3 rounded-md border border-emerald-400/20 bg-emerald-400/[0.07] px-3 py-2">
+                            <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] font-semibold text-emerald-100">
+                                <span>口播版台词</span>
+                                {deliveryMatchesOriginal ? (
+                                    <span className="font-normal text-emerald-100/60">与原文一致</span>
+                                ) : null}
+                            </div>
+                            <p className="line-clamp-3 text-sm leading-relaxed text-emerald-50" title={deliveryContent}>
+                                {deliveryContent}
+                            </p>
+                        </div>
+                    ) : nativeAudioMode ? (
+                        <div className="mt-3 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-stone-500">
+                            未生成口播版台词，视频会使用原始台词。
+                        </div>
+                    ) : null}
                     {/* 操作按钮组 */}
                     <div className="mt-2 flex justify-end gap-0.5">
                         {hasPanelBinding && (

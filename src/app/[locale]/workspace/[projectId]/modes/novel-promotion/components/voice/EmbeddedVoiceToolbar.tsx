@@ -8,6 +8,7 @@ interface EmbeddedVoiceToolbarProps {
     linesWithAudio: number
     analyzing: boolean
     rebuildingSpeechPlan?: boolean
+    generatingDeliveryLines?: boolean
     isDownloading: boolean
     isBatchSubmitting: boolean
     runningCount: number
@@ -16,6 +17,7 @@ interface EmbeddedVoiceToolbarProps {
     onAddLine: () => void
     onAnalyze: () => void
     onRebuildSpeechPlans?: () => void
+    onGenerateDeliveryLines?: () => void
     onDownloadAll: () => void
     onGenerateAll: () => void
 }
@@ -25,6 +27,7 @@ export default function EmbeddedVoiceToolbar({
     linesWithAudio,
     analyzing,
     rebuildingSpeechPlan = false,
+    generatingDeliveryLines = false,
     isDownloading,
     isBatchSubmitting,
     runningCount,
@@ -33,6 +36,7 @@ export default function EmbeddedVoiceToolbar({
     onAddLine,
     onAnalyze,
     onRebuildSpeechPlans,
+    onGenerateDeliveryLines,
     onDownloadAll,
     onGenerateAll
 }: EmbeddedVoiceToolbarProps) {
@@ -57,6 +61,14 @@ export default function EmbeddedVoiceToolbar({
         ? resolveTaskPresentationState({
             phase: 'processing',
             intent: 'process',
+            resource: 'text',
+            hasOutput: totalLines > 0,
+        })
+        : null
+    const deliveryLinesGeneratingState = generatingDeliveryLines
+        ? resolveTaskPresentationState({
+            phase: 'processing',
+            intent: 'generate',
             resource: 'text',
             hasOutput: totalLines > 0,
         })
@@ -115,6 +127,19 @@ export default function EmbeddedVoiceToolbar({
                         {rebuildingSpeechPlan ? (
                             <TaskStatusInline state={speechPlanRebuildingState} className="text-white [&>span]:text-white [&_svg]:text-white" />
                         ) : '重建台词计划'}
+                    </button>
+                ) : null}
+
+                {nativeAudioMode && onGenerateDeliveryLines ? (
+                    <button
+                        onClick={onGenerateDeliveryLines}
+                        disabled={generatingDeliveryLines || totalLines === 0}
+                        className="inline-flex h-9 items-center gap-2 rounded-md border border-emerald-400/30 bg-emerald-400/10 px-3 text-xs font-semibold text-emerald-100 hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        title={totalLines === 0 ? '请先分析或新增台词' : '基于当前镜头台词生成适合视频原生音频的口播版'}
+                    >
+                        {generatingDeliveryLines ? (
+                            <TaskStatusInline state={deliveryLinesGeneratingState} className="text-white [&>span]:text-white [&_svg]:text-white" />
+                        ) : '生成口播版台词'}
                     </button>
                 ) : null}
 

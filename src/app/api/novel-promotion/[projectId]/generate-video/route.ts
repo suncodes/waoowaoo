@@ -23,8 +23,8 @@ import {
 } from '@/lib/video-generation-duration'
 import {
   ensureEpisodeSpeechPlans,
+  isPanelSpeechPlanTableMissing,
   panelSpeechPlanHasSpeech,
-  validatePanelSpeechReadyForVideo,
 } from '@/lib/novel-promotion/speech-plan'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -210,30 +210,6 @@ function assertVisualReady(panel: { id: string; candidateImages?: unknown; visua
   })
 }
 
-function speechPlanReady(plan: { mode?: string | null; status?: string | null } | null | undefined) {
-  if (!plan || plan.mode === 'none') return true
-  return plan.status === 'ready'
-}
-
-function canBypassMissingSpeechPlan(readiness: {
-  code?: string | null
-}) {
-  return readiness.code === 'SPEECH_PLAN_MISSING' || readiness.code === 'SPEECH_PLAN_EMPTY'
-}
-
-function canBypassNoSpeech(readiness: {
-  code?: string | null
-}) {
-  return readiness.code === 'NO_SPEECH'
-}
-
-function speechPlanMissingForVoiceLines(
-  plan: { mode?: string | null; status?: string | null } | null | undefined,
-  voiceLineCount: number,
-) {
-  return voiceLineCount > 0 && (!plan || plan.mode === 'none')
-}
-
 function readSpeechPlanProjection(value: unknown): {
   mode?: string | null
   status?: string | null
@@ -244,27 +220,24 @@ function readSpeechPlanProjection(value: unknown): {
   return isRecord(plan) ? plan : null
 }
 
-async function assertPanelSpeechReady(panelId: string, options?: {
-  allowSpeechPlanMissing?: boolean
-  allowSpeechlessVideo?: boolean
-}) {
-  const readiness = await validatePanelSpeechReadyForVideo(panelId)
-  if (canBypassNoSpeech(readiness) && !options?.allowSpeechlessVideo) {
-    throw new ApiError('CONFLICT', {
-      code: readiness.code,
-      panelId,
-      reasons: readiness.reasons,
-      voiceLineCount: readiness.voiceLineCount,
+async function loadPanelSpeechPlan(panelId: string): Promise<{
+  mode?: string | null
+  status?: string | null
+  linesJson?: unknown
+} | null> {
+  try {
+    return await prisma.novelPromotionPanelSpeechPlan.findUnique({
+      where: { panelId },
+      select: {
+        mode: true,
+        status: true,
+        linesJson: true,
+      },
     })
+  } catch (error) {
+    if (isPanelSpeechPlanTableMissing(error)) return null
+    throw error
   }
-  if (readiness.ready) return readiness
-  if (options?.allowSpeechPlanMissing && canBypassMissingSpeechPlan(readiness)) return readiness
-  throw new ApiError('CONFLICT', {
-    code: readiness.code || 'SPEECH_PLAN_NOT_READY',
-    panelId,
-    reasons: readiness.reasons,
-    voiceLineCount: readiness.voiceLineCount,
-  })
 }
 
 function resolveNativeAudioDefault(input: {
@@ -353,8 +326,6 @@ export const POST = apiHandler(async (
   const batchMode: 'normal' | 'firstlastframe' = body?.batchMode === 'firstlastframe'
     ? 'firstlastframe'
     : 'normal'
-  const allowSpeechPlanMissing = body?.allowSpeechPlanMissing === true
-  const allowSpeechlessVideo = body?.allowSpeechlessVideo === true
 
   validateFirstLastFrameModel(
     isBatch && batchMode === 'firstlastframe'
@@ -377,30 +348,6 @@ export const POST = apiHandler(async (
     })
     if (!episode) throw new ApiError('NOT_FOUND')
     const speechPlansState = await ensureEpisodeSpeechPlans(episodeId)
-    const voiceLines = await prisma.novelPromotionVoiceLine.findMany({
-      where: { episodeId },
-      select: {
-        id: true,
-        matchedPanelId: true,
-        matchedStoryboardId: true,
-        matchedPanelIndex: true,
-      },
-    })
-    const voiceLineIdsByPanelId = new Map<string, Set<string>>()
-    const voiceLineIdsByPanelKey = new Map<string, Set<string>>()
-    const addVoiceLineId = (map: Map<string, Set<string>>, key: string, id: string) => {
-      const set = map.get(key) || new Set<string>()
-      set.add(id)
-      map.set(key, set)
-    }
-    for (const line of voiceLines) {
-      if (line.matchedPanelId) {
-        addVoiceLineId(voiceLineIdsByPanelId, line.matchedPanelId, line.id)
-      }
-      if (line.matchedStoryboardId && line.matchedPanelIndex !== null && line.matchedPanelIndex !== undefined) {
-        addVoiceLineId(voiceLineIdsByPanelKey, `${line.matchedStoryboardId}:${line.matchedPanelIndex}`, line.id)
-      }
-    }
 
     const storyboards = await prisma.novelPromotionStoryboard.findMany({
       where: { episodeId },
@@ -444,12 +391,6 @@ export const POST = apiHandler(async (
       || left.createdAt.getTime() - right.createdAt.getTime()
     ))
     const panels = storyboards.flatMap((storyboard) => storyboard.panels)
-    const countPanelVoiceLines = (panel: { id: string; storyboardId: string; panelIndex: number }) => {
-      const ids = new Set<string>()
-      for (const id of voiceLineIdsByPanelId.get(panel.id) || []) ids.add(id)
-      for (const id of voiceLineIdsByPanelKey.get(`${panel.storyboardId}:${panel.panelIndex}`) || []) ids.add(id)
-      return ids.size
-    }
 
     if (panels.length === 0) {
       return NextResponse.json({ tasks: [], total: 0, skipped: 0, reasonCounts: {} })
@@ -463,6 +404,8 @@ export const POST = apiHandler(async (
     delete basePayload.all
     delete basePayload.episodeId
     delete basePayload.batchMode
+    delete basePayload.allowSpeechPlanMissing
+    delete basePayload.allowSpeechlessVideo
     const targets: Array<{ panelId: string; payload: Record<string, unknown> }> = []
 
     panels.forEach((panel, index) => {
@@ -482,19 +425,6 @@ export const POST = apiHandler(async (
         return
       }
       const panelSpeechPlan = readSpeechPlanProjection(panel)
-      const panelVoiceLineCount = countPanelVoiceLines(panel)
-      if (panelVoiceLineCount === 0 && !allowSpeechlessVideo) {
-        skip('speech_lines_missing')
-        return
-      }
-      if (speechPlanMissingForVoiceLines(panelSpeechPlan, panelVoiceLineCount) && !allowSpeechPlanMissing) {
-        skip('speech_plan_missing')
-        return
-      }
-      if (!speechPlanReady(panelSpeechPlan)) {
-        skip('speech_not_ready')
-        return
-      }
       if (batchMode === 'normal') {
         const payload = buildPayloadWithPanelGenerationDefaults({
           ...basePayload,
@@ -529,20 +459,6 @@ export const POST = apiHandler(async (
         || !evaluateVisualReadiness(nextPanel.visualQualityState).ready
       ) {
         skip('last_quality_not_ready')
-        return
-      }
-      const nextPanelSpeechPlan = readSpeechPlanProjection(nextPanel)
-      const nextPanelVoiceLineCount = countPanelVoiceLines(nextPanel)
-      if (nextPanelVoiceLineCount === 0 && !allowSpeechlessVideo) {
-        skip('speech_lines_missing')
-        return
-      }
-      if (speechPlanMissingForVoiceLines(nextPanelSpeechPlan, nextPanelVoiceLineCount) && !allowSpeechPlanMissing) {
-        skip('speech_plan_missing')
-        return
-      }
-      if (!speechPlanReady(nextPanelSpeechPlan)) {
-        skip('speech_not_ready')
         return
       }
       const payload = buildPayloadWithPanelGenerationDefaults({
@@ -623,7 +539,7 @@ export const POST = apiHandler(async (
     throw new ApiError('NOT_FOUND')
   }
   assertVisualReady(panel)
-  const speechReadiness = await assertPanelSpeechReady(panel.id, { allowSpeechPlanMissing, allowSpeechlessVideo })
+  const speechPlan = await loadPanelSpeechPlan(panel.id)
 
   const firstLastFrame = isRecord(body?.firstLastFrame) ? body.firstLastFrame : null
   if (
@@ -640,12 +556,14 @@ export const POST = apiHandler(async (
     })
     if (!lastFramePanel) throw new ApiError('NOT_FOUND')
     assertVisualReady(lastFramePanel)
-    await assertPanelSpeechReady(lastFramePanel.id, { allowSpeechPlanMissing, allowSpeechlessVideo })
   }
 
-  const taskPayload = buildPayloadWithPanelGenerationDefaults(body, {
+  const requestPayload = { ...body }
+  delete requestPayload.allowSpeechPlanMissing
+  delete requestPayload.allowSpeechlessVideo
+  const taskPayload = buildPayloadWithPanelGenerationDefaults(requestPayload, {
     ...panel,
-    speechPlan: speechReadiness.plan,
+    speechPlan,
   })
   await validateVideoCapabilityCombination({
     payload: taskPayload,

@@ -12,6 +12,7 @@ import {
   useCreateProjectVoiceLine,
   useDeleteProjectVoiceLine,
   useDownloadProjectVoices,
+  useGenerateProjectDeliveryLines,
   useGenerateProjectVoice,
   useRebuildProjectSpeechPlans,
   useUpdateProjectVoiceLine,
@@ -67,6 +68,7 @@ export function useVoiceStageRuntime({
   const analyzeVoiceMutation = useAnalyzeProjectVoice(projectId)
   const generateVoiceMutation = useGenerateProjectVoice(projectId)
   const rebuildSpeechPlansMutation = useRebuildProjectSpeechPlans(projectId)
+  const generateDeliveryLinesMutation = useGenerateProjectDeliveryLines(projectId)
   const createVoiceLineMutation = useCreateProjectVoiceLine(projectId)
   const updateVoiceLineMutation = useUpdateProjectVoiceLine(projectId)
   const deleteVoiceLineMutation = useDeleteProjectVoiceLine(projectId)
@@ -275,6 +277,24 @@ export function useVoiceStageRuntime({
     }
   }, [episodeId, loadData, notifyVoiceLinesChanged, rebuildSpeechPlansMutation, showToast])
 
+  const handleGenerateDeliveryLines = useCallback(async () => {
+    try {
+      const result = await generateDeliveryLinesMutation.mutateAsync({ episodeId })
+      await loadData()
+      notifyVoiceLinesChanged()
+      showToast(
+        result.totalLines > 0
+          ? `口播版台词已生成：更新 ${result.updatedCount} 条，未返回 ${result.skippedCount} 条。`
+          : '当前没有可生成口播版的镜头台词。',
+        result.totalLines > 0 ? 'success' : 'info',
+      )
+    } catch (error: unknown) {
+      if (shouldShowError(error)) {
+        alert(`生成口播版台词失败: ${getErrorMessage(error)}`)
+      }
+    }
+  }, [episodeId, generateDeliveryLinesMutation, loadData, notifyVoiceLinesChanged, showToast])
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -292,6 +312,7 @@ export function useVoiceStageRuntime({
         analyzing={analyzing}
         isBatchSubmittingAll={isBatchSubmittingAll}
         isRebuildingSpeechPlan={rebuildSpeechPlansMutation.isPending}
+        isGeneratingDeliveryLines={generateDeliveryLinesMutation.isPending}
         isDownloading={isDownloading}
         runningLineCount={runningLineIds.size}
         allSpeakersHaveVoice={allSpeakersHaveVoice}
@@ -311,6 +332,7 @@ export function useVoiceStageRuntime({
         savingLineEditorState={savingLineEditorState}
         onAnalyze={handleAnalyze}
         onRebuildSpeechPlans={handleRebuildSpeechPlans}
+        onGenerateDeliveryLines={handleGenerateDeliveryLines}
         onGenerateAll={handleGenerateAll}
         onDownloadAll={handleDownloadAll}
         onStartAdd={handleStartAdd}

@@ -136,6 +136,7 @@ export {
     useFetchProjectVoiceStageData,
     useAnalyzeProjectVoice,
     useRebuildProjectSpeechPlans,
+    useGenerateProjectDeliveryLines,
     useGenerateProjectVoice,
     useCreateProjectVoiceLine,
     useUpdateProjectVoiceLine,

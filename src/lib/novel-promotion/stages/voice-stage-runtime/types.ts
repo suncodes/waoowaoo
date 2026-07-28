@@ -10,6 +10,10 @@ export interface VoiceLine {
   lineIndex: number
   speaker: string
   content: string
+  deliveryContent?: string | null
+  deliveryDurationMs?: number | null
+  deliveryReason?: string | null
+  deliveryUpdatedAt?: string | null
   emotionPrompt: string | null
   emotionStrength: number | null
   audioUrl: string | null

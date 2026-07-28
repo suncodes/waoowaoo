@@ -7,7 +7,6 @@ import ImagePreviewModal from '@/components/ui/ImagePreviewModal'
 import { AppIcon } from '@/components/ui/icons'
 import type { CreationWorkflowState } from '@/lib/creation-workspace/workflow-state'
 import { parseVisualQualityState } from '@/lib/quality-workflow'
-import { useStoryboardAutoFix, useStoryboardReadiness } from '@/lib/query/hooks/useStoryboardReadiness'
 import { useWorkspaceProvider } from '../../WorkspaceProvider'
 import { useWorkspaceStageRuntime } from '../../WorkspaceStageRuntimeContext'
 import { useWorkspaceEpisodeStageData } from '../../hooks/useWorkspaceEpisodeStageData'
@@ -18,8 +17,8 @@ import PanelBindingPlanSummary from '../storyboard/PanelBindingPlanSummary'
 import { resolveConfirmedCandidateIndex } from '../storyboard/hooks/panel-candidate-runtime'
 import { useStoryboardModalRuntime } from '../storyboard/hooks/useStoryboardModalRuntime'
 import { useStoryboardStageController } from '../storyboard/hooks/useStoryboardStageController'
-import { StudioButton, StudioEmptyState, StudioMetric, StudioSectionHeader, StudioStageHeader, StudioStatusBadge } from './StudioPrimitives'
-import { type StudioProductStatus, type StudioWorkspaceModel } from './studio-types'
+import { StudioButton, StudioEmptyState, StudioMetric, StudioSectionHeader, StudioStageHeader } from './StudioPrimitives'
+import type { StudioWorkspaceModel } from './studio-types'
 import {
   buildPanelCandidateDisplayGroups,
   resolvePanelImageWorkflowPresentation,
@@ -40,13 +39,11 @@ function BoardDetailPanel({
   controller,
   confirmLabel,
   onCandidateConfirmed,
-  generationBlocked = false,
 }: {
   item: BoardItem
   controller: ReturnType<typeof useStoryboardStageController>
   confirmLabel?: string
   onCandidateConfirmed?: () => void
-  generationBlocked?: boolean
 }) {
   const panelData = controller.getPanelEditData(item.panel)
   const saveState = controller.saveStateByPanel[item.panel.id]
@@ -66,7 +63,7 @@ function BoardDetailPanel({
   const workflowNotice = workflowPresentation.progress !== null
     ? `${workflowPresentation.label} · ${workflowPresentation.progress}%`
     : workflowPresentation.label
-  const disabled = workflowPresentation.blocksConfirmation || generationBlocked
+  const disabled = workflowPresentation.blocksConfirmation
   const referenceBlocked = !selectedImageUrl
     && (item.sourcePanel.generationRoute === 'asset_backfill' || item.sourcePanel.generationRoute === 'human_required')
     && !isSubmitting
@@ -142,7 +139,6 @@ function BoardDetailPanel({
               variant="secondary"
               icon="sparkles"
               onClick={() => { void controller.regeneratePanelImage(item.panel.id, 2, true, { forceNoReference: true }) }}
-              disabled={generationBlocked}
             >
               无参考生成
             </StudioButton>
@@ -405,252 +401,6 @@ function BoardDetailPanel({
   )
 }
 
-interface StoryboardImageSpeechGate {
-  status: StudioProductStatus
-  label: string
-  title: string
-  description: string
-  blocksGeneration: boolean
-  canOverride: boolean
-}
-
-function resolveStoryboardImageSpeechGate(
-  model: StudioWorkspaceModel,
-  noSpeechOverride: boolean,
-): StoryboardImageSpeechGate {
-  if (model.summary.voiceLines === 0) {
-    return {
-      status: noSpeechOverride ? 'needs_review' : 'drafting',
-      label: noSpeechOverride ? '已选择无台词继续' : '待分析台词',
-      title: noSpeechOverride ? '当前按无台词分镜图片继续' : '建议先完成台词与声音',
-      description: noSpeechOverride
-        ? '本次会跳过台词节拍约束，后续如果再补台词，可能需要重新拆镜或重做图片。'
-        : '台词会影响镜头节奏和关键帧取舍。先分析台词并绑定镜头，可以减少图片生成后再返工。',
-      blocksGeneration: !noSpeechOverride,
-      canOverride: true,
-    }
-  }
-
-  if (model.summary.speechPlanTotal === 0) {
-    return {
-      status: 'failed',
-      label: '台词计划缺失',
-      title: '已有台词，但镜头级台词计划缺失',
-      description: '请回到“台词与声音”点击“重建台词计划”。否则后续视频生成无法知道每个镜头应携带哪些台词和音色。',
-      blocksGeneration: true,
-      canOverride: false,
-    }
-  }
-
-  if (model.summary.speechPlanInvalid > 0) {
-    return {
-      status: 'failed',
-      label: '计划异常',
-      title: `${model.summary.speechPlanInvalid} 个镜头的台词与声音计划异常`,
-      description: '请先处理音色缺失、台词绑定或其他阻断问题，再生成分镜图片。',
-      blocksGeneration: true,
-      canOverride: false,
-    }
-  }
-
-  if (model.summary.speechPlanWarnings > 0) {
-    return {
-      status: 'needs_review',
-      label: '有节奏警告',
-      title: `${model.summary.speechPlanWarnings} 条台词节奏警告`,
-      description: '通常意味着单镜头口播偏长，视频阶段可能出现语速过快。可以继续生成图片，但建议优先生成镜头口播版或拆分镜头。',
-      blocksGeneration: false,
-      canOverride: false,
-    }
-  }
-
-  return {
-    status: 'locked',
-    label: '台词计划就绪',
-    title: '台词节拍已通过',
-    description: '可以开始生成和确认分镜图片。',
-    blocksGeneration: false,
-    canOverride: false,
-  }
-}
-
-type StoryboardReadinessQuery = ReturnType<typeof useStoryboardReadiness>
-type StoryboardAutoFixMutation = ReturnType<typeof useStoryboardAutoFix>
-
-function storyboardReadinessBadge(params: {
-  readiness: StoryboardReadinessQuery['data']
-  loading: boolean
-  error: boolean
-  applying: boolean
-}): { status: StudioProductStatus; label: string; title: string } {
-  if (params.applying) {
-    return { status: 'generating', label: '修复中', title: 'AI 正在应用修复方案' }
-  }
-  if (params.loading) {
-    return { status: 'generating', label: '预检中', title: '正在检查分镜图片制作条件' }
-  }
-  if (params.error || !params.readiness) {
-    return { status: 'failed', label: '预检失败', title: '分镜图片前置检查失败' }
-  }
-  if (params.readiness.status === 'ready') {
-    return { status: 'locked', label: '已就绪', title: '分镜图片制作条件已通过' }
-  }
-  if (params.readiness.status === 'risk_accepted') {
-    return { status: 'needs_review', label: '已接受风险', title: '已按当前风险继续' }
-  }
-  if (params.readiness.status === 'fix_pending_confirm') {
-    return { status: 'needs_review', label: '待确认修复', title: 'AI 已生成修复方案' }
-  }
-  if (params.readiness.status === 'blocked') {
-    return { status: 'failed', label: '有阻断', title: '存在无法静默修复的问题' }
-  }
-  return { status: 'needs_review', label: '需修复', title: '检测到可自动处理的问题' }
-}
-
-function StoryboardReadinessPanel({
-  query,
-  mutation,
-}: {
-  query: StoryboardReadinessQuery
-  mutation: StoryboardAutoFixMutation
-}) {
-  const readiness = query.data
-  const badge = storyboardReadinessBadge({
-    readiness,
-    loading: query.isLoading || query.isFetching,
-    error: query.isError,
-    applying: mutation.isPending,
-  })
-  const summary = readiness?.summary
-  const planActions = readiness?.fixPlan?.actions || []
-  const autoActionCount = planActions.filter((action) => action.autoApply).length
-  const manualActionCount = planActions.length - autoActionCount
-  const previewIssues = readiness?.issues.slice(0, 4) || []
-  const errorMessage = mutation.error instanceof Error
-    ? mutation.error.message
-    : query.error instanceof Error
-      ? query.error.message
-      : ''
-
-  return (
-    <div className={`border-b px-6 py-4 ${badge.status === 'locked' ? 'border-white/10 bg-white/[0.02]' : 'border-amber-400/20 bg-amber-400/[0.07]'}`}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <StudioStatusBadge status={badge.status} label={badge.label} />
-            <h2 className="text-sm font-semibold text-stone-100">{badge.title}</h2>
-          </div>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-400">
-            {readiness?.message || '检查口播节奏、缺失资产、资产绑定和复杂镜头。'}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <StudioButton
-            size="sm"
-            variant="secondary"
-            icon="sparkles"
-            loading={query.isFetching && !mutation.isPending}
-            onClick={() => { void query.refetch() }}
-          >
-            AI 预检
-          </StudioButton>
-          {readiness?.status === 'fix_pending_confirm' ? (
-            <>
-              <StudioButton
-                size="sm"
-                icon="check"
-                loading={mutation.isPending}
-                onClick={() => { mutation.mutate('apply') }}
-              >
-                确认应用口播版
-              </StudioButton>
-              <StudioButton
-                size="sm"
-                variant="secondary"
-                icon="refresh"
-                disabled={mutation.isPending}
-                onClick={() => { mutation.mutate('regenerate') }}
-              >
-                重生成方案
-              </StudioButton>
-              <StudioButton
-                size="sm"
-                variant="ghost"
-                icon="check"
-                disabled={mutation.isPending}
-                onClick={() => { mutation.mutate('accept_risk') }}
-              >
-                接受风险继续
-              </StudioButton>
-            </>
-          ) : readiness && readiness.status !== 'ready' && readiness.status !== 'risk_accepted' ? (
-            <StudioButton
-              size="sm"
-              icon="sparkles"
-              loading={mutation.isPending}
-              onClick={() => { mutation.mutate('prepare') }}
-            >
-              查看口播修复方案
-            </StudioButton>
-          ) : null}
-        </div>
-      </div>
-
-      {summary ? (
-        <div className="mt-4 grid gap-2 sm:grid-cols-5">
-          <StudioMetric label="阻断" value={summary.blockingIssues} />
-          <StudioMetric label="节奏" value={summary.speechWarnings} />
-          <StudioMetric label="缺失资产" value={summary.missingAssets} />
-          <StudioMetric label="复杂镜头" value={summary.complexPanels} />
-          <StudioMetric label="可自动修复" value={summary.autoFixableIssues} />
-        </div>
-      ) : null}
-
-      {planActions.length > 0 ? (
-        <div className="mt-4 rounded-md border border-white/10 bg-[#10110f] px-3 py-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-stone-500">
-            <span>修复方案：自动 {autoActionCount} 项，需确认 {manualActionCount} 项</span>
-            <span>{readiness?.fixPlan?.status === 'applied' ? '已应用' : '待确认'}</span>
-          </div>
-          <div className="mt-2 grid gap-2 md:grid-cols-2">
-            {planActions.slice(0, 4).map((action) => (
-              <div key={action.id} className="rounded border border-white/10 bg-white/[0.03] px-3 py-2">
-                <div className="text-xs font-semibold text-stone-200">{action.title}</div>
-                <div className="mt-1 line-clamp-2 text-xs leading-5 text-stone-500">{action.reason}</div>
-                {action.before || action.after ? (
-                  <div className="mt-2 space-y-1 text-xs leading-5 text-stone-400">
-                    {action.before ? (
-                      <div className="line-clamp-2">原台词：{action.before}</div>
-                    ) : null}
-                    {action.after ? (
-                      <div className="line-clamp-2 text-emerald-200">口播版：{action.after}</div>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : previewIssues.length > 0 ? (
-        <div className="mt-4 grid gap-2 md:grid-cols-2">
-          {previewIssues.map((issue) => (
-            <div key={issue.id} className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2">
-              <div className="text-xs font-semibold text-stone-200">{issue.title}</div>
-              <div className="mt-1 line-clamp-2 text-xs leading-5 text-stone-500">{issue.message}</div>
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      {errorMessage ? (
-        <div className="mt-3 rounded-md border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-xs text-rose-100">
-          {errorMessage}
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
 function StudioBoardRuntime({
   model,
   onNavigate,
@@ -663,7 +413,6 @@ function StudioBoardRuntime({
   const [selectedPanelId, setSelectedPanelId] = useState('')
   const activeStep: 'plan' | 'images' = model.activeMode === 'storyboard-images' ? 'images' : 'plan'
   const [reviewMode, setReviewMode] = useState(false)
-  const [noSpeechOverride, setNoSpeechOverride] = useState(false)
   const controller = useStoryboardStageController({
     projectId,
     episodeId,
@@ -698,31 +447,8 @@ function StudioBoardRuntime({
     })
   }).length
   const productionReady = items.length > 0 && blockedProductionCount === 0 && controller.runningCount === 0
-  const speechGate = resolveStoryboardImageSpeechGate(model, noSpeechOverride)
-  const readinessQuery = useStoryboardReadiness(projectId, episodeId, activeStep === 'images')
-  const autoFixMutation = useStoryboardAutoFix(projectId, episodeId)
-  const readiness = readinessQuery.data
-  const readinessBlocksGeneration = activeStep === 'images' && (
-    readinessQuery.isLoading
-    || autoFixMutation.isPending
-    || (readiness
-      ? readiness.status === 'fix_pending_confirm'
-        || readiness.status === 'fix_applying'
-        || readiness.status === 'blocked'
-        || (readiness.status !== 'ready' && readiness.status !== 'risk_accepted' && readiness.summary.blockingIssues > 0)
-      : false)
-  )
-  const imageGenerationBlocked = speechGate.blocksGeneration || readinessBlocksGeneration
-  const imageGenerationBlockLabel = speechGate.blocksGeneration
-    ? '先处理台词'
-    : readinessBlocksGeneration
-      ? '先完成预检'
-      : '生成缺失图片'
-  const productionBlockLabel = speechGate.blocksGeneration
-    ? '台词未就绪'
-    : readinessBlocksGeneration
-      ? '预检未通过'
-      : productionReady ? '确认并进入制作' : `${blockedProductionCount} 个镜头待确认`
+  const imageGenerationBlockLabel = '生成缺失图片'
+  const productionBlockLabel = productionReady ? '确认并进入制作' : `${blockedProductionCount} 个镜头待确认`
 
   const modalRuntime = useStoryboardModalRuntime({
     projectId,
@@ -755,12 +481,6 @@ function StudioBoardRuntime({
     }
   }, [selectedItem, selectedPanelId])
 
-  useEffect(() => {
-    if (model.summary.voiceLines > 0 && noSpeechOverride) {
-      setNoSpeechOverride(false)
-    }
-  }, [model.summary.voiceLines, noSpeechOverride])
-
   const advanceReview = () => {
     if (!selectedItem) return
     const currentIndex = reviewItems.findIndex((item) => item.panel.id === selectedItem.panel.id)
@@ -782,8 +502,8 @@ function StudioBoardRuntime({
           eyebrow={activeStep === 'plan' ? '分镜文稿' : '分镜图片'}
           title={activeStep === 'plan' ? '镜头规划与资产绑定' : '关键帧候选与定稿'}
           description={activeStep === 'plan'
-            ? '先查看、编辑并确认镜头文稿。这里不会生成图片，确认后进入台词与声音，完成节拍检查后再制作图片。'
-            : '在台词计划明确后生成和确认分镜图片，避免图片完成后才发现镜头台词过长或声音计划缺失。'}
+            ? '先查看、编辑并确认镜头文稿。这里不会生成图片，确认后进入台词与声音或分镜图片。'
+            : '生成和确认分镜图片；口播版台词可在“台词与声音”中单独生成。'}
           actions={activeStep === 'images' ? (
             <>
               <StudioButton
@@ -792,11 +512,10 @@ function StudioBoardRuntime({
                 icon="sparkles"
                 loading={controller.isEpisodeBatchSubmitting}
                 onClick={() => { void controller.handleGenerateAllPanels() }}
-                disabled={imageGenerationBlocked}
               >
                 {imageGenerationBlockLabel}
               </StudioButton>
-              <StudioButton size="sm" icon="check" onClick={() => onNavigate('videos')} disabled={!productionReady || imageGenerationBlocked}>
+              <StudioButton size="sm" icon="check" onClick={() => onNavigate('videos')} disabled={!productionReady}>
                 {productionBlockLabel}
               </StudioButton>
             </>
@@ -842,34 +561,11 @@ function StudioBoardRuntime({
               <StudioMetric label="待生成" value={controller.pendingPanelCount} />
             </div>
 
-            <div className={`border-b px-6 py-4 ${imageGenerationBlocked ? 'border-amber-400/20 bg-amber-400/[0.07]' : 'border-white/10 bg-white/[0.02]'}`}>
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <StudioStatusBadge status={speechGate.status} label={speechGate.label} />
-                    <h2 className="text-sm font-semibold text-stone-100">{speechGate.title}</h2>
-                  </div>
-                  <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-400">{speechGate.description}</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <StudioButton size="sm" variant="secondary" icon="mic" onClick={() => onNavigate('voice')}>
-                    台词与声音
-                  </StudioButton>
-                  {speechGate.canOverride ? (
-                    <StudioButton
-                      size="sm"
-                      variant={noSpeechOverride ? 'ghost' : 'secondary'}
-                      icon={noSpeechOverride ? 'closeSm' : 'check'}
-                      onClick={() => setNoSpeechOverride((value) => !value)}
-                    >
-                      {noSpeechOverride ? '取消无台词继续' : '无台词继续'}
-                    </StudioButton>
-                  ) : null}
-                </div>
-              </div>
+            <div className="flex flex-wrap justify-end gap-2 border-b border-white/10 bg-white/[0.02] px-6 py-4">
+              <StudioButton size="sm" variant="secondary" icon="mic" onClick={() => onNavigate('voice')}>
+                台词与声音
+              </StudioButton>
             </div>
-
-            <StoryboardReadinessPanel query={readinessQuery} mutation={autoFixMutation} />
 
             {!productionReady && items.length > 0 ? (
               <div className="border-b border-amber-400/20 bg-amber-400/[0.07] px-6 py-3 text-sm text-amber-100">
@@ -938,7 +634,6 @@ function StudioBoardRuntime({
                     controller={controller}
                     confirmLabel={reviewMode && reviewItems.length > 1 ? '确认并查看下一个' : undefined}
                     onCandidateConfirmed={reviewMode ? advanceReview : undefined}
-                    generationBlocked={imageGenerationBlocked}
                   />
                 ) : null}
               </div>

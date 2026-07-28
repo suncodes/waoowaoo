@@ -18,9 +18,6 @@ export type BatchVideoSkipReason =
   | 'video_running'
   | 'image_missing'
   | 'quality_not_ready'
-  | 'speech_lines_missing'
-  | 'speech_plan_missing'
-  | 'speech_not_ready'
   | 'not_linked'
   | 'last_panel'
   | 'last_image_missing'
@@ -35,14 +32,6 @@ export interface BatchVideoPreflight {
 
 export interface PanelSpeechVideoOptions {
   hasVoiceLines?: boolean
-  allowSpeechPlanMissing?: boolean
-  allowSpeechlessVideo?: boolean
-}
-
-export interface BatchVideoPreflightOptions {
-  hasVoiceLinesForItem?: (item: ProduceItem) => boolean
-  allowSpeechPlanMissing?: boolean
-  allowSpeechlessVideo?: boolean
 }
 
 function addReason(
@@ -56,7 +45,6 @@ export function buildBatchVideoPreflight(
   items: ProduceItem[],
   linkedPanels: ReadonlyMap<string, boolean>,
   mode: BatchVideoMode,
-  options: BatchVideoPreflightOptions = {},
 ): BatchVideoPreflight {
   const reasonCounts: BatchVideoPreflight['reasonCounts'] = {}
   let eligibleCount = 0
@@ -76,15 +64,6 @@ export function buildBatchVideoPreflight(
     }
     if (!isPanelVisualReadyForVideo(item.panel)) {
       addReason(reasonCounts, 'quality_not_ready')
-      return
-    }
-    const speechIssue = resolvePanelSpeechIssueForVideo(item.panel, {
-      hasVoiceLines: options.hasVoiceLinesForItem?.(item),
-      allowSpeechPlanMissing: options.allowSpeechPlanMissing,
-      allowSpeechlessVideo: options.allowSpeechlessVideo,
-    })
-    if (speechIssue) {
-      addReason(reasonCounts, speechIssue)
       return
     }
     if (mode === 'normal') {
@@ -108,15 +87,6 @@ export function buildBatchVideoPreflight(
     }
     if (!isPanelVisualReadyForVideo(nextItem.panel)) {
       addReason(reasonCounts, 'last_quality_not_ready')
-      return
-    }
-    const nextSpeechIssue = resolvePanelSpeechIssueForVideo(nextItem.panel, {
-      hasVoiceLines: options.hasVoiceLinesForItem?.(nextItem),
-      allowSpeechPlanMissing: options.allowSpeechPlanMissing,
-      allowSpeechlessVideo: options.allowSpeechlessVideo,
-    })
-    if (nextSpeechIssue) {
-      addReason(reasonCounts, nextSpeechIssue)
       return
     }
     eligibleCount += 1
@@ -149,34 +119,6 @@ export function panelVideoModel(panel: NovelPromotionPanel) {
   return record.videoModel || null
 }
 
-export function hasMissingSpeechPlanForVoiceLines(panel: NovelPromotionPanel, hasVoiceLines: boolean) {
-  const plan = panel.speechPlan
-  return hasVoiceLines && (!plan || plan.mode === 'none')
-}
-
-export function resolvePanelSpeechIssueForVideo(
-  panel: NovelPromotionPanel,
-  options: PanelSpeechVideoOptions = {},
-): BatchVideoSkipReason | null {
-  if (options.hasVoiceLines === false && !options.allowSpeechlessVideo) {
-    return 'speech_lines_missing'
-  }
-  const hasVoiceLines = options.hasVoiceLines === true
-  if (hasMissingSpeechPlanForVoiceLines(panel, hasVoiceLines)) {
-    return options.allowSpeechPlanMissing ? null : 'speech_plan_missing'
-  }
-  const plan = panel.speechPlan
-  if (!plan || plan.mode === 'none') return null
-  return plan.status === 'ready' ? null : 'speech_not_ready'
-}
-
-export function isPanelSpeechReadyForVideo(
-  panel: NovelPromotionPanel,
-  options: PanelSpeechVideoOptions = {},
-) {
-  return resolvePanelSpeechIssueForVideo(panel, options) === null
-}
-
 export function panelLinkedToNext(panel: NovelPromotionPanel) {
   const record = panel as NovelPromotionPanel & { linkedToNextPanel?: boolean | null }
   return !!record.linkedToNextPanel
@@ -206,14 +148,10 @@ export function resolveVideoStatus(panel: NovelPromotionPanel): StudioProductSta
 }
 
 export function resolveVoiceStatus(panel: NovelPromotionPanel, options: PanelSpeechVideoOptions = {}): StudioProductStatus {
-  if (options.hasVoiceLines === false) return 'needs_review'
-  if (hasMissingSpeechPlanForVoiceLines(panel, options.hasVoiceLines === true)) return 'needs_review'
-  if (panel.speechPlan?.mode === 'none') return 'empty'
-  if (panel.speechPlan?.status === 'invalid') return 'failed'
-  if (panel.speechPlan?.status === 'ready') return 'locked'
   if (panelLipSyncTaskRunning(panel)) return 'generating'
   if (panel.lipSyncVideoUrl) return 'locked'
   if (panel.audioMixedVideoUrl) return 'locked'
+  if (options.hasVoiceLines === true) return 'locked'
   return 'empty'
 }
 

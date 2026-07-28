@@ -13,6 +13,10 @@ type ProjectVoiceLine = {
     lineIndex: number
     speaker: string
     content: string
+    deliveryContent?: string | null
+    deliveryDurationMs?: number | null
+    deliveryReason?: string | null
+    deliveryUpdatedAt?: string | null
     emotionPrompt: string | null
     emotionStrength: number | null
     audioUrl: string | null
@@ -53,6 +57,14 @@ export type ProjectSpeechPlanSummary = {
     silent: number
     missingVoiceSpeakers: string[]
     warningCount: number
+}
+
+export type ProjectDeliveryLinesResponse = {
+    episodeId: string
+    available: true
+    updatedCount: number
+    skippedCount: number
+    totalLines: number
 }
 
 export function useDesignProjectVoice(projectId: string) {
@@ -167,6 +179,24 @@ export function useRebuildProjectSpeechPlans(projectId: string) {
             }
             return result
         },
+    })
+}
+
+/**
+ * 生成口播版台词
+ */
+export function useGenerateProjectDeliveryLines(projectId: string) {
+    return useMutation({
+        mutationFn: async ({ episodeId }: { episodeId: string }) =>
+            await requestJsonWithError<ProjectDeliveryLinesResponse>(
+                `/api/novel-promotion/${projectId}/delivery-lines`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ episodeId }),
+                },
+                'generate delivery lines failed',
+            ),
     })
 }
 

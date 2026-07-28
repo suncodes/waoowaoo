@@ -6,7 +6,18 @@ import { apiHandler, ApiError } from '@/lib/api-errors'
 import { resolveMediaRef, resolveMediaRefFromLegacyValue } from '@/lib/media/service'
 import { isPanelVoiceSpanTableMissing } from '@/lib/novel-promotion/panel-voice-spans'
 import { rebuildEpisodeNarrationTimeline } from '@/lib/novel-promotion/narration-timeline'
-import { rebuildEpisodeSpeechPlans } from '@/lib/novel-promotion/speech-plan'
+import {
+  isPanelSpeechPlanTableMissing,
+  readPanelSpeechLines,
+  rebuildEpisodeSpeechPlans,
+} from '@/lib/novel-promotion/speech-plan'
+
+type VoiceLineDeliveryFields = {
+  deliveryContent: string | null
+  deliveryDurationMs: number | null
+  deliveryReason: string | null
+  deliveryUpdatedAt: string | null
+}
 
 async function rebuildEpisodeVoiceDerivedState(episodeId: string, source: string) {
   await rebuildEpisodeNarrationTimeline(episodeId)
@@ -126,6 +137,34 @@ async function findEpisodeVoiceLines(episodeId: string) {
   }
 }
 
+async function findEpisodeVoiceLineDeliveryFields(episodeId: string) {
+  const deliveryByVoiceLineId = new Map<string, VoiceLineDeliveryFields>()
+  try {
+    const plans = await prisma.novelPromotionPanelSpeechPlan.findMany({
+      where: { episodeId },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        linesJson: true,
+      },
+    })
+    for (const plan of plans) {
+      for (const line of readPanelSpeechLines(plan.linesJson)) {
+        const deliveryContent = line.deliveryContent?.trim()
+        if (!line.voiceLineId || !deliveryContent) continue
+        deliveryByVoiceLineId.set(line.voiceLineId, {
+          deliveryContent,
+          deliveryDurationMs: line.deliveryDurationMs ?? null,
+          deliveryReason: line.deliveryReason ?? null,
+          deliveryUpdatedAt: line.deliveryUpdatedAt ?? null,
+        })
+      }
+    }
+  } catch (error) {
+    if (!isPanelSpeechPlanTableMissing(error)) throw error
+  }
+  return deliveryByVoiceLineId
+}
+
 /**
  * GET /api/novel-promotion/[projectId]/voice-lines?episodeId=xxx
  * 获取剧集的台词列表
@@ -175,9 +214,16 @@ export const GET = apiHandler(async (
 
   // 获取台词列表（包含匹配的 Panel 信息）
   const voiceLines = await findEpisodeVoiceLines(episodeId)
+  const deliveryByVoiceLineId = await findEpisodeVoiceLineDeliveryFields(episodeId)
 
   // 转换为稳定媒体 URL，并添加兼容字段
-  const voiceLinesWithUrls = await Promise.all(voiceLines.map(withVoiceLineMedia))
+  const voiceLinesWithUrls = await Promise.all(voiceLines.map(async (line) => ({
+    ...await withVoiceLineMedia(line),
+    deliveryContent: deliveryByVoiceLineId.get(line.id)?.deliveryContent ?? null,
+    deliveryDurationMs: deliveryByVoiceLineId.get(line.id)?.deliveryDurationMs ?? null,
+    deliveryReason: deliveryByVoiceLineId.get(line.id)?.deliveryReason ?? null,
+    deliveryUpdatedAt: deliveryByVoiceLineId.get(line.id)?.deliveryUpdatedAt ?? null,
+  })))
 
   // 统计发言人
   const speakerStats: Record<string, number> = {}
