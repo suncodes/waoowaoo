@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError, getRequestId } from '@/lib/api-errors'
+import { getLatestEpisodeVideoMergeExport } from '@/lib/novel-promotion/video-merge-export'
 import { resolveRequiredTaskLocale } from '@/lib/task/resolve-locale'
 import { submitTask } from '@/lib/task/submitter'
 import { TASK_TYPE } from '@/lib/task/types'
@@ -47,6 +48,36 @@ function buildDedupeKey(
     .slice(0, 16)
   return `video_merge_export:${projectId}:${episodeId || 'project'}:${preferenceHash}`
 }
+
+export const GET = apiHandler(async (
+  request: NextRequest,
+  context: { params: Promise<{ projectId: string }> },
+) => {
+  const { projectId } = await context.params
+  const episodeId = request.nextUrl.searchParams.get('episodeId')?.trim()
+  if (!episodeId) {
+    throw new ApiError('INVALID_PARAMS')
+  }
+
+  const authResult = await requireProjectAuthLight(projectId)
+  if (isErrorResponse(authResult)) return authResult
+
+  const episode = await prisma.novelPromotionEpisode.findFirst({
+    where: {
+      id: episodeId,
+      novelPromotionProject: {
+        projectId,
+      },
+    },
+    select: { id: true },
+  })
+  if (!episode) {
+    throw new ApiError('NOT_FOUND')
+  }
+
+  const latest = await getLatestEpisodeVideoMergeExport({ projectId, episodeId })
+  return NextResponse.json({ latest })
+})
 
 export const POST = apiHandler(async (
   request: NextRequest,

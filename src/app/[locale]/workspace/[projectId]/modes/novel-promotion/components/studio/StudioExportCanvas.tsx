@@ -1,15 +1,17 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { apiFetch } from '@/lib/api-fetch'
 import { useMergeProjectEpisodeVideo } from '@/lib/query/hooks'
 import { useWorkspaceProvider } from '../../WorkspaceProvider'
+import { useWorkspaceStageRuntime } from '../../WorkspaceStageRuntimeContext'
 import {
   StudioButton,
   StudioEmptyState,
   StudioMetric,
   StudioPanel,
   StudioProcessSteps,
+  resolveStudioVideoFrameStyle,
   StudioSectionHeader,
   StudioStageHeader,
   StudioStatusBadge,
@@ -32,12 +34,25 @@ interface MergeResult {
   subtitleCueCount?: number
   subtitleSrtDownloadUrl?: string | null
   subtitleAssDownloadUrl?: string | null
+  taskId?: string
+  mergedAt?: string | null
+}
+
+interface LatestMergeResponse {
+  latest: MergeResult | null
 }
 
 function formatBytes(value?: number) {
   if (!value || value <= 0) return '-'
   if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`
   return `${(value / 1024 / 1024).toFixed(1)} MB`
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toLocaleString('zh-CN', { hour12: false })
 }
 
 function parseDownloadFileName(disposition: string | null) {
@@ -81,8 +96,10 @@ function DeliveryCheckRow({
 
 export default function StudioExportCanvas({ model }: StudioExportCanvasProps) {
   const { projectId, episodeId } = useWorkspaceProvider()
+  const runtime = useWorkspaceStageRuntime()
   const mergeMutation = useMergeProjectEpisodeVideo(projectId)
   const [mergeResult, setMergeResult] = useState<MergeResult | null>(null)
+  const [loadingLatestMerge, setLoadingLatestMerge] = useState(false)
   const [downloadingZip, setDownloadingZip] = useState(false)
   const [diagnosticTaskId, setDiagnosticTaskId] = useState<string | null>(null)
   const [diagnosticStatus, setDiagnosticStatus] = useState<'idle' | 'queued' | 'processing' | 'completed' | 'failed'>('idle')
@@ -97,11 +114,38 @@ export default function StudioExportCanvas({ model }: StudioExportCanvasProps) {
   const canExport = completedVideos > 0 && !!episodeId
   const totalShots = model.shots.length
   const allVideosReady = totalShots > 0 && completedVideos === totalShots
+  const videoFrameStyle = resolveStudioVideoFrameStyle(runtime.videoRatio)
   const mergeStatus: StudioProductStatus = mergeMutation.isPending ? 'generating' : mergeResult ? 'locked' : 'empty'
   const materialStatus: StudioProductStatus = model.summary.failedShots > 0 ? 'failed' : canExport ? 'locked' : 'needs_review'
   const packageStatus: StudioProductStatus = downloadingZip ? 'generating' : canExport ? 'needs_review' : 'empty'
   const deliveryStatus: StudioProductStatus = mergeResult ? 'locked' : allVideosReady ? 'needs_review' : 'empty'
   const incompleteShots = model.shots.filter((shot) => !shot.videoUrl || shot.errorMessage)
+
+  const loadLatestMerge = useCallback(async () => {
+    if (!episodeId) {
+      setMergeResult(null)
+      return
+    }
+
+    setError('')
+    setLoadingLatestMerge(true)
+    try {
+      const response = await apiFetch(`/api/novel-promotion/${projectId}/merge-videos?episodeId=${encodeURIComponent(episodeId)}`)
+      const payload = await response.json().catch(() => null) as LatestMergeResponse | null
+      if (!response.ok) {
+        throw new Error((payload as { message?: string } | null)?.message || '读取最近成片失败')
+      }
+      setMergeResult(payload?.latest || null)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '读取最近成片失败')
+    } finally {
+      setLoadingLatestMerge(false)
+    }
+  }, [episodeId, projectId])
+
+  useEffect(() => {
+    void loadLatestMerge()
+  }, [loadLatestMerge])
 
   useEffect(() => {
     if (diagnosticTaskId) return
@@ -166,6 +210,7 @@ export default function StudioExportCanvas({ model }: StudioExportCanvasProps) {
         subtitleStrategy: burnSubtitles ? 'burned' : 'none',
       })
       setMergeResult(result)
+      void loadLatestMerge()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '合并导出失败')
     }
@@ -253,6 +298,9 @@ export default function StudioExportCanvas({ model }: StudioExportCanvasProps) {
               <StudioButton variant="secondary" icon="download" loading={downloadingZip} onClick={() => { void downloadVideoZip() }} disabled={!canExport}>
               下载镜头包
               </StudioButton>
+              <StudioButton variant="secondary" icon="refresh" loading={loadingLatestMerge} onClick={() => { void loadLatestMerge() }} disabled={!episodeId}>
+              刷新成片
+              </StudioButton>
               <StudioButton icon="film" loading={mergeMutation.isPending} onClick={() => { void mergeVideo() }} disabled={!canExport}>
               合并成片
               </StudioButton>
@@ -335,12 +383,14 @@ export default function StudioExportCanvas({ model }: StudioExportCanvasProps) {
           <div className="border-b border-white/10 px-5 py-4">
             <StudioSectionHeader
               title="交付预览"
-              description={mergeResult ? '当前合并成片可预览和下载。' : '合并完成后会显示连续成片预览。'}
+              description={mergeResult ? '显示当前剧集最近一次保存的合并成片，可直接预览和下载。' : '合并完成后会显示连续成片预览。'}
             />
           </div>
           {mergeResult?.outputUrl ? (
-            <div className="flex min-h-[360px] items-center justify-center rounded-md bg-black">
-              <video src={mergeResult.outputUrl} controls className="max-h-[560px] w-full object-contain" />
+            <div className="flex min-h-[360px] items-center justify-center bg-black p-4">
+              <div className="relative overflow-hidden rounded-md bg-black" style={videoFrameStyle}>
+                <video src={mergeResult.outputUrl} controls className="h-full w-full object-contain" />
+              </div>
             </div>
           ) : (
             <StudioEmptyState
@@ -362,6 +412,7 @@ export default function StudioExportCanvas({ model }: StudioExportCanvasProps) {
                   <p className="mt-2 break-all text-sm leading-6 text-stone-200">{mergeResult.fileName}</p>
                 </div>
                 <DeliveryCheckRow label="片段数量" value={`${mergeResult.videoCount} 个`} status="locked" />
+                <DeliveryCheckRow label="最近保存" value={formatDateTime(mergeResult.mergedAt)} status="locked" />
                 <DeliveryCheckRow label="旁白音轨" value={mergeResult.audioTrackApplied ? '已叠加' : '未叠加'} status={mergeResult.audioTrackApplied ? 'locked' : 'needs_review'} />
                 <DeliveryCheckRow
                   label="烧录字幕"

@@ -1,6 +1,6 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { AppIcon, type AppIconName } from '@/components/ui/icons'
 import { statusLabel, type StudioProductStatus } from './studio-types'
 
@@ -19,6 +19,23 @@ export function studioStatusDotClass(status: StudioProductStatus) {
   if (status === 'stale' || status === 'needs_review') return 'bg-amber-300'
   if (status === 'drafting') return 'bg-stone-300'
   return 'bg-stone-700'
+}
+
+export function resolveStudioVideoFrameStyle(videoRatio?: string | null): Pick<CSSProperties, 'aspectRatio' | 'maxWidth' | 'width'> {
+  const match = videoRatio?.trim().match(/^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/)
+  const width = Number(match?.[1])
+  const height = Number(match?.[2])
+  const validRatio = Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0
+  const resolvedWidth = validRatio ? width : 9
+  const resolvedHeight = validRatio ? height : 16
+  const maxPreviewHeight = 560
+  const maxWidth = Math.min(960, Math.max(280, Math.round(maxPreviewHeight * resolvedWidth / resolvedHeight)))
+
+  return {
+    aspectRatio: `${resolvedWidth} / ${resolvedHeight}`,
+    maxWidth: `${maxWidth}px`,
+    width: '100%',
+  }
 }
 
 export function StudioPanel({

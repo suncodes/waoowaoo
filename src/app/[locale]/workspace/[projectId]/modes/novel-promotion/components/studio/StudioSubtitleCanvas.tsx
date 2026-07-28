@@ -7,11 +7,13 @@ import {
   type SubtitleStyle,
 } from '@/lib/novel-promotion/subtitle-contract'
 import { useWorkspaceProvider } from '../../WorkspaceProvider'
+import { useWorkspaceStageRuntime } from '../../WorkspaceStageRuntimeContext'
 import {
   StudioButton,
   StudioEmptyState,
   StudioMetric,
   StudioPanel,
+  resolveStudioVideoFrameStyle,
   StudioSectionHeader,
   StudioStageHeader,
   StudioStatusBadge,
@@ -87,6 +89,7 @@ function inputClassName() {
 
 export default function StudioSubtitleCanvas({ model, onNavigate }: StudioSubtitleCanvasProps) {
   const { projectId, episodeId } = useWorkspaceProvider()
+  const runtime = useWorkspaceStageRuntime()
   const [response, setResponse] = useState<SubtitleTrackResponse | null>(null)
   const [style, setStyle] = useState<SubtitleStyle>(DEFAULT_SUBTITLE_STYLE)
   const [loading, setLoading] = useState(false)
@@ -146,6 +149,7 @@ export default function StudioSubtitleCanvas({ model, onNavigate }: StudioSubtit
     loading,
   })
   const previewVideoUrl = model.shots.find((shot) => !!shot.videoUrl)?.videoUrl || null
+  const videoFrameStyle = resolveStudioVideoFrameStyle(runtime.videoRatio)
   const subtitlePositionClass = style.position === 'top'
     ? 'top-[10%]'
     : style.position === 'middle'
@@ -214,8 +218,8 @@ export default function StudioSubtitleCanvas({ model, onNavigate }: StudioSubtit
           <div className="border-b border-white/10 px-5 py-4">
             <StudioSectionHeader title="字幕预览" description="每个镜头从开始显示对应口播；同镜头多条口播仅在该镜头内切换。" />
           </div>
-          <div className="grid gap-5 p-5 lg:grid-cols-[280px_minmax(0,1fr)]">
-            <div className="relative mx-auto aspect-[9/16] w-full max-w-[280px] overflow-hidden rounded-md bg-black">
+          <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,3fr)_minmax(280px,2fr)]">
+            <div className="relative mx-auto overflow-hidden rounded-md bg-black" style={videoFrameStyle}>
               {previewVideoUrl ? <video src={previewVideoUrl} muted autoPlay loop playsInline className="h-full w-full object-cover" /> : null}
               <div className={`absolute left-4 right-4 ${subtitlePositionClass} text-center`} style={{ transform: style.position === 'middle' ? `translateY(calc(-50% + ${style.verticalOffset}px))` : `translateY(${style.verticalOffset}px)` }}>
                 <span

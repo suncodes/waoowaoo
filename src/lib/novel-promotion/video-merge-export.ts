@@ -15,6 +15,7 @@ import {
   prepareEpisodeSubtitleTrack,
   persistSubtitleTrack,
 } from './subtitle-track'
+import { TASK_STATUS, TASK_TYPE } from '@/lib/task/types'
 
 export interface MissingVideoPanel {
   storyboardId: string
@@ -46,6 +47,11 @@ export interface VideoMergeExportResult {
   subtitleTrackId?: string | null
   subtitleSrtDownloadUrl?: string | null
   subtitleAssDownloadUrl?: string | null
+}
+
+export interface StoredVideoMergeExportResult extends VideoMergeExportResult {
+  taskId: string
+  mergedAt: string | null
 }
 
 interface LoadedMergeSource {
@@ -87,6 +93,42 @@ interface MergeProgressReporter {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function readOptionalNonNegativeInteger(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return undefined
+  return Math.floor(value)
+}
+
+function readOptionalBoolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined
+}
+
+function readOptionalString(value: unknown): string | undefined {
+  return isNonEmptyString(value) ? value : undefined
+}
+
+function readStoredOutputKey(result: Record<string, unknown>): string | null {
+  const outputKey = readOptionalString(result.outputKey)
+  if (outputKey) return outputKey
+
+  const outputUrl = readOptionalString(result.outputUrl)
+  if (!outputUrl) return null
+
+  try {
+    const parsedUrl = new URL(outputUrl, 'http://localhost')
+    if (parsedUrl.pathname.endsWith('/video-proxy')) {
+      return readOptionalString(parsedUrl.searchParams.get('key')) || null
+    }
+  } catch {
+    return outputUrl
+  }
+
+  return outputUrl
 }
 
 function estimateNarrationDurationMs(content: string | null | undefined): number {
@@ -209,6 +251,74 @@ export function buildMergedVideoAccessUrls(params: {
     outputUrl,
     downloadUrl: `${outputUrl}&download=1&filename=${encodeURIComponent(params.fileName)}`,
   }
+}
+
+export function restoreStoredVideoMergeExportResult(params: {
+  projectId: string
+  taskId: string
+  finishedAt: Date | null
+  result: unknown
+}): StoredVideoMergeExportResult | null {
+  if (!isRecord(params.result)) return null
+
+  const outputKey = readStoredOutputKey(params.result)
+  if (!outputKey) return null
+
+  const fileName = readOptionalString(params.result.fileName) || 'merged-video.mp4'
+  const accessUrls = buildMergedVideoAccessUrls({
+    projectId: params.projectId,
+    outputKey,
+    fileName,
+  })
+
+  return {
+    outputKey,
+    ...accessUrls,
+    fileName,
+    videoCount: readOptionalNonNegativeInteger(params.result.videoCount) || 0,
+    sizeBytes: readOptionalNonNegativeInteger(params.result.sizeBytes) || 0,
+    audioTrackApplied: readOptionalBoolean(params.result.audioTrackApplied),
+    subtitleRequested: readOptionalBoolean(params.result.subtitleRequested),
+    subtitleTrackApplied: readOptionalBoolean(params.result.subtitleTrackApplied),
+    subtitleCueCount: readOptionalNonNegativeInteger(params.result.subtitleCueCount),
+    subtitleTrackId: readOptionalString(params.result.subtitleTrackId) || null,
+    subtitleSrtDownloadUrl: readOptionalString(params.result.subtitleSrtDownloadUrl) || null,
+    subtitleAssDownloadUrl: readOptionalString(params.result.subtitleAssDownloadUrl) || null,
+    taskId: params.taskId,
+    mergedAt: params.finishedAt?.toISOString() || null,
+  }
+}
+
+export async function getLatestEpisodeVideoMergeExport(params: {
+  projectId: string
+  episodeId: string
+}): Promise<StoredVideoMergeExportResult | null> {
+  const task = await prisma.task.findFirst({
+    where: {
+      projectId: params.projectId,
+      episodeId: params.episodeId,
+      type: TASK_TYPE.VIDEO_MERGE_EXPORT,
+      status: TASK_STATUS.COMPLETED,
+    },
+    orderBy: [
+      { finishedAt: 'desc' },
+      { createdAt: 'desc' },
+    ],
+    select: {
+      id: true,
+      result: true,
+      finishedAt: true,
+    },
+  })
+
+  if (!task) return null
+
+  return restoreStoredVideoMergeExportResult({
+    projectId: params.projectId,
+    taskId: task.id,
+    finishedAt: task.finishedAt,
+    result: task.result,
+  })
 }
 
 function toFfmpegConcatPath(filePath: string): string {
