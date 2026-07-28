@@ -33,6 +33,8 @@ export function useMergeProjectEpisodeVideo(projectId: string) {
       episodeId: string
       panelPreferences: Record<string, boolean>
       audioStrategy?: 'timeline' | 'none'
+      subtitleStrategy?: 'none' | 'burned'
+      subtitleStyle?: unknown
     }) => {
       const response = await requestTaskResponseWithError(
         `/api/novel-promotion/${projectId}/merge-videos`,
@@ -50,6 +52,12 @@ export function useMergeProjectEpisodeVideo(projectId: string) {
         videoCount: number
         sizeBytes?: number
         audioTrackApplied?: boolean
+        subtitleRequested?: boolean
+        subtitleTrackApplied?: boolean
+        subtitleCueCount?: number
+        subtitleTrackId?: string | null
+        subtitleSrtDownloadUrl?: string | null
+        subtitleAssDownloadUrl?: string | null
       }>(response)
     },
   })

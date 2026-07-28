@@ -27,6 +27,11 @@ interface MergeResult {
   videoCount: number
   sizeBytes?: number
   audioTrackApplied?: boolean
+  subtitleRequested?: boolean
+  subtitleTrackApplied?: boolean
+  subtitleCueCount?: number
+  subtitleSrtDownloadUrl?: string | null
+  subtitleAssDownloadUrl?: string | null
 }
 
 function formatBytes(value?: number) {
@@ -86,6 +91,7 @@ export default function StudioExportCanvas({ model }: StudioExportCanvasProps) {
   const [includeVideos, setIncludeVideos] = useState(true)
   const [includeAllVideos, setIncludeAllVideos] = useState(false)
   const [includeReasoning, setIncludeReasoning] = useState(false)
+  const [burnSubtitles, setBurnSubtitles] = useState(false)
   const [error, setError] = useState('')
   const completedVideos = model.summary.completedVideos
   const canExport = completedVideos > 0 && !!episodeId
@@ -139,7 +145,7 @@ export default function StudioExportCanvas({ model }: StudioExportCanvasProps) {
     },
     {
       label: '合并成片',
-      helper: mergeMutation.isPending ? '合并中' : mergeResult ? `${mergeResult.videoCount} 段` : '未生成',
+      helper: mergeMutation.isPending ? '合并中' : mergeResult ? `${mergeResult.videoCount} 段${mergeResult.subtitleTrackApplied ? ' · 已烧录字幕' : ''}` : '未生成',
       status: mergeStatus,
     },
     {
@@ -157,6 +163,7 @@ export default function StudioExportCanvas({ model }: StudioExportCanvasProps) {
         episodeId,
         panelPreferences: {},
         audioStrategy: 'timeline',
+        subtitleStrategy: burnSubtitles ? 'burned' : 'none',
       })
       setMergeResult(result)
     } catch (cause) {
@@ -247,13 +254,29 @@ export default function StudioExportCanvas({ model }: StudioExportCanvasProps) {
               下载镜头包
               </StudioButton>
               <StudioButton icon="film" loading={mergeMutation.isPending} onClick={() => { void mergeVideo() }} disabled={!canExport}>
-              合并带旁白成片
+              合并成片
               </StudioButton>
             </>
           )}
         />
         <div className="border-b border-white/10 px-6 py-4">
           <StudioProcessSteps steps={processSteps} />
+        </div>
+
+        <div className="border-b border-white/10 px-6 py-4">
+          <label className="flex cursor-pointer items-start gap-3 rounded-md border border-white/10 bg-white/[0.03] px-4 py-3">
+            <input
+              type="checkbox"
+              checked={burnSubtitles}
+              onChange={(event) => setBurnSubtitles(event.target.checked)}
+              disabled={!episodeId || mergeMutation.isPending}
+              className="mt-0.5 h-4 w-4 accent-[#e8d18a]"
+            />
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-stone-100">烧录字幕</span>
+              <span className="mt-1 block text-xs leading-5 text-stone-500">本次合并会按镜头口播版正文烧录字幕，不显示角色名。未勾选则导出无字幕成片；两种成片相互独立，不修改镜头原视频。</span>
+            </span>
+          </label>
         </div>
 
         <div className="border-b border-white/10 px-6 py-4">
@@ -323,8 +346,8 @@ export default function StudioExportCanvas({ model }: StudioExportCanvasProps) {
             <StudioEmptyState
               icon="film"
               title="还没有导出成片"
-              description="点击“合并带旁白成片”后，导出任务会把当前剧集镜头按顺序拼接，并按旁白时间轴叠加音频。"
-              action={<StudioButton icon="film" loading={mergeMutation.isPending} onClick={() => { void mergeVideo() }} disabled={!canExport}>合并带旁白成片</StudioButton>}
+              description="点击“合并成片”后，导出任务会把当前剧集镜头按顺序拼接，并按旁白时间轴叠加音频。"
+              action={<StudioButton icon="film" loading={mergeMutation.isPending} onClick={() => { void mergeVideo() }} disabled={!canExport}>合并成片</StudioButton>}
             />
           )}
         </StudioPanel>
@@ -340,10 +363,25 @@ export default function StudioExportCanvas({ model }: StudioExportCanvasProps) {
                 </div>
                 <DeliveryCheckRow label="片段数量" value={`${mergeResult.videoCount} 个`} status="locked" />
                 <DeliveryCheckRow label="旁白音轨" value={mergeResult.audioTrackApplied ? '已叠加' : '未叠加'} status={mergeResult.audioTrackApplied ? 'locked' : 'needs_review'} />
+                <DeliveryCheckRow
+                  label="烧录字幕"
+                  value={!mergeResult.subtitleRequested
+                    ? '未选择烧录'
+                    : mergeResult.subtitleTrackApplied
+                      ? `已烧录 ${mergeResult.subtitleCueCount || 0} 条`
+                      : '未烧录：当前镜头没有可用口播'}
+                  status={mergeResult.subtitleTrackApplied ? 'locked' : mergeResult.subtitleRequested ? 'needs_review' : 'empty'}
+                />
                 <DeliveryCheckRow label="文件大小" value={formatBytes(mergeResult.sizeBytes)} status="locked" />
                 <StudioButton icon="download" onClick={() => window.open(mergeResult.downloadUrl || mergeResult.outputUrl, '_blank')}>
                   下载成片
                 </StudioButton>
+                {mergeResult.subtitleSrtDownloadUrl || mergeResult.subtitleAssDownloadUrl ? (
+                  <div className="flex flex-wrap gap-2">
+                    {mergeResult.subtitleSrtDownloadUrl ? <StudioButton size="sm" variant="secondary" icon="download" onClick={() => window.open(mergeResult.subtitleSrtDownloadUrl!, '_blank')}>下载 SRT</StudioButton> : null}
+                    {mergeResult.subtitleAssDownloadUrl ? <StudioButton size="sm" variant="secondary" icon="download" onClick={() => window.open(mergeResult.subtitleAssDownloadUrl!, '_blank')}>下载 ASS</StudioButton> : null}
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="mt-4 space-y-2">

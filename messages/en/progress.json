@@ -101,6 +101,8 @@
     "mergeNormalize": "Normalize video segments",
     "mergeConcat": "Merge video segments",
     "mergeNarrationAudio": "Mix narration timeline",
+    "subtitlePrepare": "Build shot-aligned subtitles",
+    "subtitleBurn": "Burn subtitles into the final video",
     "mergeUpload": "Upload merged video",
     "audioMixPrepare": "Prepare audio mix media",
     "audioMixMerge": "Mix audio and video",

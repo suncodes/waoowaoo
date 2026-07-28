@@ -58,8 +58,8 @@ const MODE_CONFIG: Array<Omit<StudioNavItem, 'status' | 'disabled'>> = [
   { id: 'storyboard-images', route: 'storyboard-images', label: '分镜图片', subtitle: '关键帧与候选', icon: 'image' },
   { id: 'produce', route: 'videos', label: '视频制作', subtitle: '生成镜头视频', icon: 'video' },
   { id: 'edit', route: 'editor', label: '成片检查', subtitle: '预览', icon: 'film' },
+  { id: 'subtitles', route: 'subtitles', label: '字幕与成片', subtitle: '镜头对齐字幕', icon: 'audioWave' },
   { id: 'export', route: 'export', label: '交付', subtitle: '导出', icon: 'download' },
-  { id: 'audio', route: 'audio', label: '音频与字幕', subtitle: '待过期', icon: 'audioWave' },
 ]
 
 function navStatus(mode: StudioModeId, model: StudioWorkspaceModel): StudioProductStatus {
@@ -91,6 +91,7 @@ function navStatus(mode: StudioModeId, model: StudioWorkspaceModel): StudioProdu
   if (mode === 'produce') return statusFromCreationStage(model.workflow.stageStatuses.production || 'not_started')
   if (mode === 'audio') return model.workflow.hasVideo ? 'drafting' : 'empty'
   if (mode === 'edit') return model.workflow.hasVideo ? 'drafting' : 'empty'
+  if (mode === 'subtitles') return model.workflow.hasVideo ? 'needs_review' : 'empty'
   return model.workflow.hasVideo ? 'needs_review' : 'empty'
 }
 
@@ -280,13 +281,14 @@ function AssistantPanel({
     produce: '生产状态',
     audio: '音频与字幕',
     edit: '成片检查',
+    subtitles: '字幕与成片',
     export: '交付状态',
   }[model.activeMode]
   const suggestions = model.activeMode === 'visual-kit'
     ? [`核心资产待确认：${model.summary.missingCoreVisualAssets}`, activeAsset ? `当前资产：${activeAsset.name}` : '暂无核心资产']
     : model.activeMode === 'narration'
       ? [`台词：${model.summary.voiceLines}`, `镜头计划：${model.summary.speechPlanTotal}`]
-    : model.activeMode === 'storyboard-script' || model.activeMode === 'storyboard-images' || model.activeMode === 'produce' || model.activeMode === 'audio'
+    : model.activeMode === 'storyboard-script' || model.activeMode === 'storyboard-images' || model.activeMode === 'produce' || model.activeMode === 'audio' || model.activeMode === 'subtitles'
       ? [activeShot ? `当前镜头：第 ${activeShot.number} 镜` : '暂无镜头', `失败镜头：${model.summary.failedShots}`]
       : [`内容段落：${model.draftSegments.length}`, `预计时长：${model.summary.totalDurationSec || '-'} 秒`]
 

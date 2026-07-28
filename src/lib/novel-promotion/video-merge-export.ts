@@ -11,6 +11,10 @@ import {
   type OrderedVideoCandidate,
   type VideoDownloadEpisodeData,
 } from './video-download-candidates'
+import {
+  prepareEpisodeSubtitleTrack,
+  persistSubtitleTrack,
+} from './subtitle-track'
 
 export interface MissingVideoPanel {
   storyboardId: string
@@ -24,6 +28,8 @@ export interface VideoMergeExportInput {
   episodeId?: string | null
   panelPreferences?: Record<string, boolean> | null
   audioStrategy?: 'timeline' | 'none' | null
+  subtitleStrategy?: 'none' | 'burned' | null
+  subtitleStyle?: unknown
 }
 
 export interface VideoMergeExportResult {
@@ -34,6 +40,12 @@ export interface VideoMergeExportResult {
   videoCount: number
   sizeBytes: number
   audioTrackApplied?: boolean
+  subtitleRequested?: boolean
+  subtitleTrackApplied?: boolean
+  subtitleCueCount?: number
+  subtitleTrackId?: string | null
+  subtitleSrtDownloadUrl?: string | null
+  subtitleAssDownloadUrl?: string | null
 }
 
 interface LoadedMergeSource {
@@ -175,11 +187,16 @@ function resolveOutputSize(videoRatio: string): { width: number; height: number 
   return { width: 1280, height: 720 }
 }
 
-function buildStorageKey(projectId: string, episodeId: string | null | undefined): string {
+function buildStorageKey(
+  projectId: string,
+  episodeId: string | null | undefined,
+  variant: 'plain' | 'subtitled' = 'plain',
+): string {
   const timestamp = Date.now()
   const random = crypto.randomBytes(4).toString('hex')
   const scope = episodeId ? sanitizeStorageSegment(episodeId) : 'project'
-  return `videos/merged/${sanitizeStorageSegment(projectId)}/${scope}-${timestamp}-${random}.mp4`
+  const suffix = variant === 'subtitled' ? '-subtitled' : ''
+  return `videos/merged/${sanitizeStorageSegment(projectId)}/${scope}-${timestamp}-${random}${suffix}.mp4`
 }
 
 function toFfmpegConcatPath(filePath: string): string {
@@ -361,6 +378,47 @@ async function muxNarrationTrackIntoVideo(params: {
     '48000',
     '-ac',
     '2',
+    '-movflags',
+    '+faststart',
+    params.outputPath,
+  ], params.tempDir)
+}
+
+function escapeFfmpegFilterPath(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/:/g, '\\:').replace(/'/g, "\\'")
+}
+
+async function burnAssSubtitlesIntoVideo(params: {
+  videoPath: string
+  assPath: string
+  outputPath: string
+  tempDir: string
+}) {
+  await runCommand('ffmpeg', [
+    '-y',
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-i',
+    params.videoPath,
+    '-vf',
+    `ass=${escapeFfmpegFilterPath(params.assPath)}`,
+    '-map',
+    '0:v:0',
+    '-map',
+    '0:a?',
+    '-c:v',
+    'libx264',
+    '-preset',
+    'veryfast',
+    '-crf',
+    '18',
+    '-pix_fmt',
+    'yuv420p',
+    '-c:a',
+    'aac',
+    '-b:a',
+    '192k',
     '-movflags',
     '+faststart',
     params.outputPath,
@@ -613,6 +671,7 @@ export async function mergeProjectVideosToStorage(
 
   const tempDir = await mkdtemp(path.join(os.tmpdir(), 'waoowaoo-merge-'))
   const normalizedFiles: string[] = []
+  const normalizedDurationsByPanelKey = new Map<string, number>()
   const outputSize = resolveOutputSize(source.videoRatio)
 
   try {
@@ -643,6 +702,10 @@ export async function mergeProjectVideosToStorage(
         height: outputSize.height,
       })
       normalizedFiles.push(normalizedPath)
+      normalizedDurationsByPanelKey.set(
+        `${candidate.storyboardId}:${candidate.panelIndex}`,
+        await probeDurationMs(normalizedPath, tempDir),
+      )
     }
 
     await reportProgress?.(75, {
@@ -697,15 +760,79 @@ export async function mergeProjectVideosToStorage(
       audioTrackApplied = true
     }
 
-    await reportProgress?.(88, {
+    let subtitleTrackApplied = false
+    let subtitleCueCount = 0
+    let subtitleTrackId: string | null = null
+    let subtitleSrtDownloadUrl: string | null = null
+    let subtitleAssDownloadUrl: string | null = null
+    let preparedSubtitle: Awaited<ReturnType<typeof prepareEpisodeSubtitleTrack>> | null = null
+
+    if (input.subtitleStrategy === 'burned') {
+      if (!input.episodeId) {
+        throw new Error('SUBTITLE_EPISODE_REQUIRED')
+      }
+      await reportProgress?.(88, {
+        stage: 'subtitle_prepare',
+      })
+      preparedSubtitle = await prepareEpisodeSubtitleTrack({
+        projectId: input.projectId,
+        episodeId: input.episodeId,
+        panelPreferences: input.panelPreferences || {},
+        style: input.subtitleStyle,
+        durationsByPanelKey: normalizedDurationsByPanelKey,
+        outputSize,
+      })
+      subtitleCueCount = preparedSubtitle.draft.cues.length
+      if (preparedSubtitle.srtStorageKey) {
+        subtitleSrtDownloadUrl = `/api/novel-promotion/${input.projectId}/video-proxy?key=${encodeURIComponent(preparedSubtitle.srtStorageKey)}&download=1&filename=${encodeURIComponent(`${sanitizeFileName(source.projectName)}_subtitles.srt`)}`
+      }
+      if (preparedSubtitle.assStorageKey) {
+        subtitleAssDownloadUrl = `/api/novel-promotion/${input.projectId}/video-proxy?key=${encodeURIComponent(preparedSubtitle.assStorageKey)}&download=1&filename=${encodeURIComponent(`${sanitizeFileName(source.projectName)}_subtitles.ass`)}`
+      }
+      if (preparedSubtitle.draft.cues.length > 0) {
+        await reportProgress?.(92, {
+          stage: 'subtitle_burn',
+          cueCount: preparedSubtitle.draft.cues.length,
+        })
+        const assPath = path.join(tempDir, 'subtitles.ass')
+        const subtitledPath = path.join(tempDir, 'merged-with-subtitles.mp4')
+        await writeFile(assPath, preparedSubtitle.ass, 'utf8')
+        await burnAssSubtitlesIntoVideo({
+          videoPath: outputPath,
+          assPath,
+          outputPath: subtitledPath,
+          tempDir,
+        })
+        outputPath = subtitledPath
+        subtitleTrackApplied = true
+      }
+    }
+
+    await reportProgress?.(95, {
       stage: 'merge_upload',
     })
 
     const outputBuffer = await readFile(outputPath)
-    const outputKey = buildStorageKey(input.projectId, input.episodeId)
+    const outputKey = buildStorageKey(
+      input.projectId,
+      input.episodeId,
+      subtitleTrackApplied ? 'subtitled' : 'plain',
+    )
     await uploadObject(outputBuffer, outputKey, 1, 'video/mp4')
 
-    const fileName = `${sanitizeFileName(source.projectName)}_merged.mp4`
+    if (preparedSubtitle) {
+      const persisted = await persistSubtitleTrack({
+        projectId: input.projectId,
+        episodeId: input.episodeId as string,
+        draft: preparedSubtitle.draft,
+        srtStorageKey: preparedSubtitle.srtStorageKey,
+        assStorageKey: preparedSubtitle.assStorageKey,
+        burnedVideoStorageKey: subtitleTrackApplied ? outputKey : null,
+      })
+      subtitleTrackId = persisted.track?.id || null
+    }
+
+    const fileName = `${sanitizeFileName(source.projectName)}_${subtitleTrackApplied ? 'merged_subtitled' : 'merged'}.mp4`
     return {
       outputKey,
       outputUrl: outputKey,
@@ -714,6 +841,12 @@ export async function mergeProjectVideosToStorage(
       videoCount: source.candidates.length,
       sizeBytes: outputBuffer.length,
       audioTrackApplied,
+      subtitleRequested: input.subtitleStrategy === 'burned',
+      subtitleTrackApplied,
+      subtitleCueCount,
+      subtitleTrackId,
+      subtitleSrtDownloadUrl,
+      subtitleAssDownloadUrl,
     }
   } finally {
     await rm(tempDir, { recursive: true, force: true }).catch(() => undefined)

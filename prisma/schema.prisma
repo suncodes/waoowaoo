@@ -152,6 +152,7 @@ model NovelPromotionEpisode {
   voiceLines              NovelPromotionVoiceLine[]
   voiceSpans              NovelPromotionPanelVoiceSpan[]
   speechPlans             NovelPromotionPanelSpeechPlan[]
+  subtitleTracks          NovelPromotionSubtitleTrack[]
   editorProject           VideoEditorProject?
 
   @@unique([novelPromotionProjectId, episodeNumber])
@@ -625,6 +626,31 @@ model NovelPromotionPanelSpeechPlan {
   @@index([clipId])
   @@index([status])
   @@map("novel_promotion_panel_speech_plans")
+}
+
+model NovelPromotionSubtitleTrack {
+  id                    String                @id @default(uuid())
+  projectId             String
+  episodeId             String
+  sourceVideoHash       String                @db.VarChar(64)
+  sourceSpeechHash      String                @db.VarChar(64)
+  status                String                @default("ready")
+  timingSource          String                @default("panel")
+  styleJson             Json?
+  cuesJson              Json
+  warningsJson          Json?
+  srtStorageKey         String?               @db.VarChar(512)
+  assStorageKey         String?               @db.VarChar(512)
+  burnedVideoStorageKey String?               @db.VarChar(512)
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @default(now()) @updatedAt
+  episode               NovelPromotionEpisode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
+  @@unique([episodeId, sourceVideoHash, sourceSpeechHash], map: "np_subtitle_tracks_episode_video_speech_key")
+  @@index([projectId])
+  @@index([episodeId])
+  @@index([status])
+  @@map("novel_promotion_subtitle_tracks")
 }
 
 model VoicePreset {

@@ -418,6 +418,8 @@ async function handleVideoMergeExportTask(job: Job<TaskJobData>) {
     episodeId,
     panelPreferences: readPanelPreferences(payload.panelPreferences),
     audioStrategy: payload.audioStrategy === 'none' ? 'none' : 'timeline',
+    subtitleStrategy: payload.subtitleStrategy === 'burned' ? 'burned' : 'none',
+    subtitleStyle: payload.subtitleStyle,
   }, async (progress, progressPayload) => {
     await reportTaskProgress(job, progress, progressPayload)
   })

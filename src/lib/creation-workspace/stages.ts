@@ -130,6 +130,7 @@ const LEGACY_STAGE_ROUTES: Record<string, Omit<CreationStageRoute, 'isAlias'>> =
   voice: { stageId: 'production', view: 'voice' },
   audio: { stageId: 'production', view: 'audio' },
   editor: { stageId: 'edit' },
+  subtitles: { stageId: 'edit', view: 'subtitles' },
   export: { stageId: 'edit', view: 'export' },
 }
 

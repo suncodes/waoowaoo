@@ -14,6 +14,7 @@ export type StudioModeId =
   | 'produce'
   | 'audio'
   | 'edit'
+  | 'subtitles'
   | 'export'
 
 export type StudioProductStatus =
@@ -153,6 +154,7 @@ export function resolveStudioMode(currentStage: string, stageView?: string | nul
   if (currentStage === 'production' && stageView === 'voice') return 'narration'
   if (currentStage === 'production' && stageView === 'audio') return 'audio'
   if (currentStage === 'production') return 'produce'
+  if (currentStage === 'edit' && stageView === 'subtitles') return 'subtitles'
   if (currentStage === 'edit' && stageView === 'export') return 'export'
   if (currentStage === 'edit') return 'edit'
   return 'planning'

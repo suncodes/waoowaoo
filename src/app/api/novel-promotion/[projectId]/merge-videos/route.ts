@@ -6,11 +6,14 @@ import { apiHandler, ApiError, getRequestId } from '@/lib/api-errors'
 import { resolveRequiredTaskLocale } from '@/lib/task/resolve-locale'
 import { submitTask } from '@/lib/task/submitter'
 import { TASK_TYPE } from '@/lib/task/types'
+import { normalizeSubtitleStyle } from '@/lib/novel-promotion/subtitle-contract'
 
 interface EpisodeQueryBody {
   episodeId?: string
   panelPreferences?: Record<string, boolean>
   audioStrategy?: 'timeline' | 'none'
+  subtitleStrategy?: 'none' | 'burned'
+  subtitleStyle?: unknown
 }
 
 function normalizePanelPreferences(value: unknown): Record<string, boolean> {
@@ -29,11 +32,15 @@ function buildDedupeKey(
   episodeId: string | null,
   panelPreferences: Record<string, boolean>,
   audioStrategy: 'timeline' | 'none',
+  subtitleStrategy: 'none' | 'burned',
+  subtitleStyle: unknown,
 ): string {
   const preferenceHash = crypto
     .createHash('sha1')
     .update(JSON.stringify({
       audioStrategy,
+      subtitleStrategy,
+      subtitleStyle,
       panelPreferences: Object.keys(panelPreferences).sort().map((key) => [key, panelPreferences[key]]),
     }))
     .digest('hex')
@@ -52,6 +59,10 @@ export const POST = apiHandler(async (
     : null
   const panelPreferences = normalizePanelPreferences(body.panelPreferences)
   const audioStrategy = body.audioStrategy === 'none' ? 'none' : 'timeline'
+  const subtitleStrategy = body.subtitleStrategy === 'burned' ? 'burned' : 'none'
+  const subtitleStyle = body.subtitleStyle === undefined
+    ? undefined
+    : normalizeSubtitleStyle(body.subtitleStyle)
 
   const authResult = await requireProjectAuthLight(projectId)
   if (isErrorResponse(authResult)) return authResult
@@ -72,6 +83,9 @@ export const POST = apiHandler(async (
       throw new ApiError('NOT_FOUND')
     }
   }
+  if (subtitleStrategy === 'burned' && !episodeId) {
+    throw new ApiError('INVALID_PARAMS')
+  }
 
   const result = await submitTask({
     userId: session.user.id,
@@ -86,9 +100,11 @@ export const POST = apiHandler(async (
       episodeId,
       panelPreferences,
       audioStrategy,
+      subtitleStrategy,
+      subtitleStyle,
       hasOutputAtStart: false,
     },
-    dedupeKey: buildDedupeKey(projectId, episodeId, panelPreferences, audioStrategy),
+    dedupeKey: buildDedupeKey(projectId, episodeId, panelPreferences, audioStrategy, subtitleStrategy, subtitleStyle),
     maxAttempts: 1,
   })
 

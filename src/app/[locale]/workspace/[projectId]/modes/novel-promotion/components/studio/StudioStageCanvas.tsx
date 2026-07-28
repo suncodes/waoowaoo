@@ -7,6 +7,7 @@ import StudioEditCanvas from './StudioEditCanvas'
 import StudioExportCanvas from './StudioExportCanvas'
 import StudioNarrationCanvas from './StudioNarrationCanvas'
 import StudioAudioCanvas from './StudioAudioCanvas'
+import StudioSubtitleCanvas from './StudioSubtitleCanvas'
 import StudioOverviewCanvas from './StudioOverviewCanvas'
 import StudioProduceCanvas from './StudioProduceCanvas'
 import StudioStartCanvas from './StudioStartCanvas'
@@ -31,5 +32,6 @@ export default function StudioStageCanvas({ model, onNavigate, workflowState }: 
   if (model.activeMode === 'produce') return <StudioProduceCanvas model={model} onNavigate={onNavigate} />
   if (model.activeMode === 'audio') return <StudioAudioCanvas model={model} onNavigate={onNavigate} />
   if (model.activeMode === 'edit') return <StudioEditCanvas model={model} onNavigate={onNavigate} />
+  if (model.activeMode === 'subtitles') return <StudioSubtitleCanvas model={model} onNavigate={onNavigate} />
   return <StudioExportCanvas model={model} />
 }
