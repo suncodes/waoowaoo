@@ -44,6 +44,11 @@ export const POST = apiHandler(async (
     return NextResponse.json(result)
   }
 
-  const result = await prepareStoryboardAutoFix({ projectId, episodeId })
+  const result = await prepareStoryboardAutoFix({
+    projectId,
+    episodeId,
+    userId: session.user.id,
+    locale: request.headers.get('accept-language'),
+  })
   return NextResponse.json(result)
 })

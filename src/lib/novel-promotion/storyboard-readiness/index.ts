@@ -1,7 +1,18 @@
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { estimateNarrationDurationMs, rebuildEpisodeNarrationTimeline } from '@/lib/novel-promotion/narration-timeline'
-import { rebuildEpisodeSpeechPlans } from '@/lib/novel-promotion/speech-plan'
+import { getProjectModelConfig } from '@/lib/config-service'
+import { executeAiTextStep } from '@/lib/ai-runtime'
+import { safeParseJsonObject } from '@/lib/json-repair'
+import { estimateNarrationDurationMs } from '@/lib/novel-promotion/narration-timeline'
+import {
+  buildPanelSpeechPlanPayloadFromLines,
+  readPanelSpeechLines,
+  readPanelSpeechVoiceConfig,
+  rebuildEpisodeSpeechPlans,
+  resolvePanelSpeechLineDurationMs,
+  resolvePanelSpeechLineText,
+  type PanelSpeechLine,
+} from '@/lib/novel-promotion/speech-plan'
 import {
   resolvePanelAssetBindingPlan,
   type PanelAssetBindingPlan,
@@ -155,13 +166,8 @@ function warningRecords(value: unknown): Array<Record<string, unknown>> {
     : []
 }
 
-function speechPlanLines(value: unknown): Array<Record<string, unknown>> {
-  return Array.isArray(value)
-    ? value.flatMap((item) => {
-      const record = asRecord(item)
-      return typeof record.voiceLineId === 'string' && typeof record.content === 'string' ? [record] : []
-    })
-    : []
+function speechPlanLines(value: unknown): PanelSpeechLine[] {
+  return readPanelSpeechLines(value)
 }
 
 function readPanelDurationMs(panel: PanelForReadiness): number | null {
@@ -178,19 +184,9 @@ function compactText(value: string): string {
   return value.replace(/\s+/g, '')
 }
 
-function compressVoiceLineText(content: string, maxChars: number): string {
-  const normalized = content.trim().replace(/\s+/g, ' ')
-  if (compactText(normalized).length <= maxChars) return normalized
-  const sentence = normalized.split(/[。！？!?；;]/u).find((item) => compactText(item).length >= 4)?.trim() || normalized
-  if (compactText(sentence).length <= maxChars) return sentence
-  const chars = Array.from(sentence)
-  return chars.slice(0, Math.max(8, maxChars)).join('').replace(/[，、：:,.\s]+$/u, '')
-}
-
-function targetCharsForPanel(panel: PanelForReadiness, lineCount: number): number {
+function targetDurationForPanelLine(panel: PanelForReadiness, lineCount: number): number {
   const durationMs = readPanelDurationMs(panel) || 4000
-  const safeDuration = Math.max(1200, Math.floor((durationMs * 1.05) / Math.max(1, lineCount)))
-  return Math.max(8, Math.floor(safeDuration / 180))
+  return Math.max(1200, Math.floor((durationMs * 1.05) / Math.max(1, lineCount)))
 }
 
 function issueId(kind: string, panelId?: string | null, suffix?: string | number | null) {
@@ -245,7 +241,7 @@ function buildSpeechIssuesAndActions(panel: PanelForReadiness): {
   }
 
   const lines = speechPlanLines(plan.linesJson)
-  const targetChars = targetCharsForPanel(panel, Math.max(1, lines.length))
+  const targetDurationMs = targetDurationForPanelLine(panel, Math.max(1, lines.length))
   for (const warning of warnings) {
     const code = String(warning.code || '')
     if (!SPEECH_WARNING_CODES.has(code)) continue
@@ -264,21 +260,31 @@ function buildSpeechIssuesAndActions(panel: PanelForReadiness): {
   }
 
   for (const line of lines) {
-    const voiceLineId = String(line.voiceLineId)
-    const before = String(line.content || '').trim()
-    const after = compressVoiceLineText(before, targetChars)
-    if (!before || after === before) continue
+    const before = line.content.trim()
+    const currentDelivery = (line.deliveryContent || '').trim()
+    const currentText = resolvePanelSpeechLineText(line)
+    const currentDurationMs = resolvePanelSpeechLineDurationMs(line)
+    const originalDurationMs = estimateNarrationDurationMs(before)
+    if (!before || currentDurationMs <= targetDurationMs * 1.25) continue
     actions.push({
-      id: issueId('compress_voice_line', panel.id, voiceLineId),
-      type: 'compress_voice_line',
+      id: issueId('rewrite_delivery_line', panel.id, line.voiceLineId),
+      type: 'rewrite_delivery_line',
       panelId: panel.id,
-      voiceLineId,
-      title: `压缩镜头 ${panelNumber} 台词`,
-      reason: `当前镜头台词偏长，按 ${Math.round((readPanelDurationMs(panel) || 4000) / 1000)}s 镜头压缩表达。`,
+      voiceLineId: line.voiceLineId,
+      title: `生成镜头 ${panelNumber} 口播版`,
+      reason: `当前镜头口播预计 ${Math.round(currentDurationMs / 1000)}s，超过建议 ${Math.round(targetDurationMs / 1000)}s；需要生成语义完整的镜头口播版。`,
       before,
-      after,
-      autoApply: true,
-      metadata: { targetChars },
+      after: currentDelivery || null,
+      autoApply: false,
+      metadata: {
+        panelDurationMs: readPanelDurationMs(panel) || null,
+        targetDurationMs,
+        originalDurationMs,
+        currentDurationMs,
+        currentDeliveryContent: currentDelivery || null,
+        currentText,
+        speaker: line.speaker,
+      },
     })
   }
 
@@ -503,6 +509,214 @@ function analyzeEpisodeReadiness(episode: EpisodeForReadiness): {
   }
 }
 
+function readNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.round(value) : null
+}
+
+function readString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function normalizeSpeechText(value: string): string {
+  return value.trim().replace(/\s+/g, ' ')
+}
+
+function hasCompleteSentenceEnd(value: string): boolean {
+  return /[。！？!?；;.]$/u.test(value.trim())
+}
+
+function looksLikeMechanicalTruncation(before: string, after: string): boolean {
+  const compactBefore = compactText(before)
+  const compactAfter = compactText(after)
+  if (!compactBefore || !compactAfter || compactBefore === compactAfter) return false
+  return compactBefore.startsWith(compactAfter) && !hasCompleteSentenceEnd(after)
+}
+
+function targetCharsForDuration(durationMs: number): number {
+  return Math.max(8, Math.floor(durationMs / 180))
+}
+
+function deliveryRewritePrompt(params: {
+  actions: StoryboardAutoFixAction[]
+  episode: EpisodeForReadiness
+  locale: Locale
+}) {
+  const panelsById = new Map(flattenPanels(params.episode).map((panel) => [panel.id, panel]))
+  const requests = params.actions.flatMap((action) => {
+    const panel = action.panelId ? panelsById.get(action.panelId) : null
+    if (!panel || !action.before) return []
+    const targetDurationMs = readNumber(action.metadata?.targetDurationMs) || 3200
+    return [{
+      actionId: action.id,
+      panelNumber: panel.panelNumber ?? panel.panelIndex + 1,
+      panelDescription: panel.description || panel.imagePrompt || panel.videoPrompt || '',
+      panelDurationSeconds: Math.round((readPanelDurationMs(panel) || 4000) / 100) / 10,
+      speaker: readString(action.metadata?.speaker) || null,
+      originalContent: action.before,
+      currentDeliveryContent: readString(action.metadata?.currentDeliveryContent) || null,
+      targetDurationSeconds: Math.round(targetDurationMs / 100) / 10,
+      suggestedMaxChineseChars: targetCharsForDuration(targetDurationMs),
+    }]
+  })
+
+  return [
+    '你是影视短视频口播编辑，负责把镜头内过长台词改写成“镜头口播版”。',
+    '目标：让单个镜头的视频模型能自然说完台词，同时保留原文的核心事实、情绪、称谓、因果和剧情功能。',
+    '硬性规则：',
+    '1. 不允许截断原句，不允许用省略号，不允许输出半句话。',
+    '2. 可以删掉重复修饰、收束长从句、改成更短但完整的一句话；不得新增原文没有的信息。',
+    '3. 口播版只服务当前镜头，不修改原始台词；不要输出镜头描述、字幕说明或括号解释。',
+    '4. 如果原文信息无法在目标时长内完整承载，输出最核心且语义完整的一句，并在 reason 中说明建议拆镜。',
+    '5. 只输出 JSON，不要 Markdown。',
+    '',
+    '输出格式：',
+    '{"rewrites":[{"actionId":"string","deliveryContent":"string","reason":"string"}]}',
+    '',
+    `语言：${params.locale === 'en' ? 'English' : '简体中文'}`,
+    `待改写数据：${JSON.stringify(requests, null, 2)}`,
+  ].join('\n')
+}
+
+function parseDeliveryRewrites(raw: string): Map<string, { deliveryContent: string; reason: string }> {
+  const parsed = safeParseJsonObject(raw)
+  const rewrites = Array.isArray(parsed.rewrites) ? parsed.rewrites : []
+  const result = new Map<string, { deliveryContent: string; reason: string }>()
+  for (const item of rewrites) {
+    const record = asRecord(item)
+    const actionId = readString(record.actionId)
+    const deliveryContent = normalizeSpeechText(readString(record.deliveryContent))
+    if (!actionId || !deliveryContent) continue
+    result.set(actionId, {
+      deliveryContent,
+      reason: readString(record.reason),
+    })
+  }
+  return result
+}
+
+async function hydrateDeliveryRewriteActions(params: {
+  projectId: string
+  userId: string
+  locale: Locale
+  episode: EpisodeForReadiness
+  plan: StoryboardAutoFixPlan
+}): Promise<StoryboardAutoFixPlan> {
+  const rewriteActions = params.plan.actions.filter((action) => (
+    action.type === 'rewrite_delivery_line'
+    && action.before?.trim()
+    && !action.after?.trim()
+  ))
+  if (rewriteActions.length === 0) return params.plan
+
+  const modelConfig = await getProjectModelConfig(params.projectId, params.userId)
+  if (!modelConfig.analysisModel) {
+    return {
+      ...params.plan,
+      actions: params.plan.actions.map((action) => (
+        action.type === 'rewrite_delivery_line'
+          ? {
+            ...action,
+            autoApply: false,
+            reason: `${action.reason} 当前项目未配置分析模型，无法自动生成口播版。`,
+          }
+          : action
+      )),
+    }
+  }
+
+  let rewrites = new Map<string, { deliveryContent: string; reason: string }>()
+  try {
+    const completion = await executeAiTextStep({
+      userId: params.userId,
+      model: modelConfig.analysisModel,
+      projectId: params.projectId,
+      action: 'storyboard_delivery_rewrite',
+      temperature: 0.25,
+      reasoning: true,
+      messages: [{
+        role: 'user',
+        content: deliveryRewritePrompt({
+          actions: rewriteActions,
+          episode: params.episode,
+          locale: params.locale,
+        }),
+      }],
+      meta: {
+        stepId: 'storyboard_delivery_rewrite',
+        stepTitle: '生成镜头口播版',
+        stepIndex: 1,
+        stepTotal: 1,
+      },
+    })
+    rewrites = parseDeliveryRewrites(completion.text)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return {
+      ...params.plan,
+      actions: params.plan.actions.map((action) => (
+        action.type === 'rewrite_delivery_line'
+          ? {
+            ...action,
+            autoApply: false,
+            reason: `${action.reason} AI 口播版生成失败：${message}`,
+            metadata: {
+              ...action.metadata,
+              rewriteError: message,
+            },
+          }
+          : action
+      )),
+    }
+  }
+  const hydratedActions = params.plan.actions.map((action) => {
+    if (action.type !== 'rewrite_delivery_line' || !action.before?.trim()) return action
+    const rewrite = rewrites.get(action.id)
+    if (!rewrite) {
+      return {
+        ...action,
+        autoApply: false,
+        reason: `${action.reason} AI 未返回可用口播版，建议重新生成方案或拆分镜头。`,
+      }
+    }
+
+    const before = normalizeSpeechText(action.before)
+    const after = normalizeSpeechText(rewrite.deliveryContent)
+    const targetDurationMs = readNumber(action.metadata?.targetDurationMs) || 3200
+    const originalDurationMs = readNumber(action.metadata?.originalDurationMs) || estimateNarrationDurationMs(before)
+    const deliveryDurationMs = estimateNarrationDurationMs(after)
+    const isImproved = deliveryDurationMs < originalDurationMs && compactText(after).length < compactText(before).length
+    const isTooLong = deliveryDurationMs > targetDurationMs * 1.35
+    const invalid = !after || looksLikeMechanicalTruncation(before, after) || !isImproved || isTooLong
+
+    return {
+      ...action,
+      after: invalid ? null : after,
+      autoApply: !invalid,
+      reason: invalid
+        ? `${action.reason} AI 结果未通过完整性或时长校验，建议拆分镜头或重新生成方案。`
+        : (rewrite.reason || action.reason),
+      metadata: {
+        ...action.metadata,
+        rewriteMode: 'llm_delivery_rewrite',
+        deliveryDurationMs,
+        deliveryTargetDurationMs: targetDurationMs,
+        deliveryValidation: invalid
+          ? {
+            mechanicalTruncation: looksLikeMechanicalTruncation(before, after),
+            improved: isImproved,
+            tooLong: isTooLong,
+          }
+          : { passed: true },
+      },
+    }
+  })
+
+  return {
+    ...params.plan,
+    actions: hydratedActions,
+  }
+}
+
 export async function getStoryboardReadiness(params: {
   projectId: string
   episodeId: string
@@ -537,6 +751,8 @@ export async function getStoryboardReadiness(params: {
 export async function prepareStoryboardAutoFix(params: {
   projectId: string
   episodeId: string
+  userId: string
+  locale?: string | null
 }): Promise<StoryboardReadinessResult> {
   const episode = await loadEpisode(params.episodeId)
   if (!episode || episode.novelPromotionProject.projectId !== params.projectId) {
@@ -545,17 +761,24 @@ export async function prepareStoryboardAutoFix(params: {
 
   const analysis = analyzeEpisodeReadiness(episode)
   const createdAt = nowIso()
-  const plan: StoryboardAutoFixPlan = {
-    schemaVersion: 1,
-    id: createPlanId(),
-    episodeId: params.episodeId,
-    status: 'waiting_user_confirm',
-    createdAt,
-    updatedAt: createdAt,
-    issues: analysis.issues,
-    actions: analysis.actions,
-    summary: analysis.summary,
-  }
+  const locale = normalizeLocale(params.locale)
+  const plan: StoryboardAutoFixPlan = await hydrateDeliveryRewriteActions({
+    projectId: params.projectId,
+    userId: params.userId,
+    locale,
+    episode,
+    plan: {
+      schemaVersion: 1,
+      id: createPlanId(),
+      episodeId: params.episodeId,
+      status: 'waiting_user_confirm',
+      createdAt,
+      updatedAt: createdAt,
+      issues: analysis.issues,
+      actions: analysis.actions,
+      summary: analysis.summary,
+    },
+  })
   await writeStoredAutoFixPlan(params.episodeId, plan)
   return await getStoryboardReadiness(params)
 }
@@ -625,6 +848,61 @@ async function refreshPanelBindingAndRoute(params: {
   })
 }
 
+async function applyDeliveryRewriteAction(action: StoryboardAutoFixAction): Promise<boolean> {
+  if (action.type !== 'rewrite_delivery_line') return false
+  const panelId = action.panelId?.trim()
+  const voiceLineId = action.voiceLineId?.trim()
+  const deliveryContent = normalizeSpeechText(action.after || '')
+  if (!panelId || !voiceLineId || !deliveryContent) return false
+
+  const [panel, speechPlan] = await Promise.all([
+    prisma.novelPromotionPanel.findUnique({
+      where: { id: panelId },
+      select: {
+        id: true,
+        duration: true,
+        targetDurationMs: true,
+      },
+    }),
+    prisma.novelPromotionPanelSpeechPlan.findUnique({ where: { panelId } }),
+  ])
+  if (!panel || !speechPlan) return false
+
+  let updated = false
+  const lines = readPanelSpeechLines(speechPlan.linesJson).map((line) => {
+    if (line.voiceLineId !== voiceLineId) return line
+    updated = true
+    return {
+      ...line,
+      deliveryContent,
+      deliveryDurationMs: estimateNarrationDurationMs(deliveryContent),
+      deliverySource: 'storyboard_auto_fix',
+      deliveryReason: action.reason,
+      deliveryUpdatedAt: nowIso(),
+    }
+  })
+  if (!updated) return false
+
+  const payload = buildPanelSpeechPlanPayloadFromLines({
+    panel,
+    lines,
+    voiceConfig: readPanelSpeechVoiceConfig(speechPlan.voiceConfigJson),
+  })
+
+  await prisma.novelPromotionPanelSpeechPlan.update({
+    where: { panelId },
+    data: {
+      mode: payload.mode,
+      status: payload.status,
+      linesJson: asInputJson(payload.lines),
+      timingJson: asInputJson(payload.timing),
+      warningsJson: asInputJson(payload.warnings),
+      source: 'storyboard_auto_fix_delivery_rewrite',
+    },
+  })
+  return true
+}
+
 export async function applyStoryboardAutoFix(params: {
   projectId: string
   episodeId: string
@@ -638,9 +916,24 @@ export async function applyStoryboardAutoFix(params: {
   }
 
   const storedPlan = readStoredAutoFixPlan(before.productionBible)
-  const plan = storedPlan?.status === 'waiting_user_confirm'
+  let plan = storedPlan?.status === 'waiting_user_confirm'
     ? storedPlan
-    : (await prepareStoryboardAutoFix({ projectId: params.projectId, episodeId: params.episodeId })).fixPlan
+    : (await prepareStoryboardAutoFix({
+      projectId: params.projectId,
+      episodeId: params.episodeId,
+      userId: params.userId,
+      locale: params.locale,
+    })).fixPlan
+
+  if (plan?.actions.some((action) => action.type === 'rewrite_delivery_line' && action.before?.trim() && !action.after?.trim())) {
+    plan = await hydrateDeliveryRewriteActions({
+      projectId: params.projectId,
+      userId: params.userId,
+      locale,
+      episode: before,
+      plan,
+    })
+  }
 
   if (!plan) {
     const readiness = await getStoryboardReadiness({ projectId: params.projectId, episodeId: params.episodeId })
@@ -668,24 +961,17 @@ export async function applyStoryboardAutoFix(params: {
   }
 
   for (const action of plan.actions) {
-    if (action.type !== 'compress_voice_line') continue
-    if (!action.voiceLineId || !action.after?.trim()) {
+    if (action.type !== 'rewrite_delivery_line') continue
+    if (!action.autoApply || !action.after?.trim()) {
       skippedActionIds.push(action.id)
       continue
     }
-    await prisma.novelPromotionVoiceLine.update({
-      where: { id: action.voiceLineId },
-      data: {
-        content: action.after.trim(),
-        estimatedDurationMs: estimateNarrationDurationMs(action.after),
-      },
-    })
-    appliedActionIds.push(action.id)
-  }
-
-  if (plan.actions.some((action) => action.type === 'compress_voice_line')) {
-    await rebuildEpisodeNarrationTimeline(params.episodeId)
-    await rebuildEpisodeSpeechPlans(params.episodeId, 'storyboard_auto_fix_voice_compress')
+    const applied = await applyDeliveryRewriteAction(action)
+    if (applied) {
+      appliedActionIds.push(action.id)
+    } else {
+      skippedActionIds.push(action.id)
+    }
   }
 
   const latest = await loadEpisode(params.episodeId)

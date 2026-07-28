@@ -33,7 +33,7 @@ export interface StoryboardReadinessIssue {
 
 export type StoryboardAutoFixActionType =
   | 'rebuild_speech_plans'
-  | 'compress_voice_line'
+  | 'rewrite_delivery_line'
   | 'backfill_assets'
   | 'refresh_binding_plan'
   | 'split_panel_required'

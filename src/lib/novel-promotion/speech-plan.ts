@@ -14,6 +14,11 @@ export interface PanelSpeechLine {
   content: string
   order: number
   estimatedDurationMs: number
+  deliveryContent?: string | null
+  deliveryDurationMs?: number | null
+  deliverySource?: string | null
+  deliveryReason?: string | null
+  deliveryUpdatedAt?: string | null
   emotionPrompt?: string | null
   emotionStrength?: number | null
 }
@@ -101,6 +106,12 @@ export function isPanelSpeechPlanTableMissing(error: unknown) {
 
 function readTrimmedString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+function readPositiveNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? Math.round(value)
+    : null
 }
 
 function asInputJson(value: unknown): Prisma.InputJsonValue {
@@ -198,6 +209,22 @@ function uniqueSpeakers(lines: PanelSpeechLine[]): string[] {
   return Array.from(new Set(lines.map((line) => line.speaker).filter(Boolean)))
 }
 
+export function resolvePanelSpeechLineText(line: Pick<PanelSpeechLine, 'content' | 'deliveryContent'>): string {
+  const deliveryContent = readTrimmedString(line.deliveryContent)
+  return deliveryContent || line.content.trim()
+}
+
+export function resolvePanelSpeechLineDurationMs(
+  line: Pick<PanelSpeechLine, 'content' | 'estimatedDurationMs' | 'deliveryContent' | 'deliveryDurationMs'>,
+): number {
+  const deliveryContent = readTrimmedString(line.deliveryContent)
+  if (deliveryContent) {
+    const deliveryDurationMs = readPositiveNumber(line.deliveryDurationMs)
+    return deliveryDurationMs || estimateNarrationDurationMs(deliveryContent)
+  }
+  return readPositiveNumber(line.estimatedDurationMs) || estimateNarrationDurationMs(line.content)
+}
+
 function resolveMode(lines: PanelSpeechLine[], warnings: PanelSpeechWarning[]): PanelSpeechMode {
   if (lines.length === 0) return 'none'
   const speakers = uniqueSpeakers(lines)
@@ -213,6 +240,59 @@ function resolveMode(lines: PanelSpeechLine[], warnings: PanelSpeechWarning[]): 
   return 'voiceover'
 }
 
+export function buildPanelSpeechPlanPayloadFromLines(params: {
+  panel: PanelLike
+  lines: PanelSpeechLine[]
+  voiceConfig: PanelSpeechVoiceConfig[]
+}): PanelSpeechPlanPayload {
+  const warnings: PanelSpeechWarning[] = []
+  const lines = params.lines
+  const panelDurationMs = resolvePanelDurationMs(params.panel)
+  const estimatedSpeechDurationMs = lines.reduce((sum, line) => sum + resolvePanelSpeechLineDurationMs(line), 0)
+  if (panelDurationMs && estimatedSpeechDurationMs > panelDurationMs * 1.35) {
+    warnings.push({
+      code: 'SPEECH_LONGER_THAN_PANEL',
+      severity: 'warning',
+      message: `口播预计 ${Math.round(estimatedSpeechDurationMs / 1000)}s，明显长于镜头 ${Math.round(panelDurationMs / 1000)}s；建议生成更短口播版或拆分镜头。`,
+    })
+  }
+
+  for (const line of lines) {
+    const speechText = resolvePanelSpeechLineText(line)
+    if (speechText.replace(/\s+/g, '').length > 80) {
+      warnings.push({
+        code: 'LINE_TOO_LONG',
+        severity: 'warning',
+        message: `台词 #${line.lineIndex} 的口播版偏长，原生音频可能压缩语速或忽略部分内容。`,
+      })
+    }
+  }
+
+  const mode = resolveMode(lines, warnings)
+  for (const config of params.voiceConfig) {
+    if (!config.hasVoice) {
+      warnings.push({
+        code: 'SPEAKER_VOICE_MISSING',
+        severity: 'blocking',
+        message: `发言人「${config.speaker}」未配置音色。`,
+      })
+    }
+  }
+
+  return {
+    mode,
+    status: warnings.some((warning) => warning.severity === 'blocking') ? 'invalid' : 'ready',
+    lines,
+    voiceConfig: params.voiceConfig,
+    timing: {
+      panelDurationMs,
+      targetDurationMs: typeof params.panel.targetDurationMs === 'number' ? params.panel.targetDurationMs : null,
+      estimatedSpeechDurationMs,
+    },
+    warnings,
+  }
+}
+
 export function buildPanelSpeechPlanPayload(params: {
   panel: PanelLike
   voiceLines: VoiceLineLike[]
@@ -221,7 +301,6 @@ export function buildPanelSpeechPlanPayload(params: {
 }): PanelSpeechPlanPayload {
   const characters = params.characters || []
   const speakerVoices = params.speakerVoices || {}
-  const warnings: PanelSpeechWarning[] = []
   const lines = [...params.voiceLines]
     .sort((left, right) => left.lineIndex - right.lineIndex)
     .map((line, index): PanelSpeechLine => {
@@ -241,50 +320,12 @@ export function buildPanelSpeechPlanPayload(params: {
     })
     .filter((line) => line.speaker && line.content)
 
-  const panelDurationMs = resolvePanelDurationMs(params.panel)
-  const estimatedSpeechDurationMs = lines.reduce((sum, line) => sum + line.estimatedDurationMs, 0)
-  if (panelDurationMs && estimatedSpeechDurationMs > panelDurationMs * 1.35) {
-    warnings.push({
-      code: 'SPEECH_LONGER_THAN_PANEL',
-      severity: 'warning',
-      message: `台词预计 ${Math.round(estimatedSpeechDurationMs / 1000)}s，明显长于镜头 ${Math.round(panelDurationMs / 1000)}s；建议缩短台词或拆分镜头。`,
-    })
-  }
-
-  for (const line of lines) {
-    if (line.content.replace(/\s+/g, '').length > 80) {
-      warnings.push({
-        code: 'LINE_TOO_LONG',
-        severity: 'warning',
-        message: `台词 #${line.lineIndex} 偏长，原生音频可能压缩语速或忽略部分内容。`,
-      })
-    }
-  }
-
-  const mode = resolveMode(lines, warnings)
   const voiceConfig = uniqueSpeakers(lines).map((speaker) => buildVoiceConfig({ speaker, characters, speakerVoices }))
-  for (const config of voiceConfig) {
-    if (!config.hasVoice) {
-      warnings.push({
-        code: 'SPEAKER_VOICE_MISSING',
-        severity: 'blocking',
-        message: `发言人「${config.speaker}」未配置音色。`,
-      })
-    }
-  }
-
-  return {
-    mode,
-    status: warnings.some((warning) => warning.severity === 'blocking') ? 'invalid' : 'ready',
+  return buildPanelSpeechPlanPayloadFromLines({
+    panel: params.panel,
     lines,
     voiceConfig,
-    timing: {
-      panelDurationMs,
-      targetDurationMs: typeof params.panel.targetDurationMs === 'number' ? params.panel.targetDurationMs : null,
-      estimatedSpeechDurationMs,
-    },
-    warnings,
-  }
+  })
 }
 
 function safeParseSpeakerVoices(raw: string | null | undefined): Record<string, SpeakerVoiceEntry> {
@@ -605,6 +646,11 @@ function readSpeechLines(raw: unknown): PanelSpeechLine[] {
         lineIndex: typeof record.lineIndex === 'number' ? record.lineIndex : 0,
         order: typeof record.order === 'number' ? record.order : 0,
         estimatedDurationMs: typeof record.estimatedDurationMs === 'number' ? record.estimatedDurationMs : estimateNarrationDurationMs(content),
+        deliveryContent: readTrimmedString(record.deliveryContent) || null,
+        deliveryDurationMs: readPositiveNumber(record.deliveryDurationMs),
+        deliverySource: readTrimmedString(record.deliverySource) || null,
+        deliveryReason: readTrimmedString(record.deliveryReason) || null,
+        deliveryUpdatedAt: readTrimmedString(record.deliveryUpdatedAt) || null,
         emotionPrompt: typeof record.emotionPrompt === 'string' ? record.emotionPrompt : null,
         emotionStrength: typeof record.emotionStrength === 'number' ? record.emotionStrength : null,
       }]
@@ -693,7 +739,11 @@ export function compileSpeechPlanPromptSection(params: {
   const configBySpeaker = new Map(configs.map((config) => [config.speaker, config]))
   const lineText = lines
     .sort((left, right) => left.order - right.order || left.lineIndex - right.lineIndex)
-    .map((line) => `${line.speaker}: ${line.content}`)
+    .map((line) => {
+      const deliveryContent = readTrimmedString(line.deliveryContent)
+      const label = deliveryContent ? (locale === 'en' ? 'delivery' : '口播版') : ''
+      return `${line.speaker}${label ? `(${label})` : ''}: ${resolvePanelSpeechLineText(line)}`
+    })
   const voiceText = uniqueSpeakers(lines).map((speaker) => {
     const config = configBySpeaker.get(speaker)
     if (!config?.hasVoice) return locale === 'en' ? `${speaker}: voice not configured` : `${speaker}: 未配置音色`

@@ -436,10 +436,10 @@ export default function StudioWorkspaceShell({
   const speechPlanInvalid = model.summary.speechPlanInvalid > 0
   const readiness = readinessQuery.data
   const readinessMainActionLabel = readiness?.status === 'fix_pending_confirm'
-    ? '应用AI修复方案'
+    ? '应用口播修复方案'
     : readiness?.status === 'ready' || readiness?.status === 'risk_accepted'
       ? '重新运行AI预检'
-      : 'AI自动修复'
+      : '生成口播修复方案'
   const runReadinessMainAction = () => {
     if (readiness?.status === 'fix_pending_confirm') {
       autoFixMutation.mutate('apply')

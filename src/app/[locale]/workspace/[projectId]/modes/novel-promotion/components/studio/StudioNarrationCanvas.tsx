@@ -54,7 +54,7 @@ export default function StudioNarrationCanvas({ model, onNavigate }: StudioNarra
                   loading={autoFixMutation.isPending}
                   onClick={() => { autoFixMutation.mutate(nextFixAction) }}
                 >
-                  {nextFixAction === 'apply' ? '应用AI修复' : 'AI修复节奏'}
+                  {nextFixAction === 'apply' ? '应用口播版' : '生成口播版'}
                 </StudioButton>
               ) : null}
               <StudioButton variant="secondary" icon="image" onClick={() => onNavigate('storyboard-images')} disabled={speechBlocking}>
@@ -87,8 +87,8 @@ export default function StudioNarrationCanvas({ model, onNavigate }: StudioNarra
           {needsSpeechFix ? (
             <div className="mb-4 rounded-md border border-amber-400/20 bg-amber-400/[0.07] px-4 py-3 text-sm leading-6 text-amber-100">
               {readiness?.status === 'fix_pending_confirm'
-                ? `AI 修复方案已生成，包含 ${readiness.fixPlan?.actions.length || 0} 个动作。`
-                : '检测到台词节奏或计划问题，可先生成 AI 自动修复方案。'}
+                ? `AI 口播修复方案已生成，包含 ${readiness.fixPlan?.actions.length || 0} 个动作。`
+                : '检测到台词节奏或计划问题，可先生成镜头口播版。'}
               {autoFixMutation.error instanceof Error ? (
                 <div className="mt-2 text-xs text-rose-100">{autoFixMutation.error.message}</div>
               ) : null}

@@ -458,7 +458,7 @@ function resolveStoryboardImageSpeechGate(
       status: 'needs_review',
       label: '有节奏警告',
       title: `${model.summary.speechPlanWarnings} 条台词节奏警告`,
-      description: '通常意味着单镜头台词偏长，视频阶段可能出现语速过快。可以继续生成图片，但建议优先压缩台词或拆分镜头。',
+      description: '通常意味着单镜头口播偏长，视频阶段可能出现语速过快。可以继续生成图片，但建议优先生成镜头口播版或拆分镜头。',
       blocksGeneration: false,
       canOverride: false,
     }
@@ -541,7 +541,7 @@ function StoryboardReadinessPanel({
             <h2 className="text-sm font-semibold text-stone-100">{badge.title}</h2>
           </div>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-400">
-            {readiness?.message || '检查台词节奏、缺失资产、资产绑定和复杂镜头。'}
+            {readiness?.message || '检查口播节奏、缺失资产、资产绑定和复杂镜头。'}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -562,7 +562,7 @@ function StoryboardReadinessPanel({
                 loading={mutation.isPending}
                 onClick={() => { mutation.mutate('apply') }}
               >
-                确认应用修复
+                确认应用口播版
               </StudioButton>
               <StudioButton
                 size="sm"
@@ -590,7 +590,7 @@ function StoryboardReadinessPanel({
               loading={mutation.isPending}
               onClick={() => { mutation.mutate('prepare') }}
             >
-              查看修复方案
+              查看口播修复方案
             </StudioButton>
           ) : null}
         </div>
@@ -617,6 +617,16 @@ function StoryboardReadinessPanel({
               <div key={action.id} className="rounded border border-white/10 bg-white/[0.03] px-3 py-2">
                 <div className="text-xs font-semibold text-stone-200">{action.title}</div>
                 <div className="mt-1 line-clamp-2 text-xs leading-5 text-stone-500">{action.reason}</div>
+                {action.before || action.after ? (
+                  <div className="mt-2 space-y-1 text-xs leading-5 text-stone-400">
+                    {action.before ? (
+                      <div className="line-clamp-2">原台词：{action.before}</div>
+                    ) : null}
+                    {action.after ? (
+                      <div className="line-clamp-2 text-emerald-200">口播版：{action.after}</div>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>
