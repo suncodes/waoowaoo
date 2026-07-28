@@ -54,6 +54,12 @@ export const queryKeys = {
         groups: (episodeId: string) => ['storyboards', episodeId, 'groups'] as const,
     },
 
+    // ============ 分镜图片前置检查 ============
+    storyboardReadiness: {
+        detail: (projectId: string, episodeId: string) =>
+            ['storyboard-readiness', projectId, episodeId] as const,
+    },
+
     // ============ 视频生成 ============
     videos: {
         all: (episodeId: string) => ['videos', episodeId] as const,

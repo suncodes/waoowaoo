@@ -3,7 +3,9 @@
 import { useMemo, useState } from 'react'
 import { AppIcon, type AppIconName } from '@/components/ui/icons'
 import type { CreationWorkflowState } from '@/lib/creation-workspace/workflow-state'
+import { useStoryboardAutoFix, useStoryboardReadiness } from '@/lib/query/hooks/useStoryboardReadiness'
 import { VIDEO_PROFILE_PRESET, type VideoProfile } from '@/lib/video-profile'
+import { useWorkspaceProvider } from '../../WorkspaceProvider'
 import { useWorkspaceStageRuntime } from '../../WorkspaceStageRuntimeContext'
 import type { WorkspaceRunStreamState } from '../workspace-run-types'
 import type { CreationTaskDescriptor } from '../workspace-v2/CreationTaskDetails'
@@ -264,9 +266,15 @@ function StudioNav({
 function AssistantPanel({
   model,
   onNavigate,
+  readinessActionLabel,
+  readinessActionDisabled,
+  onReadinessAction,
 }: {
   model: StudioWorkspaceModel
   onNavigate: (route: string) => void
+  readinessActionLabel: string
+  readinessActionDisabled: boolean
+  onReadinessAction: () => void
 }) {
   const runtime = useWorkspaceStageRuntime()
   const activeAsset = model.coreVisualAssets.find((asset) => asset.status !== 'locked') || model.coreVisualAssets[0]
@@ -329,8 +337,14 @@ function AssistantPanel({
             ) : null}
             {model.activeMode === 'storyboard-images' ? (
               <>
+                <ActionButton
+                  icon="sparkles"
+                  label={readinessActionLabel}
+                  onClick={onReadinessAction}
+                  disabled={readinessActionDisabled}
+                />
+                <ActionButton icon="mic" label="台词与声音" onClick={() => onNavigate('voice')} />
                 <ActionButton icon="clapperboard" label="返回分镜文稿" onClick={() => onNavigate('storyboard-script')} />
-                <ActionButton icon="mic" label="检查台词与声音" onClick={() => onNavigate('voice')} />
               </>
             ) : null}
             {model.activeMode === 'produce' ? (
@@ -392,6 +406,7 @@ export default function StudioWorkspaceShell({
   onRefresh,
 }: StudioWorkspaceShellProps) {
   const runtime = useWorkspaceStageRuntime()
+  const { projectId, episodeId } = useWorkspaceProvider()
   const model = useStudioWorkspaceModel({
     currentStage,
     stageView,
@@ -402,6 +417,9 @@ export default function StudioWorkspaceShell({
     scriptToStoryboardStream,
     isAssetAnalysisRunning: runtime.isAssetAnalysisRunning,
   })
+  const resolvedEpisodeId = episodeId || currentEpisodeId || null
+  const readinessQuery = useStoryboardReadiness(projectId, resolvedEpisodeId, model.activeMode === 'storyboard-images')
+  const autoFixMutation = useStoryboardAutoFix(projectId, resolvedEpisodeId)
   const navItems = useMemo<StudioNavItem[]>(
     () => MODE_CONFIG.map((item) => ({ ...item, status: navStatus(item.id, model) })),
     [model],
@@ -416,6 +434,23 @@ export default function StudioWorkspaceShell({
   const productionReady = model.shots.length > 0 && incompleteShotCount === 0
   const speechPlanMissing = model.summary.voiceLines > 0 && model.summary.speechPlanTotal === 0
   const speechPlanInvalid = model.summary.speechPlanInvalid > 0
+  const readiness = readinessQuery.data
+  const readinessMainActionLabel = readiness?.status === 'fix_pending_confirm'
+    ? '应用AI修复方案'
+    : readiness?.status === 'ready' || readiness?.status === 'risk_accepted'
+      ? '重新运行AI预检'
+      : 'AI自动修复'
+  const runReadinessMainAction = () => {
+    if (readiness?.status === 'fix_pending_confirm') {
+      autoFixMutation.mutate('apply')
+      return
+    }
+    if (readiness?.status === 'ready' || readiness?.status === 'risk_accepted') {
+      void readinessQuery.refetch()
+      return
+    }
+    autoFixMutation.mutate('prepare')
+  }
   const navigate = (route: string) => {
     if (route === 'voice' && !model.workflow.hasStoryboard) {
       window.alert('请先完成分镜文稿。台词与声音会基于已确认镜头分析台词并绑定镜头。')
@@ -492,6 +527,9 @@ export default function StudioWorkspaceShell({
           <AssistantPanel
             model={model}
             onNavigate={navigate}
+            readinessActionLabel={autoFixMutation.isPending ? 'AI修复处理中' : readinessMainActionLabel}
+            readinessActionDisabled={autoFixMutation.isPending || readinessQuery.isFetching}
+            onReadinessAction={runReadinessMainAction}
           />
         </div>
       </div>

@@ -1,6 +1,8 @@
 'use client'
 
 import VoiceStageRoute from '../VoiceStageRoute'
+import { useStoryboardAutoFix, useStoryboardReadiness } from '@/lib/query/hooks/useStoryboardReadiness'
+import { useWorkspaceProvider } from '../../WorkspaceProvider'
 import { StudioButton, StudioStageHeader, StudioStatusBadge } from './StudioPrimitives'
 import type { StudioWorkspaceModel } from './studio-types'
 
@@ -10,12 +12,18 @@ interface StudioNarrationCanvasProps {
 }
 
 export default function StudioNarrationCanvas({ model, onNavigate }: StudioNarrationCanvasProps) {
+  const { projectId, episodeId } = useWorkspaceProvider()
+  const readinessQuery = useStoryboardReadiness(projectId, episodeId || null, model.workflow.hasStoryboard)
+  const autoFixMutation = useStoryboardAutoFix(projectId, episodeId || null)
   const speechReady = model.summary.voiceLines > 0
     && model.summary.speechPlanTotal > 0
     && model.summary.speechPlanInvalid === 0
     && model.summary.speechPlanWarnings === 0
   const speechBlocking = model.summary.voiceLines > 0
     && (model.summary.speechPlanTotal === 0 || model.summary.speechPlanInvalid > 0)
+  const readiness = readinessQuery.data
+  const needsSpeechFix = speechBlocking || model.summary.speechPlanWarnings > 0
+  const nextFixAction = readiness?.status === 'fix_pending_confirm' ? 'apply' : 'prepare'
 
   return (
     <div className="space-y-4">
@@ -39,6 +47,16 @@ export default function StudioNarrationCanvas({ model, onNavigate }: StudioNarra
               <StudioButton variant="secondary" icon="clapperboard" onClick={() => onNavigate('storyboard-script')}>
                 返回分镜文稿
               </StudioButton>
+              {needsSpeechFix ? (
+                <StudioButton
+                  variant="secondary"
+                  icon="sparkles"
+                  loading={autoFixMutation.isPending}
+                  onClick={() => { autoFixMutation.mutate(nextFixAction) }}
+                >
+                  {nextFixAction === 'apply' ? '应用AI修复' : 'AI修复节奏'}
+                </StudioButton>
+              ) : null}
               <StudioButton variant="secondary" icon="image" onClick={() => onNavigate('storyboard-images')} disabled={speechBlocking}>
                 进入分镜图片
               </StudioButton>
@@ -66,6 +84,16 @@ export default function StudioNarrationCanvas({ model, onNavigate }: StudioNarra
         </div>
 
         <div className="p-4">
+          {needsSpeechFix ? (
+            <div className="mb-4 rounded-md border border-amber-400/20 bg-amber-400/[0.07] px-4 py-3 text-sm leading-6 text-amber-100">
+              {readiness?.status === 'fix_pending_confirm'
+                ? `AI 修复方案已生成，包含 ${readiness.fixPlan?.actions.length || 0} 个动作。`
+                : '检测到台词节奏或计划问题，可先生成 AI 自动修复方案。'}
+              {autoFixMutation.error instanceof Error ? (
+                <div className="mt-2 text-xs text-rose-100">{autoFixMutation.error.message}</div>
+              ) : null}
+            </div>
+          ) : null}
           <VoiceStageRoute embedded nativeAudioMode />
         </div>
       </section>

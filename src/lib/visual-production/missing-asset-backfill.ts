@@ -500,6 +500,16 @@ export async function ensureMissingAssetBackfill(params: {
     const targetImageId = asset?.images?.[0]?.id || asset?.id || request.assetId
 
     let taskId: string | null = null
+    if (!hasUsableImage(asset) && !modelConfig.locationModel) {
+      nextRequests.push({
+        ...request,
+        assetId: asset.id,
+        status: 'human_required',
+        reason: `${request.reason}; location model not configured`,
+      })
+      continue
+    }
+
     if (!hasUsableImage(asset) && targetImageId) {
       const payloadBase = {
         type: request.kind,
