@@ -37,6 +37,12 @@ export function isWorkspaceClipActive(clip: Pick<ClipLike, 'screenplay'>): boole
   return parseGuideClipState(clip.screenplay)?.workspace?.removed !== true
 }
 
+export function getActiveWorkspaceClipIds(
+  clips: ReadonlyArray<Pick<ClipLike, 'id' | 'screenplay'>>,
+): string[] {
+  return clips.filter(isWorkspaceClipActive).map((clip) => clip.id)
+}
+
 function serializeSegment(segment: GuideSegment, removed: boolean) {
   return JSON.stringify({
     schemaVersion: 1,

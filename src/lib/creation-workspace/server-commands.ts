@@ -23,7 +23,7 @@ import {
   readGuideSegment,
   setContentUnitLock,
 } from './content-artifacts'
-import { getGuideClipSegmentId, syncGuideClips } from './guide-clips'
+import { getActiveWorkspaceClipIds, getGuideClipSegmentId, syncGuideClips } from './guide-clips'
 import type { WorkspaceArtifactCommand, WorkspaceArtifactCommandResult } from './commands'
 import { materializeGuideStoryboards } from '@/lib/workers/handlers/visual-plan-persist'
 import { parseVisualPlanResult } from '@/lib/visual-planning'
@@ -295,7 +295,7 @@ async function materializeStoredVisualPlan(params: {
       contentPlan: true,
       directorTreatment: true,
       productionBible: true,
-      clips: { select: { id: true } },
+      clips: { select: { id: true, screenplay: true } },
     },
   })
   if (!episode?.directorTreatment || !episode.productionBible) invalid('visual plan not found')
@@ -308,7 +308,7 @@ async function materializeStoredVisualPlan(params: {
     productionBible,
     shotPlan: meta.plan.shotPlan,
     visualUnits: meta.plan.visualUnits,
-  }, resolveVideoProfile(params.profileValue), episode.clips.map((clip) => clip.id))
+  }, resolveVideoProfile(params.profileValue), getActiveWorkspaceClipIds(episode.clips))
   await materializeGuideStoryboards(params.tx, {
     episodeId: params.episodeId,
     result,
@@ -373,7 +373,7 @@ export async function executeWorkspaceArtifactCommand(params: {
         contentPlan: true,
         directorTreatment: true,
         productionBible: true,
-        clips: { select: { id: true } },
+        clips: { select: { id: true, screenplay: true } },
         storyboards: { select: { panels: { select: { videoUrl: true } } } },
       },
     })
@@ -463,7 +463,7 @@ export async function executeWorkspaceArtifactCommand(params: {
         productionBible: stripWorkspaceArtifactMeta(current.productionBible),
         shotPlan: params.command.shotPlan,
         visualUnits: params.command.visualUnits,
-      }, resolveVideoProfile(project.videoProfile), current.clips.map((clip) => clip.id), meta.anchors.map((anchor) => ({
+      }, resolveVideoProfile(project.videoProfile), getActiveWorkspaceClipIds(current.clips), meta.anchors.map((anchor) => ({
         id: anchor.assetId,
         kind: anchor.assetKind,
         name: anchor.name,
