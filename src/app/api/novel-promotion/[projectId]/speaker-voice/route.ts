@@ -5,6 +5,9 @@ import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
 import {
+  refreshEpisodePanelSpeechVoiceConfigs,
+} from '@/lib/novel-promotion/panel-speech'
+import {
   parseSpeakerVoiceMap,
   type SpeakerVoiceEntry,
   type SpeakerVoiceMap,
@@ -165,7 +168,14 @@ export const PATCH = apiHandler(async (
     where: { id: episodeId },
     data: { speakerVoices: JSON.stringify(speakerVoices) },
   })
-  await rebuildEpisodeSpeechPlans(episodeId, 'speaker_voice_update')
+  const refreshed = await refreshEpisodePanelSpeechVoiceConfigs(episodeId)
+  const speechPlans = await rebuildEpisodeSpeechPlans(episodeId, 'speaker_voice_update')
+  if (!refreshed.available || !speechPlans.available) {
+    throw new ApiError('CONFLICT', {
+      code: 'DB_SCHEMA_OUT_OF_DATE',
+      message: '数据库缺少镜头级可播台词相关表。请执行最新数据库迁移后重新保存音色。',
+    })
+  }
 
   return NextResponse.json({ success: true })
 })

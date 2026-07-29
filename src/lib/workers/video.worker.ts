@@ -27,10 +27,10 @@ import {
   compilePanelVideoPrompt,
 } from '@/lib/prompt-compiler/panel-video-prompt-compiler'
 import {
-  compileSpeechPlanPromptSection,
-  ensurePanelSpeechPlan,
-  panelSpeechPlanHasSpeech,
-} from '@/lib/novel-promotion/speech-plan'
+  compilePanelSpeechPromptSection,
+  panelSpeechHasContent,
+  validatePanelSpeechReadyForVideo,
+} from '@/lib/novel-promotion/panel-speech'
 import { resolvePanelVideoReferenceAudios } from './panel-video-reference-audio'
 
 type AnyObj = Record<string, unknown>
@@ -63,7 +63,7 @@ function extractGenerationOptions(payload: AnyObj): VideoOptionMap {
 function resolveNativeAudioRequest(
   modelKey: string,
   generationOptions: VideoOptionMap,
-  speechPlan: { mode?: string | null; linesJson?: unknown } | null,
+  speech: { originalContent: string; deliveryContent?: string | null } | null,
 ): boolean | undefined {
   if (typeof generationOptions.generateAudio === 'boolean') {
     return generationOptions.generateAudio
@@ -73,7 +73,7 @@ function resolveNativeAudioRequest(
   const options = capabilities?.video?.generateAudioOptions
   if (!Array.isArray(options) || !options.includes(true)) return undefined
 
-  if (panelSpeechPlanHasSpeech(speechPlan)) return true
+  if (panelSpeechHasContent(speech)) return true
   return options.includes(false) ? false : undefined
 }
 
@@ -166,17 +166,17 @@ async function generateVideoForPanel(
       }
     }
   }
-  const speechPlanState = await ensurePanelSpeechPlan(panel.id)
-  const speechPlan = speechPlanState.plan
-  if (speechPlan && speechPlan.mode !== 'none' && speechPlan.status !== 'ready') {
-    throw new Error(`SPEECH_PLAN_NOT_READY: ${panel.id}`)
+  const panelSpeechState = await validatePanelSpeechReadyForVideo(panel.id)
+  const panelSpeech = panelSpeechState.speech
+  if (!panelSpeechState.ready) {
+    throw new Error(`PANEL_SPEECH_NOT_READY: ${panel.id}: ${panelSpeechState.reasons.join(' | ')}`)
   }
-  const requestedGenerateAudio = resolveNativeAudioRequest(model, generationOptions, speechPlan)
+  const requestedGenerateAudio = resolveNativeAudioRequest(model, generationOptions, panelSpeech)
   const { referenceAudios, referenceAudioSummary } = await resolvePanelVideoReferenceAudios({
     job,
     modelKey: model,
     requestedGenerateAudio,
-    speechPlan,
+    speech: panelSpeech,
   })
   const promptSpec = buildPanelVideoPromptSpec({
     context: {
@@ -200,12 +200,9 @@ async function generateVideoForPanel(
     },
     locale: job.data.locale === 'en' ? 'en' : 'zh',
   })
-  const speechPromptSection = speechPlan
-    ? compileSpeechPlanPromptSection({
-      mode: speechPlan.mode,
-      status: speechPlan.status,
-      linesJson: speechPlan.linesJson,
-      voiceConfigJson: speechPlan.voiceConfigJson,
+  const speechPromptSection = panelSpeech
+    ? compilePanelSpeechPromptSection({
+      speech: panelSpeech,
       locale: job.data.locale === 'en' ? 'en' : 'zh',
     })
     : ''
@@ -226,13 +223,14 @@ async function generateVideoForPanel(
       lastFrameImageUrl: lastFrameImageUrl || null,
       generationMode,
       referenceAudioSummary,
-      speechPlan: speechPlan
+      panelSpeech: panelSpeech
         ? {
-          mode: speechPlan.mode,
-          status: speechPlan.status,
-          linesJson: speechPlan.linesJson,
-          voiceConfigJson: speechPlan.voiceConfigJson,
-          updatedAt: speechPlan.updatedAt?.toISOString?.() || null,
+          speaker: panelSpeech.speaker,
+          originalContent: panelSpeech.originalContent,
+          deliveryContent: panelSpeech.deliveryContent,
+          status: panelSpeech.status,
+          voiceConfigJson: panelSpeech.voiceConfigJson,
+          updatedAt: panelSpeech.updatedAt?.toISOString?.() || null,
         }
         : null,
     }),

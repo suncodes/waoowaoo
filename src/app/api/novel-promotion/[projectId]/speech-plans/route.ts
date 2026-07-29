@@ -67,8 +67,8 @@ export const POST = apiHandler(async (
     throw new ApiError('CONFLICT', {
       code: 'DB_SCHEMA_OUT_OF_DATE',
       episodeId,
-      message: '数据库结构不是最新版本，缺少镜头级台词计划表。请在部署环境执行 prisma db push 后重启应用。',
-      table: 'novel_promotion_panel_speech_plans',
+      message: '数据库结构不是最新版本，缺少镜头级可播台词相关表。请在部署环境执行 prisma db push 后重启应用。',
+      table: 'novel_promotion_panel_speeches',
       available: false,
     })
   }

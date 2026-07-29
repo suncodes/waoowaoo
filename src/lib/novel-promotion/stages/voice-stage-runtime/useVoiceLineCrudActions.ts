@@ -54,6 +54,10 @@ export function useVoiceLineCrudActions({
       alert(t('errors.invalidLineInput'))
       return
     }
+    if (!editingMatchedPanelId) {
+      alert('请将台词绑定到一个镜头；一个镜头只能有一条可播台词。')
+      return
+    }
 
     setIsSavingLineEditor(true)
     try {
@@ -75,7 +79,7 @@ export function useVoiceLineCrudActions({
           lineId: editingLineId,
           content,
           speaker,
-          matchedPanelId: editingMatchedPanelId || null,
+          matchedPanelId: editingMatchedPanelId,
         })
         const updatedLine = data.voiceLine as VoiceLine
         setVoiceLines((prev) => prev.map((line) => (line.id === editingLineId ? updatedLine : line)))
@@ -84,7 +88,7 @@ export function useVoiceLineCrudActions({
           episodeId,
           content,
           speaker,
-          matchedPanelId: editingMatchedPanelId || null,
+          matchedPanelId: editingMatchedPanelId,
         })
         const createdLine = data.voiceLine as VoiceLine
         setVoiceLines((prev) => [...prev, createdLine].sort((left, right) => left.lineIndex - right.lineIndex))

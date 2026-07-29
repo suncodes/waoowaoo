@@ -92,6 +92,12 @@ export interface ShotSpec {
   promptBlueprint?: ShotPromptBlueprint
 }
 
+export interface VisualUnitSpeech {
+  speaker: string
+  content: string
+  emotionStrength?: number
+}
+
 export interface VisualUnit {
   id: string
   clipId: string
@@ -110,6 +116,7 @@ export interface VisualUnit {
   sourceAnchor?: SourceAnchor
   shotSpec: ShotSpec
   assetRefs?: VisualAssetRef[]
+  speech?: VisualUnitSpeech | null
 }
 
 export interface ShotBudget {

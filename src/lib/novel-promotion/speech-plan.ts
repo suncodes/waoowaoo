@@ -2,8 +2,12 @@ import { prisma } from '@/lib/prisma'
 import type { Prisma } from '@prisma/client'
 import { getPrismaErrorCode } from '@/lib/prisma-error'
 import { estimateNarrationDurationMs } from './narration-timeline'
-import { resolveVoiceLinePanelBindings } from './voice-line-binding'
-import { hasAnyVoiceBinding, parseSpeakerVoiceMap, type SpeakerVoiceEntry } from '@/lib/voice/provider-voice-binding'
+import { hasAnyVoiceBinding, type SpeakerVoiceEntry } from '@/lib/voice/provider-voice-binding'
+import {
+  isPanelSpeechTableMissing,
+  readPanelSpeechVoiceConfig as readCanonicalPanelSpeechVoiceConfig,
+  readPanelSpeechWarnings,
+} from './panel-speech'
 
 export type PanelSpeechMode = 'none' | 'voiceover' | 'single_speaker' | 'sequential_dialogue' | 'unsupported'
 export type PanelSpeechStatus = 'draft' | 'ready' | 'invalid'
@@ -307,42 +311,6 @@ export function mergeConsecutivePanelSpeechLines(lines: PanelSpeechLine[]): Pane
   return merged
 }
 
-function speechLineIdentity(line: PanelSpeechLine): string {
-  return normalizeVoiceLineIds(line).sort().join('|')
-}
-
-function preserveDeliveryVariants(params: {
-  panel: PanelLike
-  payload: PanelSpeechPlanPayload
-  previousLinesJson: unknown
-}): PanelSpeechPlanPayload {
-  const previousByIdentity = new Map(
-    readSpeechLines(params.previousLinesJson).map((line) => [speechLineIdentity(line), line]),
-  )
-  let changed = false
-  const lines = params.payload.lines.map((line) => {
-    const previous = previousByIdentity.get(speechLineIdentity(line))
-    if (!previous || previous.content !== line.content || !readTrimmedString(previous.deliveryContent)) {
-      return line
-    }
-    changed = true
-    return {
-      ...line,
-      deliveryContent: previous.deliveryContent,
-      deliveryDurationMs: previous.deliveryDurationMs,
-      deliverySource: previous.deliverySource,
-      deliveryReason: previous.deliveryReason,
-      deliveryUpdatedAt: previous.deliveryUpdatedAt,
-    }
-  })
-  if (!changed) return params.payload
-  return buildPanelSpeechPlanPayloadFromLines({
-    panel: params.panel,
-    lines,
-    voiceConfig: params.payload.voiceConfig,
-  })
-}
-
 function resolveMode(lines: PanelSpeechLine[], warnings: PanelSpeechWarning[]): PanelSpeechMode {
   if (lines.length === 0) return 'none'
   const speakers = uniqueSpeakers(lines)
@@ -447,14 +415,6 @@ export function buildPanelSpeechPlanPayload(params: {
   })
 }
 
-function safeParseSpeakerVoices(raw: string | null | undefined): Record<string, SpeakerVoiceEntry> {
-  try {
-    return parseSpeakerVoiceMap(raw)
-  } catch {
-    return {}
-  }
-}
-
 function resolveSpeechPlanSource(existingSource: string | null | undefined, requestedSource: string): string {
   if (isStoryboardSpeechPlanSource(existingSource) && !requestedSource.startsWith('voice_analyze')) {
     return existingSource || 'storyboard'
@@ -468,30 +428,6 @@ function sortStoryboards<T extends { createdAt: Date; clip: { start: number | nu
     || (left.clip?.createdAt.getTime() ?? 0) - (right.clip?.createdAt.getTime() ?? 0)
     || left.createdAt.getTime() - right.createdAt.getTime()
   ))
-}
-
-function groupVoiceLinesByPanel(params: {
-  voiceLines: Array<VoiceLineLike & {
-    matchedPanelId: string | null
-    matchedStoryboardId: string | null
-    matchedPanelIndex: number | null
-  }>
-}) {
-  const byPanelId = new Map<string, VoiceLineLike[]>()
-  const byStoryboardPanel = new Map<string, VoiceLineLike[]>()
-  for (const line of params.voiceLines) {
-    const binding = resolveVoiceLinePanelBindings(line)[0]
-    if (!binding) continue
-    if (binding.storyboardId && binding.panelIndex !== undefined) {
-      const key = `${binding.storyboardId}:${binding.panelIndex}`
-      byStoryboardPanel.set(key, [...(byStoryboardPanel.get(key) || []), line])
-      continue
-    }
-    if (binding.panelId) {
-      byPanelId.set(binding.panelId, [...(byPanelId.get(binding.panelId) || []), line])
-    }
-  }
-  return { byPanelId, byStoryboardPanel }
 }
 
 export function summarizePanelSpeechPlans(plans: Array<{
@@ -524,41 +460,23 @@ export function summarizePanelSpeechPlans(plans: Array<{
   }
 }
 
+/**
+ * 将镜头级可播台词投影到旧 SpeechPlan 结构，供仍依赖该接口的页面和任务读取。
+ * NovelPromotionPanelSpeech 是唯一事实来源；绝不从旧 VoiceLine 反向拼装或合并台词。
+ */
 export async function rebuildEpisodeSpeechPlans(episodeId: string, source = 'system') {
   try {
     const episode = await prisma.novelPromotionEpisode.findUnique({
       where: { id: episodeId },
       select: {
         id: true,
-        speakerVoices: true,
         novelPromotionProject: {
-          select: {
-            projectId: true,
-            characters: {
-              select: {
-                id: true,
-                name: true,
-                aliases: true,
-                customVoiceUrl: true,
-                voiceId: true,
-                voiceType: true,
-              },
-            },
-          },
+          select: { projectId: true },
         },
         voiceLines: {
-          orderBy: { lineIndex: 'asc' },
           select: {
             id: true,
-            lineIndex: true,
-            speaker: true,
-            content: true,
-            emotionPrompt: true,
-            emotionStrength: true,
-            estimatedDurationMs: true,
             matchedPanelId: true,
-            matchedStoryboardId: true,
-            matchedPanelIndex: true,
           },
         },
         storyboards: {
@@ -576,14 +494,28 @@ export async function rebuildEpisodeSpeechPlans(episodeId: string, source = 'sys
               orderBy: { panelIndex: 'asc' },
               select: {
                 id: true,
-                storyboardId: true,
                 panelIndex: true,
                 duration: true,
                 targetDurationMs: true,
                 speechPlan: {
+                  select: { source: true },
+                },
+                matchedVoiceLines: {
+                  select: { id: true },
+                },
+                panelSpeech: {
                   select: {
+                    id: true,
+                    speaker: true,
+                    originalContent: true,
+                    deliveryContent: true,
+                    estimatedDurationMs: true,
+                    emotionPrompt: true,
+                    emotionStrength: true,
+                    voiceConfigJson: true,
+                    warningsJson: true,
+                    status: true,
                     source: true,
-                    linesJson: true,
                   },
                 },
               },
@@ -593,40 +525,74 @@ export async function rebuildEpisodeSpeechPlans(episodeId: string, source = 'sys
       },
     })
 
-    if (!episode) {
-      throw new Error('SPEECH_PLAN_EPISODE_NOT_FOUND')
-    }
+    if (!episode) throw new Error('SPEECH_PLAN_EPISODE_NOT_FOUND')
 
-    const speakerVoices = safeParseSpeakerVoices(episode.speakerVoices)
-    const grouped = groupVoiceLinesByPanel({ voiceLines: episode.voiceLines })
+    const canonicalSpeechCount = episode.storyboards.reduce(
+      (count, storyboard) => count + storyboard.panels.filter((panel) => panel.panelSpeech).length,
+      0,
+    )
+    const legacyOnly = canonicalSpeechCount === 0 && episode.voiceLines.length > 0
     const rows = sortStoryboards(episode.storyboards).flatMap((storyboard) => (
       storyboard.panels.map((panel) => {
-        const voiceLines = grouped.byPanelId.get(panel.id)
-          || grouped.byStoryboardPanel.get(`${storyboard.id}:${panel.panelIndex}`)
-          || []
-        const rawPayload = buildPanelSpeechPlanPayload({
+        const speech = panel.panelSpeech
+        const canonicalWarnings = speech ? readPanelSpeechWarnings(speech.warningsJson) : []
+        const voiceConfig = speech
+          ? [readCanonicalPanelSpeechVoiceConfig(speech.voiceConfigJson)].filter((item): item is PanelSpeechVoiceConfig => !!item)
+          : []
+        const firstLegacyVoiceLine = panel.matchedVoiceLines[0]
+        const lines: PanelSpeechLine[] = speech
+          ? [{
+            voiceLineId: firstLegacyVoiceLine?.id || speech.id,
+            lineIndex: panel.panelIndex + 1,
+            speaker: speech.speaker,
+            content: speech.originalContent,
+            order: 1,
+            estimatedDurationMs: speech.estimatedDurationMs || estimateNarrationDurationMs(speech.deliveryContent || speech.originalContent),
+            deliveryContent: speech.deliveryContent,
+            deliveryDurationMs: speech.deliveryContent
+              ? speech.estimatedDurationMs || estimateNarrationDurationMs(speech.deliveryContent)
+              : null,
+            emotionPrompt: speech.emotionPrompt,
+            emotionStrength: speech.emotionStrength,
+          }]
+          : []
+        const payload = buildPanelSpeechPlanPayloadFromLines({
           panel,
-          voiceLines,
-          characters: episode.novelPromotionProject.characters,
-          speakerVoices,
+          lines,
+          voiceConfig,
         })
-        const payload = preserveDeliveryVariants({
-          panel,
-          payload: rawPayload,
-          previousLinesJson: panel.speechPlan?.linesJson,
-        })
+        const warnings = [...canonicalWarnings, ...payload.warnings]
+        const hasLegacyConflict = panel.matchedVoiceLines.length > 1
+        if (hasLegacyConflict) {
+          warnings.push({
+            code: 'LEGACY_SPEECH_REBUILD_REQUIRED',
+            severity: 'blocking',
+            message: '当前镜头仍存在多条旧台词绑定，请重新生成分镜文稿与台词计划。',
+          })
+        }
+        if (legacyOnly) {
+          warnings.push({
+            code: 'LEGACY_SPEECH_REBUILD_REQUIRED',
+            severity: 'blocking',
+            message: '当前项目仍使用旧的多台词绑定数据，无法安全转换为一镜一条可播台词；请重新生成分镜文稿与台词计划。',
+          })
+        }
+        const status = legacyOnly || hasLegacyConflict || (speech !== null && speech.status !== 'ready')
+          ? 'invalid'
+          : payload.status
+
         return {
           projectId: episode.novelPromotionProject.projectId,
           episodeId: episode.id,
           clipId: storyboard.clipId,
           panelId: panel.id,
           mode: payload.mode,
-          status: payload.status,
+          status,
           linesJson: payload.lines,
           voiceConfigJson: payload.voiceConfig,
           timingJson: payload.timing,
-          warningsJson: payload.warnings,
-          source: resolveSpeechPlanSource(panel.speechPlan?.source, source),
+          warningsJson: warnings,
+          source: speech?.source || resolveSpeechPlanSource(panel.speechPlan?.source, source),
         }
       })
     ))
@@ -672,7 +638,7 @@ export async function rebuildEpisodeSpeechPlans(episodeId: string, source = 'sys
       summary: summarizePanelSpeechPlans(rows),
     }
   } catch (error) {
-    if (!isPanelSpeechPlanTableMissing(error)) throw error
+    if (!isPanelSpeechPlanTableMissing(error) && !isPanelSpeechTableMissing(error)) throw error
     return {
       episodeId,
       available: false,
@@ -704,14 +670,6 @@ export async function listEpisodeSpeechPlans(episodeId: string) {
 }
 
 export async function ensurePanelSpeechPlan(panelId: string) {
-  try {
-    const existing = await prisma.novelPromotionPanelSpeechPlan.findUnique({ where: { panelId } })
-    if (existing) return { available: true, plan: existing }
-  } catch (error) {
-    if (!isPanelSpeechPlanTableMissing(error)) throw error
-    return { available: false, plan: null }
-  }
-
   const panel = await prisma.novelPromotionPanel.findUnique({
     where: { id: panelId },
     select: {
@@ -731,8 +689,6 @@ export async function ensurePanelSpeechPlan(panelId: string) {
 }
 
 export async function ensureEpisodeSpeechPlans(episodeId: string) {
-  const existing = await listEpisodeSpeechPlans(episodeId)
-  if (!existing.available || existing.plans.length > 0) return existing
   return await rebuildEpisodeSpeechPlans(episodeId)
 }
 

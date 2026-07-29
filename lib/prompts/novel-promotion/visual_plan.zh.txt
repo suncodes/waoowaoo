@@ -74,6 +74,7 @@ Clips：{clips_json}
     "imagePrompt": "图片生成提示词",
     "videoPrompt": "首帧之后的动作和运镜",
     "durationSec": 5,
+    "speech": {"speaker": "旁白", "content": "本镜头唯一完整可播台词", "emotionStrength": 0.2},
     "onScreenText": "可选短文字",
     "sourceAnchor": {"label": "可选来源", "quote": "可选原文"},
     "assetRefs": [{"id": "必须来自可用资产", "kind": "character|location|prop", "name": "资产库中的精确名称"}],

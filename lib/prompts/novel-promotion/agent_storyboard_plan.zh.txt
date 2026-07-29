@@ -32,7 +32,7 @@
    - location: 场景名称（从资产库选择）
   - scene_type: daily/emotion/action/epic/suspense
   - source_text: 对应原文片段 ⚠️ 必填，不得为空
-  - speech_lines: 本镜头实际要说出的台词数组，格式 [{"speaker":"旁白或角色名","content":"本镜头口播内容","emotion_strength":0.1-0.5}]；无声音画面必须输出 []
+   - speech: 本镜头唯一实际要说出的台词对象，格式 {"speaker":"旁白或角色名","content":"本镜头完整口播内容","emotion_strength":0.1-0.5}；无声音画面必须输出 null
   - shot_function: hook/setup/reaction/evidence/transition/payoff/breath/cta，镜头承担的唯一叙事功能
   - primary_subject: 唯一主视觉主体，必须是画面真正焦点
   - continuity: {from_previous: "承接上一镜的信息", to_next: "交给下一镜的信息", screen_direction: "视线和运动方向", lighting_continuity: "光色承接"}
@@ -44,12 +44,12 @@
    - 直接从输入内容中复制原文
    - 创意镜头也需填写触发该镜头的原文片段
 
-4. speech_lines 规则（极其重要）：
-   - speech_lines 是本镜头的唯一台词来源，不得把相邻镜头台词重复写入本镜头
-   - 导读旁白也必须按镜头拆入 speech_lines，整段旁白要按原顺序覆盖，不能遗漏或重复
-   - 默认一个镜头只保留一个发言人的一段连续口播；只有确有顺序对话时才允许多个 speaker
+4. speech 规则（极其重要）：
+   - speech 是本镜头的唯一台词来源，不得把相邻镜头台词重复写入本镜头
+   - 导读旁白也必须按镜头拆入 speech，整段旁白要按原顺序覆盖，不能遗漏或重复
+   - 一个镜头只允许一个发言人的一段完整口播；多人对话必须拆成连续镜头，禁止数组或多个 speaker
    - 单个 4 秒镜头的 content 通常控制在 8-22 个汉字；若无法容纳，应先拆镜头或压缩语义，不能把多句硬塞进同一镜头
-   - source_text 是画面依据，speech_lines 才是实际要说的话；纯画面镜头必须保留 source_text，但 speech_lines 输出 []
+   - source_text 是画面依据，speech 才是实际要说的话；纯画面镜头必须保留 source_text，但 speech 输出 null
 
 【镜头拆分规则】
 
@@ -276,7 +276,7 @@
       "risk_flags": []
     },
     "source_text": "张三走进办公室，看着正在工作的李四和王五",
-    "speech_lines": []
+    "speech": null
   },
   {
     "panel_number": 2,
@@ -302,7 +302,7 @@
       "risk_flags": []
     },
     "source_text": "说：开会了",
-    "speech_lines": [{"speaker":"张三","content":"开会了","emotion_strength":0.2}]
+    "speech": {"speaker":"张三","content":"开会了","emotion_strength":0.2}
   },
   {
     "panel_number": 3,
@@ -405,4 +405,4 @@ Clip信息：
 18. 未在角色库中明确存在的角色不得出现在 characters 或 description 中；风格名称不能被当作角色来源
 19. 每个分镜必须填写 shot_function、primary_subject、continuity、single_image_feasibility；这些字段用于后续专业提示词编译，不得省略
 20. single_image_feasibility.status 不是 feasible 时，必须在 description 中只保留能由单张图表达的内容，并在 reason 说明需要拆分或合成的原因
-21. 每个分镜必须输出 speech_lines；没有口播或对话时输出 []，不得省略该字段
+21. 每个分镜必须输出 speech；有口播或对话时只能输出一个台词对象，没有口播或对话时输出 null，不得省略该字段

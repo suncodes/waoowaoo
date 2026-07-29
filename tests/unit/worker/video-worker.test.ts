@@ -60,26 +60,33 @@ const audioMixMock = vi.hoisted(() => ({
     voiceLineCount: 1,
   })),
 }))
-const speechPlanMock = vi.hoisted(() => ({
-  ensurePanelSpeechPlan: vi.fn<() => Promise<{ available: boolean; plan: Record<string, unknown> | null }>>(async () => ({ available: true, plan: null })),
-  compileSpeechPlanPromptSection: vi.fn(() => ''),
-  getPanelSpeechReferenceVoiceConfigs: vi.fn<() => Array<Record<string, unknown>>>(() => []),
-  panelSpeechPlanHasSpeech: vi.fn(() => false),
+const panelSpeechMock = vi.hoisted(() => ({
+  validatePanelSpeechReadyForVideo: vi.fn<() => Promise<{
+    ready: boolean
+    available: boolean
+    speech: Record<string, unknown> | null
+    reasons: string[]
+    code: string
+    voiceLineCount: number
+  }>>(async () => ({
+    ready: true,
+    available: true,
+    speech: null,
+    reasons: [],
+    code: 'NO_SPEECH',
+    voiceLineCount: 0,
+  })),
+  compilePanelSpeechPromptSection: vi.fn(() => ''),
+  panelSpeechHasContent: vi.fn((speech: { originalContent?: string } | null | undefined) => !!speech?.originalContent),
 }))
-const outboundAudioMock = vi.hoisted(() => ({
-  resolveOutboundAudioReferences: vi.fn<() => Promise<{ references: Array<Record<string, unknown>>; issues: unknown[] }>>(async () => ({ references: [], issues: [] })),
-  summarizeOutboundAudioReferences: vi.fn((references: Array<Record<string, unknown>>) => (
-    references.map((reference) => ({
-      speaker: reference.speaker,
-      source: reference.source,
-      provider: reference.provider,
-      voiceType: reference.voiceType,
-      mimeType: reference.mimeType,
-      byteSize: reference.byteSize,
-      hash: reference.hash,
-      sourceKind: reference.sourceKind,
-    }))
-  )),
+const panelVideoReferenceAudioMock = vi.hoisted(() => ({
+  resolvePanelVideoReferenceAudios: vi.fn<() => Promise<{
+    referenceAudios: Array<Record<string, unknown>>
+    referenceAudioSummary: Array<Record<string, unknown>>
+  }>>(async () => ({
+    referenceAudios: [],
+    referenceAudioSummary: [],
+  })),
 }))
 
 const prismaMock = vi.hoisted(() => ({
@@ -144,8 +151,8 @@ vi.mock('@/lib/config-service', () => configServiceMock)
 vi.mock('@/lib/workers/user-concurrency-gate', () => concurrencyGateMock)
 vi.mock('@/lib/run-runtime/service', () => artifactMock)
 vi.mock('@/lib/novel-promotion/audio-mix', () => audioMixMock)
-vi.mock('@/lib/novel-promotion/speech-plan', () => speechPlanMock)
-vi.mock('@/lib/media/outbound-audio', () => outboundAudioMock)
+vi.mock('@/lib/novel-promotion/panel-speech', () => panelSpeechMock)
+vi.mock('@/lib/workers/panel-video-reference-audio', () => panelVideoReferenceAudioMock)
 
 function buildPanel(overrides?: Partial<PanelRow>): PanelRow {
   return {
@@ -195,23 +202,20 @@ describe('worker video processor behavior', () => {
       audioUrl: 'cos/line-1.mp3',
       audioDuration: 1200,
     })
-    speechPlanMock.ensurePanelSpeechPlan.mockResolvedValue({ available: true, plan: null })
-    speechPlanMock.compileSpeechPlanPromptSection.mockReturnValue('')
-    speechPlanMock.getPanelSpeechReferenceVoiceConfigs.mockReturnValue([])
-    speechPlanMock.panelSpeechPlanHasSpeech.mockReturnValue(false)
-    outboundAudioMock.resolveOutboundAudioReferences.mockResolvedValue({ references: [], issues: [] })
-    outboundAudioMock.summarizeOutboundAudioReferences.mockImplementation((references: Array<Record<string, unknown>>) => (
-      references.map((reference) => ({
-        speaker: reference.speaker,
-        source: reference.source,
-        provider: reference.provider,
-        voiceType: reference.voiceType,
-        mimeType: reference.mimeType,
-        byteSize: reference.byteSize,
-        hash: reference.hash,
-        sourceKind: reference.sourceKind,
-      }))
-    ))
+    panelSpeechMock.validatePanelSpeechReadyForVideo.mockResolvedValue({
+      ready: true,
+      available: true,
+      speech: null,
+      reasons: [],
+      code: 'NO_SPEECH',
+      voiceLineCount: 0,
+    })
+    panelSpeechMock.compilePanelSpeechPromptSection.mockReturnValue('')
+    panelSpeechMock.panelSpeechHasContent.mockReturnValue(false)
+    panelVideoReferenceAudioMock.resolvePanelVideoReferenceAudios.mockResolvedValue({
+      referenceAudios: [],
+      referenceAudioSummary: [],
+    })
 
     const mod = await import('@/lib/workers/video.worker')
     mod.createVideoWorker()
@@ -357,22 +361,34 @@ describe('worker video processor behavior', () => {
       hash: 'audiohash',
       sourceKind: 'storage',
     }
-    speechPlanMock.ensurePanelSpeechPlan.mockResolvedValueOnce({
+    panelSpeechMock.validatePanelSpeechReadyForVideo.mockResolvedValueOnce({
+      ready: true,
       available: true,
-      plan: {
-        mode: 'voiceover',
+      speech: {
+        speaker: '旁白',
+        originalContent: '海底的阴影逼近。',
+        deliveryContent: null,
         status: 'ready',
-        linesJson: [{ voiceLineId: 'line-1', lineIndex: 1, order: 1, speaker: '旁白', content: '海底的阴影逼近。' }],
-        voiceConfigJson: [{ speaker: '旁白', hasVoice: true, source: 'speaker', provider: 'fal', previewAudioUrl: 'voice/ref.wav' }],
+        voiceConfigJson: { speaker: '旁白', hasVoice: true, source: 'speaker', provider: 'fal', previewAudioUrl: 'voice/ref.wav' },
         updatedAt: new Date('2026-07-23T00:00:00.000Z'),
       },
+      reasons: [],
+      code: 'READY',
+      voiceLineCount: 1,
     })
-    speechPlanMock.getPanelSpeechReferenceVoiceConfigs.mockReturnValueOnce([
-      { speaker: '旁白', hasVoice: true, source: 'speaker', provider: 'fal', voiceType: 'narration', previewAudioUrl: 'voice/ref.wav' },
-    ])
-    outboundAudioMock.resolveOutboundAudioReferences.mockResolvedValueOnce({
-      references: [referenceAudio],
-      issues: [],
+    panelSpeechMock.panelSpeechHasContent.mockReturnValueOnce(true)
+    panelVideoReferenceAudioMock.resolvePanelVideoReferenceAudios.mockResolvedValueOnce({
+      referenceAudios: [referenceAudio],
+      referenceAudioSummary: [{
+        speaker: '旁白',
+        source: 'speaker',
+        provider: 'fal',
+        voiceType: 'narration',
+        mimeType: 'audio/wav',
+        byteSize: 4,
+        hash: 'audiohash',
+        sourceKind: 'storage',
+      }],
     })
 
     const job = buildJob({

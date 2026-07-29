@@ -74,6 +74,7 @@ Return JSON only:
     "imagePrompt": "image generation prompt",
     "videoPrompt": "motion and camera behavior after the first frame",
     "durationSec": 5,
+    "speech": {"speaker": "Narrator", "content": "The only complete speakable line for this shot", "emotionStrength": 0.2},
     "onScreenText": "optional short text",
     "sourceAnchor": {"label": "optional source", "quote": "optional quote"},
     "assetRefs": [{"id": "exact available asset id", "kind": "character|location|prop", "name": "exact asset name"}],

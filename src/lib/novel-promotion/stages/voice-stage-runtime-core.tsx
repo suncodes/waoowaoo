@@ -115,10 +115,6 @@ export function useVoiceStageRuntime({
     projectSpeakers,
     speakerVoices,
   })
-  const bindablePanelOptions = useBindablePanelOptions({
-    episodeData,
-    t: (key, values) => t(key, values as never),
-  })
   const {
     isLineEditorOpen,
     isSavingLineEditor,
@@ -136,6 +132,12 @@ export function useVoiceStageRuntime({
     handleCancelEdit,
   } = useVoiceLineEditorState({
     speakerOptions,
+  })
+  const bindablePanelOptions = useBindablePanelOptions({
+    episodeData,
+    t: (key, values) => t(key, values as never),
+    voiceLines,
+    selectedPanelId: editingMatchedPanelId,
   })
   const { playingLineId, handleTogglePlayAudio } = useVoicePlayback()
   const [pendingVoiceGenerationByLineId, setPendingVoiceGenerationByLineId] = useState<PendingVoiceGenerationMap>({})

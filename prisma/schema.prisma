@@ -151,6 +151,7 @@ model NovelPromotionEpisode {
   storyboards             NovelPromotionStoryboard[]
   voiceLines              NovelPromotionVoiceLine[]
   voiceSpans              NovelPromotionPanelVoiceSpan[]
+  panelSpeeches           NovelPromotionPanelSpeech[]
   speechPlans             NovelPromotionPanelSpeechPlan[]
   subtitleTracks          NovelPromotionSubtitleTrack[]
   editorProject           VideoEditorProject?
@@ -196,6 +197,7 @@ model NovelPromotionClip {
   episode    NovelPromotionEpisode     @relation(fields: [episodeId], references: [id], onDelete: Cascade)
   shots      NovelPromotionShot[]
   storyboard NovelPromotionStoryboard?
+  panelSpeeches NovelPromotionPanelSpeech[]
   speechPlans NovelPromotionPanelSpeechPlan[]
 
   @@index([episodeId])
@@ -267,6 +269,7 @@ model NovelPromotionPanel {
   storyboard        NovelPromotionStoryboard  @relation(fields: [storyboardId], references: [id], onDelete: Cascade)
   matchedVoiceLines NovelPromotionVoiceLine[]
   voiceSpans        NovelPromotionPanelVoiceSpan[]
+  panelSpeech       NovelPromotionPanelSpeech?
   speechPlan        NovelPromotionPanelSpeechPlan?
 
   @@unique([storyboardId, panelIndex])
@@ -626,6 +629,38 @@ model NovelPromotionPanelSpeechPlan {
   @@index([clipId])
   @@index([status])
   @@map("novel_promotion_panel_speech_plans")
+}
+
+// 镜头级可播台词的唯一事实来源：一个镜头最多一条，缺少记录即为静音镜头。
+model NovelPromotionPanelSpeech {
+  id                  String                @id @default(uuid())
+  projectId           String
+  episodeId           String
+  clipId              String?
+  panelId             String                @unique
+  speaker             String
+  originalContent     String                @db.Text
+  deliveryContent     String?               @db.Text
+  sourceAnchor        Json?
+  targetDurationMs    Int?
+  estimatedDurationMs Int?
+  emotionPrompt       String?               @db.Text
+  emotionStrength     Float?
+  voiceConfigJson     Json?
+  warningsJson        Json?
+  status              String                @default("ready")
+  source              String                @default("system")
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @default(now()) @updatedAt
+  episode             NovelPromotionEpisode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  clip                NovelPromotionClip?   @relation(fields: [clipId], references: [id], onDelete: SetNull)
+  panel               NovelPromotionPanel   @relation(fields: [panelId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([episodeId])
+  @@index([clipId])
+  @@index([status])
+  @@map("novel_promotion_panel_speeches")
 }
 
 model NovelPromotionSubtitleTrack {

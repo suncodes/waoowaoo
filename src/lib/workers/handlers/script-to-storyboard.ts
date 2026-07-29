@@ -459,6 +459,7 @@ export async function handleScriptToStoryboardTask(job: Job<TaskJobData>) {
           episodeId,
           clipPanels: orchestratorResult.clipPanels,
           voiceLineRows: directVoiceLineRows,
+          speechSource: directVoiceLineRows === null ? 'retry' : 'storyboard',
         })
         await rebuildEpisodeNarrationTimeline(episodeId)
         await rebuildEpisodeSpeechPlans(episodeId, directVoiceLineRows === null ? 'retry' : 'storyboard')
@@ -577,6 +578,7 @@ export async function handleScriptToStoryboardTask(job: Job<TaskJobData>) {
         episodeId,
         clipPanels: orchestratorResult.clipPanels,
         voiceLineRows,
+        speechSource: voiceLineSource,
       })
       await rebuildEpisodeNarrationTimeline(episodeId)
       await rebuildEpisodeSpeechPlans(episodeId, voiceLineSource)

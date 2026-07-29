@@ -5,9 +5,7 @@ import { executeAiTextStep } from '@/lib/ai-runtime'
 import { safeParseJsonObject } from '@/lib/json-repair'
 import { estimateNarrationDurationMs } from '@/lib/novel-promotion/narration-timeline'
 import {
-  buildPanelSpeechPlanPayloadFromLines,
   readPanelSpeechLines,
-  readPanelSpeechVoiceConfig,
   rebuildEpisodeSpeechPlans,
   resolvePanelSpeechLineDurationMs,
   resolvePanelSpeechLineText,
@@ -851,53 +849,21 @@ async function refreshPanelBindingAndRoute(params: {
 async function applyDeliveryRewriteAction(action: StoryboardAutoFixAction): Promise<boolean> {
   if (action.type !== 'rewrite_delivery_line') return false
   const panelId = action.panelId?.trim()
-  const voiceLineId = action.voiceLineId?.trim()
   const deliveryContent = normalizeSpeechText(action.after || '')
-  if (!panelId || !voiceLineId || !deliveryContent) return false
+  if (!panelId || !deliveryContent) return false
 
-  const [panel, speechPlan] = await Promise.all([
-    prisma.novelPromotionPanel.findUnique({
-      where: { id: panelId },
-      select: {
-        id: true,
-        duration: true,
-        targetDurationMs: true,
-      },
-    }),
-    prisma.novelPromotionPanelSpeechPlan.findUnique({ where: { panelId } }),
-  ])
-  if (!panel || !speechPlan) return false
-
-  let updated = false
-  const lines = readPanelSpeechLines(speechPlan.linesJson).map((line) => {
-    if (line.voiceLineId !== voiceLineId) return line
-    updated = true
-    return {
-      ...line,
-      deliveryContent,
-      deliveryDurationMs: estimateNarrationDurationMs(deliveryContent),
-      deliverySource: 'storyboard_auto_fix',
-      deliveryReason: action.reason,
-      deliveryUpdatedAt: nowIso(),
-    }
-  })
-  if (!updated) return false
-
-  const payload = buildPanelSpeechPlanPayloadFromLines({
-    panel,
-    lines,
-    voiceConfig: readPanelSpeechVoiceConfig(speechPlan.voiceConfigJson),
-  })
-
-  await prisma.novelPromotionPanelSpeechPlan.update({
+  const speech = await prisma.novelPromotionPanelSpeech.findUnique({
     where: { panelId },
+    select: { id: true },
+  })
+  if (!speech) return false
+
+  await prisma.novelPromotionPanelSpeech.update({
+    where: { id: speech.id },
     data: {
-      mode: payload.mode,
-      status: payload.status,
-      linesJson: asInputJson(payload.lines),
-      timingJson: asInputJson(payload.timing),
-      warningsJson: asInputJson(payload.warnings),
-      source: 'storyboard_auto_fix_delivery_rewrite',
+      deliveryContent,
+      estimatedDurationMs: estimateNarrationDurationMs(deliveryContent),
+      source: 'storyboard_auto_fix',
     },
   })
   return true
@@ -954,6 +920,7 @@ export async function applyStoryboardAutoFix(params: {
 
   const appliedActionIds: string[] = []
   const skippedActionIds: string[] = []
+  let speechPlansChanged = false
   const needsSpeechRebuild = plan.actions.some((action) => action.type === 'rebuild_speech_plans')
   if (needsSpeechRebuild) {
     await rebuildEpisodeSpeechPlans(params.episodeId, 'storyboard_auto_fix')
@@ -969,9 +936,14 @@ export async function applyStoryboardAutoFix(params: {
     const applied = await applyDeliveryRewriteAction(action)
     if (applied) {
       appliedActionIds.push(action.id)
+      speechPlansChanged = true
     } else {
       skippedActionIds.push(action.id)
     }
+  }
+
+  if (speechPlansChanged) {
+    await rebuildEpisodeSpeechPlans(params.episodeId, 'storyboard_auto_fix')
   }
 
   const latest = await loadEpisode(params.episodeId)

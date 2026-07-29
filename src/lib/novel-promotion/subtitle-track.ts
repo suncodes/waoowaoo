@@ -4,12 +4,11 @@ import { prisma } from '@/lib/prisma'
 import { getPrismaErrorCode } from '@/lib/prisma-error'
 import { uploadObject } from '@/lib/storage'
 import {
-  readPanelSpeechLines,
-  resolvePanelSpeechLineDurationMs,
-  resolvePanelSpeechLineText,
-  type PanelSpeechLine,
-} from './speech-plan'
-import { ensureEpisodeSpeechPlans } from './speech-plan'
+  estimatePanelSpeechDurationMs,
+  listEpisodePanelSpeeches,
+  resolvePanelSpeechDurationMs,
+  resolvePanelSpeechText,
+} from './panel-speech'
 import {
   collectOrderedVideoCandidates,
   type OrderedVideoCandidate,
@@ -58,8 +57,11 @@ export interface SubtitlePanelSource {
   panelIndex: number
   duration: number | null
   targetDurationMs: number | null
-  speechPlan: {
-    linesJson: unknown
+  speech: {
+    id: string
+    originalContent: string
+    deliveryContent: string | null
+    estimatedDurationMs: number | null
     updatedAt: Date
   } | null
 }
@@ -193,20 +195,17 @@ export function wrapSubtitleText(value: string): string {
   return `${characters.slice(0, MAX_CHARACTERS_PER_LINE).join('')}\n${characters.slice(MAX_CHARACTERS_PER_LINE).join('')}`
 }
 
-function splitSpeechLine(line: PanelSpeechLine): Array<{
+function splitPanelSpeech(speech: NonNullable<SubtitlePanelSource['speech']>): Array<{
   text: string
   weight: number
   voiceLineIds: string[]
 }> {
-  const content = normalizeSubtitleText(resolvePanelSpeechLineText(line))
+  const content = normalizeSubtitleText(resolvePanelSpeechText(speech))
   if (!content) return []
   const chunks = splitLongText(content)
   const characterTotal = Math.max(1, Array.from(content).length)
-  const lineDuration = Math.max(1, resolvePanelSpeechLineDurationMs(line))
-  const voiceLineIds = Array.from(new Set([
-    line.voiceLineId,
-    ...(Array.isArray(line.voiceLineIds) ? line.voiceLineIds : []),
-  ].filter(Boolean)))
+  const lineDuration = Math.max(1, resolvePanelSpeechDurationMs(speech) || estimatePanelSpeechDurationMs(content))
+  const voiceLineIds = [speech.id]
 
   return chunks.map((chunk) => ({
     text: wrapSubtitleText(chunk),
@@ -282,7 +281,6 @@ export function buildSubtitleTrackDraft(params: {
   }))
   const speechSignature: Array<Record<string, unknown>> = []
   let cursorMs = 0
-  let missingSpeechPlanCount = 0
 
   for (const segment of params.segments) {
     const panel = panels.get(panelKey(segment.storyboardId, segment.panelIndex))
@@ -291,22 +289,20 @@ export function buildSubtitleTrackDraft(params: {
     const panelEndMs = panelStartMs + durationMs
     cursorMs = panelEndMs
 
-    const lines = panel?.speechPlan ? readPanelSpeechLines(panel.speechPlan.linesJson) : []
+    const speech = panel?.speech || null
     speechSignature.push({
       storyboardId: segment.storyboardId,
       panelIndex: segment.panelIndex,
-      lines: lines.map((line) => ({
-        voiceLineIds: Array.from(new Set([line.voiceLineId, ...(line.voiceLineIds || [])])).sort(),
-        text: resolvePanelSpeechLineText(line),
-      })),
+      speech: speech
+        ? {
+          id: speech.id,
+          text: resolvePanelSpeechText(speech),
+          updatedAt: speech.updatedAt.toISOString(),
+        }
+        : null,
     })
 
-    if (!panel?.speechPlan) {
-      missingSpeechPlanCount += 1
-      continue
-    }
-
-    const units = lines.flatMap(splitSpeechLine)
+    const units = speech ? splitPanelSpeech(speech) : []
     if (units.length === 0) continue
     if (units.length > 4) {
       warnings.push({
@@ -339,13 +335,6 @@ export function buildSubtitleTrackDraft(params: {
       }
       unitCursorMs = endMs
     }
-  }
-
-  if (missingSpeechPlanCount > 0) {
-    warnings.push({
-      code: 'SPEECH_PLAN_MISSING',
-      message: `${missingSpeechPlanCount} 个镜头缺少镜头级台词计划，未为这些镜头生成字幕。`,
-    })
   }
 
   return {
@@ -485,7 +474,10 @@ export async function loadEpisodeSubtitleSource(params: {
   episodeId: string
   panelPreferences?: Record<string, boolean>
 }): Promise<SubtitleEpisodeSource> {
-  await ensureEpisodeSpeechPlans(params.episodeId)
+  const panelSpeechState = await listEpisodePanelSpeeches(params.episodeId)
+  if (!panelSpeechState.available) {
+    throw new Error('SUBTITLE_PANEL_SPEECH_SCHEMA_OUT_OF_DATE')
+  }
   const episode = await prisma.novelPromotionEpisode.findFirst({
     where: {
       id: params.episodeId,
@@ -521,9 +513,12 @@ export async function loadEpisodeSubtitleSource(params: {
               audioMixedVideoUrl: true,
               lipSyncVideoUrl: true,
               linkedToNextPanel: true,
-              speechPlan: {
+              panelSpeech: {
                 select: {
-                  linesJson: true,
+                  id: true,
+                  originalContent: true,
+                  deliveryContent: true,
+                  estimatedDurationMs: true,
                   updatedAt: true,
                 },
               },
@@ -543,7 +538,7 @@ export async function loadEpisodeSubtitleSource(params: {
     panelIndex: panel.panelIndex,
     duration: panel.duration,
     targetDurationMs: panel.targetDurationMs,
-    speechPlan: panel.speechPlan,
+    speech: panel.panelSpeech,
   })))
   return {
     projectName: episode.novelPromotionProject.project.name,

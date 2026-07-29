@@ -22,10 +22,10 @@ import {
   readPanelTargetDurationMs,
 } from '@/lib/video-generation-duration'
 import {
-  ensureEpisodeSpeechPlans,
-  isPanelSpeechPlanTableMissing,
-  panelSpeechPlanHasSpeech,
-} from '@/lib/novel-promotion/speech-plan'
+  listEpisodePanelSpeeches,
+  panelSpeechHasContent,
+  validatePanelSpeechReadyForVideo,
+} from '@/lib/novel-promotion/panel-speech'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
@@ -210,39 +210,24 @@ function assertVisualReady(panel: { id: string; candidateImages?: unknown; visua
   })
 }
 
-function readSpeechPlanProjection(value: unknown): {
-  mode?: string | null
+function readPanelSpeechProjection(value: unknown): {
+  originalContent: string
+  deliveryContent?: string | null
   status?: string | null
-  linesJson?: unknown
 } | null {
   if (!isRecord(value)) return null
-  const plan = value.speechPlan
-  return isRecord(plan) ? plan : null
-}
-
-async function loadPanelSpeechPlan(panelId: string): Promise<{
-  mode?: string | null
-  status?: string | null
-  linesJson?: unknown
-} | null> {
-  try {
-    return await prisma.novelPromotionPanelSpeechPlan.findUnique({
-      where: { panelId },
-      select: {
-        mode: true,
-        status: true,
-        linesJson: true,
-      },
-    })
-  } catch (error) {
-    if (isPanelSpeechPlanTableMissing(error)) return null
-    throw error
+  const speech = value.panelSpeech
+  if (!isRecord(speech) || typeof speech.originalContent !== 'string') return null
+  return {
+    originalContent: speech.originalContent,
+    ...(typeof speech.deliveryContent === 'string' ? { deliveryContent: speech.deliveryContent } : {}),
+    ...(typeof speech.status === 'string' ? { status: speech.status } : {}),
   }
 }
 
 function resolveNativeAudioDefault(input: {
   payload: Record<string, unknown>
-  speechPlan?: { mode?: string | null; linesJson?: unknown } | null
+  speech?: { originalContent: string; deliveryContent?: string | null } | null
 }): boolean | undefined {
   const modelKey = resolveVideoModelKeyFromPayload(input.payload)
   if (!modelKey) return undefined
@@ -258,7 +243,7 @@ function resolveNativeAudioDefault(input: {
   const options = capabilities?.video?.generateAudioOptions
   if (!Array.isArray(options) || !options.includes(true)) return undefined
 
-  const hasSpeech = panelSpeechPlanHasSpeech(input.speechPlan)
+  const hasSpeech = panelSpeechHasContent(input.speech)
   if (hasSpeech) return true
   return options.includes(false) ? false : undefined
 }
@@ -268,7 +253,7 @@ function buildPayloadWithPanelGenerationDefaults(
   panel: {
     targetDurationMs?: number | null
     duration?: number | null
-    speechPlan?: { mode?: string | null; linesJson?: unknown } | null
+    speech?: { originalContent: string; deliveryContent?: string | null } | null
   },
 ): Record<string, unknown> {
   const modelKey = resolveVideoModelKeyFromPayload(payload)
@@ -281,7 +266,7 @@ function buildPayloadWithPanelGenerationDefaults(
   })
   const generateAudio = resolveNativeAudioDefault({
     payload,
-    speechPlan: panel.speechPlan,
+    speech: panel.speech,
   })
   const generationOptions = isRecord(payload.generationOptions)
     ? payload.generationOptions
@@ -347,7 +332,14 @@ export const POST = apiHandler(async (
       select: { id: true },
     })
     if (!episode) throw new ApiError('NOT_FOUND')
-    const speechPlansState = await ensureEpisodeSpeechPlans(episodeId)
+    const panelSpeechesState = await listEpisodePanelSpeeches(episodeId)
+    if (!panelSpeechesState.available) {
+      throw new ApiError('CONFLICT', {
+        code: 'DB_SCHEMA_OUT_OF_DATE',
+        message: '数据库结构不是最新版本，缺少镜头级可播台词表。请执行数据库迁移后重新部署。',
+        table: 'novel_promotion_panel_speeches',
+      })
+    }
 
     const storyboards = await prisma.novelPromotionStoryboard.findMany({
       where: { episodeId },
@@ -370,17 +362,16 @@ export const POST = apiHandler(async (
             firstLastFramePrompt: true,
             targetDurationMs: true,
             duration: true,
-            ...(speechPlansState.available
-              ? {
-                speechPlan: {
-                  select: {
-                    mode: true,
-                    status: true,
-                    linesJson: true,
-                  },
-                },
-              }
-              : {}),
+            panelSpeech: {
+              select: {
+                originalContent: true,
+                deliveryContent: true,
+                status: true,
+              },
+            },
+            matchedVoiceLines: {
+              select: { id: true },
+            },
           },
         },
       },
@@ -424,7 +415,15 @@ export const POST = apiHandler(async (
         skip('quality_not_ready')
         return
       }
-      const panelSpeechPlan = readSpeechPlanProjection(panel)
+      const panelSpeech = readPanelSpeechProjection(panel)
+      if (panelSpeech && panelSpeech.status !== 'ready') {
+        skip('speech_not_ready')
+        return
+      }
+      if (!panelSpeech && panel.matchedVoiceLines.length > 0) {
+        skip('legacy_speech_rebuild_required')
+        return
+      }
       if (batchMode === 'normal') {
         const payload = buildPayloadWithPanelGenerationDefaults({
           ...basePayload,
@@ -432,7 +431,7 @@ export const POST = apiHandler(async (
           panelIndex: panel.panelIndex,
         }, {
           ...panel,
-          speechPlan: panelSpeechPlan,
+          speech: panelSpeech,
         })
         targets.push({
           panelId: panel.id,
@@ -475,7 +474,7 @@ export const POST = apiHandler(async (
         },
       }, {
         ...panel,
-        speechPlan: panelSpeechPlan,
+        speech: panelSpeech,
       })
       targets.push({
         panelId: panel.id,
@@ -539,7 +538,15 @@ export const POST = apiHandler(async (
     throw new ApiError('NOT_FOUND')
   }
   assertVisualReady(panel)
-  const speechPlan = await loadPanelSpeechPlan(panel.id)
+  const panelSpeechState = await validatePanelSpeechReadyForVideo(panel.id)
+  if (!panelSpeechState.ready) {
+    throw new ApiError('CONFLICT', {
+      code: panelSpeechState.code,
+      panelId: panel.id,
+      reasons: panelSpeechState.reasons,
+      table: panelSpeechState.available ? undefined : 'novel_promotion_panel_speeches',
+    })
+  }
 
   const firstLastFrame = isRecord(body?.firstLastFrame) ? body.firstLastFrame : null
   if (
@@ -563,7 +570,7 @@ export const POST = apiHandler(async (
   delete requestPayload.allowSpeechlessVideo
   const taskPayload = buildPayloadWithPanelGenerationDefaults(requestPayload, {
     ...panel,
-    speechPlan,
+    speech: panelSpeechState.speech,
   })
   await validateVideoCapabilityCombination({
     payload: taskPayload,

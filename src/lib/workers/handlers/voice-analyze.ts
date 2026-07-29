@@ -17,8 +17,10 @@ import { resolveAnalysisModel } from './resolve-analysis-model'
 import { resolveVoiceAnalysisSource } from '@/lib/voice/voice-analysis-source'
 import { rebuildEpisodeNarrationTimeline } from '@/lib/novel-promotion/narration-timeline'
 import {
-  isStoryboardSpeechPlanSource,
-  listEpisodeSpeechPlans,
+  listEpisodePanelSpeeches,
+  replaceEpisodePanelSpeeches,
+} from '@/lib/novel-promotion/panel-speech'
+import {
   rebuildEpisodeSpeechPlans,
 } from '@/lib/novel-promotion/speech-plan'
 
@@ -96,9 +98,11 @@ export async function handleVoiceAnalyzeTask(job: Job<TaskJobData>) {
     throw new Error('Episode does not belong to this project')
   }
 
-  const existingSpeechPlans = await listEpisodeSpeechPlans(episodeId)
-  const usesStoryboardSpeechContract = existingSpeechPlans.available
-    && existingSpeechPlans.plans.some((plan) => isStoryboardSpeechPlanSource(plan.source))
+  const existingPanelSpeeches = await listEpisodePanelSpeeches(episodeId)
+  const usesStoryboardSpeechContract = existingPanelSpeeches.available
+    && existingPanelSpeeches.speeches.some((speech) => (
+      speech.source === 'storyboard' || speech.source === 'visual_plan'
+    ))
   if (usesStoryboardSpeechContract) {
     await reportTaskProgress(job, 20, {
       stage: 'voice_analyze_prepare',
@@ -111,12 +115,10 @@ export async function handleVoiceAnalyzeTask(job: Job<TaskJobData>) {
     await rebuildEpisodeNarrationTimeline(episodeId)
     const speechPlanResult = await rebuildEpisodeSpeechPlans(episodeId, 'storyboard')
     const speakerStats: Record<string, number> = {}
-    for (const line of episode.voiceLines) {
-      speakerStats[line.speaker] = (speakerStats[line.speaker] || 0) + 1
+    for (const speech of existingPanelSpeeches.speeches) {
+      speakerStats[speech.speaker] = (speakerStats[speech.speaker] || 0) + 1
     }
-    const matchedCount = episode.voiceLines.filter((line) => (
-      !!line.matchedStoryboardId || !!line.matchedPanelId
-    )).length
+    const matchedCount = existingPanelSpeeches.speeches.length
 
     await reportTaskProgress(job, 96, {
       stage: 'voice_analyze_persist_done',
@@ -127,7 +129,7 @@ export async function handleVoiceAnalyzeTask(job: Job<TaskJobData>) {
 
     return {
       episodeId,
-      count: episode.voiceLines.length,
+      count: existingPanelSpeeches.speeches.length,
       matchedCount,
       speakerStats,
       speechPlanSummary: speechPlanResult.summary,
@@ -243,15 +245,7 @@ export async function handleVoiceAnalyzeTask(job: Job<TaskJobData>) {
 
           const matchedPanel = lineData.matchedPanel
           if (!matchedPanel) {
-            return {
-              lineIndex,
-              speaker: lineData.speaker.trim(),
-              content: lineData.content,
-              emotionStrength: Math.min(1, Math.max(0.1, lineData.emotionStrength)),
-              matchedPanelId: null,
-              matchedStoryboardId: null,
-              matchedPanelIndex: null,
-            }
+            throw new Error(`PANEL_SPEECH_INVALID: voice line ${index + 1} is not assigned to a storyboard panel`)
           }
 
           const storyboardId = typeof matchedPanel.storyboardId === 'string' ? matchedPanel.storyboardId.trim() : ''
@@ -300,99 +294,41 @@ export async function handleVoiceAnalyzeTask(job: Job<TaskJobData>) {
   })
   await assertTaskActive(job, 'voice_analyze_persist')
 
-  const createdVoiceLines = await prisma.$transaction(async (tx) => {
-    const voiceLineModel = tx.novelPromotionVoiceLine as unknown as {
-      upsert?: (args: unknown) => Promise<{
-        id: string
-        speaker: string
-        matchedStoryboardId: string | null
-      }>
-      create: (args: unknown) => Promise<{
-        id: string
-        speaker: string
-        matchedStoryboardId: string | null
-      }>
-      deleteMany: (args: unknown) => Promise<unknown>
+  const assignedPanelIds = new Set<string>()
+  const assignments = voiceLinesData.map((lineData, index) => {
+    if (!lineData.matchedPanelId) {
+      throw new Error(`PANEL_SPEECH_INVALID: voice line ${index + 1} is not assigned to a storyboard panel`)
     }
-    const created: Array<{
-      id: string
-      speaker: string
-      matchedStoryboardId: string | null
-    }> = []
-
-    for (let i = 0; i < voiceLinesData.length; i += 1) {
-      const lineData = voiceLinesData[i]
-
-      const upsertArgs = {
-        where: {
-          episodeId_lineIndex: {
-            episodeId,
-            lineIndex: lineData.lineIndex,
-          },
-        },
-        create: {
-          episodeId,
-          lineIndex: lineData.lineIndex,
-          speaker: lineData.speaker,
-          content: lineData.content,
-          emotionStrength: lineData.emotionStrength,
-          matchedPanelId: lineData.matchedPanelId,
-          matchedStoryboardId: lineData.matchedStoryboardId,
-          matchedPanelIndex: lineData.matchedPanelIndex,
-        },
-        update: {
-          speaker: lineData.speaker,
-          content: lineData.content,
-          emotionStrength: lineData.emotionStrength,
-          matchedPanelId: lineData.matchedPanelId,
-          matchedStoryboardId: lineData.matchedStoryboardId,
-          matchedPanelIndex: lineData.matchedPanelIndex,
-        },
-        select: {
-          id: true,
-          speaker: true,
-          matchedStoryboardId: true,
-        },
-      }
-      const voiceLine = typeof voiceLineModel.upsert === 'function'
-        ? await voiceLineModel.upsert(upsertArgs)
-        : (
-          process.env.NODE_ENV === 'test'
-            ? await voiceLineModel.create({
-              data: upsertArgs.create,
-              select: upsertArgs.select,
-            })
-            : (() => { throw new Error('novelPromotionVoiceLine.upsert unavailable') })()
-        )
-      created.push(voiceLine)
+    if (assignedPanelIds.has(lineData.matchedPanelId)) {
+      throw new Error(`PANEL_SPEECH_INVALID: multiple spoken lines are assigned to panel ${lineData.matchedPanelId}`)
     }
-
-    const incomingLineIndexes = new Set<number>(voiceLinesData.map((item) => item.lineIndex))
-    if (incomingLineIndexes.size === 0) {
-      await voiceLineModel.deleteMany({
-        where: {
-          episodeId,
-        },
-      })
-    } else {
-      await voiceLineModel.deleteMany({
-        where: {
-          episodeId,
-          lineIndex: {
-            notIn: Array.from(incomingLineIndexes),
-          },
-        },
-      })
+    assignedPanelIds.add(lineData.matchedPanelId)
+    return {
+      panelId: lineData.matchedPanelId,
+      speaker: lineData.speaker,
+      content: lineData.content,
+      emotionStrength: lineData.emotionStrength,
+      sourceAnchor: {
+        storyboardId: lineData.matchedStoryboardId,
+        panelIndex: lineData.matchedPanelIndex,
+        lineIndex: lineData.lineIndex,
+      },
     }
-
-    return created
   })
+  const panelSpeechResult = await replaceEpisodePanelSpeeches({
+    episodeId,
+    assignments,
+    source: 'voice_analyze',
+  })
+  if (!panelSpeechResult.available) {
+    throw new Error('PANEL_SPEECH_TABLE_MISSING')
+  }
 
   const speakerStats: Record<string, number> = {}
-  for (const line of createdVoiceLines) {
-    speakerStats[line.speaker] = (speakerStats[line.speaker] || 0) + 1
+  for (const assignment of assignments) {
+    speakerStats[assignment.speaker] = (speakerStats[assignment.speaker] || 0) + 1
   }
-  const matchedCount = createdVoiceLines.filter((line) => line.matchedStoryboardId).length
+  const matchedCount = assignments.length
   await rebuildEpisodeNarrationTimeline(episodeId)
   const speechPlanResult = await rebuildEpisodeSpeechPlans(episodeId, 'voice_analyze')
 
@@ -404,7 +340,7 @@ export async function handleVoiceAnalyzeTask(job: Job<TaskJobData>) {
 
   return {
     episodeId,
-    count: createdVoiceLines.length,
+    count: assignments.length,
     matchedCount,
     speakerStats,
     speechPlanSummary: speechPlanResult.summary,

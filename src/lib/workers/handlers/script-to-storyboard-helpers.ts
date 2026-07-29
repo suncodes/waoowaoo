@@ -1,12 +1,16 @@
 import { safeParseJson, safeParseJsonArray } from '@/lib/json-repair'
 import { prisma } from '@/lib/prisma'
+import {
+  replaceEpisodePanelSpeeches,
+  type PanelSpeechAssignment,
+} from '@/lib/novel-promotion/panel-speech'
 import type { StoryboardPanel } from '@/lib/storyboard-phases'
 
 export type JsonRecord = Record<string, unknown>
 
 const DEFAULT_PANEL_DURATION_SECONDS = 4
 
-type DirectStoryboardSpeechLine = {
+type DirectStoryboardSpeech = {
   speaker: string
   content: string
   emotionStrength: number
@@ -86,45 +90,24 @@ function readPanelField(panel: StoryboardPanel, snakeKey: string, camelKey: stri
   return panel[snakeKey] ?? panel[camelKey]
 }
 
-function readPanelSpeechLines(panel: StoryboardPanel): DirectStoryboardSpeechLine[] | null {
-  const rawLines = readPanelField(panel, 'speech_lines', 'speechLines')
-  if (!Array.isArray(rawLines)) return null
-
-  const lines: DirectStoryboardSpeechLine[] = []
-  for (const rawLine of rawLines) {
-    const line = asJsonRecord(rawLine)
-    const content = readPanelString(line?.content)
-    if (!line || !content) return null
-
-    const speaker = readPanelString(line.speaker) || '旁白'
-    const rawEmotionStrength = line.emotion_strength ?? line.emotionStrength
-    const emotionStrength = typeof rawEmotionStrength === 'number' && Number.isFinite(rawEmotionStrength)
-      ? Math.min(0.5, Math.max(0.1, rawEmotionStrength))
-      : 0.15
-    lines.push({ speaker, content, emotionStrength })
-  }
-
-  return lines
+function readPanelSpeech(panel: StoryboardPanel): DirectStoryboardSpeech | null | undefined {
+  const rawSpeech = readPanelField(panel, 'speech', 'speech')
+  if (rawSpeech === undefined) return undefined
+  if (rawSpeech === null) return null
+  const speech = asJsonRecord(rawSpeech)
+  const content = readPanelString(speech?.content)
+  const speaker = readPanelString(speech?.speaker)
+  if (!speech || !content || !speaker) return undefined
+  const rawEmotionStrength = speech.emotion_strength ?? speech.emotionStrength
+  const emotionStrength = typeof rawEmotionStrength === 'number' && Number.isFinite(rawEmotionStrength)
+    ? Math.min(1, Math.max(0.1, rawEmotionStrength))
+    : 0.15
+  return { speaker, content, emotionStrength }
 }
 
-function joinSpeechContent(current: string, next: string): string {
-  if (!current) return next
-  if (/[。！？!?…]$/.test(current)) return `${current}${next}`
-  return `${current}，${next}`
-}
-
-function mergePanelSpeechLines(lines: DirectStoryboardSpeechLine[]): DirectStoryboardSpeechLine[] {
-  const merged: DirectStoryboardSpeechLine[] = []
-  for (const line of lines) {
-    const previous = merged[merged.length - 1]
-    if (previous && previous.speaker === line.speaker) {
-      previous.content = joinSpeechContent(previous.content, line.content)
-      previous.emotionStrength = Math.max(previous.emotionStrength, line.emotionStrength)
-      continue
-    }
-    merged.push({ ...line })
-  }
-  return merged
+function readPanelSpeechLines(panel: StoryboardPanel): DirectStoryboardSpeech[] {
+  const speech = readPanelSpeech(panel)
+  return speech ? [speech] : []
 }
 
 function resolvePanelDurationSeconds(value: unknown): number {
@@ -139,22 +122,20 @@ export function buildVoiceLineRowsFromClipPanels(clipPanels: ClipPanelsResult[])
   for (const clipEntry of clipPanels) {
     for (let panelIndex = 0; panelIndex < clipEntry.finalPanels.length; panelIndex += 1) {
       const panel = clipEntry.finalPanels[panelIndex]
-      const speechLines = readPanelSpeechLines(panel)
-      if (speechLines === null) return null
-
-      for (const line of mergePanelSpeechLines(speechLines)) {
-        rows.push({
-          lineIndex,
-          speaker: line.speaker,
-          content: line.content,
-          emotionStrength: line.emotionStrength,
-          matchedPanel: {
-            storyboardId: clipEntry.clipId,
-            panelIndex,
-          },
-        })
-        lineIndex += 1
-      }
+      const speech = readPanelSpeech(panel)
+      if (speech === undefined) return null
+      if (!speech) continue
+      rows.push({
+        lineIndex,
+        speaker: speech.speaker,
+        content: speech.content,
+        emotionStrength: speech.emotionStrength,
+        matchedPanel: {
+          storyboardId: clipEntry.clipId,
+          panelIndex,
+        },
+      })
+      lineIndex += 1
     }
   }
 
@@ -443,6 +424,7 @@ export async function persistStoryboardOutputs(params: {
   episodeId: string
   clipPanels: ClipPanelsResult[]
   voiceLineRows: JsonRecord[] | null
+  speechSource?: string
 }) {
   const persistedStoryboards = await prisma.$transaction(async (tx) => {
     const persisted: PersistedStoryboard[] = []
@@ -533,12 +515,8 @@ export async function persistStoryboardOutputs(params: {
       })
     }
 
-    const voiceLineModel = tx.novelPromotionVoiceLine as unknown as {
-      upsert?: (args: unknown) => Promise<PersistedVoiceLine>
-      create: (args: unknown) => Promise<PersistedVoiceLine>
-      deleteMany: (args: unknown) => Promise<unknown>
-    }
-    const createdVoiceLines: PersistedVoiceLine[] = []
+    const speechAssignments: PanelSpeechAssignment[] = []
+    const assignedPanelIds = new Set<string>()
     const voiceLineRows = params.voiceLineRows ?? []
 
     for (let i = 0; i < voiceLineRows.length; i += 1) {
@@ -549,36 +527,26 @@ export async function persistStoryboardOutputs(params: {
           ? matchedPanel.storyboardId.trim()
           : null
       const matchedPanelIndex = matchedPanel ? toPositiveInt(matchedPanel.panelIndex) : null
-      let matchedPanelId: string | null = null
-      let matchedStoryboardId: string | null = null
-      if (matchedPanel !== null) {
-        if (!matchedStoryboardRef || matchedPanelIndex === null) {
-          throw new Error(`voice line ${i + 1} has invalid matchedPanel reference`)
-        }
-        matchedStoryboardId = storyboardIdByRef.get(matchedStoryboardRef) || null
-        if (!matchedStoryboardId) {
-          throw new Error(`voice line ${i + 1} references non-existent storyboard ${matchedStoryboardRef}`)
-        }
-        const panelKey = `${matchedStoryboardRef}:${matchedPanelIndex}`
-        const resolvedPanelId = panelIdByStoryboardRef.get(panelKey)
-        if (!resolvedPanelId) {
-          throw new Error(`voice line ${i + 1} references non-existent panel ${panelKey}`)
-        }
-        matchedPanelId = resolvedPanelId
+      if (!matchedPanel || !matchedStoryboardRef || matchedPanelIndex === null) {
+        throw new Error(`PANEL_SPEECH_INVALID: voice line ${i + 1} must target exactly one storyboard panel`)
       }
+      const matchedStoryboardId = storyboardIdByRef.get(matchedStoryboardRef) || null
+      if (!matchedStoryboardId) {
+        throw new Error(`voice line ${i + 1} references non-existent storyboard ${matchedStoryboardRef}`)
+      }
+      const panelKey = `${matchedStoryboardRef}:${matchedPanelIndex}`
+      const matchedPanelId = panelIdByStoryboardRef.get(panelKey)
+      if (!matchedPanelId) {
+        throw new Error(`voice line ${i + 1} references non-existent panel ${panelKey}`)
+      }
+      if (assignedPanelIds.has(matchedPanelId)) {
+        throw new Error(`PANEL_SPEECH_INVALID: multiple spoken lines are assigned to panel ${matchedPanelId}`)
+      }
+      assignedPanelIds.add(matchedPanelId)
 
-      if (typeof row.emotionStrength !== 'number' || !Number.isFinite(row.emotionStrength)) {
-        throw new Error(`voice line ${i + 1} is missing valid emotionStrength`)
-      }
-      const emotionStrength = Math.min(1, Math.max(0.1, row.emotionStrength))
-
-      if (typeof row.lineIndex !== 'number' || !Number.isFinite(row.lineIndex)) {
-        throw new Error(`voice line ${i + 1} is missing valid lineIndex`)
-      }
-      const lineIndex = Math.floor(row.lineIndex)
-      if (lineIndex <= 0) {
-        throw new Error(`voice line ${i + 1} has invalid lineIndex`)
-      }
+      const emotionStrength = typeof row.emotionStrength === 'number' && Number.isFinite(row.emotionStrength)
+        ? Math.min(1, Math.max(0.1, row.emotionStrength))
+        : 0.15
       if (typeof row.speaker !== 'string' || !row.speaker.trim()) {
         throw new Error(`voice line ${i + 1} is missing valid speaker`)
       }
@@ -586,89 +554,49 @@ export async function persistStoryboardOutputs(params: {
         throw new Error(`voice line ${i + 1} is missing valid content`)
       }
 
-      const upsertArgs = {
-        where: {
-          episodeId_lineIndex: {
-            episodeId: params.episodeId,
-            lineIndex,
-          },
-        },
-        create: {
-          episodeId: params.episodeId,
-          lineIndex,
-          speaker: row.speaker.trim(),
-          content: row.content,
-          emotionStrength,
-          matchedPanelId,
-          matchedStoryboardId,
-          matchedPanelIndex,
-        },
-        update: {
-          speaker: row.speaker.trim(),
-          content: row.content,
-          emotionStrength,
-          matchedPanelId,
-          matchedStoryboardId,
-          matchedPanelIndex,
-        },
-        select: {
-          id: true,
-          episodeId: true,
-          lineIndex: true,
-          speaker: true,
-          content: true,
-          matchedPanelId: true,
-        },
-      }
-      const createdRow = typeof voiceLineModel.upsert === 'function'
-        ? await voiceLineModel.upsert(upsertArgs)
-        : (
-          process.env.NODE_ENV === 'test'
-            ? await voiceLineModel.create({
-              data: upsertArgs.create,
-              select: {
-                id: true,
-                episodeId: true,
-                lineIndex: true,
-                speaker: true,
-                content: true,
-                matchedPanelId: true,
-              },
-            })
-            : (() => { throw new Error('novelPromotionVoiceLine.upsert unavailable') })()
-        )
-      createdVoiceLines.push(createdRow)
-    }
-
-    const nextLineIndexes = voiceLineRows
-      .map((row) => (typeof row.lineIndex === 'number' && Number.isFinite(row.lineIndex) ? Math.floor(row.lineIndex) : -1))
-      .filter((value) => value > 0)
-    if (nextLineIndexes.length === 0) {
-      await voiceLineModel.deleteMany({
-        where: {
-          episodeId: params.episodeId,
-        },
-      })
-    } else {
-      await voiceLineModel.deleteMany({
-        where: {
-          episodeId: params.episodeId,
-          lineIndex: {
-            notIn: nextLineIndexes,
-          },
+      speechAssignments.push({
+        panelId: matchedPanelId,
+        speaker: row.speaker.trim(),
+        content: row.content.trim(),
+        emotionStrength,
+        sourceAnchor: {
+          storyboardId: matchedStoryboardId,
+          storyboardReference: matchedStoryboardRef,
+          panelIndex: matchedPanelIndex,
         },
       })
     }
 
     return {
       persistedStoryboards: persisted,
-      createdVoiceLines,
+      speechAssignments,
     }
   }, { timeout: 30000 })
 
+  const speechResult = await replaceEpisodePanelSpeeches({
+    episodeId: params.episodeId,
+    assignments: persistedStoryboards.speechAssignments,
+    source: params.speechSource || 'storyboard',
+  })
+  if (!speechResult.available) {
+    throw new Error('PANEL_SPEECH_TABLE_MISSING')
+  }
+  const voiceLines = await prisma.novelPromotionVoiceLine.findMany({
+    where: { episodeId: params.episodeId },
+    orderBy: { lineIndex: 'asc' },
+    select: {
+      id: true,
+      episodeId: true,
+      lineIndex: true,
+      speaker: true,
+      content: true,
+      matchedPanelId: true,
+    },
+  })
+
   return {
     persistedStoryboards: persistedStoryboards.persistedStoryboards,
-    voiceLineCount: persistedStoryboards.createdVoiceLines.length,
-    voiceLines: persistedStoryboards.createdVoiceLines,
+    voiceLineCount: voiceLines.length,
+    voiceLines,
   }
 }

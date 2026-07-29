@@ -47,7 +47,7 @@ describe('script-to-storyboard atomic retry', () => {
               location: 'Office',
               source_text: 'src',
               characters: [],
-              speech_lines: [{ speaker: 'Narrator', content: 'phase1 speech', emotion_strength: 0.2 }],
+              speech: { speaker: 'Narrator', content: 'phase1 speech', emotion_strength: 0.2 },
             }],
           },
           createdAt: '2026-03-03T00:00:00.000Z',
@@ -105,7 +105,7 @@ describe('script-to-storyboard atomic retry', () => {
           location: 'Office',
           source_text: 'src',
           characters: [],
-          speech_lines: [],
+          speech: null,
         }]),
         reasoning: '',
       }
@@ -153,7 +153,7 @@ describe('script-to-storyboard atomic retry', () => {
         location: 'Office',
         source_text: 'src',
         characters: [],
-        speech_lines: [],
+        speech: null,
       },
     ])
     expect(result.clipPanels).toHaveLength(1)
@@ -165,7 +165,7 @@ describe('script-to-storyboard atomic retry', () => {
         lighting: '顶光',
       }),
       actingNotes: [{ name: 'Narrator', expression: 'serious' }],
-      speech_lines: [{ speaker: 'Narrator', content: 'phase1 speech', emotion_strength: 0.2 }],
+      speech: { speaker: 'Narrator', content: 'phase1 speech', emotion_strength: 0.2 },
     }))
     expect(result.totalPanelCount).toBe(1)
   })

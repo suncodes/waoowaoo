@@ -1,16 +1,11 @@
-import { Prisma } from '@prisma/client'
 import { executeAiTextStep } from '@/lib/ai-runtime'
 import { getProjectModelConfig } from '@/lib/config-service'
 import { safeParseJsonObject } from '@/lib/json-repair'
 import { prisma } from '@/lib/prisma'
-import { estimateNarrationDurationMs } from '@/lib/novel-promotion/narration-timeline'
 import {
-  buildPanelSpeechPlanPayloadFromLines,
-  ensureEpisodeSpeechPlans,
-  readPanelSpeechLines,
-  readPanelSpeechVoiceConfig,
-  type PanelSpeechLine,
-} from '@/lib/novel-promotion/speech-plan'
+  estimatePanelSpeechDurationMs,
+  listEpisodePanelSpeeches,
+} from '@/lib/novel-promotion/panel-speech'
 import type { Locale } from '@/i18n/routing'
 
 export const DELIVERY_LINES_ERROR = {
@@ -35,7 +30,7 @@ export class DeliveryLinesError extends Error {
 interface DeliveryRewriteRequest {
   requestId: string
   panelId: string
-  voiceLineId: string
+  speechId: string
   panelNumber: number
   panelDescription: string
   panelDurationSeconds: number
@@ -61,14 +56,11 @@ interface PanelForDelivery {
   videoPrompt: string | null
   duration: number | null
   targetDurationMs: number | null
-  speechPlan: {
+  panelSpeech: {
     id: string
-    panelId: string
-    mode: string
-    status: string
-    linesJson: unknown
-    voiceConfigJson: unknown
-    source: string
+    speaker: string
+    originalContent: string
+    deliveryContent: string | null
   } | null
 }
 
@@ -82,10 +74,6 @@ export interface GenerateEpisodeDeliveryLinesResult {
 
 const DELIVERY_BATCH_SIZE = 24
 
-function asInputJson(value: unknown): Prisma.InputJsonValue {
-  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
-}
-
 function normalizeLocale(locale: string | null | undefined): Locale {
   return locale && locale.toLowerCase().includes('en') ? 'en' : 'zh'
 }
@@ -98,10 +86,6 @@ function normalizeSpeechText(value: string): string {
   return value.trim().replace(/\s+/g, ' ')
 }
 
-function nowIso() {
-  return new Date().toISOString()
-}
-
 function readPanelDurationMs(panel: Pick<PanelForDelivery, 'duration' | 'targetDurationMs'>): number {
   if (typeof panel.targetDurationMs === 'number' && Number.isFinite(panel.targetDurationMs) && panel.targetDurationMs > 0) {
     return Math.round(panel.targetDurationMs)
@@ -112,9 +96,9 @@ function readPanelDurationMs(panel: Pick<PanelForDelivery, 'duration' | 'targetD
   return 4000
 }
 
-function targetDurationForLine(panel: PanelForDelivery, lineCount: number): number {
+function targetDurationForLine(panel: PanelForDelivery): number {
   const durationMs = readPanelDurationMs(panel)
-  return Math.max(1200, Math.floor((durationMs * 1.05) / Math.max(1, lineCount)))
+  return Math.max(1200, Math.floor(durationMs * 1.05))
 }
 
 function targetCharsForDuration(durationMs: number): number {
@@ -125,8 +109,8 @@ function panelDescription(panel: PanelForDelivery): string {
   return panel.description || panel.imagePrompt || panel.videoPrompt || ''
 }
 
-function buildRequestId(panelId: string, voiceLineId: string) {
-  return `${panelId}:${voiceLineId}`
+function buildRequestId(panelId: string, speechId: string) {
+  return `${panelId}:${speechId}`
 }
 
 function chunkArray<T>(items: T[], size: number): T[][] {
@@ -208,15 +192,12 @@ async function loadEpisodePanels(projectId: string, episodeId: string) {
               videoPrompt: true,
               duration: true,
               targetDurationMs: true,
-              speechPlan: {
+              panelSpeech: {
                 select: {
                   id: true,
-                  panelId: true,
-                  mode: true,
-                  status: true,
-                  linesJson: true,
-                  voiceConfigJson: true,
-                  source: true,
+                  speaker: true,
+                  originalContent: true,
+                  deliveryContent: true,
                 },
               },
             },
@@ -229,30 +210,26 @@ async function loadEpisodePanels(projectId: string, episodeId: string) {
 
 function buildRewriteRequests(panels: PanelForDelivery[]): DeliveryRewriteRequest[] {
   return panels.flatMap((panel) => {
-    const plan = panel.speechPlan
-    if (!plan || plan.mode === 'none') return []
+    const speech = panel.panelSpeech
+    if (!speech) return []
 
-    const lines = readPanelSpeechLines(plan.linesJson)
-    const lineCount = Math.max(1, lines.length)
-    const targetDurationMs = targetDurationForLine(panel, lineCount)
+    const targetDurationMs = targetDurationForLine(panel)
     const durationMs = readPanelDurationMs(panel)
-    return lines.flatMap((line): DeliveryRewriteRequest[] => {
-      const originalContent = normalizeSpeechText(line.content)
-      if (!line.voiceLineId || !originalContent) return []
-      return [{
-        requestId: buildRequestId(panel.id, line.voiceLineId),
-        panelId: panel.id,
-        voiceLineId: line.voiceLineId,
-        panelNumber: panel.panelNumber ?? panel.panelIndex + 1,
-        panelDescription: panelDescription(panel),
-        panelDurationSeconds: Math.round(durationMs / 100) / 10,
-        speaker: line.speaker,
-        originalContent,
-        currentDeliveryContent: normalizeSpeechText(line.deliveryContent || '') || null,
-        targetDurationSeconds: Math.round(targetDurationMs / 100) / 10,
-        suggestedMaxChineseChars: targetCharsForDuration(targetDurationMs),
-      }]
-    })
+    const originalContent = normalizeSpeechText(speech.originalContent)
+    if (!originalContent) return []
+    return [{
+      requestId: buildRequestId(panel.id, speech.id),
+      panelId: panel.id,
+      speechId: speech.id,
+      panelNumber: panel.panelNumber ?? panel.panelIndex + 1,
+      panelDescription: panelDescription(panel),
+      panelDurationSeconds: Math.round(durationMs / 100) / 10,
+      speaker: speech.speaker,
+      originalContent,
+      currentDeliveryContent: normalizeSpeechText(speech.deliveryContent || '') || null,
+      targetDurationSeconds: Math.round(targetDurationMs / 100) / 10,
+      suggestedMaxChineseChars: targetCharsForDuration(targetDurationMs),
+    }]
   })
 }
 
@@ -303,40 +280,17 @@ async function generateDeliveryRewriteMap(params: {
   return rewrites
 }
 
-function applyDeliveryRewritesToLines(params: {
-  panel: PanelForDelivery
-  lines: PanelSpeechLine[]
-  rewrites: Map<string, DeliveryRewrite>
-}) {
-  let updatedCount = 0
-  const updatedAt = nowIso()
-  const lines = params.lines.map((line) => {
-    const rewrite = params.rewrites.get(buildRequestId(params.panel.id, line.voiceLineId))
-    if (!rewrite) return line
-    updatedCount += 1
-    return {
-      ...line,
-      deliveryContent: rewrite.deliveryContent,
-      deliveryDurationMs: estimateNarrationDurationMs(rewrite.deliveryContent),
-      deliverySource: 'manual_delivery_generation',
-      deliveryReason: rewrite.reason,
-      deliveryUpdatedAt: updatedAt,
-    }
-  })
-  return { lines, updatedCount }
-}
-
 export async function generateEpisodeDeliveryLines(params: {
   projectId: string
   episodeId: string
   userId: string
   locale?: string | null
 }): Promise<GenerateEpisodeDeliveryLinesResult> {
-  const ensured = await ensureEpisodeSpeechPlans(params.episodeId)
+  const ensured = await listEpisodePanelSpeeches(params.episodeId)
   if (!ensured.available) {
     throw new DeliveryLinesError(
       DELIVERY_LINES_ERROR.DB_SCHEMA_OUT_OF_DATE,
-      '数据库结构不是最新版本，缺少镜头级台词计划表。请先执行数据库迁移。',
+      '数据库结构不是最新版本，缺少镜头级可播台词表。请先执行数据库迁移。',
     )
   }
 
@@ -376,33 +330,19 @@ export async function generateEpisodeDeliveryLines(params: {
   let updatedCount = 0
   await prisma.$transaction(async (tx) => {
     for (const panel of panels) {
-      const plan = panel.speechPlan
-      if (!plan || plan.mode === 'none') continue
-      const originalLines = readPanelSpeechLines(plan.linesJson)
-      const result = applyDeliveryRewritesToLines({
-        panel,
-        lines: originalLines,
-        rewrites,
-      })
-      if (result.updatedCount === 0) continue
-
-      const payload = buildPanelSpeechPlanPayloadFromLines({
-        panel,
-        lines: result.lines,
-        voiceConfig: readPanelSpeechVoiceConfig(plan.voiceConfigJson),
-      })
-      await tx.novelPromotionPanelSpeechPlan.update({
-        where: { panelId: panel.id },
+      const speech = panel.panelSpeech
+      if (!speech) continue
+      const rewrite = rewrites.get(buildRequestId(panel.id, speech.id))
+      if (!rewrite) continue
+      await tx.novelPromotionPanelSpeech.update({
+        where: { id: speech.id },
         data: {
-          mode: payload.mode,
-          status: payload.status,
-          linesJson: asInputJson(payload.lines),
-          timingJson: asInputJson(payload.timing),
-          warningsJson: asInputJson(payload.warnings),
-          source: plan.source || 'manual_delivery_generation',
+          deliveryContent: rewrite.deliveryContent,
+          estimatedDurationMs: estimatePanelSpeechDurationMs(rewrite.deliveryContent),
+          source: 'delivery_lines',
         },
       })
-      updatedCount += result.updatedCount
+      updatedCount += 1
     }
   }, { timeout: 30000 })
 

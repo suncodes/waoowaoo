@@ -13,6 +13,7 @@ import {
   type SpeakerVoiceMap,
 } from '@/lib/voice/provider-voice-binding'
 import { rebuildEpisodeNarrationTimeline } from '@/lib/novel-promotion/narration-timeline'
+import { resolvePanelSpeechText } from '@/lib/novel-promotion/panel-speech'
 
 type CheckCancelled = () => Promise<void>
 type CharacterVoiceProfile = CharacterVoiceFields & { name: string }
@@ -177,6 +178,19 @@ export async function generateVoiceLine(params: {
       content: true,
       emotionPrompt: true,
       emotionStrength: true,
+      matchedPanel: {
+        select: {
+          panelSpeech: {
+            select: {
+              speaker: true,
+              originalContent: true,
+              deliveryContent: true,
+              emotionPrompt: true,
+              emotionStrength: true,
+            },
+          },
+        },
+      },
     },
   })
   if (!line) {
@@ -205,10 +219,12 @@ export async function generateVoiceLine(params: {
 
   const speakerVoices: SpeakerVoiceMap = parseSpeakerVoiceMap(episode?.speakerVoices)
 
-  const character = matchCharacterBySpeaker(line.speaker, projectData.characters || [])
-  const speakerVoice = speakerVoices[line.speaker]
+  const panelSpeech = line.matchedPanel?.panelSpeech || null
+  const speaker = panelSpeech?.speaker || line.speaker
+  const character = matchCharacterBySpeaker(speaker, projectData.characters || [])
+  const speakerVoice = speakerVoices[speaker]
 
-  const text = (line.content || '').trim()
+  const text = panelSpeech ? resolvePanelSpeechText(panelSpeech) : (line.content || '').trim()
   if (!text) {
     throw new Error('Voice line text is empty')
   }
@@ -232,8 +248,8 @@ export async function generateVoiceLine(params: {
       endpoint: audioSelection.modelId,
       referenceAudioUrl: fullAudioUrl,
       text,
-      emotionPrompt: line.emotionPrompt,
-      strength: line.emotionStrength ?? 0.4,
+      emotionPrompt: panelSpeech?.emotionPrompt ?? line.emotionPrompt,
+      strength: panelSpeech?.emotionStrength ?? line.emotionStrength ?? 0.4,
       falApiKey,
     })
   } else if (providerKey === 'bailian') {

@@ -18,6 +18,7 @@ import type {
   VisualAssetRef,
   VisualType,
   VisualUnit,
+  VisualUnitSpeech,
 } from './types'
 
 type JsonRecord = Record<string, unknown>
@@ -265,6 +266,24 @@ function parseAssetRefs(
   })
 }
 
+function parseVisualUnitSpeech(value: unknown, unitIndex: number): VisualUnitSpeech | null {
+  if (value === undefined || value === null) return null
+  if (!isRecord(value)) {
+    throw new Error(`VISUAL_PLAN_INVALID: visualUnits.${unitIndex}.speech must be object or null`)
+  }
+  const speaker = requiredString(value.speaker, `visualUnits.${unitIndex}.speech.speaker`)
+  const content = requiredString(value.content, `visualUnits.${unitIndex}.speech.content`)
+  const rawEmotionStrength = value.emotionStrength ?? value.emotion_strength
+  const emotionStrength = typeof rawEmotionStrength === 'number' && Number.isFinite(rawEmotionStrength)
+    ? Math.min(1, Math.max(0.1, rawEmotionStrength))
+    : undefined
+  return {
+    speaker,
+    content,
+    ...(emotionStrength !== undefined ? { emotionStrength } : {}),
+  }
+}
+
 function mentionsAsset(unit: VisualUnit, asset: VisualAssetRef): boolean {
   const text = JSON.stringify({
     description: unit.description,
@@ -292,6 +311,10 @@ function parseVisualUnits(
     const onScreenText = optionalString(item.onScreenText)
     const sourceAnchor = parseSourceAnchor(item.sourceAnchor)
     const assetRefs = parseAssetRefs(item.assetRefs, index, availableAssets)
+    if (item.speech_lines !== undefined || item.speechLines !== undefined) {
+      throw new Error(`VISUAL_PLAN_INVALID: visualUnits.${index} must use one speech object instead of speech_lines`)
+    }
+    const speech = parseVisualUnitSpeech(item.speech, index)
     const visualType = parseVisualType(item.visualType)
     const renderMode = parseRenderMode(item.renderMode)
     const continuityGroupId = optionalString(item.continuityGroupId)
@@ -313,6 +336,7 @@ function parseVisualUnits(
       ...(sourceAnchor ? { sourceAnchor } : {}),
       shotSpec: parseShotSpec(item.shotSpec, item, assetRefs),
       assetRefs,
+      speech,
     }
     const referencedAssetIds = new Set(unit.assetRefs?.map((asset) => asset.id) || [])
     for (const asset of availableAssets.values()) {

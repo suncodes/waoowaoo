@@ -26,6 +26,13 @@ const resolveStorageKeyFromMediaValueMock = vi.hoisted(() => vi.fn())
 const synthesizeWithBailianTTSMock = vi.hoisted(() => vi.fn())
 const falSubscribeMock = vi.hoisted(() => vi.fn())
 const getProviderConfigMock = vi.hoisted(() => vi.fn())
+const rebuildEpisodeNarrationTimelineMock = vi.hoisted(() => vi.fn(async () => ({
+  episodeId: 'episode-1',
+  voiceLineCount: 1,
+  panelCount: 1,
+  spanCount: 1,
+  totalDurationMs: 1000,
+})))
 
 vi.mock('@/lib/prisma', () => ({
   prisma: prismaMock,
@@ -55,6 +62,10 @@ vi.mock('@/lib/media/service', () => ({
 
 vi.mock('@/lib/providers/bailian', () => ({
   synthesizeWithBailianTTS: synthesizeWithBailianTTSMock,
+}))
+
+vi.mock('@/lib/novel-promotion/narration-timeline', () => ({
+  rebuildEpisodeNarrationTimeline: rebuildEpisodeNarrationTimelineMock,
 }))
 
 vi.mock('@fal-ai/client', () => ({

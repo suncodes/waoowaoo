@@ -24,6 +24,12 @@ import {
 } from '@/lib/visual-production/asset-reference-policy'
 import { rebuildEpisodeNarrationTimeline } from '@/lib/novel-promotion/narration-timeline'
 import { rebuildEpisodeSpeechPlans } from '@/lib/novel-promotion/speech-plan'
+import {
+  buildPanelSpeechCreateData,
+  buildPanelSpeechVoiceConfig,
+  syncEpisodeLegacyVoiceLineProjection,
+} from '@/lib/novel-promotion/panel-speech'
+import { parseSpeakerVoiceMap } from '@/lib/voice/provider-voice-binding'
 
 function asInputJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
@@ -135,6 +141,7 @@ export async function persistVisualPlan(params: {
     await materializeGuideStoryboards(tx, params)
   }, { timeout: 30000 })
   if (params.isBookGuide && !params.deferStoryboard) {
+    await syncEpisodeLegacyVoiceLineProjection(params.episodeId)
     await rebuildEpisodeNarrationTimeline(params.episodeId)
     await rebuildEpisodeSpeechPlans(params.episodeId, 'visual_plan_persist')
   }
@@ -154,6 +161,29 @@ export async function materializeGuideStoryboards(
     orderBy: [{ start: 'asc' }, { createdAt: 'asc' }],
   })
   const activeClips = clips.filter(isWorkspaceClipActive)
+  const speechContext = await tx.novelPromotionEpisode.findUnique({
+    where: { id: params.episodeId },
+    select: {
+      speakerVoices: true,
+      novelPromotionProject: {
+        select: {
+          projectId: true,
+          characters: {
+            select: {
+              id: true,
+              name: true,
+              aliases: true,
+              customVoiceUrl: true,
+              voiceId: true,
+              voiceType: true,
+            },
+          },
+        },
+      },
+    },
+  })
+  if (!speechContext) throw new Error('Episode not found')
+  const speakerVoices = parseSpeakerVoiceMap(speechContext.speakerVoices)
   const unitsByClipId = new Map<string, VisualUnit[]>()
   for (const unit of params.result.visualUnits) {
     const current = unitsByClipId.get(unit.clipId) || []
@@ -161,15 +191,7 @@ export async function materializeGuideStoryboards(
     unitsByClipId.set(unit.clipId, current)
   }
 
-  const voiceLines: Array<{
-    lineIndex: number
-    content: string
-    panelId: string | null
-    storyboardId: string | null
-    panelIndex: number | null
-  }> = []
-  for (let clipIndex = 0; clipIndex < activeClips.length; clipIndex += 1) {
-    const clip = activeClips[clipIndex]
+  for (const clip of activeClips) {
     const units = (unitsByClipId.get(clip.id) || []).sort((a, b) => a.panelNumber - b.panelNumber)
     if (units.length === 0) throw new Error(`VISUAL_PLAN_INVALID: clip ${clip.id} has no visual unit`)
     const storyboard = await tx.novelPromotionStoryboard.upsert({
@@ -189,7 +211,6 @@ export async function materializeGuideStoryboards(
     })
     await tx.novelPromotionPanel.deleteMany({ where: { storyboardId: storyboard.id } })
 
-    let firstPanel: { id: string; panelIndex: number } | null = null
     for (let panelIndex = 0; panelIndex < units.length; panelIndex += 1) {
       const unit = units[panelIndex]
       const rawAssetRefs = Array.isArray(unit.assetRefs) ? unit.assetRefs : []
@@ -267,53 +288,36 @@ export async function materializeGuideStoryboards(
         },
         select: { id: true, panelIndex: true },
       })
-      firstPanel ||= created
+      if (unit.speech) {
+        const voiceConfig = buildPanelSpeechVoiceConfig({
+          speaker: unit.speech.speaker,
+          characters: speechContext.novelPromotionProject.characters,
+          speakerVoices,
+        })
+        await tx.novelPromotionPanelSpeech.create({
+          data: buildPanelSpeechCreateData({
+            projectId: speechContext.novelPromotionProject.projectId,
+            episodeId: params.episodeId,
+            clipId: clip.id,
+            panelId: created.id,
+            speaker: unit.speech.speaker,
+            originalContent: unit.speech.content,
+            sourceAnchor: {
+              visualUnitId: unit.id,
+              clipId: clip.id,
+              ...(sourceAnchor ? { sourceAnchor } : {}),
+            },
+            targetDurationMs: Math.round(unit.durationSec * 1000),
+            emotionStrength: unit.speech.emotionStrength ?? null,
+            voiceConfig,
+            source: 'visual_plan',
+          }),
+        })
+      }
     }
     await tx.novelPromotionClip.update({
       where: { id: clip.id },
       data: { shotCount: units.length },
     })
-    voiceLines.push({
-      lineIndex: clipIndex + 1,
-      content: clip.content,
-      panelId: firstPanel?.id || null,
-      storyboardId: firstPanel ? storyboard.id : null,
-      panelIndex: firstPanel?.panelIndex ?? null,
-    })
   }
-
-  for (const line of voiceLines) {
-    await tx.novelPromotionVoiceLine.upsert({
-      where: {
-        episodeId_lineIndex: {
-          episodeId: params.episodeId,
-          lineIndex: line.lineIndex,
-        },
-      },
-      create: {
-        episodeId: params.episodeId,
-        lineIndex: line.lineIndex,
-        speaker: params.narratorLabel,
-        content: line.content,
-        emotionStrength: 0.5,
-        matchedPanelId: line.panelId,
-        matchedStoryboardId: line.storyboardId,
-        matchedPanelIndex: line.panelIndex,
-      },
-      update: {
-        speaker: params.narratorLabel,
-        content: line.content,
-        emotionStrength: 0.5,
-        matchedPanelId: line.panelId,
-        matchedStoryboardId: line.storyboardId,
-        matchedPanelIndex: line.panelIndex,
-      },
-    })
-  }
-  await tx.novelPromotionVoiceLine.deleteMany({
-    where: {
-      episodeId: params.episodeId,
-      lineIndex: { notIn: voiceLines.map((line) => line.lineIndex) },
-    },
-  })
 }

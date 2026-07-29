@@ -1,497 +1,412 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { resolveMediaRef, resolveMediaRefFromLegacyValue } from '@/lib/media/service'
-import { isPanelVoiceSpanTableMissing } from '@/lib/novel-promotion/panel-voice-spans'
 import { rebuildEpisodeNarrationTimeline } from '@/lib/novel-promotion/narration-timeline'
 import {
-  isPanelSpeechPlanTableMissing,
-  readPanelSpeechLines,
-  rebuildEpisodeSpeechPlans,
-} from '@/lib/novel-promotion/speech-plan'
+  createPanelSpeech,
+  deletePanelSpeech,
+  isPanelSpeechTableMissing,
+  updatePanelSpeech,
+} from '@/lib/novel-promotion/panel-speech'
+import { rebuildEpisodeSpeechPlans } from '@/lib/novel-promotion/speech-plan'
 
-type VoiceLineDeliveryFields = {
-  deliveryContent: string | null
-  deliveryDurationMs: number | null
-  deliveryReason: string | null
-  deliveryUpdatedAt: string | null
+function readTrimmedString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function throwPanelSpeechSchemaError(error: unknown): never {
+  if (isPanelSpeechTableMissing(error)) {
+    throw new ApiError('CONFLICT', {
+      code: 'DB_SCHEMA_OUT_OF_DATE',
+      message: '数据库缺少镜头级可播台词表。请执行最新数据库迁移后，重新生成分镜文稿与台词计划。',
+      table: 'novel_promotion_panel_speeches',
+    })
+  }
+  throw error
+}
+
+async function assertEpisodeBelongsToProject(projectId: string, episodeId: string) {
+  const episode = await prisma.novelPromotionEpisode.findFirst({
+    where: {
+      id: episodeId,
+      novelPromotionProject: { projectId },
+    },
+    select: { id: true },
+  })
+  if (!episode) throw new ApiError('NOT_FOUND')
 }
 
 async function rebuildEpisodeVoiceDerivedState(episodeId: string, source: string) {
   await rebuildEpisodeNarrationTimeline(episodeId)
-  await rebuildEpisodeSpeechPlans(episodeId, source)
+  const speechPlans = await rebuildEpisodeSpeechPlans(episodeId, source)
+  if (!speechPlans.available) {
+    throw new ApiError('CONFLICT', {
+      code: 'DB_SCHEMA_OUT_OF_DATE',
+      message: '数据库缺少镜头级台词计划相关表。请执行最新数据库迁移后重试。',
+    })
+  }
 }
 
-async function resolveMatchedPanelData(
-  matchedPanelId: string | null | undefined,
-  expectedEpisodeId?: string
-) {
-  if (matchedPanelId === undefined) {
-    return null
-  }
+type VoiceLinePresentation = {
+  id: string
+  speechId: string
+  lineIndex: number
+  speaker: string
+  content: string
+  deliveryContent: string | null
+  deliveryDurationMs: number | null
+  deliveryReason: string | null
+  deliveryUpdatedAt: string | null
+  emotionPrompt: string | null
+  emotionStrength: number | null
+  audioUrl: string | null
+  updatedAt: string | null
+  lineTaskRunning: boolean
+  matchedPanelId: string
+  matchedStoryboardId: string
+  matchedPanelIndex: number
+}
 
-  if (matchedPanelId === null) {
-    return {
-      matchedPanelId: null,
-      matchedStoryboardId: null,
-      matchedPanelIndex: null
-    }
-  }
-
-  const panel = await prisma.novelPromotionPanel.findUnique({
-    where: { id: matchedPanelId },
+async function loadEpisodeVoiceLinePresentations(projectId: string, episodeId: string): Promise<VoiceLinePresentation[]> {
+  const episode = await prisma.novelPromotionEpisode.findFirst({
+    where: {
+      id: episodeId,
+      novelPromotionProject: { projectId },
+    },
     select: {
-      id: true,
-      storyboardId: true,
-      panelIndex: true,
-      storyboard: {
-        select: {
-          episodeId: true
-        }
-      }
-    }
-  })
-
-  if (!panel) {
-    throw new ApiError('NOT_FOUND')
-  }
-  if (expectedEpisodeId && panel.storyboard.episodeId !== expectedEpisodeId) {
-    throw new ApiError('INVALID_PARAMS')
-  }
-
-  return {
-    matchedPanelId: panel.id,
-    matchedStoryboardId: panel.storyboardId,
-    matchedPanelIndex: panel.panelIndex
-  }
-}
-
-async function withVoiceLineMedia<T extends Record<string, unknown>>(line: T) {
-  const audioMedia = await resolveMediaRef(line.audioMediaId, line.audioUrl)
-  const matchedPanel = line.matchedPanel as
-    | {
-      storyboardId?: string | null
-      panelIndex?: number | null
-    }
-    | null
-    | undefined
-  return {
-    ...line,
-    media: audioMedia,
-    audioMedia,
-    audioUrl: audioMedia?.url || line.audioUrl || null,
-    updatedAt:
-      line.updatedAt instanceof Date
-        ? line.updatedAt.toISOString()
-        : typeof line.updatedAt === 'string'
-          ? line.updatedAt
-          : null,
-    matchedStoryboardId: line.matchedStoryboardId ?? matchedPanel?.storyboardId ?? null,
-    matchedPanelIndex: line.matchedPanelIndex ?? matchedPanel?.panelIndex ?? null}
-}
-
-async function findEpisodeVoiceLines(episodeId: string) {
-  const baseQuery = {
-    where: { episodeId },
-    orderBy: { lineIndex: 'asc' as const },
-    include: {
-      matchedPanel: {
+      storyboards: {
         select: {
           id: true,
-          storyboardId: true,
-          panelIndex: true
-        }
-      }
+          createdAt: true,
+          clip: {
+            select: {
+              start: true,
+              createdAt: true,
+            },
+          },
+          panels: {
+            orderBy: { panelIndex: 'asc' },
+            select: {
+              id: true,
+              panelIndex: true,
+              panelSpeech: {
+                select: {
+                  id: true,
+                  speaker: true,
+                  originalContent: true,
+                  deliveryContent: true,
+                  estimatedDurationMs: true,
+                  emotionPrompt: true,
+                  emotionStrength: true,
+                  updatedAt: true,
+                },
+              },
+              matchedVoiceLines: {
+                orderBy: { lineIndex: 'asc' },
+                select: {
+                  id: true,
+                  audioUrl: true,
+                  audioMediaId: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+  if (!episode) throw new ApiError('NOT_FOUND')
+
+  const storyboards = [...episode.storyboards].sort((left, right) => (
+    (left.clip?.start ?? Number.MAX_SAFE_INTEGER) - (right.clip?.start ?? Number.MAX_SAFE_INTEGER)
+    || (left.clip?.createdAt.getTime() ?? 0) - (right.clip?.createdAt.getTime() ?? 0)
+    || left.createdAt.getTime() - right.createdAt.getTime()
+  ))
+  const voiceLines: VoiceLinePresentation[] = []
+  let lineIndex = 1
+  for (const storyboard of storyboards) {
+    for (const panel of storyboard.panels) {
+      const speech = panel.panelSpeech
+      if (!speech) continue
+      const legacyVoiceLine = panel.matchedVoiceLines[0] || null
+      const audioMedia = legacyVoiceLine
+        ? await resolveMediaRef(legacyVoiceLine.audioMediaId, legacyVoiceLine.audioUrl)
+        : null
+      voiceLines.push({
+        id: legacyVoiceLine?.id || speech.id,
+        speechId: speech.id,
+        lineIndex,
+        speaker: speech.speaker,
+        content: speech.originalContent,
+        deliveryContent: speech.deliveryContent,
+        deliveryDurationMs: speech.deliveryContent ? speech.estimatedDurationMs : null,
+        deliveryReason: null,
+        deliveryUpdatedAt: speech.deliveryContent ? speech.updatedAt.toISOString() : null,
+        emotionPrompt: speech.emotionPrompt,
+        emotionStrength: speech.emotionStrength,
+        audioUrl: audioMedia?.url || legacyVoiceLine?.audioUrl || null,
+        updatedAt: speech.updatedAt.toISOString(),
+        lineTaskRunning: false,
+        matchedPanelId: panel.id,
+        matchedStoryboardId: storyboard.id,
+        matchedPanelIndex: panel.panelIndex,
+      })
+      lineIndex += 1
     }
   }
-
-  try {
-    return await prisma.novelPromotionVoiceLine.findMany({
-      ...baseQuery,
-      include: {
-        ...baseQuery.include,
-        panelSpans: {
-          orderBy: { startMs: 'asc' as const },
-          select: {
-            panelId: true,
-            startMs: true,
-            endMs: true,
-            voiceStartMs: true,
-            voiceEndMs: true,
-            segmentText: true,
-            panel: {
-              select: {
-                storyboardId: true,
-                panelIndex: true
-              }
-            }
-          }
-        }
-      }
-    })
-  } catch (error) {
-    if (!isPanelVoiceSpanTableMissing(error)) throw error
-    return await prisma.novelPromotionVoiceLine.findMany(baseQuery)
-  }
+  return voiceLines
 }
 
-async function findEpisodeVoiceLineDeliveryFields(episodeId: string) {
-  const deliveryByVoiceLineId = new Map<string, VoiceLineDeliveryFields>()
-  try {
-    const plans = await prisma.novelPromotionPanelSpeechPlan.findMany({
-      where: { episodeId },
-      orderBy: { createdAt: 'asc' },
-      select: {
-        linesJson: true,
-      },
-    })
-    for (const plan of plans) {
-      for (const line of readPanelSpeechLines(plan.linesJson)) {
-        const deliveryContent = line.deliveryContent?.trim()
-        if (!line.voiceLineId || !deliveryContent) continue
-        const voiceLineIds = line.voiceLineIds?.length ? line.voiceLineIds : [line.voiceLineId]
-        for (const voiceLineId of voiceLineIds) {
-          deliveryByVoiceLineId.set(voiceLineId, {
-            deliveryContent,
-            deliveryDurationMs: line.deliveryDurationMs ?? null,
-            deliveryReason: line.deliveryReason ?? null,
-            deliveryUpdatedAt: line.deliveryUpdatedAt ?? null,
-          })
-        }
-      }
-    }
-  } catch (error) {
-    if (!isPanelSpeechPlanTableMissing(error)) throw error
+async function resolveSpeechIdFromLineId(episodeId: string, lineId: string): Promise<string | null> {
+  const directSpeech = await prisma.novelPromotionPanelSpeech.findFirst({
+    where: { id: lineId, episodeId },
+    select: { id: true },
+  })
+  if (directSpeech) return directSpeech.id
+
+  const legacyVoiceLine = await prisma.novelPromotionVoiceLine.findFirst({
+    where: { id: lineId, episodeId },
+    select: { matchedPanelId: true },
+  })
+  if (!legacyVoiceLine?.matchedPanelId) return null
+  const speech = await prisma.novelPromotionPanelSpeech.findUnique({
+    where: { panelId: legacyVoiceLine.matchedPanelId },
+    select: { id: true },
+  })
+  return speech?.id || null
+}
+
+async function findVoiceLinePresentation(projectId: string, episodeId: string, speechId: string) {
+  const voiceLines = await loadEpisodeVoiceLinePresentations(projectId, episodeId)
+  return voiceLines.find((line) => line.speechId === speechId) || null
+}
+
+async function updateLegacyVoiceOutput(params: {
+  episodeId: string
+  lineId: string
+  audioUrl?: string | null
+  voicePresetId?: string | null
+}) {
+  const voiceLine = await prisma.novelPromotionVoiceLine.findFirst({
+    where: { id: params.lineId, episodeId: params.episodeId },
+    select: { id: true },
+  })
+  if (!voiceLine) throw new ApiError('NOT_FOUND')
+
+  const data: {
+    audioUrl?: string | null
+    audioMediaId?: string | null
+    voicePresetId?: string | null
+  } = {}
+  if (params.audioUrl !== undefined) {
+    const media = await resolveMediaRefFromLegacyValue(params.audioUrl)
+    data.audioUrl = params.audioUrl
+    data.audioMediaId = media?.id || null
   }
-  return deliveryByVoiceLineId
+  if (params.voicePresetId !== undefined) {
+    data.voicePresetId = params.voicePresetId
+  }
+  await prisma.novelPromotionVoiceLine.update({
+    where: { id: voiceLine.id },
+    data,
+  })
 }
 
 /**
  * GET /api/novel-promotion/[projectId]/voice-lines?episodeId=xxx
- * 获取剧集的台词列表
+ * 从镜头级可播台词读取台词列表；VoiceLine 仅提供旧配音任务的音频输出。
  */
 export const GET = apiHandler(async (
   request: NextRequest,
-  context: { params: Promise<{ projectId: string }> }
+  context: { params: Promise<{ projectId: string }> },
 ) => {
   const { projectId } = await context.params
-
-  // 🔐 统一权限验证
   const authResult = await requireProjectAuthLight(projectId)
   if (isErrorResponse(authResult)) return authResult
 
   const { searchParams } = new URL(request.url)
-  const episodeId = searchParams.get('episodeId')
-  const speakersOnly = searchParams.get('speakersOnly')
+  const episodeId = readTrimmedString(searchParams.get('episodeId'))
+  const speakersOnly = searchParams.get('speakersOnly') === '1'
 
-  if (speakersOnly === '1') {
-    const novelProject = await prisma.novelPromotionProject.findUnique({
-      where: { projectId },
-      select: { id: true }
-    })
-    if (!novelProject) {
-      throw new ApiError('NOT_FOUND')
+  try {
+    if (speakersOnly) {
+      const speakers = await prisma.novelPromotionPanelSpeech.findMany({
+        where: {
+          episode: {
+            novelPromotionProject: { projectId },
+          },
+        },
+        select: { speaker: true },
+        distinct: ['speaker'],
+        orderBy: { speaker: 'asc' },
+      })
+      return NextResponse.json({
+        speakers: speakers.map((item) => item.speaker).filter(Boolean),
+      })
     }
 
-    const speakerRows = await prisma.novelPromotionVoiceLine.findMany({
-      where: {
-        episode: {
-          novelPromotionProjectId: novelProject.id
-        }
-      },
-      select: { speaker: true },
-      distinct: ['speaker'],
-      orderBy: { speaker: 'asc' }
-    })
-
+    if (!episodeId) throw new ApiError('INVALID_PARAMS')
+    const voiceLines = await loadEpisodeVoiceLinePresentations(projectId, episodeId)
+    const speakerStats: Record<string, number> = {}
+    for (const line of voiceLines) {
+      speakerStats[line.speaker] = (speakerStats[line.speaker] || 0) + 1
+    }
     return NextResponse.json({
-      speakers: speakerRows.map(item => item.speaker).filter(Boolean)
+      voiceLines,
+      count: voiceLines.length,
+      speakerStats,
     })
+  } catch (error) {
+    throwPanelSpeechSchemaError(error)
   }
-
-  if (!episodeId) {
-    throw new ApiError('INVALID_PARAMS')
-  }
-
-  // 获取台词列表（包含匹配的 Panel 信息）
-  const voiceLines = await findEpisodeVoiceLines(episodeId)
-  const deliveryByVoiceLineId = await findEpisodeVoiceLineDeliveryFields(episodeId)
-
-  // 转换为稳定媒体 URL，并添加兼容字段
-  const voiceLinesWithUrls = await Promise.all(voiceLines.map(async (line) => ({
-    ...await withVoiceLineMedia(line),
-    deliveryContent: deliveryByVoiceLineId.get(line.id)?.deliveryContent ?? null,
-    deliveryDurationMs: deliveryByVoiceLineId.get(line.id)?.deliveryDurationMs ?? null,
-    deliveryReason: deliveryByVoiceLineId.get(line.id)?.deliveryReason ?? null,
-    deliveryUpdatedAt: deliveryByVoiceLineId.get(line.id)?.deliveryUpdatedAt ?? null,
-  })))
-
-  // 统计发言人
-  const speakerStats: Record<string, number> = {}
-  for (const line of voiceLines) {
-    speakerStats[line.speaker] = (speakerStats[line.speaker] || 0) + 1
-  }
-
-  return NextResponse.json({
-    voiceLines: voiceLinesWithUrls,
-    count: voiceLines.length,
-    speakerStats
-  })
 })
 
 /**
  * POST /api/novel-promotion/[projectId]/voice-lines
- * 新增单条台词
- * Body: { episodeId, content, speaker, matchedPanelId?: string | null }
+ * 手动新增台词必须指定未占用的镜头。
  */
 export const POST = apiHandler(async (
   request: NextRequest,
-  context: { params: Promise<{ projectId: string }> }
+  context: { params: Promise<{ projectId: string }> },
 ) => {
   const { projectId } = await context.params
-
-  // 🔐 统一权限验证
   const authResult = await requireProjectAuthLight(projectId)
   if (isErrorResponse(authResult)) return authResult
 
-  const body = await request.json()
-  const { episodeId, content, speaker, matchedPanelId } = body
-
-  if (!episodeId) {
-    throw new ApiError('INVALID_PARAMS')
-  }
-  if (!content || !content.trim()) {
-    throw new ApiError('INVALID_PARAMS')
-  }
-  if (!speaker || !speaker.trim()) {
-    throw new ApiError('INVALID_PARAMS')
+  const body = await request.json().catch(() => null)
+  const episodeId = readTrimmedString(body?.episodeId)
+  const panelId = readTrimmedString(body?.matchedPanelId)
+  const content = readTrimmedString(body?.content)
+  const speaker = readTrimmedString(body?.speaker)
+  if (!episodeId || !panelId || !content || !speaker) {
+    throw new ApiError('INVALID_PARAMS', {
+      message: '一镜一条可播台词：新增台词时必须填写发言人、台词并绑定一个镜头。',
+    })
   }
 
-  const novelPromotionProject = await prisma.novelPromotionProject.findUnique({
-    where: { projectId },
-    select: { id: true }
-  })
-  if (!novelPromotionProject) {
-    throw new ApiError('NOT_FOUND')
-  }
-
-  const episode = await prisma.novelPromotionEpisode.findFirst({
-    where: {
-      id: episodeId,
-      novelPromotionProjectId: novelPromotionProject.id
-    },
-    select: { id: true }
-  })
-  if (!episode) {
-    throw new ApiError('NOT_FOUND')
-  }
-
-  const maxLine = await prisma.novelPromotionVoiceLine.findFirst({
-    where: { episodeId },
-    orderBy: { lineIndex: 'desc' },
-    select: { lineIndex: true }
-  })
-  const nextLineIndex = (maxLine?.lineIndex || 0) + 1
-
-  const matchedPanelData = await resolveMatchedPanelData(
-    matchedPanelId === undefined ? undefined : matchedPanelId,
-    episodeId
-  )
-
-  const created = await prisma.novelPromotionVoiceLine.create({
-    data: {
+  await assertEpisodeBelongsToProject(projectId, episodeId)
+  try {
+    const result = await createPanelSpeech({
       episodeId,
-      lineIndex: nextLineIndex,
-      content: content.trim(),
-      speaker: speaker.trim(),
-      ...(matchedPanelData || {})
-    },
-    include: {
-      matchedPanel: {
-        select: {
-          id: true,
-          storyboardId: true,
-          panelIndex: true
-        }
-      }
+      panelId,
+      speaker,
+      originalContent: content,
+      emotionPrompt: typeof body?.emotionPrompt === 'string' ? body.emotionPrompt : null,
+      emotionStrength: typeof body?.emotionStrength === 'number' ? body.emotionStrength : null,
+      source: 'manual_ui',
+    })
+    await rebuildEpisodeVoiceDerivedState(episodeId, 'manual_ui')
+    const voiceLine = await findVoiceLinePresentation(projectId, episodeId, result.speech.id)
+    return NextResponse.json({ success: true, voiceLine })
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('PANEL_SPEECH_CONFLICT')) {
+      throw new ApiError('CONFLICT', { message: '该镜头已有可播台词；请编辑现有台词或选择其他镜头。' })
     }
-  })
-
-  const voiceLine = await withVoiceLineMedia(created)
-  await rebuildEpisodeVoiceDerivedState(episodeId, 'voice_line_create')
-
-  return NextResponse.json({
-    success: true,
-    voiceLine
-  })
+    throwPanelSpeechSchemaError(error)
+  }
 })
 
 /**
  * PATCH /api/novel-promotion/[projectId]/voice-lines
- * 更新台词设置（内容、发言人、情绪设置、音频URL）
- * Body: { lineId, content, speaker, emotionPrompt, emotionStrength, audioUrl } 
- *    或 { speaker, episodeId, voicePresetId } (批量更新同一发言人的音色)
+ * 内容、发言人和镜头归属写入 PanelSpeech；音频 URL 仍是旧配音任务的输出字段。
  */
 export const PATCH = apiHandler(async (
   request: NextRequest,
-  context: { params: Promise<{ projectId: string }> }
+  context: { params: Promise<{ projectId: string }> },
 ) => {
   const { projectId } = await context.params
-
-  // 🔐 统一权限验证
   const authResult = await requireProjectAuthLight(projectId)
   if (isErrorResponse(authResult)) return authResult
 
-  const body = await request.json()
-  const {
-    lineId,
-    speaker,
-    episodeId,
-    voicePresetId,
-    emotionPrompt,
-    emotionStrength,
-    content,
-    audioUrl,
-    matchedPanelId
-  } = body
+  const body = await request.json().catch(() => null)
+  const lineId = readTrimmedString(body?.lineId)
+  if (!lineId) throw new ApiError('INVALID_PARAMS')
 
-  // 单条更新
-  if (lineId) {
-    const updateData: Prisma.NovelPromotionVoiceLineUncheckedUpdateInput = {}
-    if (voicePresetId !== undefined) updateData.voicePresetId = voicePresetId
-    if (emotionPrompt !== undefined) updateData.emotionPrompt = emotionPrompt || null
-    if (emotionStrength !== undefined) updateData.emotionStrength = emotionStrength
-    if (content !== undefined) {
-      if (!content.trim()) {
-        throw new ApiError('INVALID_PARAMS')
-      }
-      updateData.content = content.trim()
-    }
-    if (speaker !== undefined) {
-      if (!speaker.trim()) {
-        throw new ApiError('INVALID_PARAMS')
-      }
-      updateData.speaker = speaker.trim()
-    }
-    if (audioUrl !== undefined) {
-      updateData.audioUrl = audioUrl // 支持清空音频 (传 null)
-      const media = await resolveMediaRefFromLegacyValue(audioUrl)
-      updateData.audioMediaId = media?.id || null
-    }
-    if (matchedPanelId !== undefined) {
-      const currentLine = await prisma.novelPromotionVoiceLine.findUnique({
-        where: { id: lineId },
-        select: { episodeId: true }
-      })
-      if (!currentLine) {
-        throw new ApiError('NOT_FOUND')
-      }
-
-      const matchedPanelData = await resolveMatchedPanelData(matchedPanelId, currentLine.episodeId)
-      if (matchedPanelData) {
-        updateData.matchedPanelId = matchedPanelData.matchedPanelId
-        updateData.matchedStoryboardId = matchedPanelData.matchedStoryboardId
-        updateData.matchedPanelIndex = matchedPanelData.matchedPanelIndex
-      }
-    }
-
-    const updated = await prisma.novelPromotionVoiceLine.update({
+  try {
+    const legacyLine = await prisma.novelPromotionVoiceLine.findUnique({
       where: { id: lineId },
-      data: updateData,
-      include: {
-        matchedPanel: {
-          select: {
-            id: true,
-            storyboardId: true,
-            panelIndex: true
-          }
-        }
-      }
+      select: { episodeId: true },
     })
-    await rebuildEpisodeVoiceDerivedState(updated.episodeId, 'voice_line_update')
-    return NextResponse.json({
-      success: true,
-      voiceLine: await withVoiceLineMedia(updated)
+    const directSpeech = legacyLine ? null : await prisma.novelPromotionPanelSpeech.findUnique({
+      where: { id: lineId },
+      select: { episodeId: true },
     })
-  }
+    const episodeId = legacyLine?.episodeId || directSpeech?.episodeId || readTrimmedString(body?.episodeId)
+    if (!episodeId) throw new ApiError('NOT_FOUND')
+    await assertEpisodeBelongsToProject(projectId, episodeId)
 
-  // 批量更新同一发言人（仅支持更新音色）
-  if (speaker && episodeId) {
-    const result = await prisma.novelPromotionVoiceLine.updateMany({
-      where: {
+    if (body?.audioUrl !== undefined || body?.voicePresetId !== undefined) {
+      await updateLegacyVoiceOutput({
         episodeId,
-        speaker
-      },
-      data: { voicePresetId }
-    })
-    return NextResponse.json({
-      success: true,
-      updatedCount: result.count,
-      speaker,
-      voicePresetId
-    })
-  }
+        lineId,
+        ...(body?.audioUrl !== undefined ? { audioUrl: body.audioUrl as string | null } : {}),
+        ...(body?.voicePresetId !== undefined ? { voicePresetId: body.voicePresetId as string | null } : {}),
+      })
+      const speechId = await resolveSpeechIdFromLineId(episodeId, lineId)
+      if (!speechId) throw new ApiError('NOT_FOUND')
+      const voiceLine = await findVoiceLinePresentation(projectId, episodeId, speechId)
+      return NextResponse.json({ success: true, voiceLine })
+    }
 
-  throw new ApiError('INVALID_PARAMS')
+    const speechId = await resolveSpeechIdFromLineId(episodeId, lineId)
+    if (!speechId) throw new ApiError('NOT_FOUND')
+    const result = await updatePanelSpeech({
+      episodeId,
+      speechId,
+      ...(body?.matchedPanelId !== undefined ? { panelId: body.matchedPanelId } : {}),
+      ...(body?.speaker !== undefined ? { speaker: body.speaker } : {}),
+      ...(body?.content !== undefined ? { originalContent: body.content } : {}),
+      ...(body?.emotionPrompt !== undefined ? { emotionPrompt: body.emotionPrompt } : {}),
+      ...(body?.emotionStrength !== undefined ? { emotionStrength: body.emotionStrength } : {}),
+      source: 'manual_ui',
+    })
+    await rebuildEpisodeVoiceDerivedState(episodeId, 'manual_ui')
+    const voiceLine = await findVoiceLinePresentation(projectId, episodeId, result.speech.id)
+    return NextResponse.json({ success: true, voiceLine })
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('PANEL_SPEECH_CONFLICT')) {
+      throw new ApiError('CONFLICT', { message: '目标镜头已有可播台词；一个镜头只能绑定一条台词。' })
+    }
+    throwPanelSpeechSchemaError(error)
+  }
 })
 
 /**
  * DELETE /api/novel-promotion/[projectId]/voice-lines?lineId=xxx
- * 删除单条台词
  */
 export const DELETE = apiHandler(async (
   request: NextRequest,
-  context: { params: Promise<{ projectId: string }> }
+  context: { params: Promise<{ projectId: string }> },
 ) => {
   const { projectId } = await context.params
-
-  // 🔐 统一权限验证
   const authResult = await requireProjectAuthLight(projectId)
   if (isErrorResponse(authResult)) return authResult
 
   const { searchParams } = new URL(request.url)
-  const lineId = searchParams.get('lineId')
+  const lineId = readTrimmedString(searchParams.get('lineId'))
+  if (!lineId) throw new ApiError('INVALID_PARAMS')
 
-  if (!lineId) {
-    throw new ApiError('INVALID_PARAMS')
+  try {
+    const legacyLine = await prisma.novelPromotionVoiceLine.findUnique({
+      where: { id: lineId },
+      select: { episodeId: true },
+    })
+    const directSpeech = legacyLine ? null : await prisma.novelPromotionPanelSpeech.findUnique({
+      where: { id: lineId },
+      select: { episodeId: true },
+    })
+    const episodeId = legacyLine?.episodeId || directSpeech?.episodeId
+    if (!episodeId) throw new ApiError('NOT_FOUND')
+    await assertEpisodeBelongsToProject(projectId, episodeId)
+
+    const speechId = await resolveSpeechIdFromLineId(episodeId, lineId)
+    if (!speechId) throw new ApiError('NOT_FOUND')
+    await deletePanelSpeech({ episodeId, speechId })
+    await rebuildEpisodeVoiceDerivedState(episodeId, 'manual_ui')
+    return NextResponse.json({ success: true, deletedId: lineId })
+  } catch (error) {
+    throwPanelSpeechSchemaError(error)
   }
-
-  // 获取要删除的台词
-  const lineToDelete = await prisma.novelPromotionVoiceLine.findUnique({
-    where: { id: lineId }
-  })
-
-  if (!lineToDelete) {
-    throw new ApiError('NOT_FOUND')
-  }
-
-  // 删除台词
-  await prisma.novelPromotionVoiceLine.delete({
-    where: { id: lineId }
-  })
-
-  // 重新排序剩余台词的 lineIndex
-  const remainingLines = await prisma.novelPromotionVoiceLine.findMany({
-    where: { episodeId: lineToDelete.episodeId },
-    orderBy: { lineIndex: 'asc' }
-  })
-
-  // 更新每条台词的 lineIndex
-  for (let i = 0; i < remainingLines.length; i++) {
-    if (remainingLines[i].lineIndex !== i + 1) {
-      await prisma.novelPromotionVoiceLine.update({
-        where: { id: remainingLines[i].id },
-        data: { lineIndex: i + 1 }
-      })
-    }
-  }
-  await rebuildEpisodeVoiceDerivedState(lineToDelete.episodeId, 'voice_line_delete')
-
-  return NextResponse.json({
-    success: true,
-    deletedId: lineId,
-    remainingCount: remainingLines.length
-  })
 })
