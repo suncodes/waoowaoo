@@ -8,7 +8,7 @@ import { submitTask } from '@/lib/task/submitter'
 import { TASK_TYPE } from '@/lib/task/types'
 import { hasPanelAudioMixOutput } from '@/lib/task/has-output'
 import { withTaskUiPayload } from '@/lib/task/ui-payload'
-import { isPanelVoiceSpanTableMissing } from '@/lib/novel-promotion/panel-voice-spans'
+import { isPanelSpeechSchemaMissing } from '@/lib/novel-promotion/panel-speech'
 
 type AudioMixBody = {
   all?: boolean
@@ -28,6 +28,13 @@ type PanelCandidate = {
   videoMediaId: string | null
   audioMixedVideoUrl: string | null
   audioMixedVideoMediaId: string | null
+  panelSpeech: {
+    id: string
+    audio: {
+      audioUrl: string | null
+      audioMediaId: string | null
+    } | null
+  } | null
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -47,66 +54,38 @@ function hasAudioMixedOutput(panel: PanelCandidate): boolean {
   return isNonEmptyString(panel.audioMixedVideoUrl) || isNonEmptyString(panel.audioMixedVideoMediaId)
 }
 
-function buildVoiceLineDedupeSegment(voiceLineIds: string[]) {
-  if (voiceLineIds.length === 0) return 'auto'
+function buildSpeechDedupeSegment(speechIds: string[]) {
+  if (speechIds.length === 0) return 'auto'
   return crypto
     .createHash('sha1')
-    .update(JSON.stringify([...voiceLineIds].sort()))
+    .update(JSON.stringify([...speechIds].sort()))
     .digest('hex')
     .slice(0, 16)
 }
 
-async function countUsableVoiceLines(panel: PanelCandidate, episodeId: string, voiceLineIds: string[]) {
-  if (voiceLineIds.length === 0) {
-    try {
-      const spanVoiceLineRows = await prisma.novelPromotionPanelVoiceSpan.findMany({
-        where: { episodeId, panelId: panel.id },
-        select: { voiceLineId: true },
+function hasUsablePanelSpeechAudio(panel: PanelCandidate, speechIds: string[]): boolean {
+  const speech = panel.panelSpeech
+  if (!speech) return false
+  if (speechIds.length > 0 && !speechIds.includes(speech.id)) return false
+  return isNonEmptyString(speech.audio?.audioUrl) || isNonEmptyString(speech.audio?.audioMediaId)
+}
+
+async function assertPanelSpeechAudioSchemaAvailable() {
+  try {
+    await Promise.all([
+      prisma.novelPromotionPanelSpeech.findFirst({ select: { id: true } }),
+      prisma.novelPromotionPanelSpeechAudio.findFirst({ select: { id: true } }),
+    ])
+  } catch (error) {
+    if (isPanelSpeechSchemaMissing(error)) {
+      throw new ApiError('CONFLICT', {
+        code: 'DB_SCHEMA_OUT_OF_DATE',
+        message: '数据库缺少镜头级台词或配音产物表。请执行最新数据库迁移后重试。',
+        table: 'novel_promotion_panel_speeches, novel_promotion_panel_speech_audios',
       })
-      const spanVoiceLineIds = Array.from(new Set(spanVoiceLineRows.map((span) => span.voiceLineId)))
-      if (spanVoiceLineIds.length > 0) {
-        return await prisma.novelPromotionVoiceLine.count({
-          where: {
-            episodeId,
-            id: { in: spanVoiceLineIds },
-            OR: [
-              { audioUrl: { not: null } },
-              { audioMediaId: { not: null } },
-            ],
-          },
-        })
-      }
-    } catch (error) {
-      if (!isPanelVoiceSpanTableMissing(error)) throw error
     }
+    throw error
   }
-
-  const matchFilter = voiceLineIds.length > 0
-    ? { id: { in: voiceLineIds } }
-    : {
-        OR: [
-          { matchedPanelId: panel.id },
-          {
-            matchedStoryboardId: panel.storyboardId,
-            matchedPanelIndex: panel.panelIndex,
-          },
-        ],
-      }
-
-  return await prisma.novelPromotionVoiceLine.count({
-    where: {
-      episodeId,
-      AND: [
-        matchFilter,
-        {
-          OR: [
-            { audioUrl: { not: null } },
-            { audioMediaId: { not: null } },
-          ],
-        },
-      ],
-    },
-  })
 }
 
 async function submitAudioMixTask(params: {
@@ -116,11 +95,11 @@ async function submitAudioMixTask(params: {
   projectId: string
   episodeId: string
   panel: PanelCandidate
-  voiceLineIds: string[]
+  speechIds: string[]
 }) {
   const payload = {
     panelId: params.panel.id,
-    voiceLineIds: params.voiceLineIds,
+    speechIds: params.speechIds,
   }
 
   return await submitTask({
@@ -135,7 +114,7 @@ async function submitAudioMixTask(params: {
     payload: withTaskUiPayload(payload, {
       hasOutputAtStart: await hasPanelAudioMixOutput(params.panel.id),
     }),
-    dedupeKey: `audio_mix:${params.panel.id}:${buildVoiceLineDedupeSegment(params.voiceLineIds)}`,
+    dedupeKey: `audio_mix:${params.panel.id}:${buildSpeechDedupeSegment(params.speechIds)}`,
   })
 }
 
@@ -148,10 +127,11 @@ export const POST = apiHandler(async (
   const authResult = await requireProjectAuthLight(projectId)
   if (isErrorResponse(authResult)) return authResult
   const { session } = authResult
+  await assertPanelSpeechAudioSchemaAvailable()
 
   const body = (await request.json()) as AudioMixBody
   const locale = resolveRequiredTaskLocale(request, body)
-  const voiceLineIds = normalizeStringArray(body.voiceLineIds)
+  const speechIds = normalizeStringArray(body.voiceLineIds)
   const force = body.force === true
 
   if (body.all === true) {
@@ -179,6 +159,17 @@ export const POST = apiHandler(async (
                 videoMediaId: true,
                 audioMixedVideoUrl: true,
                 audioMixedVideoMediaId: true,
+                panelSpeech: {
+                  select: {
+                    id: true,
+                    audio: {
+                      select: {
+                        audioUrl: true,
+                        audioMediaId: true,
+                      },
+                    },
+                  },
+                },
               },
             },
           },
@@ -203,8 +194,7 @@ export const POST = apiHandler(async (
           skip('audio_mix_exists')
           continue
         }
-        const usableVoiceCount = await countUsableVoiceLines(panel, episode.id, [])
-        if (usableVoiceCount === 0) {
+        if (!hasUsablePanelSpeechAudio(panel, [])) {
           skip('voice_audio_missing')
           continue
         }
@@ -220,7 +210,7 @@ export const POST = apiHandler(async (
         projectId,
         episodeId: episode.id,
         panel,
-        voiceLineIds: [],
+        speechIds: [],
       })),
     )
 
@@ -253,6 +243,17 @@ export const POST = apiHandler(async (
         videoMediaId: true,
         audioMixedVideoUrl: true,
         audioMixedVideoMediaId: true,
+        panelSpeech: {
+          select: {
+            id: true,
+            audio: {
+              select: {
+                audioUrl: true,
+                audioMediaId: true,
+              },
+            },
+          },
+        },
         storyboard: { select: { episodeId: true } },
       },
     })
@@ -275,6 +276,17 @@ export const POST = apiHandler(async (
         videoMediaId: true,
         audioMixedVideoUrl: true,
         audioMixedVideoMediaId: true,
+        panelSpeech: {
+          select: {
+            id: true,
+            audio: {
+              select: {
+                audioUrl: true,
+                audioMediaId: true,
+              },
+            },
+          },
+        },
         storyboard: { select: { episodeId: true } },
       },
     })
@@ -290,8 +302,7 @@ export const POST = apiHandler(async (
     })
   }
 
-  const usableVoiceCount = await countUsableVoiceLines(panel, panel.storyboard.episodeId, voiceLineIds)
-  if (usableVoiceCount === 0) {
+  if (!hasUsablePanelSpeechAudio(panel, speechIds)) {
     throw new ApiError('INVALID_PARAMS', {
       code: 'AUDIO_MIX_AUDIO_MISSING',
       panelId: panel.id,
@@ -305,7 +316,7 @@ export const POST = apiHandler(async (
     projectId,
     episodeId: panel.storyboard.episodeId,
     panel,
-    voiceLineIds,
+    speechIds,
   })
 
   return NextResponse.json(result)

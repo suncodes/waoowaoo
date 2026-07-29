@@ -64,6 +64,8 @@ export interface PanelSpeechAssignment {
   sourceAnchor?: unknown
 }
 
+type LegacyVoiceLineCleanupClient = Pick<Prisma.TransactionClient, 'novelPromotionVoiceLine'>
+
 export type PanelSpeechReadinessCode =
   | 'READY'
   | 'NO_SPEECH'
@@ -79,15 +81,6 @@ type CharacterVoiceLike = {
   customVoiceUrl?: string | null
   voiceId?: string | null
   voiceType?: string | null
-}
-
-type LegacyVoiceLineRow = {
-  id: string
-  matchedPanelId: string | null
-  speaker: string
-  content: string
-  emotionPrompt: string | null
-  emotionStrength: number | null
 }
 
 function asInputJson(value: unknown): Prisma.InputJsonValue {
@@ -179,6 +172,21 @@ export function isPanelSpeechTableMissing(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error)
   return message.includes('novel_promotion_panel_speeches')
     && message.toLowerCase().includes('does not exist')
+}
+
+export function isPanelSpeechAudioTableMissing(error: unknown): boolean {
+  if (getPrismaErrorCode(error) === 'P2021') {
+    const message = error instanceof Error ? error.message : String(error)
+    return message.includes('novel_promotion_panel_speech_audios')
+      || message.toLowerCase().includes('does not exist')
+  }
+  const message = error instanceof Error ? error.message : String(error)
+  return message.includes('novel_promotion_panel_speech_audios')
+    && message.toLowerCase().includes('does not exist')
+}
+
+export function isPanelSpeechSchemaMissing(error: unknown): boolean {
+  return isPanelSpeechTableMissing(error) || isPanelSpeechAudioTableMissing(error)
 }
 
 export function buildPanelSpeechVoiceConfig(params: {
@@ -455,13 +463,14 @@ export async function refreshEpisodePanelSpeechVoiceConfigs(episodeId: string) {
           },
         },
         panelSpeeches: {
-          select: { id: true, speaker: true },
+          select: { id: true, speaker: true, voiceConfigJson: true },
         },
       },
     })
     if (!episode) throw new Error('PANEL_SPEECH_EPISODE_NOT_FOUND')
 
     const speakerVoices = parseSpeakerVoiceMap(episode.speakerVoices)
+    let invalidatedAudioCount = 0
     await prisma.$transaction(async (tx) => {
       for (const speech of episode.panelSpeeches) {
         const voiceConfig = buildPanelSpeechVoiceConfig({
@@ -473,11 +482,24 @@ export async function refreshEpisodePanelSpeechVoiceConfigs(episodeId: string) {
           where: { id: speech.id },
           data: { voiceConfigJson: asInputJson(voiceConfig) },
         })
+        const previousVoiceConfig = readPanelSpeechVoiceConfig(speech.voiceConfigJson)
+        if (JSON.stringify(previousVoiceConfig) !== JSON.stringify(voiceConfig)) {
+          await tx.novelPromotionPanelSpeechAudio.deleteMany({
+            where: { panelSpeechId: speech.id },
+          })
+          invalidatedAudioCount += 1
+        }
       }
     })
-    return { available: true, count: episode.panelSpeeches.length }
+    return {
+      available: true,
+      count: episode.panelSpeeches.length,
+      invalidatedAudioCount,
+    }
   } catch (error) {
-    if (isPanelSpeechTableMissing(error)) return { available: false, count: 0 }
+    if (isPanelSpeechSchemaMissing(error)) {
+      return { available: false, count: 0, invalidatedAudioCount: 0 }
+    }
     throw error
   }
 }
@@ -485,6 +507,15 @@ export async function refreshEpisodePanelSpeechVoiceConfigs(episodeId: string) {
 /**
  * 用完整的镜头分配结果替换剧集台词。调用方必须先确保每条台词已绑定到唯一镜头。
  */
+export async function clearLegacyEpisodeVoiceLines(
+  client: LegacyVoiceLineCleanupClient,
+  episodeId: string,
+) {
+  await client.novelPromotionVoiceLine.deleteMany({
+    where: { episodeId },
+  })
+}
+
 export async function replaceEpisodePanelSpeeches(params: {
   episodeId: string
   assignments: PanelSpeechAssignment[]
@@ -554,6 +585,7 @@ export async function replaceEpisodePanelSpeeches(params: {
 
     const speakerVoices = parseSpeakerVoiceMap(episode.speakerVoices)
     await prisma.$transaction(async (tx) => {
+      await clearLegacyEpisodeVoiceLines(tx, params.episodeId)
       await tx.novelPromotionPanelSpeech.deleteMany({
         where: { episodeId: params.episodeId },
       })
@@ -583,151 +615,73 @@ export async function replaceEpisodePanelSpeeches(params: {
       }
     }, { timeout: 30000 })
 
-    const projection = await syncEpisodeLegacyVoiceLineProjection(params.episodeId)
     return {
       available: true,
       count: params.assignments.length,
-      voiceLineByPanelId: projection.voiceLineByPanelId,
     }
   } catch (error) {
     if (isPanelSpeechTableMissing(error)) {
-      return { available: false, count: 0, voiceLineByPanelId: new Map<string, string>() }
+      return { available: false, count: 0 }
     }
     throw error
   }
 }
 
-function sortStoryboards<T extends {
-  createdAt: Date
-  clip: { start: number | null; createdAt: Date }
-}>(storyboards: T[]): T[] {
-  return [...storyboards].sort((left, right) => (
-    (left.clip.start ?? Number.MAX_SAFE_INTEGER) - (right.clip.start ?? Number.MAX_SAFE_INTEGER)
-    || left.clip.createdAt.getTime() - right.clip.createdAt.getTime()
-    || left.createdAt.getTime() - right.createdAt.getTime()
-  ))
+export async function loadPanelSpeechAudio(speechId: string) {
+  try {
+    return await prisma.novelPromotionPanelSpeechAudio.findUnique({
+      where: { panelSpeechId: speechId },
+    })
+  } catch (error) {
+    if (isPanelSpeechSchemaMissing(error)) return null
+    throw error
+  }
 }
 
-/**
- * 兼容旧的配音、任务和界面读取接口。旧 VoiceLine 只是一镜一条的投影，不能反向决定台词内容。
- */
-export async function syncEpisodeLegacyVoiceLineProjection(episodeId: string) {
+export async function upsertPanelSpeechAudio(params: {
+  speechId: string
+  audioUrl: string | null
+  audioMediaId?: string | null
+  audioDuration?: number | null
+  voicePresetId?: string | null
+}) {
   try {
-    return await prisma.$transaction(async (tx) => {
-      const episode = await tx.novelPromotionEpisode.findUnique({
-        where: { id: episodeId },
-        select: {
-          storyboards: {
-            select: {
-              id: true,
-              createdAt: true,
-              clip: { select: { start: true, createdAt: true } },
-              panels: {
-                orderBy: { panelIndex: 'asc' },
-                select: {
-                  id: true,
-                  panelIndex: true,
-                  panelSpeech: {
-                    select: {
-                      speaker: true,
-                      originalContent: true,
-                      emotionPrompt: true,
-                      emotionStrength: true,
-                      estimatedDurationMs: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
-          voiceLines: {
-            orderBy: { lineIndex: 'asc' },
-            select: {
-              id: true,
-              matchedPanelId: true,
-              speaker: true,
-              content: true,
-              emotionPrompt: true,
-              emotionStrength: true,
-            },
-          },
-        },
-      })
-      if (!episode) throw new Error('PANEL_SPEECH_EPISODE_NOT_FOUND')
+    const speech = await prisma.novelPromotionPanelSpeech.findUnique({
+      where: { id: params.speechId },
+      select: { id: true },
+    })
+    if (!speech) throw new Error('PANEL_SPEECH_NOT_FOUND')
 
-      const existingByPanel = new Map<string, LegacyVoiceLineRow[]>()
-      for (const voiceLine of episode.voiceLines) {
-        if (!voiceLine.matchedPanelId) continue
-        const rows = existingByPanel.get(voiceLine.matchedPanelId) || []
-        rows.push(voiceLine)
-        existingByPanel.set(voiceLine.matchedPanelId, rows)
-      }
-
-      const retainedVoiceLineIds: string[] = []
-      const voiceLineByPanelId = new Map<string, string>()
-      let lineIndex = 1
-      for (const storyboard of sortStoryboards(episode.storyboards)) {
-        for (const panel of storyboard.panels) {
-          const speech = panel.panelSpeech
-          if (!speech) continue
-          const existing = existingByPanel.get(panel.id)?.shift()
-          const data = {
-            lineIndex,
-            speaker: speech.speaker,
-            content: speech.originalContent,
-            emotionPrompt: speech.emotionPrompt,
-            emotionStrength: speech.emotionStrength,
-            estimatedDurationMs: speech.estimatedDurationMs,
-            matchedPanelId: panel.id,
-            matchedStoryboardId: storyboard.id,
-            matchedPanelIndex: panel.panelIndex,
-          }
-          const contentChanged = existing && (
-            existing.speaker !== data.speaker
-            || existing.content !== data.content
-            || existing.emotionPrompt !== data.emotionPrompt
-            || existing.emotionStrength !== data.emotionStrength
-          )
-          const voiceLine = existing
-            ? await tx.novelPromotionVoiceLine.update({
-              where: { id: existing.id },
-              data: {
-                ...data,
-                ...(contentChanged ? {
-                  audioUrl: null,
-                  audioMediaId: null,
-                  audioDuration: null,
-                } : {}),
-              },
-              select: { id: true },
-            })
-            : await tx.novelPromotionVoiceLine.create({
-              data: { episodeId, ...data },
-              select: { id: true },
-            })
-          retainedVoiceLineIds.push(voiceLine.id)
-          voiceLineByPanelId.set(panel.id, voiceLine.id)
-          lineIndex += 1
-        }
-      }
-
-      await tx.novelPromotionVoiceLine.deleteMany({
-        where: {
-          episodeId,
-          ...(retainedVoiceLineIds.length > 0 ? { id: { notIn: retainedVoiceLineIds } } : {}),
-        },
-      })
-
-      return {
-        available: true,
-        count: retainedVoiceLineIds.length,
-        voiceLineByPanelId,
-      }
-    }, { timeout: 30000 })
+    return await prisma.novelPromotionPanelSpeechAudio.upsert({
+      where: { panelSpeechId: params.speechId },
+      create: {
+        panelSpeechId: params.speechId,
+        audioUrl: params.audioUrl,
+        audioMediaId: params.audioMediaId || null,
+        audioDuration: params.audioDuration || null,
+        voicePresetId: params.voicePresetId || null,
+      },
+      update: {
+        audioUrl: params.audioUrl,
+        ...(params.audioMediaId !== undefined ? { audioMediaId: params.audioMediaId } : {}),
+        ...(params.audioDuration !== undefined ? { audioDuration: params.audioDuration } : {}),
+        ...(params.voicePresetId !== undefined ? { voicePresetId: params.voicePresetId } : {}),
+      },
+    })
   } catch (error) {
-    if (isPanelSpeechTableMissing(error)) {
-      return { available: false, count: 0, voiceLineByPanelId: new Map<string, string>() }
-    }
+    if (isPanelSpeechSchemaMissing(error)) return null
+    throw error
+  }
+}
+
+export async function clearPanelSpeechAudio(speechId: string) {
+  try {
+    await prisma.novelPromotionPanelSpeechAudio.deleteMany({
+      where: { panelSpeechId: speechId },
+    })
+    return { available: true }
+  } catch (error) {
+    if (isPanelSpeechSchemaMissing(error)) return { available: false }
     throw error
   }
 }
@@ -893,8 +847,7 @@ export async function createPanelSpeech(input: CreatePanelSpeechInput) {
     clearDeliveryContent: false,
   })
   const speech = await prisma.novelPromotionPanelSpeech.create({ data })
-  const projection = await syncEpisodeLegacyVoiceLineProjection(input.episodeId)
-  return { speech, projection }
+  return { speech }
 }
 
 export async function updatePanelSpeech(input: UpdatePanelSpeechInput) {
@@ -934,6 +887,7 @@ export async function updatePanelSpeech(input: UpdatePanelSpeechInput) {
   const originalContent = input.originalContent === undefined
     ? existing.originalContent
     : ensurePanelSpeechText(input.originalContent, 'originalContent')
+  const clearDeliveryContent = panelId !== existing.panelId || originalContent !== existing.originalContent
   const data = buildPanelSpeechUpdateData({
     context,
     panelId,
@@ -943,14 +897,25 @@ export async function updatePanelSpeech(input: UpdatePanelSpeechInput) {
     emotionPrompt: input.emotionPrompt,
     emotionStrength: input.emotionStrength,
     source: input.source,
-    clearDeliveryContent: panelId !== existing.panelId || originalContent !== existing.originalContent,
+    clearDeliveryContent,
   })
-  const speech = await prisma.novelPromotionPanelSpeech.update({
-    where: { id: existing.id },
-    data,
+  const speakerChanged = speaker !== existing.speaker
+  const emotionChanged = data.emotionPrompt !== existing.emotionPrompt
+    || data.emotionStrength !== existing.emotionStrength
+  const clearAudioOutput = clearDeliveryContent || speakerChanged || emotionChanged
+  const speech = await prisma.$transaction(async (tx) => {
+    const updated = await tx.novelPromotionPanelSpeech.update({
+      where: { id: existing.id },
+      data,
+    })
+    if (clearAudioOutput) {
+      await tx.novelPromotionPanelSpeechAudio.deleteMany({
+        where: { panelSpeechId: existing.id },
+      })
+    }
+    return updated
   })
-  const projection = await syncEpisodeLegacyVoiceLineProjection(input.episodeId)
-  return { speech, projection }
+  return { speech }
 }
 
 export async function deletePanelSpeech(params: { episodeId: string; speechId: string }) {
@@ -963,6 +928,5 @@ export async function deletePanelSpeech(params: { episodeId: string; speechId: s
   })
   if (!speech) throw new Error('PANEL_SPEECH_NOT_FOUND')
   await prisma.novelPromotionPanelSpeech.delete({ where: { id: speech.id } })
-  const projection = await syncEpisodeLegacyVoiceLineProjection(params.episodeId)
-  return { projection }
+  return { deletedId: speech.id }
 }

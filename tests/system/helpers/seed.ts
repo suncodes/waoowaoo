@@ -88,15 +88,17 @@ export async function seedMinimalDomainState() {
     },
   })
 
-  const voiceLine = await prisma.novelPromotionVoiceLine.create({
+  const panelSpeech = await prisma.novelPromotionPanelSpeech.create({
     data: {
+      projectId: project.id,
       episodeId: episode.id,
-      lineIndex: 1,
+      clipId: clip.id,
+      panelId: panel.id,
       speaker: 'Narrator',
-      content: 'Hello world',
-      matchedPanelId: panel.id,
-      matchedStoryboardId: storyboard.id,
-      matchedPanelIndex: panel.panelIndex,
+      originalContent: 'Hello world',
+      estimatedDurationMs: 1800,
+      status: 'ready',
+      source: 'storyboard',
     },
   })
 
@@ -179,6 +181,6 @@ export async function seedMinimalDomainState() {
     appearance,
     location,
     locationImage,
-    voiceLine,
+    panelSpeech,
   }
 }

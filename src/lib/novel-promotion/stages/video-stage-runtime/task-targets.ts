@@ -62,7 +62,7 @@ export function buildVoiceLineTargets(voiceLines: VoiceLine[]): VoiceTaskTarget[
     .filter((line) => line.matchedStoryboardId && line.matchedPanelIndex !== null)
     .map((line) => ({
       key: `line:${line.id}`,
-      targetType: 'NovelPromotionVoiceLine',
+      targetType: 'NovelPromotionPanelSpeech',
       targetId: line.id,
       types: ['voice_line'],
       resource: 'audio' as const,

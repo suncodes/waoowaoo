@@ -5,8 +5,6 @@ import { executeAiTextStep } from '@/lib/ai-runtime'
 import { safeParseJsonObject } from '@/lib/json-repair'
 import { estimateNarrationDurationMs } from '@/lib/novel-promotion/narration-timeline'
 import {
-  readPanelSpeechLines,
-  rebuildEpisodeSpeechPlans,
   resolvePanelSpeechLineDurationMs,
   resolvePanelSpeechLineText,
   type PanelSpeechLine,
@@ -112,7 +110,7 @@ async function loadEpisode(episodeId: string) {
       productionBible: true,
       _count: {
         select: {
-          voiceLines: true,
+          panelSpeeches: true,
         },
       },
       novelPromotionProject: {
@@ -142,7 +140,7 @@ async function loadEpisode(episodeId: string) {
           panels: {
             orderBy: { panelIndex: 'asc' },
             include: {
-              speechPlan: true,
+              panelSpeech: true,
             },
           },
         },
@@ -162,10 +160,6 @@ function warningRecords(value: unknown): Array<Record<string, unknown>> {
       return typeof record.code === 'string' ? [record] : []
     })
     : []
-}
-
-function speechPlanLines(value: unknown): PanelSpeechLine[] {
-  return readPanelSpeechLines(value)
 }
 
 function readPanelDurationMs(panel: PanelForReadiness): number | null {
@@ -197,34 +191,14 @@ function buildSpeechIssuesAndActions(panel: PanelForReadiness): {
 } {
   const issues: StoryboardReadinessIssue[] = []
   const actions: StoryboardAutoFixAction[] = []
-  const plan = panel.speechPlan
+  const speech = panel.panelSpeech
   const panelNumber = panel.panelNumber ?? panel.panelIndex + 1
 
-  if (!plan) {
-    issues.push({
-      id: issueId('speech_plan_missing', panel.id),
-      kind: 'speech_plan_missing',
-      severity: 'blocking',
-      panelId: panel.id,
-      panelNumber,
-      title: `镜头 ${panelNumber} 缺少台词计划`,
-      message: '已有分镜但没有镜头级台词与声音计划，视频生成无法稳定携带台词和音色。',
-      autoFixable: true,
-    })
-    actions.push({
-      id: issueId('rebuild_speech_plans', panel.id),
-      type: 'rebuild_speech_plans',
-      panelId: panel.id,
-      title: '重建台词计划',
-      reason: '镜头级台词计划缺失。',
-      autoApply: true,
-    })
-    return { issues, actions }
-  }
+  if (!speech) return { issues, actions }
 
-  const warnings = warningRecords(plan.warningsJson)
+  const warnings = warningRecords(speech.warningsJson)
   const blocking = warnings.filter((warning) => warning.severity === 'blocking')
-  if (plan.status === 'invalid' || blocking.length > 0) {
+  if (speech.status === 'invalid' || blocking.length > 0) {
     issues.push({
       id: issueId('speech_plan_invalid', panel.id),
       kind: 'speech_plan_invalid',
@@ -238,8 +212,16 @@ function buildSpeechIssuesAndActions(panel: PanelForReadiness): {
     })
   }
 
-  const lines = speechPlanLines(plan.linesJson)
-  const targetDurationMs = targetDurationForPanelLine(panel, Math.max(1, lines.length))
+  const lines: PanelSpeechLine[] = [{
+    voiceLineId: speech.id,
+    lineIndex: panel.panelIndex + 1,
+    speaker: speech.speaker,
+    content: speech.originalContent,
+    order: 1,
+    estimatedDurationMs: speech.estimatedDurationMs || estimateNarrationDurationMs(speech.deliveryContent || speech.originalContent),
+    deliveryContent: speech.deliveryContent,
+  }]
+  const targetDurationMs = targetDurationForPanelLine(panel, 1)
   for (const warning of warnings) {
     const code = String(warning.code || '')
     if (!SPEECH_WARNING_CODES.has(code)) continue
@@ -482,10 +464,10 @@ function analyzeEpisodeReadiness(episode: EpisodeForReadiness): {
   const panels = flattenPanels(episode)
   const issues: StoryboardReadinessIssue[] = []
   const actions: StoryboardAutoFixAction[] = []
-  const hasVoiceLines = episode._count.voiceLines > 0
+  const hasPanelSpeeches = episode._count.panelSpeeches > 0
 
   for (const panel of panels) {
-    if (hasVoiceLines) {
+    if (hasPanelSpeeches) {
       const speech = buildSpeechIssuesAndActions(panel)
       issues.push(...speech.issues)
       actions.push(...speech.actions)
@@ -858,13 +840,18 @@ async function applyDeliveryRewriteAction(action: StoryboardAutoFixAction): Prom
   })
   if (!speech) return false
 
-  await prisma.novelPromotionPanelSpeech.update({
-    where: { id: speech.id },
-    data: {
-      deliveryContent,
-      estimatedDurationMs: estimateNarrationDurationMs(deliveryContent),
-      source: 'storyboard_auto_fix',
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.novelPromotionPanelSpeech.update({
+      where: { id: speech.id },
+      data: {
+        deliveryContent,
+        estimatedDurationMs: estimateNarrationDurationMs(deliveryContent),
+        source: 'storyboard_auto_fix',
+      },
+    })
+    await tx.novelPromotionPanelSpeechAudio.deleteMany({
+      where: { panelSpeechId: speech.id },
+    })
   })
   return true
 }
@@ -920,13 +907,6 @@ export async function applyStoryboardAutoFix(params: {
 
   const appliedActionIds: string[] = []
   const skippedActionIds: string[] = []
-  let speechPlansChanged = false
-  const needsSpeechRebuild = plan.actions.some((action) => action.type === 'rebuild_speech_plans')
-  if (needsSpeechRebuild) {
-    await rebuildEpisodeSpeechPlans(params.episodeId, 'storyboard_auto_fix')
-    appliedActionIds.push(...plan.actions.filter((action) => action.type === 'rebuild_speech_plans').map((action) => action.id))
-  }
-
   for (const action of plan.actions) {
     if (action.type !== 'rewrite_delivery_line') continue
     if (!action.autoApply || !action.after?.trim()) {
@@ -936,14 +916,9 @@ export async function applyStoryboardAutoFix(params: {
     const applied = await applyDeliveryRewriteAction(action)
     if (applied) {
       appliedActionIds.push(action.id)
-      speechPlansChanged = true
     } else {
       skippedActionIds.push(action.id)
     }
-  }
-
-  if (speechPlansChanged) {
-    await rebuildEpisodeSpeechPlans(params.episodeId, 'storyboard_auto_fix')
   }
 
   const latest = await loadEpisode(params.episodeId)

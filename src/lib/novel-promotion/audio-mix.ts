@@ -6,12 +6,11 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { prisma } from '@/lib/prisma'
 import { ensureMediaObjectFromStorageKey, resolveStorageKeyFromMediaValue } from '@/lib/media/service'
 import { getObjectBuffer, toFetchableUrl, uploadObject } from '@/lib/storage'
-import { isPanelVoiceSpanTableMissing } from './panel-voice-spans'
 
 export interface PanelAudioMixInput {
   projectId: string
   panelId: string
-  voiceLineIds?: string[] | null
+  speechIds?: string[] | null
 }
 
 export interface PanelAudioMixResult {
@@ -29,28 +28,6 @@ interface AudioMixProgressReporter {
 }
 
 type MediaLike = string | null | undefined
-
-interface VoiceLineAudioSource {
-  id: string
-  lineIndex: number
-  audioUrl: string | null
-  audioMedia: { storageKey?: string | null } | null
-}
-
-interface PanelVoiceSpanMixRow {
-  startMs: number
-  endMs: number
-  voiceStartMs: number
-  voiceEndMs: number
-  voiceLine: VoiceLineAudioSource
-}
-
-interface VoiceAudioSegment {
-  audioSource: string
-  panelStartMs: number
-  voiceStartMs: number
-  voiceEndMs: number
-}
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
@@ -188,50 +165,6 @@ async function buildVoiceTrack(inputPaths: string[], outputPath: string, cwd: st
   ], cwd)
 }
 
-async function buildVoiceSpanTrack(
-  inputs: Array<{ inputPath: string; segment: VoiceAudioSegment }>,
-  outputPath: string,
-  cwd: string,
-): Promise<void> {
-  if (inputs.length === 0) {
-    throw new Error('AUDIO_MIX_NO_AUDIO')
-  }
-
-  const totalDurationMs = Math.max(
-    ...inputs.map(({ segment }) => segment.panelStartMs + Math.max(1, segment.voiceEndMs - segment.voiceStartMs)),
-  )
-  const inputArgs = inputs.flatMap(({ inputPath }) => ['-i', inputPath])
-  const filters = inputs.map(({ segment }, index) => {
-    const delayMs = Math.max(0, Math.round(segment.panelStartMs))
-    const startSec = Math.max(0, segment.voiceStartMs / 1000)
-    const endSec = Math.max(startSec + 0.05, segment.voiceEndMs / 1000)
-    return `[${index}:a:0]aresample=48000,atrim=start=${startSec.toFixed(3)}:end=${endSec.toFixed(3)},asetpts=PTS-STARTPTS,adelay=${delayMs}|${delayMs}[a${index}]`
-  })
-  const labels = inputs.map((_, index) => `[a${index}]`).join('')
-  const filter = `${filters.join(';')};${labels}amix=inputs=${inputs.length}:duration=longest:normalize=0,atrim=0:${(totalDurationMs / 1000).toFixed(3)},asetpts=PTS-STARTPTS[aout]`
-
-  await runCommand('ffmpeg', [
-    '-y',
-    '-hide_banner',
-    '-loglevel',
-    'error',
-    ...inputArgs,
-    '-filter_complex',
-    filter,
-    '-map',
-    '[aout]',
-    '-c:a',
-    'aac',
-    '-b:a',
-    '192k',
-    '-ar',
-    '48000',
-    '-ac',
-    '2',
-    outputPath,
-  ], cwd)
-}
-
 async function mixAudioIntoVideo(params: {
   videoPath: string
   audioPath: string
@@ -283,59 +216,6 @@ function readMediaStorageKey(media: { storageKey?: string | null } | null | unde
   return isNonEmptyString(media?.storageKey) ? media.storageKey : null
 }
 
-function isNonNegativeFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0
-}
-
-async function findPanelVoiceSpansForMix(panelId: string, episodeId: string): Promise<PanelVoiceSpanMixRow[]> {
-  try {
-    return await prisma.novelPromotionPanelVoiceSpan.findMany({
-      where: { panelId, episodeId },
-      orderBy: { startMs: 'asc' },
-      select: {
-        startMs: true,
-        endMs: true,
-        voiceStartMs: true,
-        voiceEndMs: true,
-        voiceLine: {
-          select: {
-            id: true,
-            lineIndex: true,
-            audioUrl: true,
-            audioMedia: { select: { storageKey: true } },
-          },
-        },
-      },
-    })
-  } catch (error) {
-    if (!isPanelVoiceSpanTableMissing(error)) throw error
-    return []
-  }
-}
-
-function buildVoiceAudioSegments(
-  spans: PanelVoiceSpanMixRow[],
-  panelTimelineStartMs: number | null,
-): VoiceAudioSegment[] {
-  if (spans.length === 0) return []
-  const fallbackPanelStartMs = Math.min(...spans.map((span) => span.startMs))
-  const resolvedPanelStartMs = isNonNegativeFiniteNumber(panelTimelineStartMs)
-    ? panelTimelineStartMs
-    : fallbackPanelStartMs
-
-  return spans.flatMap((span) => {
-    const audioSource = readMediaStorageKey(span.voiceLine.audioMedia) || span.voiceLine.audioUrl
-    if (!isNonEmptyString(audioSource)) return []
-    if (span.endMs <= span.startMs || span.voiceEndMs <= span.voiceStartMs) return []
-    return [{
-      audioSource,
-      panelStartMs: Math.max(0, span.startMs - resolvedPanelStartMs),
-      voiceStartMs: Math.max(0, span.voiceStartMs),
-      voiceEndMs: Math.max(0, span.voiceEndMs),
-    }]
-  })
-}
-
 export async function mixPanelAudioToStorage(
   input: PanelAudioMixInput,
   reportProgress?: AudioMixProgressReporter,
@@ -353,12 +233,19 @@ export async function mixPanelAudioToStorage(
     },
     select: {
       id: true,
-      panelIndex: true,
-      timelineStartMs: true,
       videoUrl: true,
       videoMedia: { select: { storageKey: true } },
-      storyboardId: true,
-      storyboard: { select: { episodeId: true } },
+      panelSpeech: {
+        select: {
+          id: true,
+          audio: {
+            select: {
+              audioUrl: true,
+              audioMedia: { select: { storageKey: true } },
+            },
+          },
+        },
+      },
     },
   })
   if (!panel) {
@@ -370,55 +257,14 @@ export async function mixPanelAudioToStorage(
     throw new Error('AUDIO_MIX_VIDEO_MISSING')
   }
 
-  const requestedLineIds = Array.from(new Set((input.voiceLineIds || []).filter(isNonEmptyString)))
-  const spanRows = requestedLineIds.length === 0
-    ? await findPanelVoiceSpansForMix(panel.id, panel.storyboard.episodeId)
-    : []
-  const spanSegments = buildVoiceAudioSegments(spanRows, panel.timelineStartMs)
-
-  let voiceLines: VoiceLineAudioSource[] = []
-  let audioSources: string[] = []
-
-  if (spanRows.length > 0) {
-    if (spanSegments.length === 0) throw new Error('AUDIO_MIX_AUDIO_MISSING')
-    const voiceLineMap = new Map<string, VoiceLineAudioSource>()
-    for (const span of spanRows) {
-      const audioSource = readMediaStorageKey(span.voiceLine.audioMedia) || span.voiceLine.audioUrl
-      if (!isNonEmptyString(audioSource)) continue
-      voiceLineMap.set(span.voiceLine.id, span.voiceLine)
-    }
-    voiceLines = [...voiceLineMap.values()].sort((left, right) => left.lineIndex - right.lineIndex)
-    audioSources = spanSegments.map((segment) => segment.audioSource)
-  } else {
-    voiceLines = await prisma.novelPromotionVoiceLine.findMany({
-      where: {
-        episodeId: panel.storyboard.episodeId,
-        ...(requestedLineIds.length > 0
-          ? { id: { in: requestedLineIds } }
-          : {
-              OR: [
-                { matchedPanelId: panel.id },
-                {
-                  matchedStoryboardId: panel.storyboardId,
-                  matchedPanelIndex: panel.panelIndex,
-                },
-              ],
-            }),
-      },
-      orderBy: { lineIndex: 'asc' },
-      select: {
-        id: true,
-        lineIndex: true,
-        audioUrl: true,
-        audioMedia: { select: { storageKey: true } },
-      },
-    })
-    audioSources = voiceLines
-      .map((line) => readMediaStorageKey(line.audioMedia) || line.audioUrl)
-      .filter(isNonEmptyString)
+  const requestedSpeechIds = Array.from(new Set((input.speechIds || []).filter(isNonEmptyString)))
+  const speech = panel.panelSpeech
+  if (!speech || (requestedSpeechIds.length > 0 && !requestedSpeechIds.includes(speech.id))) {
+    throw new Error('AUDIO_MIX_AUDIO_MISSING')
   }
-
-  if (audioSources.length === 0) throw new Error('AUDIO_MIX_AUDIO_MISSING')
+  const audioSource = readMediaStorageKey(speech.audio?.audioMedia) || speech.audio?.audioUrl
+  if (!isNonEmptyString(audioSource)) throw new Error('AUDIO_MIX_AUDIO_MISSING')
+  const audioSources = [audioSource]
 
   const tempDir = await mkdtemp(path.join(os.tmpdir(), 'waoowaoo-audio-mix-'))
   try {
@@ -435,15 +281,7 @@ export async function mixPanelAudioToStorage(
     }
 
     const voiceTrackPath = path.join(tempDir, 'voice-track.m4a')
-    if (spanSegments.length > 0) {
-      await buildVoiceSpanTrack(
-        audioPaths.map((inputPath, index) => ({ inputPath, segment: spanSegments[index] })),
-        voiceTrackPath,
-        tempDir,
-      )
-    } else {
-      await buildVoiceTrack(audioPaths, voiceTrackPath, tempDir)
-    }
+    await buildVoiceTrack(audioPaths, voiceTrackPath, tempDir)
 
     const [videoDurationMs, audioDurationMs] = await Promise.all([
       probeDurationMs(videoPath, tempDir),
@@ -456,7 +294,7 @@ export async function mixPanelAudioToStorage(
       videoDurationMs,
       audioDurationMs,
       outputDurationMs,
-      voiceLineCount: voiceLines.length,
+      voiceLineCount: 1,
     })
 
     const outputPath = path.join(tempDir, 'audio-mixed.mp4')
@@ -495,7 +333,7 @@ export async function mixPanelAudioToStorage(
       videoDurationMs,
       audioDurationMs,
       outputDurationMs,
-      voiceLineCount: voiceLines.length,
+      voiceLineCount: 1,
     }
   } finally {
     await rm(tempDir, { recursive: true, force: true }).catch(() => undefined)

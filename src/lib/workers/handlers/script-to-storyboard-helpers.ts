@@ -1,6 +1,7 @@
 import { safeParseJson, safeParseJsonArray } from '@/lib/json-repair'
 import { prisma } from '@/lib/prisma'
 import {
+  clearLegacyEpisodeVoiceLines,
   replaceEpisodePanelSpeeches,
   type PanelSpeechAssignment,
 } from '@/lib/novel-promotion/panel-speech'
@@ -35,7 +36,7 @@ export type PersistedStoryboard = {
   }>
 }
 
-export type PersistedVoiceLine = {
+export type PersistedPanelSpeech = {
   id: string
   episodeId: string
   lineIndex: number
@@ -431,6 +432,8 @@ export async function persistStoryboardOutputs(params: {
     const panelIdByStoryboardRef = new Map<string, string>()
     const storyboardIdByRef = new Map<string, string>()
 
+    await clearLegacyEpisodeVoiceLines(tx, params.episodeId)
+
     for (const clipEntry of params.clipPanels) {
       const storyboard = await tx.novelPromotionStoryboard.upsert({
         where: { clipId: clipEntry.clipId },
@@ -581,22 +584,51 @@ export async function persistStoryboardOutputs(params: {
   if (!speechResult.available) {
     throw new Error('PANEL_SPEECH_TABLE_MISSING')
   }
-  const voiceLines = await prisma.novelPromotionVoiceLine.findMany({
+  const panelSpeeches = await prisma.novelPromotionPanelSpeech.findMany({
     where: { episodeId: params.episodeId },
-    orderBy: { lineIndex: 'asc' },
     select: {
       id: true,
       episodeId: true,
-      lineIndex: true,
       speaker: true,
-      content: true,
-      matchedPanelId: true,
+      originalContent: true,
+      panelId: true,
+      panel: {
+        select: {
+          panelIndex: true,
+          storyboard: {
+            select: {
+              createdAt: true,
+              clip: {
+                select: {
+                  start: true,
+                  createdAt: true,
+                },
+              },
+            },
+          },
+        },
+      },
     },
   })
+  const persistedPanelSpeeches: PersistedPanelSpeech[] = [...panelSpeeches]
+    .sort((left, right) => (
+      (left.panel.storyboard.clip?.start ?? Number.MAX_SAFE_INTEGER) - (right.panel.storyboard.clip?.start ?? Number.MAX_SAFE_INTEGER)
+      || (left.panel.storyboard.clip?.createdAt.getTime() ?? 0) - (right.panel.storyboard.clip?.createdAt.getTime() ?? 0)
+      || left.panel.storyboard.createdAt.getTime() - right.panel.storyboard.createdAt.getTime()
+      || left.panel.panelIndex - right.panel.panelIndex
+    ))
+    .map((speech, index) => ({
+      id: speech.id,
+      episodeId: speech.episodeId,
+      lineIndex: index + 1,
+      speaker: speech.speaker,
+      content: speech.originalContent,
+      matchedPanelId: speech.panelId,
+    }))
 
   return {
     persistedStoryboards: persistedStoryboards.persistedStoryboards,
-    voiceLineCount: voiceLines.length,
-    voiceLines,
+    voiceLineCount: persistedPanelSpeeches.length,
+    panelSpeeches: persistedPanelSpeeches,
   }
 }

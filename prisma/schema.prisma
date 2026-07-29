@@ -655,12 +655,30 @@ model NovelPromotionPanelSpeech {
   episode             NovelPromotionEpisode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
   clip                NovelPromotionClip?   @relation(fields: [clipId], references: [id], onDelete: SetNull)
   panel               NovelPromotionPanel   @relation(fields: [panelId], references: [id], onDelete: Cascade)
+  audio               NovelPromotionPanelSpeechAudio?
 
   @@index([projectId])
   @@index([episodeId])
   @@index([clipId])
   @@index([status])
   @@map("novel_promotion_panel_speeches")
+}
+
+// 镜头级配音产物。台词内容和镜头归属由 PanelSpeech 持有，音频仅作为可替换输出。
+model NovelPromotionPanelSpeechAudio {
+  id            String                @id @default(uuid())
+  panelSpeechId String                @unique
+  audioUrl      String?               @db.Text
+  audioMediaId  String?
+  audioDuration Int?
+  voicePresetId String?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @default(now()) @updatedAt
+  panelSpeech   NovelPromotionPanelSpeech @relation(fields: [panelSpeechId], references: [id], onDelete: Cascade)
+  audioMedia    MediaObject?          @relation("NovelPromotionPanelSpeechAudioMedia", fields: [audioMediaId], references: [id], onDelete: SetNull)
+
+  @@index([audioMediaId])
+  @@map("novel_promotion_panel_speech_audios")
 }
 
 model NovelPromotionSubtitleTrack {
@@ -1162,6 +1180,7 @@ model MediaObject {
   novelPromotionShotImages              NovelPromotionShot[]        @relation("NovelPromotionShotImageMedia")
   supplementaryPanelImages              SupplementaryPanel[]        @relation("SupplementaryPanelImageMedia")
   novelPromotionVoiceLineAudios         NovelPromotionVoiceLine[]   @relation("NovelPromotionVoiceLineAudioMedia")
+  novelPromotionPanelSpeechAudios       NovelPromotionPanelSpeechAudio[] @relation("NovelPromotionPanelSpeechAudioMedia")
   voicePresetAudios                     VoicePreset[]               @relation("VoicePresetAudioMedia")
   globalCharacterVoices                 GlobalCharacter[]           @relation("GlobalCharacterVoiceMedia")
   globalCharacterAppearanceImages       GlobalCharacterAppearance[] @relation("GlobalCharacterAppearanceImageMedia")

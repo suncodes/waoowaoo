@@ -33,9 +33,14 @@ vi.mock('@/lib/voice/generate-voice-line', async () => {
     generateVoiceLine: vi.fn(async (params: {
       lineId: string
     }) => {
-      await prisma.novelPromotionVoiceLine.update({
-        where: { id: params.lineId },
-        data: {
+      await prisma.novelPromotionPanelSpeechAudio.upsert({
+        where: { panelSpeechId: params.lineId },
+        create: {
+          panelSpeechId: params.lineId,
+          audioUrl: voiceState.audioUrl,
+          audioDuration: voiceState.audioDuration,
+        },
+        update: {
           audioUrl: voiceState.audioUrl,
           audioDuration: voiceState.audioDuration,
         },
@@ -80,7 +85,7 @@ describe('system - voice generate', () => {
       {
         locale: 'zh',
         episodeId: seeded.episode.id,
-        lineId: seeded.voiceLine.id,
+        lineId: seeded.panelSpeech.id,
         audioModel: 'fal::audio-model',
       },
       { params: { projectId: seeded.project.id } },
@@ -93,11 +98,11 @@ describe('system - voice generate', () => {
     expect(task.status).toBe('completed')
     expect(task.type).toBe('voice_line')
 
-    const voiceLine = await prisma.novelPromotionVoiceLine.findUnique({
-      where: { id: seeded.voiceLine.id },
+    const audio = await prisma.novelPromotionPanelSpeechAudio.findUnique({
+      where: { panelSpeechId: seeded.panelSpeech.id },
       select: { audioUrl: true, audioDuration: true },
     })
-    expect(voiceLine).toEqual({
+    expect(audio).toEqual({
       audioUrl: voiceState.audioUrl,
       audioDuration: voiceState.audioDuration,
     })

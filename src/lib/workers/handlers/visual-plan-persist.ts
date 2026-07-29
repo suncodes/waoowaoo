@@ -27,7 +27,7 @@ import { rebuildEpisodeSpeechPlans } from '@/lib/novel-promotion/speech-plan'
 import {
   buildPanelSpeechCreateData,
   buildPanelSpeechVoiceConfig,
-  syncEpisodeLegacyVoiceLineProjection,
+  clearLegacyEpisodeVoiceLines,
 } from '@/lib/novel-promotion/panel-speech'
 import { parseSpeakerVoiceMap } from '@/lib/voice/provider-voice-binding'
 
@@ -141,7 +141,6 @@ export async function persistVisualPlan(params: {
     await materializeGuideStoryboards(tx, params)
   }, { timeout: 30000 })
   if (params.isBookGuide && !params.deferStoryboard) {
-    await syncEpisodeLegacyVoiceLineProjection(params.episodeId)
     await rebuildEpisodeNarrationTimeline(params.episodeId)
     await rebuildEpisodeSpeechPlans(params.episodeId, 'visual_plan_persist')
   }
@@ -184,6 +183,9 @@ export async function materializeGuideStoryboards(
   })
   if (!speechContext) throw new Error('Episode not found')
   const speakerVoices = parseSpeakerVoiceMap(speechContext.speakerVoices)
+
+  await clearLegacyEpisodeVoiceLines(tx, params.episodeId)
+
   const unitsByClipId = new Map<string, VisualUnit[]>()
   for (const unit of params.result.visualUnits) {
     const current = unitsByClipId.get(unit.clipId) || []

@@ -29,6 +29,8 @@ export async function resetAssetHubState() {
 }
 
 export async function resetNovelPromotionState() {
+  await prisma.novelPromotionPanelSpeechAudio.deleteMany()
+  await prisma.novelPromotionPanelSpeech.deleteMany()
   await prisma.novelPromotionVoiceLine.deleteMany()
   await prisma.novelPromotionPanel.deleteMany()
   await prisma.supplementaryPanel.deleteMany()

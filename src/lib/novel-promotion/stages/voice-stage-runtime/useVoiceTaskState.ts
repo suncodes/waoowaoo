@@ -19,7 +19,7 @@ export function useVoiceTaskState({
   const voiceLineTargets = useMemo(() => {
     return voiceLines.map((line) => ({
       key: `line:${line.id}`,
-      targetType: 'NovelPromotionVoiceLine',
+      targetType: 'NovelPromotionPanelSpeech',
       targetId: line.id,
       types: ['voice_line'],
       resource: 'audio' as const,

@@ -348,16 +348,33 @@ async function handleLipSyncTask(job: Job<TaskJobData>) {
   if (!panel) throw new Error('Lip-sync panel not found')
   if (!panel.videoUrl) throw new Error('Panel has no base video')
 
-  const voiceLineId = typeof payload.voiceLineId === 'string' ? payload.voiceLineId : null
-  if (!voiceLineId) throw new Error('Lip-sync task missing voiceLineId')
+  const speechId = typeof payload.speechId === 'string'
+    ? payload.speechId
+    : typeof payload.voiceLineId === 'string'
+      ? payload.voiceLineId
+      : null
+  if (!speechId) throw new Error('Lip-sync task missing speechId')
 
-  const voiceLine = await prisma.novelPromotionVoiceLine.findUnique({ where: { id: voiceLineId } })
-  if (!voiceLine || !voiceLine.audioUrl) {
-    throw new Error('Voice line or audioUrl not found')
+  const speech = await prisma.novelPromotionPanelSpeech.findFirst({
+    where: {
+      id: speechId,
+      panelId: panel.id,
+    },
+    select: {
+      audio: {
+        select: {
+          audioUrl: true,
+          audioDuration: true,
+        },
+      },
+    },
+  })
+  if (!speech?.audio?.audioUrl) {
+    throw new Error('Panel speech audioUrl not found')
   }
 
   const signedVideoUrl = toSignedUrlIfCos(panel.videoUrl, 7200)
-  const signedAudioUrl = toSignedUrlIfCos(voiceLine.audioUrl, 7200)
+  const signedAudioUrl = toSignedUrlIfCos(speech.audio.audioUrl, 7200)
 
   if (!signedVideoUrl || !signedAudioUrl) {
     throw new Error('Lip-sync input media url invalid')
@@ -369,7 +386,7 @@ async function handleLipSyncTask(job: Job<TaskJobData>) {
     userId: job.data.userId,
     videoUrl: signedVideoUrl,
     audioUrl: signedAudioUrl,
-    audioDurationMs: typeof voiceLine.audioDuration === 'number' ? voiceLine.audioDuration : undefined,
+    audioDurationMs: typeof speech.audio.audioDuration === 'number' ? speech.audio.audioDuration : undefined,
     videoDurationMs: toDurationMs(panel.duration),
     modelKey: lipSyncModel,
   })
@@ -389,7 +406,7 @@ async function handleLipSyncTask(job: Job<TaskJobData>) {
 
   return {
     panelId: panel.id,
-    voiceLineId,
+    speechId,
     lipSyncVideoUrl: cosKey,
   }
 }
@@ -446,11 +463,12 @@ async function handleAudioMixTask(job: Job<TaskJobData>) {
   if (!panelId) {
     throw new Error('AUDIO_MIX_PANEL_ID_REQUIRED')
   }
+  const speechIds = readStringArray(payload.speechIds)
 
   const result = await mixPanelAudioToStorage({
     projectId: job.data.projectId,
     panelId,
-    voiceLineIds: readStringArray(payload.voiceLineIds),
+    speechIds: speechIds.length > 0 ? speechIds : readStringArray(payload.voiceLineIds),
   }, async (progress, progressPayload) => {
     await reportTaskProgress(job, progress, progressPayload)
   })

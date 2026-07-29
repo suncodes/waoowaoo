@@ -5,10 +5,12 @@ import { apiHandler, ApiError } from '@/lib/api-errors'
 import { resolveMediaRef, resolveMediaRefFromLegacyValue } from '@/lib/media/service'
 import { rebuildEpisodeNarrationTimeline } from '@/lib/novel-promotion/narration-timeline'
 import {
+  clearPanelSpeechAudio,
   createPanelSpeech,
   deletePanelSpeech,
-  isPanelSpeechTableMissing,
+  isPanelSpeechSchemaMissing,
   updatePanelSpeech,
+  upsertPanelSpeechAudio,
 } from '@/lib/novel-promotion/panel-speech'
 import { rebuildEpisodeSpeechPlans } from '@/lib/novel-promotion/speech-plan'
 
@@ -17,11 +19,11 @@ function readTrimmedString(value: unknown): string {
 }
 
 function throwPanelSpeechSchemaError(error: unknown): never {
-  if (isPanelSpeechTableMissing(error)) {
+  if (isPanelSpeechSchemaMissing(error)) {
     throw new ApiError('CONFLICT', {
       code: 'DB_SCHEMA_OUT_OF_DATE',
-      message: '数据库缺少镜头级可播台词表。请执行最新数据库迁移后，重新生成分镜文稿与台词计划。',
-      table: 'novel_promotion_panel_speeches',
+      message: '数据库缺少镜头级台词或配音产物表。请执行最新数据库迁移后，重新生成分镜文稿与台词计划。',
+      table: 'novel_promotion_panel_speeches, novel_promotion_panel_speech_audios',
     })
   }
   throw error
@@ -44,7 +46,7 @@ async function rebuildEpisodeVoiceDerivedState(episodeId: string, source: string
   if (!speechPlans.available) {
     throw new ApiError('CONFLICT', {
       code: 'DB_SCHEMA_OUT_OF_DATE',
-      message: '数据库缺少镜头级台词计划相关表。请执行最新数据库迁移后重试。',
+      message: '数据库缺少镜头级可播台词相关表。请执行最新数据库迁移后重试。',
     })
   }
 }
@@ -101,14 +103,12 @@ async function loadEpisodeVoiceLinePresentations(projectId: string, episodeId: s
                   emotionPrompt: true,
                   emotionStrength: true,
                   updatedAt: true,
-                },
-              },
-              matchedVoiceLines: {
-                orderBy: { lineIndex: 'asc' },
-                select: {
-                  id: true,
-                  audioUrl: true,
-                  audioMediaId: true,
+                  audio: {
+                    select: {
+                      audioUrl: true,
+                      audioMediaId: true,
+                    },
+                  },
                 },
               },
             },
@@ -130,12 +130,9 @@ async function loadEpisodeVoiceLinePresentations(projectId: string, episodeId: s
     for (const panel of storyboard.panels) {
       const speech = panel.panelSpeech
       if (!speech) continue
-      const legacyVoiceLine = panel.matchedVoiceLines[0] || null
-      const audioMedia = legacyVoiceLine
-        ? await resolveMediaRef(legacyVoiceLine.audioMediaId, legacyVoiceLine.audioUrl)
-        : null
+      const audioMedia = await resolveMediaRef(speech.audio?.audioMediaId, speech.audio?.audioUrl)
       voiceLines.push({
-        id: legacyVoiceLine?.id || speech.id,
+        id: speech.id,
         speechId: speech.id,
         lineIndex,
         speaker: speech.speaker,
@@ -146,7 +143,7 @@ async function loadEpisodeVoiceLinePresentations(projectId: string, episodeId: s
         deliveryUpdatedAt: speech.deliveryContent ? speech.updatedAt.toISOString() : null,
         emotionPrompt: speech.emotionPrompt,
         emotionStrength: speech.emotionStrength,
-        audioUrl: audioMedia?.url || legacyVoiceLine?.audioUrl || null,
+        audioUrl: audioMedia?.url || speech.audio?.audioUrl || null,
         updatedAt: speech.updatedAt.toISOString(),
         lineTaskRunning: false,
         matchedPanelId: panel.id,
@@ -159,64 +156,35 @@ async function loadEpisodeVoiceLinePresentations(projectId: string, episodeId: s
   return voiceLines
 }
 
-async function resolveSpeechIdFromLineId(episodeId: string, lineId: string): Promise<string | null> {
-  const directSpeech = await prisma.novelPromotionPanelSpeech.findFirst({
-    where: { id: lineId, episodeId },
-    select: { id: true },
-  })
-  if (directSpeech) return directSpeech.id
-
-  const legacyVoiceLine = await prisma.novelPromotionVoiceLine.findFirst({
-    where: { id: lineId, episodeId },
-    select: { matchedPanelId: true },
-  })
-  if (!legacyVoiceLine?.matchedPanelId) return null
-  const speech = await prisma.novelPromotionPanelSpeech.findUnique({
-    where: { panelId: legacyVoiceLine.matchedPanelId },
-    select: { id: true },
-  })
-  return speech?.id || null
-}
-
 async function findVoiceLinePresentation(projectId: string, episodeId: string, speechId: string) {
   const voiceLines = await loadEpisodeVoiceLinePresentations(projectId, episodeId)
   return voiceLines.find((line) => line.speechId === speechId) || null
 }
 
-async function updateLegacyVoiceOutput(params: {
-  episodeId: string
-  lineId: string
+async function updateSpeechAudioOutput(params: {
+  speechId: string
   audioUrl?: string | null
   voicePresetId?: string | null
 }) {
-  const voiceLine = await prisma.novelPromotionVoiceLine.findFirst({
-    where: { id: params.lineId, episodeId: params.episodeId },
-    select: { id: true },
-  })
-  if (!voiceLine) throw new ApiError('NOT_FOUND')
+  const audioUrl = params.audioUrl === undefined ? undefined : readTrimmedString(params.audioUrl)
+  if (params.audioUrl !== undefined && !audioUrl) {
+    await clearPanelSpeechAudio(params.speechId)
+    return
+  }
 
-  const data: {
-    audioUrl?: string | null
-    audioMediaId?: string | null
-    voicePresetId?: string | null
-  } = {}
-  if (params.audioUrl !== undefined) {
-    const media = await resolveMediaRefFromLegacyValue(params.audioUrl)
-    data.audioUrl = params.audioUrl
-    data.audioMediaId = media?.id || null
-  }
-  if (params.voicePresetId !== undefined) {
-    data.voicePresetId = params.voicePresetId
-  }
-  await prisma.novelPromotionVoiceLine.update({
-    where: { id: voiceLine.id },
-    data,
+  const media = audioUrl ? await resolveMediaRefFromLegacyValue(audioUrl) : null
+  const result = await upsertPanelSpeechAudio({
+    speechId: params.speechId,
+    audioUrl: audioUrl || null,
+    ...(params.audioUrl !== undefined ? { audioMediaId: media?.id || null } : {}),
+    ...(params.voicePresetId !== undefined ? { voicePresetId: params.voicePresetId } : {}),
   })
+  if (!result) throw new ApiError('CONFLICT', { code: 'DB_SCHEMA_OUT_OF_DATE' })
 }
 
 /**
  * GET /api/novel-promotion/[projectId]/voice-lines?episodeId=xxx
- * 从镜头级可播台词读取台词列表；VoiceLine 仅提供旧配音任务的音频输出。
+ * 返回镜头级可播台词；每一项都已绑定到唯一镜头。
  */
 export const GET = apiHandler(async (
   request: NextRequest,
@@ -286,8 +254,8 @@ export const POST = apiHandler(async (
     })
   }
 
-  await assertEpisodeBelongsToProject(projectId, episodeId)
   try {
+    await assertEpisodeBelongsToProject(projectId, episodeId)
     const result = await createPanelSpeech({
       episodeId,
       panelId,
@@ -310,7 +278,7 @@ export const POST = apiHandler(async (
 
 /**
  * PATCH /api/novel-promotion/[projectId]/voice-lines
- * 内容、发言人和镜头归属写入 PanelSpeech；音频 URL 仍是旧配音任务的输出字段。
+ * lineId 即 PanelSpeech.id；音频输出独立存储在 PanelSpeechAudio。
  */
 export const PATCH = apiHandler(async (
   request: NextRequest,
@@ -325,36 +293,28 @@ export const PATCH = apiHandler(async (
   if (!lineId) throw new ApiError('INVALID_PARAMS')
 
   try {
-    const legacyLine = await prisma.novelPromotionVoiceLine.findUnique({
+    const speech = await prisma.novelPromotionPanelSpeech.findUnique({
       where: { id: lineId },
       select: { episodeId: true },
     })
-    const directSpeech = legacyLine ? null : await prisma.novelPromotionPanelSpeech.findUnique({
-      where: { id: lineId },
-      select: { episodeId: true },
-    })
-    const episodeId = legacyLine?.episodeId || directSpeech?.episodeId || readTrimmedString(body?.episodeId)
-    if (!episodeId) throw new ApiError('NOT_FOUND')
+    const episodeId = speech?.episodeId || readTrimmedString(body?.episodeId)
+    if (!episodeId || !speech) throw new ApiError('NOT_FOUND')
     await assertEpisodeBelongsToProject(projectId, episodeId)
 
     if (body?.audioUrl !== undefined || body?.voicePresetId !== undefined) {
-      await updateLegacyVoiceOutput({
-        episodeId,
-        lineId,
+      await updateSpeechAudioOutput({
+        speechId: lineId,
         ...(body?.audioUrl !== undefined ? { audioUrl: body.audioUrl as string | null } : {}),
         ...(body?.voicePresetId !== undefined ? { voicePresetId: body.voicePresetId as string | null } : {}),
       })
-      const speechId = await resolveSpeechIdFromLineId(episodeId, lineId)
-      if (!speechId) throw new ApiError('NOT_FOUND')
-      const voiceLine = await findVoiceLinePresentation(projectId, episodeId, speechId)
+      await rebuildEpisodeNarrationTimeline(episodeId)
+      const voiceLine = await findVoiceLinePresentation(projectId, episodeId, lineId)
       return NextResponse.json({ success: true, voiceLine })
     }
 
-    const speechId = await resolveSpeechIdFromLineId(episodeId, lineId)
-    if (!speechId) throw new ApiError('NOT_FOUND')
     const result = await updatePanelSpeech({
       episodeId,
-      speechId,
+      speechId: lineId,
       ...(body?.matchedPanelId !== undefined ? { panelId: body.matchedPanelId } : {}),
       ...(body?.speaker !== undefined ? { speaker: body.speaker } : {}),
       ...(body?.content !== undefined ? { originalContent: body.content } : {}),
@@ -389,22 +349,14 @@ export const DELETE = apiHandler(async (
   if (!lineId) throw new ApiError('INVALID_PARAMS')
 
   try {
-    const legacyLine = await prisma.novelPromotionVoiceLine.findUnique({
+    const speech = await prisma.novelPromotionPanelSpeech.findUnique({
       where: { id: lineId },
       select: { episodeId: true },
     })
-    const directSpeech = legacyLine ? null : await prisma.novelPromotionPanelSpeech.findUnique({
-      where: { id: lineId },
-      select: { episodeId: true },
-    })
-    const episodeId = legacyLine?.episodeId || directSpeech?.episodeId
-    if (!episodeId) throw new ApiError('NOT_FOUND')
-    await assertEpisodeBelongsToProject(projectId, episodeId)
-
-    const speechId = await resolveSpeechIdFromLineId(episodeId, lineId)
-    if (!speechId) throw new ApiError('NOT_FOUND')
-    await deletePanelSpeech({ episodeId, speechId })
-    await rebuildEpisodeVoiceDerivedState(episodeId, 'manual_ui')
+    if (!speech) throw new ApiError('NOT_FOUND')
+    await assertEpisodeBelongsToProject(projectId, speech.episodeId)
+    await deletePanelSpeech({ episodeId: speech.episodeId, speechId: lineId })
+    await rebuildEpisodeVoiceDerivedState(speech.episodeId, 'manual_ui')
     return NextResponse.json({ success: true, deletedId: lineId })
   } catch (error) {
     throwPanelSpeechSchemaError(error)

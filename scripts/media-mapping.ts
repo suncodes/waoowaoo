@@ -57,6 +57,11 @@ export const MEDIA_MODEL_MAPPINGS: MediaModelMapping[] = [
     fields: [{ legacyField: 'audioUrl', mediaIdField: 'audioMediaId' }],
   },
   {
+    model: 'novelPromotionPanelSpeechAudio',
+    tableName: 'novel_promotion_panel_speech_audios',
+    fields: [{ legacyField: 'audioUrl', mediaIdField: 'audioMediaId' }],
+  },
+  {
     model: 'voicePreset',
     tableName: 'voice_presets',
     fields: [{ legacyField: 'audioUrl', mediaIdField: 'audioMediaId' }],

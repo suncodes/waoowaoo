@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const prismaMock = vi.hoisted(() => ({
-  novelPromotionVoiceLine: {
+  novelPromotionPanelSpeech: {
     findUnique: vi.fn(),
-    update: vi.fn(async () => undefined),
   },
   novelPromotionProject: {
     findUnique: vi.fn(),
@@ -33,6 +32,8 @@ const rebuildEpisodeNarrationTimelineMock = vi.hoisted(() => vi.fn(async () => (
   spanCount: 1,
   totalDurationMs: 1000,
 })))
+const ensureMediaObjectFromStorageKeyMock = vi.hoisted(() => vi.fn(async () => ({ id: 'media-1' })))
+const upsertPanelSpeechAudioMock = vi.hoisted(() => vi.fn(async () => ({ id: 'speech-audio-1' })))
 
 vi.mock('@/lib/prisma', () => ({
   prisma: prismaMock,
@@ -57,7 +58,15 @@ vi.mock('@/lib/storage', () => ({
 }))
 
 vi.mock('@/lib/media/service', () => ({
+  ensureMediaObjectFromStorageKey: ensureMediaObjectFromStorageKeyMock,
   resolveStorageKeyFromMediaValue: resolveStorageKeyFromMediaValueMock,
+}))
+
+vi.mock('@/lib/novel-promotion/panel-speech', () => ({
+  resolvePanelSpeechText: (speech: { originalContent: string; deliveryContent?: string | null }) => (
+    speech.deliveryContent || speech.originalContent
+  ),
+  upsertPanelSpeechAudio: upsertPanelSpeechAudioMock,
 }))
 
 vi.mock('@/lib/providers/bailian', () => ({
@@ -82,11 +91,12 @@ describe('generate voice line with bailian provider', () => {
     vi.clearAllMocks()
     const audioBytes = Uint8Array.from([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
 
-    prismaMock.novelPromotionVoiceLine.findUnique.mockResolvedValue({
+    prismaMock.novelPromotionPanelSpeech.findUnique.mockResolvedValue({
       id: 'line-1',
       episodeId: 'episode-1',
       speaker: 'Narrator',
-      content: '你好，世界',
+      originalContent: '你好，世界',
+      deliveryContent: null,
       emotionPrompt: null,
       emotionStrength: null,
     })
@@ -138,12 +148,11 @@ describe('generate voice line with bailian provider', () => {
       languageType: 'Chinese',
     }, 'bl-key')
     expect(uploadObjectMock).toHaveBeenCalledTimes(1)
-    expect(prismaMock.novelPromotionVoiceLine.update).toHaveBeenCalledWith({
-      where: { id: 'line-1' },
-      data: {
-        audioUrl: 'voice/storage/line-1.wav',
-        audioDuration: 1,
-      },
+    expect(upsertPanelSpeechAudioMock).toHaveBeenCalledWith({
+      speechId: 'line-1',
+      audioUrl: 'voice/storage/line-1.wav',
+      audioMediaId: 'media-1',
+      audioDuration: 1,
     })
     expect(result).toEqual({
       lineId: 'line-1',

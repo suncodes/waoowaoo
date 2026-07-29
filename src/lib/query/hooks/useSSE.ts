@@ -76,7 +76,7 @@ export function useSSE({ projectId, episodeId, enabled = true, onEvent }: UseSSE
         queryClient.invalidateQueries({ queryKey: queryKeys.projectAssets.all(projectId) })
         return
       }
-      if (targetType === 'NovelPromotionVoiceLine') {
+      if (targetType === 'NovelPromotionVoiceLine' || targetType === 'NovelPromotionPanelSpeech') {
         invalidateEpisodeScoped(resolvedEpisodeId)
         return
       }

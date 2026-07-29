@@ -1,5 +1,4 @@
 import { prisma } from '@/lib/prisma'
-import type { Prisma } from '@prisma/client'
 import { getPrismaErrorCode } from '@/lib/prisma-error'
 import { estimateNarrationDurationMs } from './narration-timeline'
 import { hasAnyVoiceBinding, type SpeakerVoiceEntry } from '@/lib/voice/provider-voice-binding'
@@ -122,10 +121,6 @@ function readPositiveNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) && value > 0
     ? Math.round(value)
     : null
-}
-
-function asInputJson(value: unknown): Prisma.InputJsonValue {
-  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
 }
 
 function parseAliasList(raw: string | null | undefined): string[] {
@@ -415,13 +410,6 @@ export function buildPanelSpeechPlanPayload(params: {
   })
 }
 
-function resolveSpeechPlanSource(existingSource: string | null | undefined, requestedSource: string): string {
-  if (isStoryboardSpeechPlanSource(existingSource) && !requestedSource.startsWith('voice_analyze')) {
-    return existingSource || 'storyboard'
-  }
-  return requestedSource
-}
-
 function sortStoryboards<T extends { createdAt: Date; clip: { start: number | null; createdAt: Date } | null }>(storyboards: T[]): T[] {
   return [...storyboards].sort((left, right) => (
     (left.clip?.start ?? Number.MAX_SAFE_INTEGER) - (right.clip?.start ?? Number.MAX_SAFE_INTEGER)
@@ -460,9 +448,26 @@ export function summarizePanelSpeechPlans(plans: Array<{
   }
 }
 
+export interface PanelSpeechPlanProjection {
+  id: string
+  projectId: string
+  episodeId: string
+  clipId: string | null
+  panelId: string
+  mode: PanelSpeechMode
+  status: PanelSpeechStatus
+  linesJson: PanelSpeechLine[]
+  voiceConfigJson: PanelSpeechVoiceConfig[]
+  timingJson: PanelSpeechTiming
+  warningsJson: PanelSpeechWarning[]
+  source: string
+  createdAt: Date
+  updatedAt: Date
+}
+
 /**
- * 将镜头级可播台词投影到旧 SpeechPlan 结构，供仍依赖该接口的页面和任务读取。
- * NovelPromotionPanelSpeech 是唯一事实来源；绝不从旧 VoiceLine 反向拼装或合并台词。
+ * 将镜头级可播台词投影为兼容的计划结构。
+ * NovelPromotionPanelSpeech 是唯一事实来源；此函数不再读写旧 SpeechPlan 表。
  */
 export async function rebuildEpisodeSpeechPlans(episodeId: string, source = 'system') {
   try {
@@ -473,12 +478,7 @@ export async function rebuildEpisodeSpeechPlans(episodeId: string, source = 'sys
         novelPromotionProject: {
           select: { projectId: true },
         },
-        voiceLines: {
-          select: {
-            id: true,
-            matchedPanelId: true,
-          },
-        },
+        voiceLines: { select: { id: true } },
         storyboards: {
           select: {
             id: true,
@@ -497,12 +497,6 @@ export async function rebuildEpisodeSpeechPlans(episodeId: string, source = 'sys
                 panelIndex: true,
                 duration: true,
                 targetDurationMs: true,
-                speechPlan: {
-                  select: { source: true },
-                },
-                matchedVoiceLines: {
-                  select: { id: true },
-                },
                 panelSpeech: {
                   select: {
                     id: true,
@@ -516,6 +510,8 @@ export async function rebuildEpisodeSpeechPlans(episodeId: string, source = 'sys
                     warningsJson: true,
                     status: true,
                     source: true,
+                    createdAt: true,
+                    updatedAt: true,
                   },
                 },
               },
@@ -532,17 +528,16 @@ export async function rebuildEpisodeSpeechPlans(episodeId: string, source = 'sys
       0,
     )
     const legacyOnly = canonicalSpeechCount === 0 && episode.voiceLines.length > 0
-    const rows = sortStoryboards(episode.storyboards).flatMap((storyboard) => (
+    const rows: PanelSpeechPlanProjection[] = sortStoryboards(episode.storyboards).flatMap((storyboard) => (
       storyboard.panels.map((panel) => {
         const speech = panel.panelSpeech
         const canonicalWarnings = speech ? readPanelSpeechWarnings(speech.warningsJson) : []
         const voiceConfig = speech
           ? [readCanonicalPanelSpeechVoiceConfig(speech.voiceConfigJson)].filter((item): item is PanelSpeechVoiceConfig => !!item)
           : []
-        const firstLegacyVoiceLine = panel.matchedVoiceLines[0]
         const lines: PanelSpeechLine[] = speech
           ? [{
-            voiceLineId: firstLegacyVoiceLine?.id || speech.id,
+            voiceLineId: speech.id,
             lineIndex: panel.panelIndex + 1,
             speaker: speech.speaker,
             content: speech.originalContent,
@@ -562,14 +557,6 @@ export async function rebuildEpisodeSpeechPlans(episodeId: string, source = 'sys
           voiceConfig,
         })
         const warnings = [...canonicalWarnings, ...payload.warnings]
-        const hasLegacyConflict = panel.matchedVoiceLines.length > 1
-        if (hasLegacyConflict) {
-          warnings.push({
-            code: 'LEGACY_SPEECH_REBUILD_REQUIRED',
-            severity: 'blocking',
-            message: '当前镜头仍存在多条旧台词绑定，请重新生成分镜文稿与台词计划。',
-          })
-        }
         if (legacyOnly) {
           warnings.push({
             code: 'LEGACY_SPEECH_REBUILD_REQUIRED',
@@ -577,11 +564,12 @@ export async function rebuildEpisodeSpeechPlans(episodeId: string, source = 'sys
             message: '当前项目仍使用旧的多台词绑定数据，无法安全转换为一镜一条可播台词；请重新生成分镜文稿与台词计划。',
           })
         }
-        const status = legacyOnly || hasLegacyConflict || (speech !== null && speech.status !== 'ready')
+        const status = legacyOnly || (speech !== null && speech.status !== 'ready')
           ? 'invalid'
           : payload.status
 
         return {
+          id: speech?.id || `panel-speech-plan:${panel.id}`,
           projectId: episode.novelPromotionProject.projectId,
           episodeId: episode.id,
           clipId: storyboard.clipId,
@@ -592,44 +580,12 @@ export async function rebuildEpisodeSpeechPlans(episodeId: string, source = 'sys
           voiceConfigJson: payload.voiceConfig,
           timingJson: payload.timing,
           warningsJson: warnings,
-          source: speech?.source || resolveSpeechPlanSource(panel.speechPlan?.source, source),
+          source: speech?.source || source,
+          createdAt: speech?.createdAt || new Date(0),
+          updatedAt: speech?.updatedAt || new Date(0),
         }
       })
     ))
-
-    await prisma.$transaction(async (tx) => {
-      const panelIds = rows.map((row) => row.panelId)
-      await tx.novelPromotionPanelSpeechPlan.deleteMany({
-        where: {
-          episodeId,
-          ...(panelIds.length > 0 ? { panelId: { notIn: panelIds } } : {}),
-        },
-      })
-      for (const row of rows) {
-        await tx.novelPromotionPanelSpeechPlan.upsert({
-          where: { panelId: row.panelId },
-          create: {
-            ...row,
-            linesJson: asInputJson(row.linesJson),
-            voiceConfigJson: asInputJson(row.voiceConfigJson),
-            timingJson: asInputJson(row.timingJson),
-            warningsJson: asInputJson(row.warningsJson),
-          },
-          update: {
-            projectId: row.projectId,
-            episodeId: row.episodeId,
-            clipId: row.clipId,
-            mode: row.mode,
-            status: row.status,
-            linesJson: asInputJson(row.linesJson),
-            voiceConfigJson: asInputJson(row.voiceConfigJson),
-            timingJson: asInputJson(row.timingJson),
-            warningsJson: asInputJson(row.warningsJson),
-            source: row.source,
-          },
-        })
-      }
-    }, { timeout: 30000 })
 
     return {
       episodeId,
@@ -638,7 +594,7 @@ export async function rebuildEpisodeSpeechPlans(episodeId: string, source = 'sys
       summary: summarizePanelSpeechPlans(rows),
     }
   } catch (error) {
-    if (!isPanelSpeechPlanTableMissing(error) && !isPanelSpeechTableMissing(error)) throw error
+    if (!isPanelSpeechTableMissing(error)) throw error
     return {
       episodeId,
       available: false,
@@ -649,24 +605,7 @@ export async function rebuildEpisodeSpeechPlans(episodeId: string, source = 'sys
 }
 
 export async function listEpisodeSpeechPlans(episodeId: string) {
-  try {
-    const plans = await prisma.novelPromotionPanelSpeechPlan.findMany({
-      where: { episodeId },
-      orderBy: { createdAt: 'asc' },
-    })
-    return {
-      available: true,
-      plans,
-      summary: summarizePanelSpeechPlans(plans),
-    }
-  } catch (error) {
-    if (!isPanelSpeechPlanTableMissing(error)) throw error
-    return {
-      available: false,
-      plans: [],
-      summary: summarizePanelSpeechPlans([]),
-    }
-  }
+  return await rebuildEpisodeSpeechPlans(episodeId, 'read')
 }
 
 export async function ensurePanelSpeechPlan(panelId: string) {
@@ -684,7 +623,7 @@ export async function ensurePanelSpeechPlan(panelId: string) {
 
   const rebuilt = await rebuildEpisodeSpeechPlans(panel.storyboard.episodeId)
   if (!rebuilt.available) return { available: false, plan: null }
-  const plan = await prisma.novelPromotionPanelSpeechPlan.findUnique({ where: { panelId } })
+  const plan = rebuilt.plans.find((item) => item.panelId === panelId) || null
   return { available: true, plan }
 }
 
@@ -704,25 +643,18 @@ export async function countPanelMatchedVoiceLines(panelId: string): Promise<numb
           episodeId: true,
         },
       },
+      panelSpeech: {
+        select: { id: true },
+      },
+      matchedVoiceLines: {
+        select: { id: true },
+      },
     },
   })
   if (!panel) throw new Error('SPEECH_PLAN_PANEL_NOT_FOUND')
 
-  const lines = await prisma.novelPromotionVoiceLine.findMany({
-    where: {
-      episodeId: panel.storyboard.episodeId,
-      OR: [
-        { matchedPanelId: panel.id },
-        {
-          matchedStoryboardId: panel.storyboardId,
-          matchedPanelIndex: panel.panelIndex,
-        },
-      ],
-    },
-    select: { id: true },
-  })
-
-  return new Set(lines.map((line) => line.id)).size
+  if (panel.panelSpeech) return 1
+  return panel.matchedVoiceLines.length
 }
 
 function readSpeechLines(raw: unknown): PanelSpeechLine[] {
@@ -933,8 +865,7 @@ export async function validatePanelSpeechReadyForVideo(panelId: string) {
   }
   const warnings = Array.isArray(plan.warningsJson) ? plan.warningsJson : []
   const reasons = warnings.flatMap((warning) => {
-    if (!warning || typeof warning !== 'object') return []
-    const message = readTrimmedString((warning as Record<string, unknown>).message)
+    const message = readTrimmedString(warning.message)
     return message ? [message] : []
   })
   return {

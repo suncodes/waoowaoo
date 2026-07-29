@@ -177,7 +177,44 @@ async function collectProjectData(projectId: string, episodeId?: string | null) 
     include: { panels: true, supplementaryPanels: true },
     orderBy: { createdAt: 'asc' },
   })
-  const voiceLines = await prisma.novelPromotionVoiceLine.findMany({ where: { episodeId: { in: episodeIds } }, orderBy: { createdAt: 'asc' } })
+  const panelSpeeches = await prisma.novelPromotionPanelSpeech.findMany({
+    where: { episodeId: { in: episodeIds } },
+    include: {
+      audio: true,
+      panel: {
+        include: {
+          storyboard: {
+            include: {
+              clip: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: { createdAt: 'asc' },
+  })
+  const voiceLines = [...panelSpeeches]
+    .sort((left, right) => (
+      (left.panel.storyboard.clip?.start ?? Number.MAX_SAFE_INTEGER) - (right.panel.storyboard.clip?.start ?? Number.MAX_SAFE_INTEGER)
+      || (left.panel.storyboard.clip?.createdAt.getTime() ?? 0) - (right.panel.storyboard.clip?.createdAt.getTime() ?? 0)
+      || left.panel.storyboard.createdAt.getTime() - right.panel.storyboard.createdAt.getTime()
+      || left.panel.panelIndex - right.panel.panelIndex
+    ))
+    .map((speech, index) => ({
+      id: speech.id,
+      episodeId: speech.episodeId,
+      lineIndex: index + 1,
+      speaker: speech.speaker,
+      content: speech.originalContent,
+      deliveryContent: speech.deliveryContent,
+      estimatedDurationMs: speech.estimatedDurationMs,
+      matchedPanelId: speech.panelId,
+      matchedStoryboardId: speech.panel.storyboardId,
+      matchedPanelIndex: speech.panel.panelIndex,
+      audioUrl: speech.audio?.audioUrl || null,
+      audioMediaId: speech.audio?.audioMediaId || null,
+      audioDuration: speech.audio?.audioDuration || null,
+    }))
   const tasks = await prisma.task.findMany({
     where: { projectId, ...(episodeId ? { episodeId } : {}) },
     include: { events: { orderBy: { createdAt: 'asc' } } },
@@ -195,7 +232,7 @@ async function collectProjectData(projectId: string, episodeId?: string | null) 
     orderBy: { createdAt: 'asc' },
   })
 
-  const domain = { project, novelProject, episodes, characters, locations, clips, shots, storyboards, voiceLines }
+  const domain = { project, novelProject, episodes, characters, locations, clips, shots, storyboards, panelSpeeches, voiceLines }
   const mediaRoots = { domain, tasks, runs }
   const mediaIds = [...collectMediaIds(mediaRoots)]
   const media = mediaIds.length > 0

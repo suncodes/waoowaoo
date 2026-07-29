@@ -143,17 +143,17 @@ export async function hasPanelAudioMixOutput(panelId: string | null | undefined)
   return isNonEmptyString(panel.audioMixedVideoUrl) || !!panel.audioMixedVideoMediaId
 }
 
-export async function hasVoiceLineAudioOutput(lineId: string | null | undefined) {
-  if (!isNonEmptyString(lineId)) return false
-  const line = await prisma.novelPromotionVoiceLine.findUnique({
-    where: { id: lineId },
+export async function hasPanelSpeechAudioOutput(speechId: string | null | undefined) {
+  if (!isNonEmptyString(speechId)) return false
+  const audio = await prisma.novelPromotionPanelSpeechAudio.findUnique({
+    where: { panelSpeechId: speechId },
     select: {
       audioUrl: true,
       audioMediaId: true,
     },
   })
-  if (!line) return false
-  return isNonEmptyString(line.audioUrl) || !!line.audioMediaId
+  if (!audio) return false
+  return isNonEmptyString(audio.audioUrl) || !!audio.audioMediaId
 }
 
 export async function hasGlobalCharacterOutput(params: {

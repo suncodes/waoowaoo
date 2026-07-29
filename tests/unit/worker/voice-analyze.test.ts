@@ -2,26 +2,13 @@ import type { Job } from 'bullmq'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 
-const txState = vi.hoisted(() => ({
-  createdRows: [] as Array<Record<string, unknown>>,
-  deletedWhereClauses: [] as Array<Record<string, unknown>>,
-}))
-
 const prismaMock = vi.hoisted(() => ({
   project: { findUnique: vi.fn() },
-  novelPromotionProject: { findUnique: vi.fn() },
-  novelPromotionEpisode: { findUnique: vi.fn() },
-  $transaction: vi.fn(),
+  novelPromotionEpisode: { findFirst: vi.fn() },
 }))
 
-const llmMock = vi.hoisted(() => ({
-  chatCompletion: vi.fn(async () => ({ id: 'completion-1' })),
-  getCompletionContent: vi.fn(() => 'voice-line-json'),
-}))
-
-const helperMock = vi.hoisted(() => ({
-  parseVoiceLinesJson: vi.fn(),
-  buildStoryboardJson: vi.fn(() => 'storyboard-json'),
+const panelSpeechMock = vi.hoisted(() => ({
+  listEpisodePanelSpeeches: vi.fn(),
 }))
 
 const workerMock = vi.hoisted(() => ({
@@ -34,8 +21,6 @@ const narrationTimelineMock = vi.hoisted(() => ({
 }))
 
 const speechPlanMock = vi.hoisted(() => ({
-  isStoryboardSpeechPlanSource: vi.fn((source: string | null | undefined) => source === 'storyboard'),
-  listEpisodeSpeechPlans: vi.fn(),
   rebuildEpisodeSpeechPlans: vi.fn(async () => ({
     summary: {
       total: 1,
@@ -50,33 +35,9 @@ const speechPlanMock = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
-vi.mock('@/lib/llm-client', () => llmMock)
-vi.mock('@/lib/llm-observe/internal-stream-context', () => ({
-  withInternalLLMStreamCallbacks: vi.fn(async (_callbacks: unknown, fn: () => Promise<unknown>) => await fn()),
-}))
-vi.mock('@/lib/constants', () => ({
-  buildCharactersIntroduction: vi.fn(() => 'characters-introduction'),
-}))
 vi.mock('@/lib/workers/shared', () => ({ reportTaskProgress: workerMock.reportTaskProgress }))
 vi.mock('@/lib/workers/utils', () => ({ assertTaskActive: workerMock.assertTaskActive }))
-vi.mock('@/lib/workers/handlers/llm-stream', () => ({
-  createWorkerLLMStreamContext: vi.fn(() => ({ streamRunId: 'run-1', nextSeqByStepLane: {} })),
-  createWorkerLLMStreamCallbacks: vi.fn(() => ({
-    onStage: vi.fn(),
-    onChunk: vi.fn(),
-    onComplete: vi.fn(),
-    onError: vi.fn(),
-    flush: vi.fn(async () => undefined),
-  })),
-}))
-vi.mock('@/lib/workers/handlers/voice-analyze-helpers', () => ({
-  buildStoryboardJson: helperMock.buildStoryboardJson,
-  parseVoiceLinesJson: helperMock.parseVoiceLinesJson,
-}))
-vi.mock('@/lib/prompt-i18n', () => ({
-  PROMPT_IDS: { NP_VOICE_ANALYSIS: 'np_voice_analysis' },
-  buildPrompt: vi.fn(() => 'voice-analysis-prompt'),
-}))
+vi.mock('@/lib/novel-promotion/panel-speech', () => panelSpeechMock)
 vi.mock('@/lib/novel-promotion/narration-timeline', () => narrationTimelineMock)
 vi.mock('@/lib/novel-promotion/speech-plan', () => speechPlanMock)
 
@@ -101,187 +62,21 @@ function buildJob(payload: Record<string, unknown>, episodeId: string | null = '
 describe('worker voice-analyze behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    txState.createdRows = []
-    txState.deletedWhereClauses = []
-
     prismaMock.project.findUnique.mockResolvedValue({ id: 'project-1' })
-    prismaMock.novelPromotionProject.findUnique.mockResolvedValue({
-      id: 'np-project-1',
-      analysisModel: 'llm::analysis-1',
-      characters: [{ id: 'char-1', name: 'Hero' }],
-    })
-
-    prismaMock.novelPromotionEpisode.findUnique.mockResolvedValue({
-      id: 'episode-1',
-      novelPromotionProjectId: 'np-project-1',
-      novelText: '这是可以用于台词分析的文本',
+    prismaMock.novelPromotionEpisode.findFirst.mockResolvedValue({
       voiceLines: [],
-      storyboards: [
-        {
-          id: 'storyboard-1',
-          clip: { id: 'clip-1' },
-          panels: [{ id: 'panel-1', panelIndex: 0 }],
-        },
-      ],
     })
-
-    speechPlanMock.listEpisodeSpeechPlans.mockResolvedValue({
+    panelSpeechMock.listEpisodePanelSpeeches.mockResolvedValue({
       available: true,
-      plans: [],
-      summary: {},
-    })
-
-    helperMock.parseVoiceLinesJson.mockReturnValue([
-      {
-        lineIndex: 1,
-        speaker: 'Hero',
-        content: '第一句台词',
-        emotionStrength: 0.7,
-        matchedPanel: {
-          storyboardId: 'storyboard-1',
-          panelIndex: 0,
-        },
-      },
-      {
-        lineIndex: 2,
-        speaker: 'Narrator',
-        content: '第二句旁白',
-        emotionStrength: 0.5,
-      },
-    ])
-
-    prismaMock.$transaction.mockImplementation(async (fn: (tx: {
-      novelPromotionVoiceLine: {
-        deleteMany: (args: { where: Record<string, unknown> }) => Promise<unknown>
-        create: (args: { data: Record<string, unknown>; select: { id: boolean; speaker: boolean; matchedStoryboardId: boolean } }) => Promise<{
-          id: string
-          speaker: string
-          matchedStoryboardId: string | null
-        }>
-      }
-    }) => Promise<unknown>) => {
-      const tx = {
-        novelPromotionVoiceLine: {
-          deleteMany: async (args: { where: Record<string, unknown> }) => {
-            txState.deletedWhereClauses.push(args.where)
-            return undefined
-          },
-          create: async (args: { data: Record<string, unknown>; select: { id: boolean; speaker: boolean; matchedStoryboardId: boolean } }) => {
-            txState.createdRows.push(args.data)
-            const speaker = typeof args.data.speaker === 'string' ? args.data.speaker : 'unknown'
-            const matchedStoryboardId = typeof args.data.matchedStoryboardId === 'string'
-              ? args.data.matchedStoryboardId
-              : null
-            return {
-              id: `line-${txState.createdRows.length}`,
-              speaker,
-              matchedStoryboardId,
-            }
-          },
-        },
-      }
-      return await fn(tx)
+      speeches: [{ id: 'speech-1', speaker: '旁白', source: 'storyboard' }],
     })
   })
 
   it('missing episodeId -> explicit error', async () => {
-    const job = buildJob({}, null)
-    await expect(handleVoiceAnalyzeTask(job)).rejects.toThrow('episodeId is required')
+    await expect(handleVoiceAnalyzeTask(buildJob({}, null))).rejects.toThrow('episodeId is required')
   })
 
-  it('success path -> persists mapped panelId and speaker stats', async () => {
-    const job = buildJob({ episodeId: 'episode-1' })
-    const result = await handleVoiceAnalyzeTask(job)
-
-    expect(result).toEqual(expect.objectContaining({
-      episodeId: 'episode-1',
-      count: 2,
-      matchedCount: 1,
-      speakerStats: {
-        Hero: 1,
-        Narrator: 1,
-      },
-    }))
-
-    expect(txState.createdRows[0]).toEqual(expect.objectContaining({
-      episodeId: 'episode-1',
-      lineIndex: 1,
-      speaker: 'Hero',
-      content: '第一句台词',
-      matchedPanelId: 'panel-1',
-      matchedStoryboardId: 'storyboard-1',
-      matchedPanelIndex: 0,
-    }))
-    expect(txState.deletedWhereClauses[0]).toEqual({
-      episodeId: 'episode-1',
-      lineIndex: {
-        notIn: [1, 2],
-      },
-    })
-  })
-
-  it('empty voice lines -> success with zero rows and clears existing lines', async () => {
-    helperMock.parseVoiceLinesJson.mockReturnValue([])
-
-    const job = buildJob({ episodeId: 'episode-1' })
-    const result = await handleVoiceAnalyzeTask(job)
-
-    expect(result).toEqual(expect.objectContaining({
-      episodeId: 'episode-1',
-      count: 0,
-      matchedCount: 0,
-      speakerStats: {},
-    }))
-    expect(txState.createdRows).toEqual([])
-    expect(txState.deletedWhereClauses[0]).toEqual({
-      episodeId: 'episode-1',
-    })
-  })
-
-  it('line references non-existent storyboard panel -> explicit error', async () => {
-    helperMock.parseVoiceLinesJson.mockImplementation(() => [
-      {
-        lineIndex: 1,
-        speaker: 'Hero',
-        content: 'bad line',
-        emotionStrength: 0.8,
-        matchedPanel: {
-          storyboardId: 'storyboard-404',
-          panelIndex: 0,
-        },
-      },
-    ])
-
-    const job = buildJob({ episodeId: 'episode-1' })
-    await expect(handleVoiceAnalyzeTask(job)).rejects.toThrow('references non-existent panel')
-  })
-
-  it('rebuilds storyboard-owned speech plans without invoking the legacy matcher', async () => {
-    prismaMock.novelPromotionEpisode.findUnique.mockResolvedValue({
-      id: 'episode-1',
-      novelPromotionProjectId: 'np-project-1',
-      novelText: '无需重新拆分的台词文本',
-      voiceLines: [
-        {
-          speaker: '旁白',
-          matchedPanelId: 'panel-1',
-          matchedStoryboardId: 'storyboard-1',
-        },
-      ],
-      storyboards: [
-        {
-          id: 'storyboard-1',
-          clip: { id: 'clip-1' },
-          panels: [{ id: 'panel-1', panelIndex: 0 }],
-        },
-      ],
-    })
-    speechPlanMock.listEpisodeSpeechPlans.mockResolvedValue({
-      available: true,
-      plans: [{ source: 'storyboard' }],
-      summary: {},
-    })
-
+  it('syncs canonical panel speech without invoking the legacy matcher', async () => {
     const result = await handleVoiceAnalyzeTask(buildJob({ episodeId: 'episode-1' }))
 
     expect(result).toEqual(expect.objectContaining({
@@ -290,9 +85,37 @@ describe('worker voice-analyze behavior', () => {
       matchedCount: 1,
       speakerStats: { 旁白: 1 },
     }))
-    expect(helperMock.parseVoiceLinesJson).not.toHaveBeenCalled()
-    expect(prismaMock.$transaction).not.toHaveBeenCalled()
     expect(narrationTimelineMock.rebuildEpisodeNarrationTimeline).toHaveBeenCalledWith('episode-1')
     expect(speechPlanMock.rebuildEpisodeSpeechPlans).toHaveBeenCalledWith('episode-1', 'storyboard')
+  })
+
+  it('accepts a canonical all-silent storyboard', async () => {
+    panelSpeechMock.listEpisodePanelSpeeches.mockResolvedValue({
+      available: true,
+      speeches: [],
+    })
+
+    const result = await handleVoiceAnalyzeTask(buildJob({ episodeId: 'episode-1' }))
+
+    expect(result).toEqual(expect.objectContaining({
+      episodeId: 'episode-1',
+      count: 0,
+      matchedCount: 0,
+      speakerStats: {},
+    }))
+  })
+
+  it('requires a storyboard rebuild instead of rematching legacy voice lines', async () => {
+    prismaMock.novelPromotionEpisode.findFirst.mockResolvedValue({
+      voiceLines: [{ id: 'legacy-line-1' }],
+    })
+    panelSpeechMock.listEpisodePanelSpeeches.mockResolvedValue({
+      available: true,
+      speeches: [],
+    })
+
+    await expect(handleVoiceAnalyzeTask(buildJob({ episodeId: 'episode-1' })))
+      .rejects.toThrow('PANEL_SPEECH_REBUILD_REQUIRED')
+    expect(narrationTimelineMock.rebuildEpisodeNarrationTimeline).not.toHaveBeenCalled()
   })
 })

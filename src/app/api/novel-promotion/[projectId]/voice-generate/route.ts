@@ -7,10 +7,14 @@ import { resolveRequiredTaskLocale } from '@/lib/task/resolve-locale'
 import { TASK_TYPE } from '@/lib/task/types'
 import { buildDefaultTaskBillingInfo } from '@/lib/billing'
 import { estimateVoiceLineMaxSeconds } from '@/lib/voice/generate-voice-line'
-import { hasVoiceLineAudioOutput } from '@/lib/task/has-output'
+import { hasPanelSpeechAudioOutput } from '@/lib/task/has-output'
 import { withTaskUiPayload } from '@/lib/task/ui-payload'
 import { parseModelKeyStrict } from '@/lib/model-config-contract'
 import { getProviderKey, resolveModelSelectionOrSingle } from '@/lib/api-config'
+import {
+  isPanelSpeechSchemaMissing,
+  resolvePanelSpeechText,
+} from '@/lib/novel-promotion/panel-speech'
 import {
   hasVoiceBindingForProvider,
   parseSpeakerVoiceMap,
@@ -18,10 +22,11 @@ import {
   type SpeakerVoiceMap,
 } from '@/lib/voice/provider-voice-binding'
 
-type VoiceLineRow = {
+type PanelSpeechRow = {
   id: string
   speaker: string
-  content: string
+  originalContent: string
+  deliveryContent: string | null
 }
 
 type CharacterRow = CharacterVoiceFields & {
@@ -91,6 +96,24 @@ function hasSpeakerVoiceForProvider(
   })
 }
 
+async function assertPanelSpeechAudioSchemaAvailable() {
+  try {
+    await Promise.all([
+      prisma.novelPromotionPanelSpeech.findFirst({ select: { id: true } }),
+      prisma.novelPromotionPanelSpeechAudio.findFirst({ select: { id: true } }),
+    ])
+  } catch (error) {
+    if (isPanelSpeechSchemaMissing(error)) {
+      throw new ApiError('CONFLICT', {
+        code: 'DB_SCHEMA_OUT_OF_DATE',
+        message: '数据库缺少镜头级台词或配音产物表。请执行最新数据库迁移后重试。',
+        table: 'novel_promotion_panel_speeches, novel_promotion_panel_speech_audios',
+      })
+    }
+    throw error
+  }
+}
+
 export const POST = apiHandler(async (
   request: NextRequest,
   context: { params: Promise<{ projectId: string }> },
@@ -100,6 +123,7 @@ export const POST = apiHandler(async (
   const authResult = await requireProjectAuthLight(projectId)
   if (isErrorResponse(authResult)) return authResult
   const { session } = authResult
+  await assertPanelSpeechAudioSchemaAvailable()
 
   const body = await request.json().catch(() => null)
   const locale = resolveRequiredTaskLocale(request, body)
@@ -175,34 +199,53 @@ export const POST = apiHandler(async (
   const speakerVoices = parseSpeakerVoiceMap(episode.speakerVoices)
   const characters = projectData.characters || []
 
-  let voiceLines: VoiceLineRow[] = []
+  let speeches: PanelSpeechRow[] = []
   if (all) {
-    const allLines = await prisma.novelPromotionVoiceLine.findMany({
+    const allSpeeches = await prisma.novelPromotionPanelSpeech.findMany({
       where: {
         episodeId,
-        audioUrl: null},
-      orderBy: { lineIndex: 'asc' },
+        status: 'ready',
+        OR: [
+          { audio: { is: null } },
+          {
+            audio: {
+              is: {
+                audioUrl: null,
+                audioMediaId: null,
+              },
+            },
+          },
+        ],
+      },
+      orderBy: { createdAt: 'asc' },
       select: {
         id: true,
         speaker: true,
-        content: true}})
-    voiceLines = allLines.filter((line) =>
-      hasSpeakerVoiceForProvider(line.speaker, characters, speakerVoices, selectedProviderKey),
+        originalContent: true,
+        deliveryContent: true,
+      },
+    })
+    speeches = allSpeeches.filter((speech) =>
+      hasSpeakerVoiceForProvider(speech.speaker, characters, speakerVoices, selectedProviderKey),
     )
   } else {
-    const line = await prisma.novelPromotionVoiceLine.findFirst({
+    const speech = await prisma.novelPromotionPanelSpeech.findFirst({
       where: {
         id: lineId,
-        episodeId},
+        episodeId,
+      },
       select: {
         id: true,
         speaker: true,
-        content: true}})
-    if (!line) {
+        originalContent: true,
+        deliveryContent: true,
+      },
+    })
+    if (!speech) {
       throw new ApiError('NOT_FOUND')
     }
     const validation = validateSpeakerVoiceForProvider(
-      line.speaker,
+      speech.speaker,
       characters,
       speakerVoices,
       selectedProviderKey,
@@ -212,24 +255,35 @@ export const POST = apiHandler(async (
         message: validation.message,
       })
     }
-    voiceLines = [line]
+    speeches = [speech]
   }
 
-  if (voiceLines.length === 0) {
+  if (speeches.length === 0) {
     if (all) {
-      const firstLineWithoutBinding = await prisma.novelPromotionVoiceLine.findFirst({
+      const firstSpeechWithoutBinding = await prisma.novelPromotionPanelSpeech.findFirst({
         where: {
           episodeId,
-          audioUrl: null,
+          status: 'ready',
+          OR: [
+            { audio: { is: null } },
+            {
+              audio: {
+                is: {
+                  audioUrl: null,
+                  audioMediaId: null,
+                },
+              },
+            },
+          ],
         },
-        orderBy: { lineIndex: 'asc' },
+        orderBy: { createdAt: 'asc' },
         select: {
           speaker: true,
         },
       })
-      const validation = firstLineWithoutBinding
+      const validation = firstSpeechWithoutBinding
         ? validateSpeakerVoiceForProvider(
-          firstLineWithoutBinding.speaker,
+          firstSpeechWithoutBinding.speaker,
           characters,
           speakerVoices,
           selectedProviderKey,
@@ -250,29 +304,33 @@ export const POST = apiHandler(async (
   }
 
   const results = await Promise.all(
-    voiceLines.map(async (line) => {
+    speeches.map(async (speech) => {
       const payload = {
         episodeId,
-        lineId: line.id,
-        maxSeconds: estimateVoiceLineMaxSeconds(line.content),
-        audioModel: selectedResolvedAudioModel.modelKey}
+        speechId: speech.id,
+        maxSeconds: estimateVoiceLineMaxSeconds(resolvePanelSpeechText(speech)),
+        audioModel: selectedResolvedAudioModel.modelKey,
+      }
       const result = await submitTask({
         userId: session.user.id,
-    locale,
+        locale,
         requestId: getRequestId(request),
         projectId,
         episodeId,
         type: TASK_TYPE.VOICE_LINE,
-        targetType: 'NovelPromotionVoiceLine',
-        targetId: line.id,
+        targetType: 'NovelPromotionPanelSpeech',
+        targetId: speech.id,
         payload: withTaskUiPayload(payload, {
-          hasOutputAtStart: await hasVoiceLineAudioOutput(line.id)}),
-        dedupeKey: `voice_line:${line.id}`,
-        billingInfo: buildDefaultTaskBillingInfo(TASK_TYPE.VOICE_LINE, payload)})
+          hasOutputAtStart: await hasPanelSpeechAudioOutput(speech.id),
+        }),
+        dedupeKey: `panel_speech_audio:${speech.id}`,
+        billingInfo: buildDefaultTaskBillingInfo(TASK_TYPE.VOICE_LINE, payload),
+      })
 
       return {
-        lineId: line.id,
-        taskId: result.taskId}
+        lineId: speech.id,
+        taskId: result.taskId,
+      }
     }),
   )
 

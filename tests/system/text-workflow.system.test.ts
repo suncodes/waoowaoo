@@ -13,22 +13,20 @@ type FakeAiResult = {
   reasoning?: string
 }
 
-type FakeVoiceLineRow = {
-  lineIndex: number
+type FakePanelSpeech = {
   speaker: string
   content: string
-  emotionStrength: number
-  matchedPanel: {
-    storyboardId: string
-    panelIndex: number
-  }
+  emotionStrength?: number
 }
 
 const textState = vi.hoisted(() => ({
   aiResults: [] as FakeAiResult[],
-  voiceLineResults: [] as FakeVoiceLineRow[],
-  parseFailureCount: 0,
   orchestratorClipId: 'clip-seed',
+  panelSpeech: {
+    speaker: 'Narrator',
+    content: 'Hello world',
+    emotionStrength: 0.8,
+  } as FakePanelSpeech | null | undefined,
 }))
 
 vi.mock('@/lib/ai-runtime', async () => {
@@ -37,17 +35,9 @@ vi.mock('@/lib/ai-runtime', async () => {
     ...actual,
     executeAiTextStep: vi.fn(async () => {
       const next = textState.aiResults.shift()
-      if (!next) {
-        return {
-          text: '{"ok":true}',
-          reasoning: '',
-          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
-          completion: { usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } },
-        }
-      }
       return {
-        text: next.text,
-        reasoning: next.reasoning || '',
+        text: next?.text || '{"ok":true}',
+        reasoning: next?.reasoning || '',
         usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
         completion: { usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } },
       }
@@ -75,6 +65,7 @@ vi.mock('@/lib/novel-promotion/script-to-storyboard/orchestrator', async () => {
               video_prompt: 'system video prompt',
               location: 'Office',
               characters: ['Narrator'],
+              speech: textState.panelSpeech,
             },
           ],
         },
@@ -84,54 +75,6 @@ vi.mock('@/lib/novel-promotion/script-to-storyboard/orchestrator', async () => {
         totalStepCount: 4,
       },
     })),
-  }
-})
-
-vi.mock('@/lib/workers/handlers/script-to-storyboard-helpers', async () => {
-  const actual = await vi.importActual<typeof import('@/lib/workers/handlers/script-to-storyboard-helpers')>(
-    '@/lib/workers/handlers/script-to-storyboard-helpers',
-  )
-  return {
-    ...actual,
-    parseVoiceLinesJson: vi.fn(() => {
-      if (textState.parseFailureCount > 0) {
-        textState.parseFailureCount -= 1
-        throw new Error('invalid voice json')
-      }
-      return textState.voiceLineResults
-    }),
-    persistStoryboardsAndPanels: vi.fn(async (input: { episodeId: string }) => {
-      const clip = await prisma.novelPromotionClip.findFirst({
-        where: { episodeId: input.episodeId },
-        orderBy: { createdAt: 'asc' },
-      })
-      if (!clip) {
-        throw new Error(`TEST_CLIP_NOT_FOUND: ${input.episodeId}`)
-      }
-      const storyboard = await prisma.novelPromotionStoryboard.create({
-        data: {
-          id: 'storyboard-1',
-          episodeId: input.episodeId,
-          clipId: clip.id,
-          panelCount: 1,
-        },
-      })
-      const panel = await prisma.novelPromotionPanel.create({
-        data: {
-          id: 'panel-1',
-          storyboardId: storyboard.id,
-          panelIndex: 1,
-          panelNumber: 1,
-          shotType: 'close-up',
-          cameraMove: 'static',
-          description: 'system generated panel',
-          videoPrompt: 'system video prompt',
-          location: 'Office',
-          characters: JSON.stringify(['Narrator']),
-        },
-      })
-      return [{ storyboardId: storyboard.id, panels: [{ id: panel.id, panelIndex: 1 }] }]
-    }),
   }
 })
 
@@ -189,9 +132,12 @@ describe('system - text workflows', () => {
     vi.resetModules()
     vi.clearAllMocks()
     textState.aiResults = []
-    textState.voiceLineResults = []
-    textState.parseFailureCount = 0
     textState.orchestratorClipId = 'clip-seed'
+    textState.panelSpeech = {
+      speaker: 'Narrator',
+      content: 'Hello world',
+      emotionStrength: 0.8,
+    }
     await resetSystemState()
     installAuthMocks()
   })
@@ -202,22 +148,17 @@ describe('system - text workflows', () => {
     resetAuthMockState()
   })
 
-  it('script-to-storyboard success -> persists storyboard/panel/voiceLine and completes task', async () => {
+  it('script-to-storyboard success -> persists canonical panel speech and clears legacy lines', async () => {
     const seeded = await seedScriptToStoryboardState()
     mockAuthenticated(seeded.user.id)
-    textState.aiResults = [{ text: 'voice-lines-json' }]
-    textState.voiceLineResults = [
-      {
+    await prisma.novelPromotionVoiceLine.create({
+      data: {
+        episodeId: seeded.episode.id,
         lineIndex: 1,
-        speaker: 'Narrator',
-        content: 'Hello world',
-        emotionStrength: 0.8,
-        matchedPanel: {
-          storyboardId: seeded.clip.id,
-          panelIndex: 0,
-        },
+        speaker: 'Legacy narrator',
+        content: 'legacy line',
       },
-    ]
+    })
     workers = await startSystemWorkers(['text'])
 
     const mod = await import('@/app/api/novel-promotion/[projectId]/script-to-storyboard-stream/route')
@@ -245,51 +186,33 @@ describe('system - text workflows', () => {
     })
     expect(storyboards.length).toBeGreaterThan(0)
 
-    const persistedVoiceLines = await prisma.novelPromotionVoiceLine.findMany({
+    const persistedPanelSpeeches = await prisma.novelPromotionPanelSpeech.findMany({
       where: { episodeId: seeded.episode.id },
-      orderBy: { lineIndex: 'asc' },
       select: {
-        lineIndex: true,
         speaker: true,
-        content: true,
-        matchedPanelId: true,
-        matchedPanelIndex: true,
+        originalContent: true,
+        panelId: true,
       },
     })
-    expect(persistedVoiceLines).toEqual([
+    expect(persistedPanelSpeeches).toEqual([
       {
-        lineIndex: 1,
         speaker: 'Narrator',
-        content: 'Hello world',
-        matchedPanelId: expect.any(String),
-        matchedPanelIndex: 0,
+        originalContent: 'Hello world',
+        panelId: expect.any(String),
       },
     ])
+    expect(await prisma.novelPromotionVoiceLine.count({
+      where: { episodeId: seeded.episode.id },
+    })).toBe(0)
 
     const eventTypes = await listTaskEventTypes(json.taskId)
     expectLifecycleEvents(eventTypes, 'completed')
   })
 
-  it('script-to-storyboard parse retry -> second attempt succeeds', async () => {
+  it('script-to-storyboard accepts an explicit silent panel without creating legacy speech', async () => {
     const seeded = await seedScriptToStoryboardState()
     mockAuthenticated(seeded.user.id)
-    textState.aiResults = [
-      { text: 'invalid-voice-json' },
-      { text: 'valid-voice-json' },
-    ]
-    textState.voiceLineResults = [
-      {
-        lineIndex: 1,
-        speaker: 'Narrator',
-        content: 'Retry success',
-        emotionStrength: 0.4,
-        matchedPanel: {
-          storyboardId: seeded.clip.id,
-          panelIndex: 0,
-        },
-      },
-    ]
-    textState.parseFailureCount = 1
+    textState.panelSpeech = null
     workers = await startSystemWorkers(['text'])
 
     const mod = await import('@/app/api/novel-promotion/[projectId]/script-to-storyboard-stream/route')
@@ -304,14 +227,38 @@ describe('system - text workflows', () => {
     const task = await waitForTaskTerminalState(json.taskId, { timeoutMs: 20_000 })
     expect(task.status).toBe('completed')
     expect(task.result).toEqual(expect.objectContaining({
-      voiceLineCount: 1,
+      voiceLineCount: 0,
     }))
 
-    const voiceLines = await prisma.novelPromotionVoiceLine.findMany({
+    expect(await prisma.novelPromotionPanelSpeech.count({
       where: { episodeId: seeded.episode.id },
-      select: { content: true },
-    })
-    expect(voiceLines).toEqual([{ content: 'Retry success' }])
+    })).toBe(0)
+    expect(await prisma.novelPromotionVoiceLine.count({
+      where: { episodeId: seeded.episode.id },
+    })).toBe(0)
+  })
+
+  it('script-to-storyboard rejects a missing speech contract before persisting panels', async () => {
+    const seeded = await seedScriptToStoryboardState()
+    mockAuthenticated(seeded.user.id)
+    textState.panelSpeech = undefined
+    workers = await startSystemWorkers(['text'])
+
+    const mod = await import('@/app/api/novel-promotion/[projectId]/script-to-storyboard-stream/route')
+    const response = await callRoute(
+      mod.POST,
+      'POST',
+      { locale: 'zh', episodeId: seeded.episode.id },
+      { params: { projectId: seeded.project.id } },
+    )
+
+    const json = await response.json() as { taskId: string }
+    const task = await waitForTaskTerminalState(json.taskId, { timeoutMs: 20_000 })
+    expect(task.status).toBe('failed')
+    expect(task.errorMessage || '').toContain('STORYBOARD_SPEECH_CONTRACT_MISSING')
+    expect(await prisma.novelPromotionPanel.count({
+      where: { storyboard: { episodeId: seeded.episode.id } },
+    })).toBe(0)
   })
 
   it('insert-panel invalid ai payload -> task fails and no dirty panel remains', async () => {

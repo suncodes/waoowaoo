@@ -63,20 +63,38 @@ interface LoadedMergeSource {
   narrationLines: NarrationLineSource[]
 }
 
-interface NarrationVoiceLineData {
+interface NarrationPanelSpeechData {
   id: string
-  lineIndex: number
-  content: string
-  audioUrl: string | null
-  audioDuration: number | null
+  originalContent: string
+  deliveryContent?: string | null
   estimatedDurationMs?: number | null
+  audio?: {
+    audioUrl?: string | null
+    audioDuration?: number | null
+    audioMedia?: { storageKey?: string | null } | null
+  } | null
+}
+
+interface NarrationPanelData {
+  panelIndex: number
+  duration?: number | null
+  targetDurationMs?: number | null
   timelineStartMs?: number | null
   timelineEndMs?: number | null
-  audioMedia?: { storageKey?: string | null } | null
+  panelSpeech?: NarrationPanelSpeechData | null
+}
+
+interface NarrationStoryboardData {
+  createdAt: Date
+  clip?: {
+    start?: number | null
+    createdAt: Date
+  } | null
+  panels?: NarrationPanelData[]
 }
 
 interface NarrationEpisodeData {
-  voiceLines?: NarrationVoiceLineData[]
+  storyboards?: NarrationStoryboardData[]
 }
 
 interface NarrationLineSource {
@@ -140,52 +158,66 @@ function readMediaStorageKey(media: { storageKey?: string | null } | null | unde
   return isNonEmptyString(media?.storageKey) ? media.storageKey : null
 }
 
-function resolveVoiceLineDurationMs(line: NarrationVoiceLineData): number {
-  if (typeof line.audioDuration === 'number' && Number.isFinite(line.audioDuration) && line.audioDuration > 0) {
-    return Math.round(line.audioDuration)
+function resolveNarrationDurationMs(speech: NarrationPanelSpeechData, panel: NarrationPanelData): number {
+  if (typeof speech.audio?.audioDuration === 'number' && Number.isFinite(speech.audio.audioDuration) && speech.audio.audioDuration > 0) {
+    return Math.round(speech.audio.audioDuration)
   }
-  if (typeof line.estimatedDurationMs === 'number' && Number.isFinite(line.estimatedDurationMs) && line.estimatedDurationMs > 0) {
-    return Math.round(line.estimatedDurationMs)
+  if (typeof speech.estimatedDurationMs === 'number' && Number.isFinite(speech.estimatedDurationMs) && speech.estimatedDurationMs > 0) {
+    return Math.round(speech.estimatedDurationMs)
   }
   if (
-    typeof line.timelineStartMs === 'number'
-    && typeof line.timelineEndMs === 'number'
-    && line.timelineEndMs > line.timelineStartMs
+    typeof panel.timelineStartMs === 'number'
+    && typeof panel.timelineEndMs === 'number'
+    && panel.timelineEndMs > panel.timelineStartMs
   ) {
-    return line.timelineEndMs - line.timelineStartMs
+    return panel.timelineEndMs - panel.timelineStartMs
   }
-  return estimateNarrationDurationMs(line.content)
+  return estimateNarrationDurationMs(speech.deliveryContent || speech.originalContent)
 }
 
 function collectNarrationLines(episodes: NarrationEpisodeData[]): NarrationLineSource[] {
   const lines: NarrationLineSource[] = []
   let episodeOffsetMs = 0
+  let lineIndex = 1
 
   for (const episode of episodes) {
-    const voiceLines = [...(episode.voiceLines || [])].sort((left, right) => left.lineIndex - right.lineIndex)
+    const storyboards = [...(episode.storyboards || [])].sort((left, right) => (
+      (left.clip?.start ?? Number.MAX_SAFE_INTEGER) - (right.clip?.start ?? Number.MAX_SAFE_INTEGER)
+      || (left.clip?.createdAt.getTime() ?? 0) - (right.clip?.createdAt.getTime() ?? 0)
+      || left.createdAt.getTime() - right.createdAt.getTime()
+    ))
+    const panels = storyboards.flatMap((storyboard) => (
+      [...(storyboard.panels || [])].sort((left, right) => left.panelIndex - right.panelIndex)
+    ))
     let localCursorMs = 0
     let episodeEndMs = 0
 
-    for (const line of voiceLines) {
-      const audioSource = readMediaStorageKey(line.audioMedia) || line.audioUrl
-      const durationMs = resolveVoiceLineDurationMs(line)
-      const localStartMs = typeof line.timelineStartMs === 'number' && Number.isFinite(line.timelineStartMs)
-        ? Math.max(0, line.timelineStartMs)
+    for (const panel of panels) {
+      const localStartMs = typeof panel.timelineStartMs === 'number' && Number.isFinite(panel.timelineStartMs)
+        ? Math.max(0, panel.timelineStartMs)
         : localCursorMs
-      const localEndMs = typeof line.timelineEndMs === 'number' && Number.isFinite(line.timelineEndMs) && line.timelineEndMs > localStartMs
-        ? line.timelineEndMs
-        : localStartMs + durationMs
+      const panelDurationMs = typeof panel.targetDurationMs === 'number' && panel.targetDurationMs > 0
+        ? Math.round(panel.targetDurationMs)
+        : typeof panel.duration === 'number' && panel.duration > 0
+          ? Math.round(panel.duration * 1000)
+          : 4000
+      const localEndMs = typeof panel.timelineEndMs === 'number' && Number.isFinite(panel.timelineEndMs) && panel.timelineEndMs > localStartMs
+        ? panel.timelineEndMs
+        : localStartMs + panelDurationMs
       localCursorMs = localEndMs
       episodeEndMs = Math.max(episodeEndMs, localEndMs)
 
-      if (!isNonEmptyString(audioSource)) continue
+      const speech = panel.panelSpeech
+      const audioSource = readMediaStorageKey(speech?.audio?.audioMedia) || speech?.audio?.audioUrl
+      if (!speech || !isNonEmptyString(audioSource)) continue
       lines.push({
-        id: line.id,
-        lineIndex: line.lineIndex,
+        id: speech.id,
+        lineIndex,
         audioSource,
         startMs: episodeOffsetMs + localStartMs,
-        durationMs,
+        durationMs: resolveNarrationDurationMs(speech, panel),
       })
+      lineIndex += 1
     }
 
     episodeOffsetMs += episodeEndMs
@@ -707,18 +739,25 @@ export async function loadVideoMergeSource(input: VideoMergeExportInput): Promis
                 include: {
                   storyboards: {
                     include: {
-                      panels: { orderBy: { panelIndex: 'asc' } },
+                      panels: {
+                        orderBy: { panelIndex: 'asc' },
+                        include: {
+                          panelSpeech: {
+                            include: {
+                              audio: {
+                                include: {
+                                  audioMedia: { select: { storageKey: true } },
+                                },
+                              },
+                            },
+                          },
+                        },
+                      },
                     },
                     orderBy: { createdAt: 'asc' },
                   },
                   clips: {
                     orderBy: { createdAt: 'asc' },
-                  },
-                  voiceLines: {
-                    orderBy: { lineIndex: 'asc' },
-                    include: {
-                      audioMedia: { select: { storageKey: true } },
-                    },
                   },
                 },
               },
@@ -737,18 +776,25 @@ export async function loadVideoMergeSource(input: VideoMergeExportInput): Promis
       include: {
         storyboards: {
           include: {
-            panels: { orderBy: { panelIndex: 'asc' } },
+            panels: {
+              orderBy: { panelIndex: 'asc' },
+              include: {
+                panelSpeech: {
+                  include: {
+                    audio: {
+                      include: {
+                        audioMedia: { select: { storageKey: true } },
+                      },
+                    },
+                  },
+                },
+              },
+            },
           },
           orderBy: { createdAt: 'asc' },
         },
         clips: {
           orderBy: { createdAt: 'asc' },
-        },
-        voiceLines: {
-          orderBy: { lineIndex: 'asc' },
-          include: {
-            audioMedia: { select: { storageKey: true } },
-          },
         },
       },
     })

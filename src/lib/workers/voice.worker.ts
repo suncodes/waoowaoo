@@ -10,7 +10,11 @@ type AnyObj = Record<string, unknown>
 
 async function handleVoiceLineTask(job: Job<TaskJobData>) {
   const payload = (job.data.payload || {}) as AnyObj
-  const lineId = typeof payload.lineId === 'string' ? payload.lineId : job.data.targetId
+  const lineId = typeof payload.speechId === 'string'
+    ? payload.speechId
+    : typeof payload.lineId === 'string'
+      ? payload.lineId
+      : job.data.targetId
   const episodeId = typeof payload.episodeId === 'string' ? payload.episodeId : job.data.episodeId
   const audioModel = typeof payload.audioModel === 'string' && payload.audioModel.trim()
     ? payload.audioModel.trim()

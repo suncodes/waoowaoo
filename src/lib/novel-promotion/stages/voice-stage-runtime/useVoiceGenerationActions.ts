@@ -128,7 +128,7 @@ export function useVoiceGenerationActions({
         }))
         upsertTaskTargetOverlay(queryClient, {
           projectId,
-          targetType: 'NovelPromotionVoiceLine',
+          targetType: 'NovelPromotionPanelSpeech',
           targetId: lineId,
           phase: 'queued',
           runningTaskId: data.taskId,
@@ -217,7 +217,7 @@ export function useVoiceGenerationActions({
           }))
           upsertTaskTargetOverlay(queryClient, {
             projectId,
-            targetType: 'NovelPromotionVoiceLine',
+            targetType: 'NovelPromotionPanelSpeech',
             targetId: resultLineId,
             phase: 'queued',
             runningTaskId: resultTaskId,
@@ -236,7 +236,7 @@ export function useVoiceGenerationActions({
           }))
           upsertTaskTargetOverlay(queryClient, {
             projectId,
-            targetType: 'NovelPromotionVoiceLine',
+            targetType: 'NovelPromotionPanelSpeech',
             targetId: currentLineId,
             phase: 'queued',
             runningTaskId: currentTaskId,

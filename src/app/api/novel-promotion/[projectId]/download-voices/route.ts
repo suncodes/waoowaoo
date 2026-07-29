@@ -20,36 +20,67 @@ export const GET = apiHandler(async (
   if (isErrorResponse(authResult)) return authResult
   const { project } = authResult
 
-  // 获取配音台词
-  const whereClause: Record<string, unknown> = {
-    audioUrl: { not: null }
-  }
-
-  if (episodeId) {
-    whereClause.episodeId = episodeId
-  } else {
-    // 如果没有指定 episodeId，获取该项目所有剧集的配音
-    const npData = await prisma.novelPromotionProject.findFirst({
-      where: { projectId },
-      include: { episodes: { select: { id: true } } }
-    })
-    if (npData?.episodes) {
-      whereClause.episodeId = { in: npData.episodes.map(e => e.id) }
-    }
-  }
-
-  const voiceLines = await prisma.novelPromotionVoiceLine.findMany({
-    where: whereClause,
-    orderBy: [
-      { lineIndex: 'asc' }  // 按台词序号排序（绝对顺序）
-    ]
+  const panelSpeeches = await prisma.novelPromotionPanelSpeech.findMany({
+    where: {
+      ...(episodeId ? { episodeId } : {}),
+      episode: {
+        novelPromotionProject: { projectId },
+      },
+      audio: {
+        is: {
+          OR: [
+            { audioUrl: { not: null } },
+            { audioMediaId: { not: null } },
+          ],
+        },
+      },
+    },
+    select: {
+      id: true,
+      speaker: true,
+      originalContent: true,
+      deliveryContent: true,
+      audio: {
+        select: {
+          audioUrl: true,
+          audioMedia: { select: { storageKey: true } },
+        },
+      },
+      panel: {
+        select: {
+          panelIndex: true,
+          storyboard: {
+            select: {
+              createdAt: true,
+              clip: {
+                select: {
+                  start: true,
+                  createdAt: true,
+                },
+              },
+              episode: {
+                select: { episodeNumber: true },
+              },
+            },
+          },
+        },
+      },
+    },
   })
 
-  if (voiceLines.length === 0) {
+  const speeches = [...panelSpeeches].sort((left, right) => (
+    left.panel.storyboard.episode.episodeNumber - right.panel.storyboard.episode.episodeNumber
+    || (left.panel.storyboard.clip?.start ?? Number.MAX_SAFE_INTEGER) - (right.panel.storyboard.clip?.start ?? Number.MAX_SAFE_INTEGER)
+    || (left.panel.storyboard.clip?.createdAt.getTime() ?? 0) - (right.panel.storyboard.clip?.createdAt.getTime() ?? 0)
+    || left.panel.storyboard.createdAt.getTime() - right.panel.storyboard.createdAt.getTime()
+    || left.panel.panelIndex - right.panel.panelIndex
+  ))
+
+  if (speeches.length === 0) {
     throw new ApiError('NOT_FOUND')
   }
 
-  _ulogInfo(`Preparing to download ${voiceLines.length} voice lines for project ${projectId}`)
+  _ulogInfo(`Preparing to download ${speeches.length} panel speech audio files for project ${projectId}`)
 
   const archive = archiver('zip', { zlib: { level: 9 } })
 
@@ -63,26 +94,28 @@ export const GET = apiHandler(async (
   })
 
   async function processVoices() {
-    for (const line of voiceLines) {
+    for (const [index, speech] of speeches.entries()) {
       try {
-        if (!line.audioUrl) continue
+        const audioUrl = speech.audio?.audioUrl
+        const storageKey = speech.audio?.audioMedia?.storageKey
+          || (audioUrl ? await resolveStorageKeyFromMediaValue(audioUrl) : null)
+        if (!audioUrl && !storageKey) continue
 
-        _ulogInfo(`Downloading voice ${line.lineIndex}: ${line.audioUrl}`)
+        _ulogInfo(`Downloading panel speech ${speech.id}`)
 
         let audioData: Buffer
-        const storageKey = await resolveStorageKeyFromMediaValue(line.audioUrl)
 
-        if (line.audioUrl.startsWith('http://') || line.audioUrl.startsWith('https://')) {
-          const response = await fetch(toFetchableUrl(line.audioUrl))
+        if (storageKey) {
+          audioData = await getObjectBuffer(storageKey)
+        } else if (audioUrl?.startsWith('http://') || audioUrl?.startsWith('https://')) {
+          const response = await fetch(toFetchableUrl(audioUrl))
           if (!response.ok) {
             throw new Error(`Failed to fetch: ${response.statusText}`)
           }
           const arrayBuffer = await response.arrayBuffer()
           audioData = Buffer.from(arrayBuffer)
-        } else if (storageKey) {
-          audioData = await getObjectBuffer(storageKey)
         } else {
-          const response = await fetch(toFetchableUrl(line.audioUrl))
+          const response = await fetch(toFetchableUrl(audioUrl!))
           if (!response.ok) {
             throw new Error(`Failed to fetch: ${response.statusText}`)
           }
@@ -91,22 +124,20 @@ export const GET = apiHandler(async (
         }
 
         // 清理发言人名称中的非法字符
-        const safeSpeaker = line.speaker.replace(/[\\/:*?"<>|]/g, '_')
+        const safeSpeaker = speech.speaker.replace(/[\\/:*?"<>|]/g, '_')
 
-        // 截取台词内容前15字作为文件名的一部分
-        const safeContent = line.content.slice(0, 15).replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, '_')
+        const content = speech.deliveryContent || speech.originalContent
+        const safeContent = content.slice(0, 15).replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, '_')
 
-        // 确定文件扩展名
-        const extSource = storageKey || line.audioUrl
+        const extSource = storageKey || audioUrl || ''
         const ext = extSource.endsWith('.wav') ? 'wav' : 'mp3'
 
-        // 文件名格式: 序号_名字_语音内容.mp3（按绝对顺序排列，不按发言人分文件夹）
-        const fileName = `${String(line.lineIndex).padStart(3, '0')}_${safeSpeaker}_${safeContent}.${ext}`
+        const fileName = `${String(index + 1).padStart(3, '0')}_${safeSpeaker}_${safeContent}.${ext}`
 
         archive.append(audioData, { name: fileName })
         _ulogInfo(`Added ${fileName} to archive`)
       } catch (error) {
-        _ulogError(`Failed to download voice line ${line.lineIndex}:`, error)
+        _ulogError(`Failed to download panel speech ${speech.id}:`, error)
       }
     }
 

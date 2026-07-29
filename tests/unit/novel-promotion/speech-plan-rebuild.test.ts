@@ -1,7 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const upsertMock = vi.hoisted(() => vi.fn(async () => undefined))
-const deleteManyMock = vi.hoisted(() => vi.fn(async () => undefined))
 const prismaMock = vi.hoisted(() => ({
   novelPromotionEpisode: {
     findUnique: vi.fn(),
@@ -39,10 +37,6 @@ describe('rebuildEpisodeSpeechPlans', () => {
           panelIndex: 0,
           duration: 4,
           targetDurationMs: 4000,
-          speechPlan: {
-            source: 'storyboard',
-          },
-          matchedVoiceLines: [{ id: 'line-1' }],
           panelSpeech: {
             id: 'speech-1',
             speaker: '旁白',
@@ -60,19 +54,15 @@ describe('rebuildEpisodeSpeechPlans', () => {
             warningsJson: [],
             status: 'ready',
             source: 'storyboard',
+            createdAt: new Date('2026-01-01T00:00:00.000Z'),
+            updatedAt: new Date('2026-01-02T00:00:00.000Z'),
           },
         }],
       }],
     })
-    prismaMock.$transaction.mockImplementation(async (run: (tx: unknown) => Promise<unknown>) => await run({
-      novelPromotionPanelSpeechPlan: {
-        deleteMany: deleteManyMock,
-        upsert: upsertMock,
-      },
-    }))
   })
 
-  it('preserves delivery text and storyboard provenance when the source line is unchanged', async () => {
+  it('projects canonical panel speech without writing the legacy speech-plan table', async () => {
     const result = await rebuildEpisodeSpeechPlans('episode-1', 'speaker_voice_update')
 
     expect(result.available).toBe(true)
@@ -80,9 +70,6 @@ describe('rebuildEpisodeSpeechPlans', () => {
     expect(result.plans[0]?.linesJson[0]).toEqual(expect.objectContaining({
       deliveryContent: '潜艇驶过幽暗海沟。',
       deliveryDurationMs: 1500,
-    }))
-    expect(upsertMock).toHaveBeenCalledWith(expect.objectContaining({
-      update: expect.objectContaining({ source: 'storyboard' }),
     }))
   })
 })

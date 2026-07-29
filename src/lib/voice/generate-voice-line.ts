@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getAudioApiKey, getProviderConfig, getProviderKey, resolveModelSelectionOrSingle } from '@/lib/api-config'
 import { normalizeToBase64ForGeneration } from '@/lib/media/outbound-image'
 import { extractStorageKey, getSignedUrl, toFetchableUrl, uploadObject } from '@/lib/storage'
-import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
+import { ensureMediaObjectFromStorageKey, resolveStorageKeyFromMediaValue } from '@/lib/media/service'
 import { synthesizeWithBailianTTS } from '@/lib/providers/bailian'
 import {
   parseSpeakerVoiceMap,
@@ -13,7 +13,7 @@ import {
   type SpeakerVoiceMap,
 } from '@/lib/voice/provider-voice-binding'
 import { rebuildEpisodeNarrationTimeline } from '@/lib/novel-promotion/narration-timeline'
-import { resolvePanelSpeechText } from '@/lib/novel-promotion/panel-speech'
+import { resolvePanelSpeechText, upsertPanelSpeechAudio } from '@/lib/novel-promotion/panel-speech'
 
 type CheckCancelled = () => Promise<void>
 type CharacterVoiceProfile = CharacterVoiceFields & { name: string }
@@ -169,35 +169,23 @@ export async function generateVoiceLine(params: {
 }) {
   const checkCancelled = params.checkCancelled
 
-  const line = await prisma.novelPromotionVoiceLine.findUnique({
+  const speech = await prisma.novelPromotionPanelSpeech.findUnique({
     where: { id: params.lineId },
     select: {
       id: true,
       episodeId: true,
       speaker: true,
-      content: true,
+      originalContent: true,
+      deliveryContent: true,
       emotionPrompt: true,
       emotionStrength: true,
-      matchedPanel: {
-        select: {
-          panelSpeech: {
-            select: {
-              speaker: true,
-              originalContent: true,
-              deliveryContent: true,
-              emotionPrompt: true,
-              emotionStrength: true,
-            },
-          },
-        },
-      },
     },
   })
-  if (!line) {
-    throw new Error('Voice line not found')
+  if (!speech) {
+    throw new Error('Panel speech not found')
   }
 
-  const episodeId = params.episodeId || line.episodeId
+  const episodeId = params.episodeId || speech.episodeId
   if (!episodeId) {
     throw new Error('episodeId is required')
   }
@@ -219,12 +207,11 @@ export async function generateVoiceLine(params: {
 
   const speakerVoices: SpeakerVoiceMap = parseSpeakerVoiceMap(episode?.speakerVoices)
 
-  const panelSpeech = line.matchedPanel?.panelSpeech || null
-  const speaker = panelSpeech?.speaker || line.speaker
+  const speaker = speech.speaker
   const character = matchCharacterBySpeaker(speaker, projectData.characters || [])
   const speakerVoice = speakerVoices[speaker]
 
-  const text = panelSpeech ? resolvePanelSpeechText(panelSpeech) : (line.content || '').trim()
+  const text = resolvePanelSpeechText(speech)
   if (!text) {
     throw new Error('Voice line text is empty')
   }
@@ -248,8 +235,8 @@ export async function generateVoiceLine(params: {
       endpoint: audioSelection.modelId,
       referenceAudioUrl: fullAudioUrl,
       text,
-      emotionPrompt: panelSpeech?.emotionPrompt ?? line.emotionPrompt,
-      strength: panelSpeech?.emotionStrength ?? line.emotionStrength ?? 0.4,
+      emotionPrompt: speech.emotionPrompt,
+      strength: speech.emotionStrength ?? 0.4,
       falApiKey,
     })
   } else if (providerKey === 'bailian') {
@@ -282,23 +269,28 @@ export async function generateVoiceLine(params: {
     throw new Error(`AUDIO_PROVIDER_UNSUPPORTED: ${audioSelection.provider}`)
   }
 
-  const audioKey = `voice/${params.projectId}/${episodeId}/${line.id}.wav`
+  const audioKey = `voice/${params.projectId}/${episodeId}/${speech.id}.wav`
   const cosKey = await uploadObject(generated.audioData, audioKey)
 
   await checkCancelled?.()
 
-  await prisma.novelPromotionVoiceLine.update({
-    where: { id: line.id },
-    data: {
-      audioUrl: cosKey,
-      audioDuration: generated.audioDuration || null,
-    },
+  const audioMedia = await ensureMediaObjectFromStorageKey(cosKey, {
+    mimeType: 'audio/wav',
+    sizeBytes: generated.audioData.length,
+    durationMs: generated.audioDuration || null,
   })
+  const audio = await upsertPanelSpeechAudio({
+    speechId: speech.id,
+    audioUrl: cosKey,
+    audioMediaId: audioMedia.id,
+    audioDuration: generated.audioDuration || null,
+  })
+  if (!audio) throw new Error('PANEL_SPEECH_AUDIO_TABLE_MISSING')
   await rebuildEpisodeNarrationTimeline(episodeId)
 
   const signedUrl = getSignedUrl(cosKey, 7200)
   return {
-    lineId: line.id,
+    lineId: speech.id,
     audioUrl: signedUrl,
     storageKey: cosKey,
     audioDuration: generated.audioDuration || null,

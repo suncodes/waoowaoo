@@ -16,6 +16,9 @@ export function useVoiceLineBindings({
   handleStartEdit,
 }: UseVoiceLineBindingsParams) {
   const getBoundPanelIdForLine = useCallback((line: VoiceLine): string => {
+    if (typeof line.matchedPanelId === 'string' && line.matchedPanelId.trim()) {
+      return line.matchedPanelId.trim()
+    }
     const binding = resolveVoiceLinePanelBindings(line)[0]
     if (!binding) return ''
     if (binding.panelId) return binding.panelId

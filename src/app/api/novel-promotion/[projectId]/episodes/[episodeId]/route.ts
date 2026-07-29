@@ -8,13 +8,10 @@ import { attachMediaFieldsToProject } from '@/lib/media/attach'
 import { resolveMediaRefFromLegacyValue } from '@/lib/media/service'
 import { executeWorkspaceArtifactCommand } from '@/lib/creation-workspace/server-commands'
 import type { WorkspaceArtifactCommand } from '@/lib/creation-workspace/commands'
-import { isPanelVoiceSpanTableMissing } from '@/lib/novel-promotion/panel-voice-spans'
-import { isPanelSpeechPlanTableMissing } from '@/lib/novel-promotion/speech-plan'
+import { listEpisodeSpeechPlans } from '@/lib/novel-promotion/speech-plan'
+import { isPanelSpeechSchemaMissing } from '@/lib/novel-promotion/panel-speech'
 
-function buildStageDataInclude(options: {
-  includeVoiceSpans: boolean
-  includeSpeechPlans: boolean
-}) {
+function buildStageDataInclude() {
   const baseInclude = {
     clips: {
       orderBy: [{ start: 'asc' as const }, { createdAt: 'asc' as const }]
@@ -24,13 +21,13 @@ function buildStageDataInclude(options: {
         clip: true,
         panels: {
           orderBy: { panelIndex: 'asc' as const },
-          ...(options.includeSpeechPlans
-            ? {
+          include: {
+            panelSpeech: {
               include: {
-                speechPlan: true,
+                audio: true,
               },
-            }
-            : {}),
+            },
+          },
         }
       },
       orderBy: { createdAt: 'asc' as const }
@@ -42,57 +39,95 @@ function buildStageDataInclude(options: {
 
   return {
     ...baseInclude,
-    voiceLines: {
-      orderBy: { lineIndex: 'asc' as const },
-      ...(options.includeVoiceSpans
-        ? {
-          include: {
-            panelSpans: {
-              orderBy: { startMs: 'asc' as const },
-              select: {
-                panelId: true,
-                startMs: true,
-                endMs: true,
-                voiceStartMs: true,
-                voiceEndMs: true,
-                segmentText: true,
-                panel: {
-                  select: {
-                    storyboardId: true,
-                    panelIndex: true
-                  }
-                }
-              }
-            }
-          }
-        }
-        : {}),
-    }
   }
 }
 
 async function findEpisodeWithStageData(episodeId: string) {
-  try {
-    return await prisma.novelPromotionEpisode.findUnique({
-      where: { id: episodeId },
-      include: buildStageDataInclude({ includeVoiceSpans: true, includeSpeechPlans: true })
-    })
-  } catch (error) {
-    if (!isPanelSpeechPlanTableMissing(error) && !isPanelVoiceSpanTableMissing(error)) throw error
-    const includeSpeechPlans = !isPanelSpeechPlanTableMissing(error)
-    const includeVoiceSpans = !isPanelVoiceSpanTableMissing(error)
-    try {
-      return await prisma.novelPromotionEpisode.findUnique({
-        where: { id: episodeId },
-        include: buildStageDataInclude({ includeVoiceSpans, includeSpeechPlans })
+  return await prisma.novelPromotionEpisode.findUnique({
+    where: { id: episodeId },
+    include: buildStageDataInclude(),
+  })
+}
+
+function projectCanonicalSpeechState<T extends {
+  id: string
+  storyboards: Array<{
+    id: string
+    clipId: string
+    createdAt: Date
+    clip: { start: number | null; createdAt: Date } | null
+    panels: Array<{
+      id: string
+      panelIndex: number
+      panelSpeech: {
+        id: string
+        speaker: string
+        originalContent: string
+        deliveryContent: string | null
+        estimatedDurationMs: number | null
+        emotionPrompt: string | null
+        emotionStrength: number | null
+        updatedAt: Date
+        audio: {
+          audioUrl: string | null
+          audioMediaId: string | null
+          audioDuration: number | null
+          voicePresetId: string | null
+        } | null
+      } | null
+    }>
+  }>
+}>(episode: T, plans: Awaited<ReturnType<typeof listEpisodeSpeechPlans>>['plans']) {
+  const planByPanelId = new Map(plans.map((plan) => [plan.panelId, plan]))
+  const orderedStoryboards = [...episode.storyboards].sort((left, right) => (
+    (left.clip?.start ?? Number.MAX_SAFE_INTEGER) - (right.clip?.start ?? Number.MAX_SAFE_INTEGER)
+    || (left.clip?.createdAt.getTime() ?? 0) - (right.clip?.createdAt.getTime() ?? 0)
+    || left.createdAt.getTime() - right.createdAt.getTime()
+  ))
+  let lineIndex = 1
+  const voiceLines = orderedStoryboards.flatMap((storyboard) => (
+    [...storyboard.panels]
+      .sort((left, right) => left.panelIndex - right.panelIndex)
+      .flatMap((panel) => {
+        const speech = panel.panelSpeech
+        if (!speech) return []
+        const currentLineIndex = lineIndex
+        lineIndex += 1
+        return [{
+          id: speech.id,
+          speechId: speech.id,
+          lineIndex: currentLineIndex,
+          speaker: speech.speaker,
+          content: speech.originalContent,
+          deliveryContent: speech.deliveryContent,
+          deliveryDurationMs: speech.deliveryContent ? speech.estimatedDurationMs : null,
+          deliveryReason: null,
+          deliveryUpdatedAt: speech.deliveryContent ? speech.updatedAt.toISOString() : null,
+          emotionPrompt: speech.emotionPrompt,
+          emotionStrength: speech.emotionStrength,
+          audioUrl: speech.audio?.audioUrl || null,
+          audioMediaId: speech.audio?.audioMediaId || null,
+          audioDuration: speech.audio?.audioDuration || null,
+          voicePresetId: speech.audio?.voicePresetId || null,
+          matchedPanelId: panel.id,
+          matchedStoryboardId: storyboard.id,
+          matchedPanelIndex: panel.panelIndex,
+          panelSpans: [],
+        }]
       })
-    } catch (fallbackError) {
-      if (!isPanelSpeechPlanTableMissing(fallbackError) && !isPanelVoiceSpanTableMissing(fallbackError)) throw fallbackError
-      return await prisma.novelPromotionEpisode.findUnique({
-        where: { id: episodeId },
-        include: buildStageDataInclude({ includeVoiceSpans: false, includeSpeechPlans: false })
-      })
-    }
+  ))
+  const storyboards = episode.storyboards.map((storyboard) => ({
+    ...storyboard,
+    panels: storyboard.panels.map((panel) => ({
+      ...panel,
+      speechPlan: planByPanelId.get(panel.id) || null,
+    })),
+  }))
+
+  return {
+    ...episode,
+    storyboards,
+    voiceLines,
   }
 }
 
@@ -110,7 +145,19 @@ export const GET = apiHandler(async (
   if (isErrorResponse(authResult)) return authResult
 
   // 获取剧集及其关联数据
-  const episode = await findEpisodeWithStageData(episodeId)
+  let episode: Awaited<ReturnType<typeof findEpisodeWithStageData>>
+  try {
+    episode = await findEpisodeWithStageData(episodeId)
+  } catch (error) {
+    if (isPanelSpeechSchemaMissing(error)) {
+      throw new ApiError('CONFLICT', {
+        code: 'DB_SCHEMA_OUT_OF_DATE',
+        message: '数据库缺少镜头级台词或配音产物表。请执行最新数据库迁移后重试。',
+        table: 'novel_promotion_panel_speeches, novel_promotion_panel_speech_audios',
+      })
+    }
+    throw error
+  }
 
   if (!episode) {
     throw new ApiError('NOT_FOUND')
@@ -122,8 +169,11 @@ export const GET = apiHandler(async (
     data: { lastEpisodeId: episodeId }
   }).catch(err => _ulogError('更新 lastEpisodeId 失败:', err))
 
+  const speechPlans = await listEpisodeSpeechPlans(episodeId)
+  const episodeWithSpeechState = projectCanonicalSpeechState(episode, speechPlans.plans)
+
   // 转换为稳定媒体 URL（并保留兼容字段）
-  const episodeWithSignedUrls = await attachMediaFieldsToProject(episode)
+  const episodeWithSignedUrls = await attachMediaFieldsToProject(episodeWithSpeechState)
 
   return NextResponse.json({ episode: episodeWithSignedUrls })
 })
