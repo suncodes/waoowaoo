@@ -64,6 +64,37 @@ export function useRegenerateProjectPanelImage(projectId: string) {
     })
 }
 
+export function useUpdateProjectPanelImagePrompt(projectId: string, episodeId?: string | null) {
+    const queryClient = useQueryClient()
+    return useMutation({
+        mutationFn: async (payload: {
+            panelId: string
+            storyboardId: string
+            panelIndex: number
+            value: string
+        }) =>
+            await requestJsonWithError(
+                `/api/novel-promotion/${projectId}/panel`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        panelId: payload.panelId,
+                        storyboardId: payload.storyboardId,
+                        panelIndex: payload.panelIndex,
+                        imagePrompt: payload.value,
+                    }),
+                },
+                '保存图片提示词失败',
+            ),
+        onSettled: () => {
+            if (episodeId) {
+                invalidateQueryTemplates(queryClient, [queryKeys.episodeData(projectId, episodeId)])
+            }
+        },
+    })
+}
+
 /**
  * 修改镜头图片（storyboard）
  */

@@ -433,6 +433,8 @@ export function useVideoStageRuntime({
     setFlCustomPrompt,
     resetFlCustomPrompt,
     handleGenerateFirstLastFrame,
+    getFlCapabilityFields,
+    getFlGenerationOptionsForPanel,
     getDefaultFlPrompt,
     getNextPanel,
     isLinkedAsLastFrame,
@@ -608,6 +610,8 @@ export function useVideoStageRuntime({
         flCapabilityFields={flCapabilityFields}
         flMissingCapabilityFields={flMissingCapabilityFields}
         flCustomPrompts={flCustomPrompts}
+        getFlCapabilityFields={getFlCapabilityFields}
+        getFlGenerationOptionsForPanel={getFlGenerationOptionsForPanel}
         onGenerateVideo={handleGenerateVideoWithImmediateLock}
         onUpdatePanelVideoModel={onUpdatePanelVideoModel}
         onLipSync={handleLipSync}

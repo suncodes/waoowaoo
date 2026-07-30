@@ -448,6 +448,7 @@ describe('api contract - crud routes (behavior)', () => {
         characters: JSON.stringify(['Alice']),
         props: JSON.stringify(['Bronze Dagger']),
         description: 'panel description',
+        imagePrompt: 'safe panel image prompt',
       },
     })
 
@@ -463,6 +464,7 @@ describe('api contract - crud routes (behavior)', () => {
         characters: JSON.stringify(['Alice']),
         props: JSON.stringify(['Bronze Dagger']),
         description: 'panel description',
+        imagePrompt: 'safe panel image prompt',
       },
     })
   })

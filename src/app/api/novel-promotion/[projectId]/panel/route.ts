@@ -52,6 +52,7 @@ export const POST = apiHandler(async (
     srtStart,
     srtEnd,
     duration,
+    imagePrompt,
     videoPrompt,
     firstLastFramePrompt,
   } = body
@@ -95,6 +96,7 @@ export const POST = apiHandler(async (
       srtStart: srtStart ?? null,
       srtEnd: srtEnd ?? null,
       duration: duration ?? null,
+      imagePrompt: imagePrompt ?? null,
       videoPrompt: videoPrompt ?? null,
       firstLastFramePrompt: firstLastFramePrompt ?? null,
     }
@@ -229,7 +231,7 @@ export const PATCH = apiHandler(async (
   const panelModel = prisma.novelPromotionPanel as unknown as {
     create: (args: { data: Record<string, unknown> }) => Promise<unknown>
   }
-  const { panelId, storyboardId, panelIndex, videoPrompt, firstLastFramePrompt } = body
+  const { panelId, storyboardId, panelIndex, imagePrompt, videoPrompt, firstLastFramePrompt } = body
 
   // 🔥 方式1：通过 panelId 直接更新（优先）
   if (panelId) {
@@ -243,9 +245,11 @@ export const PATCH = apiHandler(async (
 
     // 构建更新数据
     const updateData: {
+      imagePrompt?: string | null
       videoPrompt?: string | null
       firstLastFramePrompt?: string | null
     } = {}
+    if (imagePrompt !== undefined) updateData.imagePrompt = imagePrompt
     if (videoPrompt !== undefined) updateData.videoPrompt = videoPrompt
     if (firstLastFramePrompt !== undefined) updateData.firstLastFramePrompt = firstLastFramePrompt
 
@@ -273,9 +277,13 @@ export const PATCH = apiHandler(async (
 
   // 构建更新数据
   const updateData: {
+    imagePrompt?: string | null
     videoPrompt?: string | null
     firstLastFramePrompt?: string | null
   } = {}
+  if (imagePrompt !== undefined) {
+    updateData.imagePrompt = imagePrompt
+  }
   if (videoPrompt !== undefined) {
     updateData.videoPrompt = videoPrompt
   }
@@ -301,6 +309,7 @@ export const PATCH = apiHandler(async (
         panelIndex,
         panelNumber: panelIndex + 1,
         imageUrl: null,
+        imagePrompt: imagePrompt ?? null,
         videoPrompt: videoPrompt ?? null,
         firstLastFramePrompt: firstLastFramePrompt ?? null,
       }
@@ -341,6 +350,7 @@ export const PUT = apiHandler(async (
     srtStart,
     srtEnd,
     duration,
+    imagePrompt,
     videoPrompt,
     firstLastFramePrompt,
     actingNotes,  // 演技指导数据
@@ -372,6 +382,7 @@ export const PUT = apiHandler(async (
     srtStart?: number | null
     srtEnd?: number | null
     duration?: number | null
+    imagePrompt?: string | null
     videoPrompt?: string | null
     firstLastFramePrompt?: string | null
     actingNotes?: string | null
@@ -387,6 +398,7 @@ export const PUT = apiHandler(async (
   if (srtStart !== undefined) updateData.srtStart = parseNullableNumberField(srtStart)
   if (srtEnd !== undefined) updateData.srtEnd = parseNullableNumberField(srtEnd)
   if (duration !== undefined) updateData.duration = parseNullableNumberField(duration)
+  if (imagePrompt !== undefined) updateData.imagePrompt = imagePrompt
   if (videoPrompt !== undefined) updateData.videoPrompt = videoPrompt
   if (firstLastFramePrompt !== undefined) updateData.firstLastFramePrompt = firstLastFramePrompt
   // JSON 字段存为规范化 JSON 字符串
@@ -429,6 +441,7 @@ export const PUT = apiHandler(async (
         srtStart: srtStart ?? null,
         srtEnd: srtEnd ?? null,
         duration: duration ?? null,
+        imagePrompt: imagePrompt ?? null,
         videoPrompt: videoPrompt ?? null,
         firstLastFramePrompt: firstLastFramePrompt ?? null,
         actingNotes: actingNotes !== undefined ? toStructuredJsonField(actingNotes, 'actingNotes') : null,

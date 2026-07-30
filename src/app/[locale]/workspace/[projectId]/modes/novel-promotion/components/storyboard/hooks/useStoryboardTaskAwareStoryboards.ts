@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import { NovelPromotionStoryboard } from '@/types/project'
 import { useStoryboardTaskPresentation } from '@/lib/query/hooks/useTaskPresentation'
+import type { TaskTargetState } from '@/lib/query/hooks/useTaskTargetStateMap'
 
 interface TaskTarget {
   key: string
@@ -91,6 +92,22 @@ function buildPanelTargets(storyboards: NovelPromotionStoryboard[], type: 'image
   return targets
 }
 
+function toPanelTaskState(state: TaskTargetState | null | undefined) {
+  if (!state) return null
+  return {
+    phase: state.phase,
+    runningTaskId: state.runningTaskId,
+    runningTaskType: state.runningTaskType,
+    progress: state.progress,
+    stage: state.stage,
+    stageLabel: state.stageLabel,
+    attempt: state.attempt ?? null,
+    maxAttempts: state.maxAttempts ?? null,
+    updatedAt: state.updatedAt,
+    lastError: state.lastError,
+  }
+}
+
 export function useStoryboardTaskAwareStoryboards({
   projectId,
   initialStoryboards,
@@ -143,26 +160,31 @@ export function useStoryboardTaskAwareStoryboards({
       panels: (storyboard.panels || []).map((panel) => {
         const panelImageTaskState = panelImageStates.getTaskState(`panel-image:${panel.id}`)
         const panelImageRunning = isRunningPhase(panelImageTaskState?.phase)
+        const panelVideoTaskState = panelVideoStates.getTaskState(`panel-video:${panel.id}`)
+        const panelLipSyncTaskState = panelLipSyncStates.getTaskState(`panel-lip:${panel.id}`)
+        const panelVideoFailed = panelVideoTaskState?.phase === 'failed'
+        const panelLipSyncFailed = panelLipSyncTaskState?.phase === 'failed'
         return {
           ...panel,
           imageTaskRunning: panelImageRunning,
           imageTaskIntent: panelImageTaskState?.intent,
-          imageTaskState: panelImageTaskState
-            ? {
-              phase: panelImageTaskState.phase,
-              runningTaskId: panelImageTaskState.runningTaskId,
-              runningTaskType: panelImageTaskState.runningTaskType,
-              progress: panelImageTaskState.progress,
-              stage: panelImageTaskState.stage,
-              stageLabel: panelImageTaskState.stageLabel,
-              attempt: panelImageTaskState.attempt ?? null,
-              maxAttempts: panelImageTaskState.maxAttempts ?? null,
-              updatedAt: panelImageTaskState.updatedAt,
-              lastError: panelImageTaskState.lastError,
-            }
-            : null,
-          videoTaskRunning: isRunningPhase(panelVideoStates.getTaskState(`panel-video:${panel.id}`)?.phase),
-          lipSyncTaskRunning: isRunningPhase(panelLipSyncStates.getTaskState(`panel-lip:${panel.id}`)?.phase),
+          imageTaskState: toPanelTaskState(panelImageTaskState),
+          videoTaskRunning: isRunningPhase(panelVideoTaskState?.phase),
+          videoTaskState: toPanelTaskState(panelVideoTaskState),
+          videoErrorCode: panelVideoFailed
+            ? panelVideoTaskState?.lastError?.code || panel.videoErrorCode || null
+            : panel.videoErrorCode || null,
+          videoErrorMessage: panelVideoFailed
+            ? panelVideoTaskState?.lastError?.message || panel.videoErrorMessage || null
+            : panel.videoErrorMessage || null,
+          lipSyncTaskRunning: isRunningPhase(panelLipSyncTaskState?.phase),
+          lipSyncTaskState: toPanelTaskState(panelLipSyncTaskState),
+          lipSyncErrorCode: panelLipSyncFailed
+            ? panelLipSyncTaskState?.lastError?.code || panel.lipSyncErrorCode || null
+            : panel.lipSyncErrorCode || null,
+          lipSyncErrorMessage: panelLipSyncFailed
+            ? panelLipSyncTaskState?.lastError?.message || panel.lipSyncErrorMessage || null
+            : panel.lipSyncErrorMessage || null,
         }
       }),
     }))

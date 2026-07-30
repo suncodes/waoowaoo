@@ -226,6 +226,41 @@ export interface NovelPromotionPanel {
     } | null
   } | null
   videoTaskRunning?: boolean
+  videoTaskState?: {
+    phase?: 'idle' | 'queued' | 'processing' | 'completed' | 'failed' | null
+    runningTaskId?: string | null
+    runningTaskType?: string | null
+    progress?: number | null
+    stage?: string | null
+    stageLabel?: string | null
+    attempt?: number | null
+    maxAttempts?: number | null
+    updatedAt?: string | null
+    lastError?: {
+      code: string
+      message: string
+    } | null
+  } | null
+  videoErrorCode?: string | null
+  videoErrorMessage?: string | null
+  lipSyncTaskRunning?: boolean
+  lipSyncTaskState?: {
+    phase?: 'idle' | 'queued' | 'processing' | 'completed' | 'failed' | null
+    runningTaskId?: string | null
+    runningTaskType?: string | null
+    progress?: number | null
+    stage?: string | null
+    stageLabel?: string | null
+    attempt?: number | null
+    maxAttempts?: number | null
+    updatedAt?: string | null
+    lastError?: {
+      code: string
+      message: string
+    } | null
+  } | null
+  lipSyncErrorCode?: string | null
+  lipSyncErrorMessage?: string | null
   imageErrorMessage?: string | null  // 图片生成错误消息
 }
 

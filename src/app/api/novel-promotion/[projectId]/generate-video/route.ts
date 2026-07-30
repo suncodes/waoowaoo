@@ -248,6 +248,35 @@ function resolveNativeAudioDefault(input: {
   return options.includes(false) ? false : undefined
 }
 
+function normalizePromptText(value: string | null | undefined): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function buildDefaultFirstLastFramePrompt(
+  firstPanel: { videoPrompt?: string | null; description?: string | null },
+  lastPanel: { videoPrompt?: string | null; description?: string | null },
+  locale?: string,
+): string | undefined {
+  const firstPrompt = normalizePromptText(firstPanel.videoPrompt) || normalizePromptText(firstPanel.description)
+  const lastPrompt = normalizePromptText(lastPanel.videoPrompt) || normalizePromptText(lastPanel.description)
+  if (!firstPrompt && !lastPrompt) return undefined
+  if (!lastPrompt) return firstPrompt
+  const transitionLabel = locale?.startsWith('zh') ? '然后自然过渡到' : 'Then transition naturally to'
+  if (!firstPrompt) return `${transitionLabel}: ${lastPrompt}`
+  return `${firstPrompt}\n${transitionLabel}: ${lastPrompt}`
+}
+
+function resolveFirstLastFramePrompt(
+  firstPanel: { firstLastFramePrompt?: string | null; videoPrompt?: string | null; description?: string | null },
+  lastPanel: { videoPrompt?: string | null; description?: string | null },
+  locale?: string,
+): string | undefined {
+  if (firstPanel.firstLastFramePrompt !== null && firstPanel.firstLastFramePrompt !== undefined) {
+    return normalizePromptText(firstPanel.firstLastFramePrompt) || undefined
+  }
+  return buildDefaultFirstLastFramePrompt(firstPanel, lastPanel, locale)
+}
+
 function buildPayloadWithPanelGenerationDefaults(
   payload: Record<string, unknown>,
   panel: {
@@ -271,12 +300,13 @@ function buildPayloadWithPanelGenerationDefaults(
   const generationOptions = isRecord(payload.generationOptions)
     ? payload.generationOptions
     : {}
+  const shouldApplyDurationDefault = generationOptions.duration === undefined
   const nextGenerationOptions = {
     ...generationOptions,
-    ...(duration !== undefined ? { duration } : {}),
+    ...(shouldApplyDurationDefault && duration !== undefined ? { duration } : {}),
     ...(typeof generateAudio === 'boolean' ? { generateAudio } : {}),
   }
-  const unchanged = (duration === undefined || generationOptions.duration === duration)
+  const unchanged = (!shouldApplyDurationDefault || duration === undefined || generationOptions.duration === duration)
     && (typeof generateAudio !== 'boolean' || generationOptions.generateAudio === generateAudio)
   if (unchanged) {
     return payload
@@ -353,8 +383,10 @@ export const POST = apiHandler(async (
             id: true,
             storyboardId: true,
             panelIndex: true,
+            description: true,
             imageUrl: true,
             videoUrl: true,
+            videoPrompt: true,
             lipSyncVideoUrl: true,
             candidateImages: true,
             visualQualityState: true,
@@ -460,6 +492,7 @@ export const POST = apiHandler(async (
         skip('last_quality_not_ready')
         return
       }
+      const firstLastPrompt = resolveFirstLastFramePrompt(panel, nextPanel, locale)
       const payload = buildPayloadWithPanelGenerationDefaults({
         ...basePayload,
         storyboardId: panel.storyboardId,
@@ -468,9 +501,7 @@ export const POST = apiHandler(async (
           lastFrameStoryboardId: nextPanel.storyboardId,
           lastFramePanelIndex: nextPanel.panelIndex,
           flModel: body.videoModel,
-          ...(panel.firstLastFramePrompt?.trim()
-            ? { customPrompt: panel.firstLastFramePrompt.trim() }
-            : {}),
+          ...(firstLastPrompt ? { customPrompt: firstLastPrompt } : {}),
         },
       }, {
         ...panel,

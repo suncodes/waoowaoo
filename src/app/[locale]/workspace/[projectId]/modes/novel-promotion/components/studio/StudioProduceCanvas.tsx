@@ -5,8 +5,14 @@ import { createPortal } from 'react-dom'
 import { MediaImageWithLoading } from '@/components/media/MediaImageWithLoading'
 import VisualQualityBadge from '@/components/visual-quality/VisualQualityBadge'
 import { AppIcon } from '@/components/ui/icons'
-import { useUpdateProjectPanelLink } from '@/lib/query/hooks'
+import {
+  useAiModifyProjectShotPrompt,
+  useRegenerateProjectPanelImage,
+  useUpdateProjectPanelImagePrompt,
+  useUpdateProjectPanelLink,
+} from '@/lib/query/hooks'
 import { useVideoFirstLastFrameFlow } from '@/lib/novel-promotion/stages/video-stage-runtime/useVideoFirstLastFrameFlow'
+import { useVideoPromptState, type DirtyPromptEntry } from '@/lib/novel-promotion/stages/video-stage-runtime/useVideoPromptState'
 import { resolveVoiceLinePanelBindings } from '@/lib/novel-promotion/voice-line-binding'
 import { isRunningPhase } from '@/lib/task/presentation'
 import { useWorkspaceProvider } from '../../WorkspaceProvider'
@@ -46,6 +52,7 @@ interface StudioProduceCanvasProps {
 }
 
 type FirstLastFrameFlow = ReturnType<typeof useVideoFirstLastFrameFlow>
+type VideoPromptState = ReturnType<typeof useVideoPromptState>
 
 const BATCH_REASON_LABELS: Record<BatchVideoSkipReason, string> = {
   video_exists: '已有视频',
@@ -64,6 +71,30 @@ interface BatchPreviewState {
   skippedCount: number
   reasonCounts: Partial<Record<BatchVideoSkipReason, number>>
   issues: string[]
+}
+
+interface VideoRepairDraft {
+  mode: 'normal' | 'firstlastframe'
+  videoPrompt: string
+  imagePrompt: string
+}
+
+function extractRequestId(message: string | null | undefined): string | null {
+  const match = (message || '').match(/request\s*id\s*[:：]\s*([a-zA-Z0-9_-]+)/i)
+  return match?.[1] || null
+}
+
+function isPolicyVideoError(code: string | null | undefined, message: string | null | undefined): boolean {
+  const normalizedCode = (code || '').toUpperCase()
+  const normalizedMessage = (message || '').toLowerCase()
+  return normalizedCode === 'SENSITIVE_CONTENT'
+    || normalizedMessage.includes('copyright')
+    || normalizedMessage.includes('policy')
+    || normalizedMessage.includes('safety')
+    || normalizedMessage.includes('moderation')
+    || normalizedMessage.includes('敏感')
+    || normalizedMessage.includes('版权')
+    || normalizedMessage.includes('安全')
 }
 
 function BatchVideoConfirmDialog({
@@ -168,6 +199,7 @@ function ProductionDetailPanel({
   linkSaving,
   onToggleLink,
   firstLastFrameFlow,
+  promptState,
   voiceLineCountForItem,
 }: {
   item: ProduceItem
@@ -176,24 +208,45 @@ function ProductionDetailPanel({
   linkSaving: boolean
   onToggleLink: () => Promise<void>
   firstLastFrameFlow: FirstLastFrameFlow
+  promptState: VideoPromptState
   voiceLineCountForItem: (item: ProduceItem) => number
 }) {
   const runtime = useWorkspaceStageRuntime()
+  const { projectId, episodeId } = useWorkspaceProvider()
+  const repairPromptMutation = useAiModifyProjectShotPrompt(projectId)
+  const updateImagePromptMutation = useUpdateProjectPanelImagePrompt(projectId, episodeId || null)
+  const regenerateImageMutation = useRegenerateProjectPanelImage(projectId)
   const initialModel = panelVideoModel(item.panel) || runtime.videoModel || runtime.userVideoModels[0]?.value || ''
   const panelKey = `${item.storyboard.id}-${item.panel.panelIndex}`
   const initialMode = item.panel.videoGenerationMode === 'firstlastframe' || linked ? 'firstlastframe' : 'normal'
   const [mode, setMode] = useState<'normal' | 'firstlastframe'>(initialMode)
-  const [prompt, setPrompt] = useState(item.panel.videoPrompt || '')
   const [selectedModel, setSelectedModel] = useState(initialModel)
   const [savingPrompt, setSavingPrompt] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [repairDraft, setRepairDraft] = useState<VideoRepairDraft | null>(null)
   const videoUrl = panelVideoUrl(item.panel)
   const videoStatus = resolveVideoStatus(item.panel)
   const error = panelVideoError(item.panel)
-  const defaultFirstLastPrompt = firstLastFrameFlow.getDefaultFlPrompt(item.panel.videoPrompt || '', nextItem?.panel.videoPrompt || '')
-  const firstLastPrompt = firstLastFrameFlow.flCustomPrompts.get(panelKey)
-    || item.panel.firstLastFramePrompt
-    || defaultFirstLastPrompt
+  const videoErrorCode = item.panel.videoErrorCode || item.panel.lipSyncErrorCode || null
+  const requestId = extractRequestId(error)
+  const canAiRepair = isPolicyVideoError(videoErrorCode, error)
+  const prompt = promptState.getLocalPrompt(panelKey, item.panel.videoPrompt || '', 'videoPrompt')
+  const nextPanelKey = nextItem ? `${nextItem.storyboard.id}-${nextItem.panel.panelIndex}` : ''
+  const currentDefaultPrompt = promptState.getLocalPrompt(panelKey, item.panel.videoPrompt || '', 'videoPrompt')
+  const nextDefaultPrompt = nextItem
+    ? promptState.getLocalPrompt(nextPanelKey, nextItem.panel.videoPrompt || '', 'videoPrompt')
+    : ''
+  const defaultFirstLastPrompt = firstLastFrameFlow.getDefaultFlPrompt(currentDefaultPrompt, nextDefaultPrompt)
+  const firstLastExternalPrompt = firstLastFrameFlow.flCustomPrompts.has(panelKey)
+    ? firstLastFrameFlow.flCustomPrompts.get(panelKey) ?? ''
+    : item.panel.firstLastFramePrompt ?? defaultFirstLastPrompt
+  const firstLastPrompt = promptState.isPromptDirty(panelKey, 'firstLastFramePrompt')
+    ? promptState.getLocalPrompt(panelKey, firstLastExternalPrompt, 'firstLastFramePrompt')
+    : firstLastExternalPrompt
+  const flCapabilityFields = firstLastFrameFlow.getFlCapabilityFields(panelKey)
+  const promptSaving = savingPrompt
+    || promptState.savingPrompts.has(`videoPrompt:${panelKey}`)
+    || promptState.savingPrompts.has(`firstLastFramePrompt:${panelKey}`)
   const currentVoiceLineCount = voiceLineCountForItem(item)
   const nextVoiceLineCount = nextItem ? voiceLineCountForItem(nextItem) : 0
   const currentVisualReady = isPanelVisualReadyForVideo(item.panel)
@@ -212,30 +265,144 @@ function ProductionDetailPanel({
 
   useEffect(() => {
     setMode(initialMode)
-    setPrompt(item.panel.videoPrompt || '')
     setSelectedModel(initialModel)
+    setRepairDraft(null)
   }, [
     initialMode,
     initialModel,
     item.id,
-    item.panel.videoPrompt,
   ])
 
-  const saveNormalPrompt = async () => {
-    if (prompt === (item.panel.videoPrompt || '')) return
+  const saveNormalPrompt = async (): Promise<boolean> => {
+    if (!promptState.isPromptDirty(panelKey, 'videoPrompt') && prompt === (item.panel.videoPrompt || '')) return true
     setSavingPrompt(true)
     try {
-      await runtime.onUpdateVideoPrompt(item.storyboard.id, item.panel.panelIndex, prompt)
+      await promptState.savePrompt(item.storyboard.id, item.panel.panelIndex, panelKey, prompt, 'videoPrompt', { throwOnError: true })
+      return true
+    } catch (saveError) {
+      window.alert(saveError instanceof Error ? saveError.message : '保存视频提示词失败')
+      return false
     } finally {
       setSavingPrompt(false)
     }
   }
 
-  const saveFirstLastPrompt = async () => {
-    if (firstLastPrompt === (item.panel.firstLastFramePrompt || '')) return
+  const saveFirstLastPrompt = async (): Promise<boolean> => {
+    if (!promptState.isPromptDirty(panelKey, 'firstLastFramePrompt') && firstLastPrompt === (item.panel.firstLastFramePrompt ?? '')) return true
     setSavingPrompt(true)
     try {
-      await runtime.onUpdateVideoPrompt(item.storyboard.id, item.panel.panelIndex, firstLastPrompt, 'firstLastFramePrompt')
+      await promptState.savePrompt(item.storyboard.id, item.panel.panelIndex, panelKey, firstLastPrompt, 'firstLastFramePrompt', { throwOnError: true })
+      return true
+    } catch (saveError) {
+      window.alert(saveError instanceof Error ? saveError.message : '保存首尾帧提示词失败')
+      return false
+    } finally {
+      setSavingPrompt(false)
+    }
+  }
+
+  const createAiRepairDraft = async () => {
+    if (!error) return
+    const activePrompt = mode === 'firstlastframe' ? firstLastPrompt : prompt
+    try {
+      const result = await repairPromptMutation.mutateAsync({
+        panelId: item.panel.id,
+        currentPrompt: item.panel.imagePrompt || item.panel.description || activePrompt,
+        currentVideoPrompt: activePrompt,
+        modifyInstruction: [
+          '视频生成被供应商的版权或安全策略拦截，请在不改变剧情含义、镜头动作和主体关系的前提下改写提示词。',
+          '删除或泛化可能触发版权、IP、明星、品牌、作品名、角色名、强风格模仿的表达。',
+          '保留镜头运动、情绪、首尾帧衔接和画面连续性，只输出可用于重新生成的安全提示词。',
+          `失败原因：${error}`,
+          requestId ? `供应商 Request id：${requestId}` : '',
+          mode === 'firstlastframe' && nextItem
+            ? `首尾帧上下文：当前镜头过渡到镜头 ${nextItem.number}。`
+            : '',
+        ].filter(Boolean).join('\n'),
+        referencedAssets: [],
+      })
+      setRepairDraft({
+        mode,
+        imagePrompt: result.modifiedImagePrompt || item.panel.imagePrompt || '',
+        videoPrompt: result.modifiedVideoPrompt || activePrompt,
+      })
+    } catch (repairError) {
+      window.alert(repairError instanceof Error ? repairError.message : 'AI 修复失败')
+    }
+  }
+
+  const applyRepairDraft = async (retry: boolean) => {
+    if (!repairDraft) return
+    setSavingPrompt(true)
+    setGenerating(retry)
+    try {
+      if (repairDraft.mode === 'firstlastframe') {
+        firstLastFrameFlow.setFlCustomPrompt(panelKey, repairDraft.videoPrompt)
+        promptState.updateLocalPrompt(panelKey, repairDraft.videoPrompt, 'firstLastFramePrompt')
+        await promptState.savePrompt(item.storyboard.id, item.panel.panelIndex, panelKey, repairDraft.videoPrompt, 'firstLastFramePrompt', { throwOnError: true })
+        setRepairDraft(null)
+        if (retry) {
+          if (missingFirstLastFrameSetup || !nextItem) return
+          await runtime.onGenerateVideo(
+            item.storyboard.id,
+            item.panel.panelIndex,
+            firstLastFrameFlow.flModel,
+            {
+              lastFrameStoryboardId: nextItem.storyboard.id,
+              lastFramePanelIndex: nextItem.panel.panelIndex,
+              flModel: firstLastFrameFlow.flModel,
+              customPrompt: repairDraft.videoPrompt,
+            },
+            firstLastFrameFlow.getFlGenerationOptionsForPanel(panelKey),
+            item.panel.id,
+          )
+        }
+        return
+      }
+
+      promptState.updateLocalPrompt(panelKey, repairDraft.videoPrompt, 'videoPrompt')
+      await promptState.savePrompt(item.storyboard.id, item.panel.panelIndex, panelKey, repairDraft.videoPrompt, 'videoPrompt', { throwOnError: true })
+      setRepairDraft(null)
+      if (retry) {
+        if (!selectedModel.trim()) {
+          window.alert('请先在设置中配置视频模型。')
+          return
+        }
+        await runtime.onGenerateVideo(
+          item.storyboard.id,
+          item.panel.panelIndex,
+          selectedModel,
+          undefined,
+          undefined,
+          item.panel.id,
+        )
+      }
+    } catch (applyError) {
+      window.alert(applyError instanceof Error ? applyError.message : '应用 AI 修复失败')
+    } finally {
+      setSavingPrompt(false)
+      setGenerating(false)
+    }
+  }
+
+  const applyImageRepairDraft = async () => {
+    if (!repairDraft || !repairDraft.imagePrompt.trim()) return
+    setSavingPrompt(true)
+    try {
+      await updateImagePromptMutation.mutateAsync({
+        panelId: item.panel.id,
+        storyboardId: item.storyboard.id,
+        panelIndex: item.panel.panelIndex,
+        value: repairDraft.imagePrompt,
+      })
+      await regenerateImageMutation.mutateAsync({
+        panelId: item.panel.id,
+        count: 2,
+        forceNoReference: true,
+      })
+      setRepairDraft(null)
+    } catch (applyError) {
+      window.alert(applyError instanceof Error ? applyError.message : '应用图片提示词并重新生图失败')
     } finally {
       setSavingPrompt(false)
     }
@@ -255,7 +422,7 @@ function ProductionDetailPanel({
       }
       if (mode === 'firstlastframe') {
         if (missingFirstLastFrameSetup || !nextItem) return
-        await saveFirstLastPrompt()
+        if (!await saveFirstLastPrompt()) return
         await runtime.onGenerateVideo(
           item.storyboard.id,
           item.panel.panelIndex,
@@ -266,13 +433,13 @@ function ProductionDetailPanel({
             flModel: firstLastFrameFlow.flModel,
             customPrompt: firstLastPrompt,
           },
-          firstLastFrameFlow.flGenerationOptions,
+          firstLastFrameFlow.getFlGenerationOptionsForPanel(panelKey),
           item.panel.id,
         )
         return
       }
 
-      await saveNormalPrompt()
+      if (!await saveNormalPrompt()) return
       if (!selectedModel.trim()) {
         window.alert('请先在设置中配置视频模型。')
         return
@@ -324,7 +491,67 @@ function ProductionDetailPanel({
               />
             ) : null}
           </div>
-          {error ? <div className="rounded-md border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs text-rose-100">{error}</div> : null}
+          {error ? (
+            <div className="rounded-md border border-rose-400/30 bg-rose-400/10 px-3 py-3 text-xs text-rose-100">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold">视频生成失败</div>
+                  <p className="mt-1 break-words leading-5">{error}</p>
+                  {requestId ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-rose-100/80">
+                      <span>Request id: {requestId}</span>
+                      <button type="button" className="rounded border border-rose-200/30 px-2 py-0.5 text-[11px] hover:bg-white/10" onClick={() => { void navigator.clipboard?.writeText(requestId) }}>
+                        复制
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+                {canAiRepair ? (
+                  <StudioButton size="sm" variant="secondary" loading={repairPromptMutation.isPending} onClick={() => { void createAiRepairDraft() }}>
+                    AI 修复
+                  </StudioButton>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+          {repairDraft ? (
+            <div className="rounded-md border border-cyan-300/25 bg-cyan-300/10 px-3 py-3 text-xs text-cyan-50">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="font-semibold">AI 修复草案</div>
+                  <p className="mt-1 text-cyan-50/70">已泛化可能触发版权或安全策略的表达，确认后会保存到当前{repairDraft.mode === 'firstlastframe' ? '首尾帧' : '视频'}提示词。</p>
+                </div>
+              </div>
+              <div className="mt-3 text-[11px] font-semibold text-cyan-50/70">视频提示词草案</div>
+              <textarea
+                value={repairDraft.videoPrompt}
+                onChange={(event) => setRepairDraft({ ...repairDraft, videoPrompt: event.target.value })}
+                rows={5}
+                className="mt-3 w-full resize-y rounded-md border border-cyan-200/20 bg-[#0f100e] px-3 py-2 text-sm font-normal leading-6 text-stone-100 outline-none focus:border-cyan-200/60"
+              />
+              {repairDraft.imagePrompt.trim() ? (
+                <>
+                  <div className="mt-3 text-[11px] font-semibold text-cyan-50/70">图片提示词草案</div>
+                  <textarea
+                    value={repairDraft.imagePrompt}
+                    onChange={(event) => setRepairDraft({ ...repairDraft, imagePrompt: event.target.value })}
+                    rows={4}
+                    className="mt-2 w-full resize-y rounded-md border border-cyan-200/20 bg-[#0f100e] px-3 py-2 text-sm font-normal leading-6 text-stone-100 outline-none focus:border-cyan-200/60"
+                  />
+                </>
+              ) : null}
+              <div className="mt-3 flex flex-wrap justify-end gap-2">
+                <StudioButton size="sm" variant="secondary" onClick={() => setRepairDraft(null)} disabled={promptSaving || generating}>取消</StudioButton>
+                <StudioButton size="sm" variant="secondary" onClick={() => { void applyRepairDraft(false) }} loading={promptSaving && !generating}>应用</StudioButton>
+                <StudioButton size="sm" variant="secondary" icon="imageLandscape" onClick={() => { void applyImageRepairDraft() }} loading={updateImagePromptMutation.isPending || regenerateImageMutation.isPending} disabled={!repairDraft.imagePrompt.trim() || promptSaving || generating}>
+                  应用并重新生图
+                </StudioButton>
+                <StudioButton size="sm" icon="video" onClick={() => { void applyRepairDraft(true) }} loading={generating}>
+                  应用并重新生成
+                </StudioButton>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div>
@@ -346,7 +573,7 @@ function ProductionDetailPanel({
             </label>
             <label className="block text-xs font-semibold text-stone-500">
               视频提示词
-              <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} onBlur={() => { void saveNormalPrompt() }} rows={6} className="mt-1 w-full resize-y rounded-md border border-white/10 bg-[#0f100e] px-3 py-2 text-sm font-normal leading-6 text-stone-100 outline-none focus:border-[#e8d18a]" placeholder="描述视频运动、镜头节奏、主体动作和画面变化。" />
+              <textarea value={prompt} onChange={(event) => promptState.updateLocalPrompt(panelKey, event.target.value, 'videoPrompt')} onBlur={() => { void saveNormalPrompt() }} rows={6} className="mt-1 w-full resize-y rounded-md border border-white/10 bg-[#0f100e] px-3 py-2 text-sm font-normal leading-6 text-stone-100 outline-none focus:border-[#e8d18a]" placeholder="描述视频运动、镜头节奏、主体动作和画面变化。" />
             </label>
           </>
         ) : (
@@ -386,9 +613,9 @@ function ProductionDetailPanel({
               </select>
             </label>
 
-            {firstLastFrameFlow.flCapabilityFields.length > 0 ? (
+            {flCapabilityFields.length > 0 ? (
               <div className="grid gap-3 sm:grid-cols-2">
-                {firstLastFrameFlow.flCapabilityFields.map((field) => (
+                {flCapabilityFields.map((field) => (
                   <label key={field.field} className="block text-xs font-semibold text-stone-500">
                     {field.label}
                     <select value={field.value === undefined ? '' : String(field.value)} onChange={(event) => firstLastFrameFlow.setFlCapabilityValue(field.field, event.target.value)} className="mt-1 h-9 w-full rounded-md border border-white/10 bg-[#0f100e] px-3 text-sm font-normal text-stone-100 outline-none focus:border-[#e8d18a]">
@@ -404,7 +631,10 @@ function ProductionDetailPanel({
 
             <label className="block text-xs font-semibold text-stone-500">
               首尾帧提示词
-              <textarea value={firstLastPrompt} onChange={(event) => firstLastFrameFlow.setFlCustomPrompt(panelKey, event.target.value)} onBlur={() => { void saveFirstLastPrompt() }} rows={6} className="mt-1 w-full resize-y rounded-md border border-white/10 bg-[#0f100e] px-3 py-2 text-sm font-normal leading-6 text-stone-100 outline-none focus:border-[#e8d18a]" placeholder="描述首帧如何自然变化到尾帧。" />
+              <textarea value={firstLastPrompt} onChange={(event) => {
+                firstLastFrameFlow.setFlCustomPrompt(panelKey, event.target.value)
+                promptState.updateLocalPrompt(panelKey, event.target.value, 'firstLastFramePrompt')
+              }} onBlur={() => { void saveFirstLastPrompt() }} rows={6} className="mt-1 w-full resize-y rounded-md border border-white/10 bg-[#0f100e] px-3 py-2 text-sm font-normal leading-6 text-stone-100 outline-none focus:border-[#e8d18a]" placeholder="描述首帧如何自然变化到尾帧。" />
             </label>
           </div>
         )}
@@ -418,9 +648,9 @@ function ProductionDetailPanel({
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs text-stone-500">{savingPrompt ? '提示词保存中' : readinessMessage || (mode === 'firstlastframe' && !linked ? '连接下一镜头后可生成' : '生成参数已就绪')}</span>
+          <span className="text-xs text-stone-500">{promptSaving ? '提示词保存中' : readinessMessage || (mode === 'firstlastframe' && !linked ? '连接下一镜头后可生成' : '生成参数已就绪')}</span>
           <div className="flex gap-2">
-            <StudioButton size="sm" variant="secondary" onClick={() => { void (mode === 'normal' ? saveNormalPrompt() : saveFirstLastPrompt()) }} disabled={savingPrompt}>保存提示词</StudioButton>
+            <StudioButton size="sm" variant="secondary" onClick={() => { void (mode === 'normal' ? saveNormalPrompt() : saveFirstLastPrompt()) }} disabled={promptSaving}>保存提示词</StudioButton>
             <StudioButton size="sm" icon="video" loading={generating || !!item.panel.videoTaskRunning} onClick={() => { void generate() }} disabled={!!readinessMessage || (mode === 'normal' ? !item.panel.imageUrl : missingFirstLastFrameSetup)}>
               {videoUrl ? '重新生成' : mode === 'firstlastframe' ? '生成首尾帧视频' : '生成单图视频'}
             </StudioButton>
@@ -484,6 +714,10 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
     onGenerateVideo: runtime.onGenerateVideo,
     t: translateFirstLastFrameKey,
   })
+  const promptState = useVideoPromptState({
+    allPanels: videoPanels,
+    onUpdateVideoPrompt: runtime.onUpdateVideoPrompt,
+  })
 
   useEffect(() => {
     setLinkedPanels((current) => booleanMapsEqual(current, persistedLinks) ? current : persistedLinks)
@@ -529,6 +763,22 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
     setBatchPreview(buildBatchPreviewState(mode))
   }
 
+  const isBatchPromptEntry = (mode: BatchVideoMode, entry: DirtyPromptEntry) => {
+    if (mode === 'normal') return entry.field === 'videoPrompt'
+    return entry.field === 'videoPrompt' || entry.field === 'firstLastFramePrompt'
+  }
+
+  const saveDirtyPromptsForBatch = async (mode: BatchVideoMode): Promise<boolean> => {
+    if (promptState.getDirtyPromptEntries((entry) => isBatchPromptEntry(mode, entry)).length === 0) return true
+    try {
+      await promptState.saveDirtyPrompts((entry) => isBatchPromptEntry(mode, entry))
+      return true
+    } catch (saveError) {
+      window.alert(saveError instanceof Error ? saveError.message : '保存提示词失败，已停止批量生成。')
+      return false
+    }
+  }
+
   const confirmBatchGeneration = async () => {
     if (!batchPreview) return
     const mode = batchPreview.mode
@@ -536,11 +786,12 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
     if (!targetModel.trim()) return
     setGeneratingMode(mode)
     try {
+      if (!await saveDirtyPromptsForBatch(mode)) return
       await runtime.onGenerateAllVideos({
         videoModel: targetModel,
         mode,
         ...(mode === 'firstlastframe'
-          ? { generationOptions: firstLastFrameFlow.flGenerationOptions }
+          ? { generationOptions: firstLastFrameFlow.getFlGenerationOptionsForBatch() }
           : {}),
       })
       setBatchPreview(null)
@@ -619,6 +870,7 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
               linkSaving={linkSavingKey === `${selectedItem.storyboard.id}-${selectedItem.panel.panelIndex}`}
               onToggleLink={() => toggleLink(selectedItem)}
               firstLastFrameFlow={firstLastFrameFlow}
+              promptState={promptState}
               voiceLineCountForItem={voiceLineCountForItem}
             />
           ) : null}

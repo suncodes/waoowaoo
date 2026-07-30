@@ -31,6 +31,14 @@ interface VideoRenderPanelProps {
   }>
   flMissingCapabilityFields: string[]
   flCustomPrompts: Map<string, string>
+  getFlCapabilityFields: (panelKey: string) => Array<{
+    field: string
+    label: string
+    options: CapabilityValue[]
+    disabledOptions?: CapabilityValue[]
+    value: CapabilityValue | undefined
+  }>
+  getFlGenerationOptionsForPanel: (panelKey: string, options?: VideoGenerationOptions) => VideoGenerationOptions
   onGenerateVideo: (
     storyboardId: string,
     panelIndex: number,
@@ -92,6 +100,8 @@ export default function VideoRenderPanel({
   flCapabilityFields,
   flMissingCapabilityFields,
   flCustomPrompts,
+  getFlCapabilityFields,
+  getFlGenerationOptionsForPanel,
   onGenerateVideo,
   onUpdatePanelVideoModel,
   onLipSync,
@@ -130,6 +140,14 @@ export default function VideoRenderPanel({
             : panel.textPanel?.video_prompt
           const localPrompt = getLocalPrompt(panelKey, externalPrompt, promptField)
           const isSavingPrompt = savingPrompts.has(`${promptField}:${panelKey}`)
+          const effectiveFlCapabilityFields = getFlCapabilityFields(panelKey)
+          const effectiveFlMissingCapabilityFields = effectiveFlCapabilityFields
+            .filter((field) => field.options.length === 0 || field.value === undefined)
+            .map((field) => field.field)
+          const effectiveFlGenerationOptions = getFlGenerationOptionsForPanel(panelKey, flGenerationOptions)
+          const flCustomPrompt = flCustomPrompts.has(panelKey)
+            ? flCustomPrompts.get(panelKey) || ''
+            : panel.firstLastFramePrompt || ''
 
           return (
             <div
@@ -169,10 +187,10 @@ export default function VideoRenderPanel({
                 hasNext={hasNext}
                 flModel={flModel}
                 flModelOptions={flModelOptions}
-                flGenerationOptions={flGenerationOptions}
-                flCapabilityFields={flCapabilityFields}
-                flMissingCapabilityFields={flMissingCapabilityFields}
-                flCustomPrompt={flCustomPrompts.get(panelKey) || panel.firstLastFramePrompt || ''}
+                flGenerationOptions={effectiveFlGenerationOptions}
+                flCapabilityFields={effectiveFlCapabilityFields.length > 0 ? effectiveFlCapabilityFields : flCapabilityFields}
+                flMissingCapabilityFields={effectiveFlCapabilityFields.length > 0 ? effectiveFlMissingCapabilityFields : flMissingCapabilityFields}
+                flCustomPrompt={flCustomPrompt}
                 defaultFlPrompt={defaultFlPrompt}
                 localPrompt={localPrompt}
                 isSavingPrompt={isSavingPrompt}

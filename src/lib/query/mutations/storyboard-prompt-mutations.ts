@@ -13,6 +13,8 @@ export function useAiModifyProjectShotPrompt(projectId: string) {
             currentPrompt: string
             currentVideoPrompt?: string
             modifyInstruction: string
+            panelId?: string
+            episodeId?: string
             referencedAssets: Array<{
                 id: string
                 name: string

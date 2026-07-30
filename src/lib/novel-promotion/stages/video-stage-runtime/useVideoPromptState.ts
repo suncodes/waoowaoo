@@ -6,6 +6,18 @@ import type { VideoPanel } from '@/app/[locale]/workspace/[projectId]/modes/nove
 
 export type PromptField = 'videoPrompt' | 'firstLastFramePrompt'
 
+export interface DirtyPromptEntry {
+  storyboardId: string
+  panelIndex: number
+  panelKey: string
+  field: PromptField
+  value: string
+}
+
+interface SavePromptOptions {
+  throwOnError?: boolean
+}
+
 interface UseVideoPromptStateParams {
   allPanels: VideoPanel[]
   onUpdateVideoPrompt: (
@@ -18,6 +30,17 @@ interface UseVideoPromptStateParams {
 
 function buildPromptStateKey(panelKey: string, field: PromptField): string {
   return `${field}:${panelKey}`
+}
+
+function parsePromptStateKey(stateKey: string): { field: PromptField; panelKey: string } | null {
+  const separatorIndex = stateKey.indexOf(':')
+  if (separatorIndex <= 0) return null
+  const field = stateKey.slice(0, separatorIndex)
+  if (field !== 'videoPrompt' && field !== 'firstLastFramePrompt') return null
+  return {
+    field,
+    panelKey: stateKey.slice(separatorIndex + 1),
+  }
 }
 
 export function useVideoPromptState({
@@ -129,6 +152,7 @@ export function useVideoPromptState({
     panelKey: string,
     value: string,
     field: PromptField = 'videoPrompt',
+    options: SavePromptOptions = {},
   ) => {
     const stateKey = buildPromptStateKey(panelKey, field)
     setSavingPrompts((prev) => new Set(prev).add(stateKey))
@@ -136,6 +160,7 @@ export function useVideoPromptState({
       await onUpdateVideoPrompt(storyboardId, panelIndex, value, field)
     } catch (error) {
       _ulogError('保存视频提示词失败:', error)
+      if (options.throwOnError) throw error
     } finally {
       setSavingPrompts((prev) => {
         const next = new Set(prev)
@@ -145,10 +170,61 @@ export function useVideoPromptState({
     }
   }, [onUpdateVideoPrompt])
 
+  const isPromptDirty = useCallback((
+    panelKey: string,
+    field: PromptField = 'videoPrompt',
+  ): boolean => dirtyPrompts.has(buildPromptStateKey(panelKey, field)), [dirtyPrompts])
+
+  const getDirtyPromptEntries = useCallback((
+    predicate?: (entry: DirtyPromptEntry) => boolean,
+  ): DirtyPromptEntry[] => {
+    const panelsByKey = new Map(allPanels.map((panel) => [
+      `${panel.storyboardId}-${panel.panelIndex}`,
+      panel,
+    ]))
+    const entries: DirtyPromptEntry[] = []
+    for (const stateKey of dirtyPrompts) {
+      const parsed = parsePromptStateKey(stateKey)
+      if (!parsed) continue
+      const panel = panelsByKey.get(parsed.panelKey)
+      if (!panel) continue
+      const value = panelPrompts.get(stateKey)
+      if (value === undefined) continue
+      const entry: DirtyPromptEntry = {
+        storyboardId: panel.storyboardId,
+        panelIndex: panel.panelIndex,
+        panelKey: parsed.panelKey,
+        field: parsed.field,
+        value,
+      }
+      if (!predicate || predicate(entry)) entries.push(entry)
+    }
+    return entries
+  }, [allPanels, dirtyPrompts, panelPrompts])
+
+  const saveDirtyPrompts = useCallback(async (
+    predicate?: (entry: DirtyPromptEntry) => boolean,
+  ): Promise<number> => {
+    const entries = getDirtyPromptEntries(predicate)
+    await Promise.all(entries.map((entry) => savePrompt(
+      entry.storyboardId,
+      entry.panelIndex,
+      entry.panelKey,
+      entry.value,
+      entry.field,
+      { throwOnError: true },
+    )))
+    return entries.length
+  }, [getDirtyPromptEntries, savePrompt])
+
   return {
+    dirtyPrompts,
     savingPrompts,
     getLocalPrompt,
     updateLocalPrompt,
     savePrompt,
+    isPromptDirty,
+    getDirtyPromptEntries,
+    saveDirtyPrompts,
   }
 }
