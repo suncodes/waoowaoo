@@ -1,6 +1,6 @@
 import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
-import { joinPromptSegments, prependStyleReferenceImage } from '@/lib/constants'
+import { prependStyleReferenceImage } from '@/lib/constants'
 import { resolveArtStyleForGeneration } from '@/lib/art-style-generation'
 import { createScopedLogger } from '@/lib/logging/core'
 import { type TaskJobData } from '@/lib/task/types'
@@ -14,24 +14,16 @@ import {
 import {
   AnyObj,
   collectPanelVisualReferences,
-  findCharacterByName,
-  parsePanelCharacterReferences,
   pickFirstString,
   resolveNovelData,
 } from './image-task-handler-shared'
-import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
 import { createArtifact } from '@/lib/run-runtime/service'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
-import { parseLocationAvailableSlots } from '@/lib/location-available-slots'
 import { persistPanelCandidatesAndScheduleReview } from './panel-visual-quality-trigger'
 import { createCreativeQualityHash } from '@/lib/creative-quality/contracts'
 import {
   buildPanelImageGenerationSnapshot,
-  buildPanelImagePromptSpec,
 } from '@/lib/prompt-compiler/panel-image-prompt-compiler'
-import {
-  type PanelVisualBindings,
-} from '@/lib/visual-production/bindings'
 import {
   panelVisualBindingsFromPlan,
   resolvePanelAssetBindingPlan,
@@ -48,8 +40,11 @@ import {
 import {
   visualReferencesForPrompt,
   visualReferencesToImageUrls,
-  type VisualReference,
 } from '@/lib/visual-production/references'
+import {
+  buildPanelImagePromptFromResolvedInputs,
+  buildPanelReferencePlan,
+} from '@/lib/novel-promotion/panel-generation-prompt-preview'
 import type { Prisma } from '@prisma/client'
 
 function parseJsonUnknown(raw: string | null | undefined): unknown | null {
@@ -60,34 +55,6 @@ function parseJsonUnknown(raw: string | null | undefined): unknown | null {
     return null
   }
 }
-function parseDescriptionList(raw: string | null | undefined): string[] {
-  if (!raw) return []
-  try {
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    return parsed.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
-  } catch {
-    return []
-  }
-}
-
-function pickAppearanceDescription(appearance: {
-  descriptions?: string | null
-  description?: string | null
-  selectedIndex?: number | null
-}): string {
-  const descriptions = parseDescriptionList(appearance.descriptions || null)
-  if (descriptions.length > 0) {
-    const selectedIndex = typeof appearance.selectedIndex === 'number' ? appearance.selectedIndex : 0
-    const selected = descriptions[selectedIndex] || descriptions[0]
-    if (selected && selected.trim()) return selected.trim()
-  }
-  if (typeof appearance.description === 'string' && appearance.description.trim()) {
-    return appearance.description.trim()
-  }
-  return '无描述'
-}
-
 function asJsonRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -122,22 +89,6 @@ function asInputJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
 }
 
-function buildPanelReferencePlan(params: {
-  bindingPlan: PanelAssetBindingPlan
-  references: ReturnType<typeof visualReferencesForPrompt>
-  decision: ReturnType<typeof decidePanelGenerationRoute>
-  backfill?: unknown
-}) {
-  return {
-    schemaVersion: 1,
-    shotAssetRequirementPlan: params.bindingPlan.requirementPlan || null,
-    bindingPlan: params.bindingPlan,
-    references: params.references,
-    decision: params.decision,
-    ...(params.backfill ? { backfill: params.backfill } : {}),
-  }
-}
-
 function refreshBindingPlanWithRequirementPlan(params: {
   panel: Parameters<typeof resolvePanelAssetBindingPlan>[0]
   requirementPlan: unknown
@@ -154,155 +105,6 @@ function refreshBindingPlanWithRequirementPlan(params: {
       shotAssetRequirementPlan: params.requirementPlan,
     },
     shotAssetRequirementPlan: params.requirementPlan,
-  })
-}
-
-function buildPanelPromptContext(params: {
-  panel: {
-    id: string
-    shotType: string | null
-    cameraMove: string | null
-    description: string | null
-    imagePrompt: string | null
-    videoPrompt: string | null
-    location: string | null
-    characters: string | null
-    props: string | null
-    sourceAnchor: unknown
-    srtSegment: string | null
-    photographyRules: string | null
-    actingNotes: string | null
-    visualType: string | null
-    renderMode: string | null
-    onScreenText: string | null
-  }
-  projectData: Awaited<ReturnType<typeof resolveNovelData>>
-  visualBindings?: PanelVisualBindings
-  visualBindingPlan?: PanelAssetBindingPlan
-  visualReferences?: VisualReference[]
-}) {
-  const legacyPanelCharacters = parsePanelCharacterReferences(params.panel.characters)
-  const legacyCharacterByName = new Map(
-    legacyPanelCharacters.map((item) => [item.name.toLowerCase(), item]),
-  )
-  const bindingCharacters = params.visualBindings?.visibleAssets
-    .filter((asset) => asset.kind === 'character')
-    .map((asset) => {
-      const legacy = legacyCharacterByName.get(asset.name.toLowerCase())
-      return {
-        name: asset.name,
-        appearance: legacy?.appearance,
-        slot: legacy?.slot,
-      }
-    }) || []
-  const panelCharacters = bindingCharacters.length > 0 ? bindingCharacters : legacyPanelCharacters
-  const characterContexts = panelCharacters.map((reference) => {
-    const character = findCharacterByName(params.projectData.characters || [], reference.name)
-    if (!character) {
-      return {
-        id: null,
-        name: reference.name,
-        appearance: reference.appearance || null,
-        description: '无角色外貌数据',
-        slot: reference.slot || null,
-      }
-    }
-
-    const appearances = character.appearances || []
-    const matchedAppearance =
-      (reference.appearance
-        ? appearances.find((appearance) => (appearance.changeReason || '').toLowerCase() === reference.appearance!.toLowerCase())
-        : null) || appearances[0] || null
-
-    return {
-      id: character.id,
-      name: character.name,
-      appearance: matchedAppearance?.changeReason || null,
-      description: matchedAppearance ? pickAppearanceDescription(matchedAppearance) : '无角色外貌数据',
-      slot: reference.slot || null,
-    }
-  })
-
-  const locationContext = (() => {
-    const boundLocation = params.visualBindings?.visibleAssets.find((asset) => asset.kind === 'location')
-    const locationName = boundLocation?.name || params.panel.location
-    if (!locationName) return null
-    const matchedLocation = (params.projectData.locations || []).find(
-      (item) => item.id === boundLocation?.id || item.name.toLowerCase() === locationName.toLowerCase(),
-    )
-    if (!matchedLocation) return null
-    const selectedImage = (matchedLocation.images || []).find((item) => item.isSelected) || matchedLocation.images?.[0]
-    return {
-      id: matchedLocation.id,
-      name: matchedLocation.name,
-      description: selectedImage?.description || null,
-      available_slots: parseLocationAvailableSlots(selectedImage?.availableSlots),
-    }
-  })()
-
-  const boundProps = params.visualBindings?.visibleAssets
-    .filter((asset) => asset.kind === 'prop')
-    .map((asset) => asset.name) || []
-  const panelProps = boundProps.length > 0 ? boundProps : parseDescriptionList(params.panel.props)
-  const propContexts = panelProps.map((name) => {
-    const matchedProp = (params.projectData.locations || []).find(
-      (item) => item.assetKind === 'prop' && item.name.toLowerCase() === name.toLowerCase(),
-    )
-    const selectedImage = (matchedProp?.images || []).find((item) => item.isSelected) || matchedProp?.images?.[0]
-    return {
-      id: matchedProp?.id || null,
-      name,
-      description: selectedImage?.description || null,
-    }
-  })
-
-  return {
-    panel: {
-      panel_id: params.panel.id,
-      shot_type: params.panel.shotType || '',
-      camera_move: params.panel.cameraMove || '',
-      description: params.panel.description || '',
-      image_prompt: params.panel.imagePrompt || '',
-      video_prompt: params.panel.videoPrompt || '',
-      location: params.panel.location || '',
-      characters: panelCharacters,
-      props: parseDescriptionList(params.panel.props),
-      source_anchor: params.panel.sourceAnchor || null,
-      source_text: params.panel.srtSegment || '',
-      photography_rules: parseJsonUnknown(params.panel.photographyRules),
-      acting_notes: parseJsonUnknown(params.panel.actingNotes),
-      visual_type: params.panel.visualType || 'illustration',
-      render_mode: params.panel.renderMode || 'generated_image',
-      on_screen_text_for_downstream_composition: params.panel.onScreenText || '',
-      image_text_policy: 'The generated image must contain no text. Exact copy is rendered downstream.',
-      visual_bindings: params.visualBindings || null,
-      visual_binding_plan: params.visualBindingPlan || null,
-    },
-    context: {
-      character_appearances: characterContexts,
-      location_reference: locationContext,
-      prop_references: propContexts,
-      visual_references: visualReferencesForPrompt(params.visualReferences || []),
-    },
-  }
-}
-
-function buildPanelPrompt(params: {
-  locale: TaskJobData['locale']
-  aspectRatio: string
-  styleText: string
-  sourceText: string
-  contextJson: string
-}) {
-  return buildPrompt({
-    promptId: PROMPT_IDS.NP_SINGLE_PANEL_IMAGE,
-    locale: params.locale,
-    variables: {
-      aspect_ratio: params.aspectRatio,
-      storyboard_text_json_input: params.contextJson,
-      source_text: params.sourceText || '无',
-      style: params.styleText,
-    },
   })
 }
 
@@ -496,18 +298,12 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
     )
   }
 
-  const styleText = joinPromptSegments([
-    resolvedArtStyle.prompt,
-    resolvedArtStyle.referenceInstruction,
-  ], job.data.locale)
-  const fallbackStyleText = job.data.locale === 'en'
-    ? 'consistent with the provided reference images'
-    : '与参考图风格一致'
   if (!projectData.videoRatio) throw new Error('Project videoRatio not configured')
-  const aspectRatio = projectData.videoRatio
-  const promptContext = buildPanelPromptContext({
+  const imagePromptCompilation = buildPanelImagePromptFromResolvedInputs({
     panel: {
       id: panelForGeneration.id,
+      storyboardId: panelForGeneration.storyboardId,
+      panelIndex: panelForGeneration.panelIndex,
       shotType: panelForGeneration.shotType,
       cameraMove: panelForGeneration.cameraMove,
       description: panelForGeneration.description,
@@ -523,51 +319,28 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
       visualType: panelForGeneration.visualType,
       renderMode: panelForGeneration.renderMode,
       onScreenText: panelForGeneration.onScreenText,
+      sketchImageUrl: panelForGeneration.sketchImageUrl,
+      duration: panelForGeneration.duration,
+      promptSpec: panelForGeneration.promptSpec,
+      referencePlan: panelForGeneration.referencePlan,
+      continuityGroupId: panelForGeneration.continuityGroupId,
+      generationRoute: panelForGeneration.generationRoute,
+      primarySubject: panelForGeneration.primarySubject,
+      imageUrl: panelForGeneration.imageUrl,
     },
     projectData,
+    locale: job.data.locale,
+    resolvedArtStyle,
     visualBindings,
     visualBindingPlan,
     visualReferences,
-  })
-  const resolvedStyleText = styleText || fallbackStyleText
-  const assetVersionHash = createCreativeQualityHash({
-    characters: promptContext.context.character_appearances.map((item) => ({
-      id: item.id,
-      name: item.name,
-      appearance: item.appearance,
-      description: item.description,
-      slot: item.slot,
-    })),
-    location: promptContext.context.location_reference,
-    props: promptContext.context.prop_references,
+    generationRouteDecision,
     referenceImages,
-    visualReferences: structuredReferences,
-    visualBindingPlan,
   })
-  const referencePlan = buildPanelReferencePlan({
-    bindingPlan: visualBindingPlan,
-    references: structuredReferences,
-    decision: generationRouteDecision,
-  })
-  const panelPromptSpec = buildPanelImagePromptSpec({
-    context: promptContext,
-    aspectRatio,
-    styleText: resolvedStyleText,
-    generationRoute: generationRouteDecision.route,
-    noReferenceReason: generationRouteDecision.noReferenceReason,
-    referencePlan,
-  })
-  const contextJson = JSON.stringify({
-    ...promptContext,
-    prompt_spec: panelPromptSpec,
-  }, null, 2)
-  const prompt = buildPanelPrompt({
-    locale: job.data.locale,
-    aspectRatio,
-    styleText: resolvedStyleText,
-    sourceText: panelForGeneration.srtSegment || panelForGeneration.description || '',
-    contextJson,
-  })
+  const aspectRatio = imagePromptCompilation.aspectRatio
+  const prompt = imagePromptCompilation.compiledPrompt
+  const panelPromptSpec = imagePromptCompilation.promptSpec
+  const referencePlan = imagePromptCompilation.referencePlan
   logger.info({
     message: 'panel image prompt resolved',
     details: {
@@ -577,13 +350,13 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
   const promptSnapshot = buildPanelImageGenerationSnapshot({
     targetId: panel.id,
     modelKey,
-    promptTemplateId: PROMPT_IDS.NP_SINGLE_PANEL_IMAGE,
+    promptTemplateId: imagePromptCompilation.promptTemplateId,
     referenceImages,
-    structuredReferences,
+    structuredReferences: imagePromptCompilation.structuredReferences,
     bindingPlan: visualBindingPlan,
     promptSpec: panelPromptSpec,
     compiledPrompt: prompt,
-    assetVersionHash,
+    assetVersionHash: imagePromptCompilation.assetVersionHash,
   })
   if (runId) {
     try {

@@ -13,6 +13,76 @@ import {
     requestTaskResponseWithError,
 } from './mutation-shared'
 
+export type PanelGenerationPromptPreviewMode = 'image' | 'video' | 'firstlastframe'
+export type PanelGenerationPromptPreviewOptionValue = string | number | boolean
+
+export interface PanelGenerationPromptPreviewPayload {
+    panelId?: string
+    storyboardId?: string
+    panelIndex?: number
+    mode: PanelGenerationPromptPreviewMode
+    videoModel?: string | null
+    generationOptions?: Record<string, PanelGenerationPromptPreviewOptionValue>
+    forceNoReference?: boolean
+    overrides?: {
+        panel?: {
+            shotType?: string | null
+            cameraMove?: string | null
+            description?: string | null
+            imagePrompt?: string | null
+            videoPrompt?: string | null
+            firstLastFramePrompt?: string | null
+            location?: string | null
+            characters?: string | Array<{ name: string; appearance?: string; slot?: string }> | null
+            props?: string | string[] | null
+            duration?: number | null
+            photographyRules?: string | null
+            actingNotes?: string | null
+        }
+        firstLastFrame?: {
+            lastFrameStoryboardId?: string | null
+            lastFramePanelIndex?: number | null
+            flModel?: string | null
+            customPrompt?: string | null
+        }
+    }
+}
+
+export interface PanelGenerationPromptPreview {
+    mode: PanelGenerationPromptPreviewMode
+    panelId: string
+    storyboardId: string
+    panelIndex: number
+    modelKey: string | null
+    promptTemplateId: string
+    compiledPrompt: string
+    promptSpec: unknown
+    generationOptions: Record<string, PanelGenerationPromptPreviewOptionValue>
+    referenceImages: string[]
+    structuredReferences?: unknown
+    warnings: string[]
+}
+
+export function usePanelGenerationPromptPreview(projectId: string) {
+    return useMutation({
+        mutationFn: async (payload: PanelGenerationPromptPreviewPayload) => {
+            const response = await requestJsonWithError<{
+                success: boolean
+                preview: PanelGenerationPromptPreview
+            }>(
+                `/api/novel-promotion/${projectId}/panel-generation-prompt-preview`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                },
+                '获取最终提示词失败',
+            )
+            return response.preview
+        },
+    })
+}
+
 export function useRegenerateProjectPanelImage(projectId: string) {
     const queryClient = useQueryClient()
     return useMutation({

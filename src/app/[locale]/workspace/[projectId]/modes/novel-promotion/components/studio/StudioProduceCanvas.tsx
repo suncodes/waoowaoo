@@ -7,10 +7,12 @@ import VisualQualityBadge from '@/components/visual-quality/VisualQualityBadge'
 import { AppIcon } from '@/components/ui/icons'
 import {
   useAiModifyProjectShotPrompt,
+  usePanelGenerationPromptPreview,
   useRegenerateProjectPanelImage,
   useUpdateProjectPanelImagePrompt,
   useUpdateProjectPanelLink,
 } from '@/lib/query/hooks'
+import type { PanelGenerationPromptPreview } from '@/lib/query/mutations/storyboard-panel-mutations'
 import { useVideoFirstLastFrameFlow } from '@/lib/novel-promotion/stages/video-stage-runtime/useVideoFirstLastFrameFlow'
 import { useVideoPromptState, type DirtyPromptEntry } from '@/lib/novel-promotion/stages/video-stage-runtime/useVideoPromptState'
 import { resolveVoiceLinePanelBindings } from '@/lib/novel-promotion/voice-line-binding'
@@ -27,6 +29,7 @@ import {
   StudioStageHeader,
   StudioStatusBadge,
 } from './StudioPrimitives'
+import PanelGenerationPromptPreviewModal from './PanelGenerationPromptPreviewModal'
 import StudioProduceQueueRow from './StudioProduceQueueRow'
 import {
   buildProduceItems,
@@ -214,6 +217,7 @@ function ProductionDetailPanel({
   const runtime = useWorkspaceStageRuntime()
   const { projectId, episodeId } = useWorkspaceProvider()
   const repairPromptMutation = useAiModifyProjectShotPrompt(projectId)
+  const promptPreviewMutation = usePanelGenerationPromptPreview(projectId)
   const updateImagePromptMutation = useUpdateProjectPanelImagePrompt(projectId, episodeId || null)
   const regenerateImageMutation = useRegenerateProjectPanelImage(projectId)
   const initialModel = panelVideoModel(item.panel) || runtime.videoModel || runtime.userVideoModels[0]?.value || ''
@@ -224,6 +228,9 @@ function ProductionDetailPanel({
   const [savingPrompt, setSavingPrompt] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [repairDraft, setRepairDraft] = useState<VideoRepairDraft | null>(null)
+  const [promptPreviewOpen, setPromptPreviewOpen] = useState(false)
+  const [promptPreview, setPromptPreview] = useState<PanelGenerationPromptPreview | null>(null)
+  const [promptPreviewError, setPromptPreviewError] = useState<string | null>(null)
   const videoUrl = panelVideoUrl(item.panel)
   const videoStatus = resolveVideoStatus(item.panel)
   const error = panelVideoError(item.panel)
@@ -413,6 +420,48 @@ function ProductionDetailPanel({
     if (value.trim()) await runtime.onUpdatePanelVideoModel(item.storyboard.id, item.panel.panelIndex, value)
   }
 
+  const openVideoPromptPreview = async () => {
+    setPromptPreviewOpen(true)
+    setPromptPreview(null)
+    setPromptPreviewError(null)
+    try {
+      const isFirstLastFrame = mode === 'firstlastframe'
+      const preview = await promptPreviewMutation.mutateAsync({
+        panelId: item.panel.id,
+        storyboardId: item.storyboard.id,
+        panelIndex: item.panel.panelIndex,
+        mode: isFirstLastFrame ? 'firstlastframe' : 'video',
+        videoModel: isFirstLastFrame ? firstLastFrameFlow.flModel : selectedModel,
+        generationOptions: isFirstLastFrame
+          ? firstLastFrameFlow.getFlGenerationOptionsForPanel(panelKey)
+          : undefined,
+        overrides: {
+          panel: {
+            description: item.panel.description,
+            imagePrompt: item.panel.imagePrompt,
+            videoPrompt: prompt,
+            firstLastFramePrompt: firstLastPrompt,
+            cameraMove: item.panel.cameraMove,
+            duration: item.panel.duration,
+            photographyRules: item.panel.photographyRules,
+            actingNotes: item.panel.actingNotes,
+          },
+          ...(isFirstLastFrame && nextItem ? {
+            firstLastFrame: {
+              lastFrameStoryboardId: nextItem.storyboard.id,
+              lastFramePanelIndex: nextItem.panel.panelIndex,
+              flModel: firstLastFrameFlow.flModel,
+              customPrompt: firstLastPrompt,
+            },
+          } : {}),
+        },
+      })
+      setPromptPreview(preview)
+    } catch (error) {
+      setPromptPreviewError(error instanceof Error ? error.message : '获取最终提示词失败')
+    }
+  }
+
   const generate = async () => {
     setGenerating(true)
     try {
@@ -460,6 +509,7 @@ function ProductionDetailPanel({
   }
 
   return (
+    <>
     <aside className="rounded-lg border border-white/10 bg-[#151613]">
       <header className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-4">
         <div>
@@ -651,6 +701,9 @@ function ProductionDetailPanel({
           <span className="text-xs text-stone-500">{promptSaving ? '提示词保存中' : readinessMessage || (mode === 'firstlastframe' && !linked ? '连接下一镜头后可生成' : '生成参数已就绪')}</span>
           <div className="flex gap-2">
             <StudioButton size="sm" variant="secondary" onClick={() => { void (mode === 'normal' ? saveNormalPrompt() : saveFirstLastPrompt()) }} disabled={promptSaving}>保存提示词</StudioButton>
+            <StudioButton size="sm" variant="secondary" icon="info" loading={promptPreviewMutation.isPending} onClick={() => { void openVideoPromptPreview() }}>
+              查看提示词
+            </StudioButton>
             <StudioButton size="sm" icon="video" loading={generating || !!item.panel.videoTaskRunning} onClick={() => { void generate() }} disabled={!!readinessMessage || (mode === 'normal' ? !item.panel.imageUrl : missingFirstLastFrameSetup)}>
               {videoUrl ? '重新生成' : mode === 'firstlastframe' ? '生成首尾帧视频' : '生成单图视频'}
             </StudioButton>
@@ -658,6 +711,15 @@ function ProductionDetailPanel({
         </div>
       </div>
     </aside>
+    {promptPreviewOpen ? (
+      <PanelGenerationPromptPreviewModal
+        preview={promptPreview}
+        loading={promptPreviewMutation.isPending}
+        errorMessage={promptPreviewError}
+        onClose={() => setPromptPreviewOpen(false)}
+      />
+    ) : null}
+    </>
   )
 }
 

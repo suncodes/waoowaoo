@@ -7,6 +7,8 @@ import ImagePreviewModal from '@/components/ui/ImagePreviewModal'
 import { AppIcon } from '@/components/ui/icons'
 import type { CreationWorkflowState } from '@/lib/creation-workspace/workflow-state'
 import { parseVisualQualityState } from '@/lib/quality-workflow'
+import { usePanelGenerationPromptPreview } from '@/lib/query/hooks'
+import type { PanelGenerationPromptPreview } from '@/lib/query/mutations/storyboard-panel-mutations'
 import { useWorkspaceProvider } from '../../WorkspaceProvider'
 import { useWorkspaceStageRuntime } from '../../WorkspaceStageRuntimeContext'
 import { useWorkspaceEpisodeStageData } from '../../hooks/useWorkspaceEpisodeStageData'
@@ -25,6 +27,7 @@ import {
 } from './studio-board-image-workflow'
 import StudioBoardEmpty from './StudioBoardEmpty'
 import StudioBoardShotCard from './StudioBoardShotCard'
+import PanelGenerationPromptPreviewModal from './PanelGenerationPromptPreviewModal'
 import StudioShotPlanEditor from './StudioShotPlanEditor'
 import { currentImageUrl, flattenBoardItems, isPanelReadyForProduction, type BoardItem } from './studio-board-model'
 
@@ -35,17 +38,23 @@ interface StudioBoardCanvasProps {
 }
 
 function BoardDetailPanel({
+  projectId,
   item,
   controller,
   confirmLabel,
   onCandidateConfirmed,
 }: {
+  projectId: string
   item: BoardItem
   controller: ReturnType<typeof useStoryboardStageController>
   confirmLabel?: string
   onCandidateConfirmed?: () => void
 }) {
   const panelData = controller.getPanelEditData(item.panel)
+  const promptPreviewMutation = usePanelGenerationPromptPreview(projectId)
+  const [promptPreviewOpen, setPromptPreviewOpen] = useState(false)
+  const [promptPreview, setPromptPreview] = useState<PanelGenerationPromptPreview | null>(null)
+  const [promptPreviewError, setPromptPreviewError] = useState<string | null>(null)
   const saveState = controller.saveStateByPanel[item.panel.id]
   const candidates = controller.getPanelCandidates(item.sourcePanel)
   const qualityState = parseVisualQualityState(item.sourcePanel.visualQualityState)
@@ -92,8 +101,58 @@ function BoardDetailPanel({
   const update = (updates: Partial<PanelEditData>) => {
     controller.handlePanelUpdate(item.panel.id, item.panel, updates)
   }
+  const saveCurrentPanel = async (): Promise<boolean> => {
+    try {
+      await controller.savePanelWithData(item.storyboard.id, panelData)
+      return true
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : '保存镜头数据失败')
+      return false
+    }
+  }
+  const regenerateCurrentPanelImage = async (forceNoReference: boolean) => {
+    if (!await saveCurrentPanel()) return
+    await controller.regeneratePanelImage(
+      item.panel.id,
+      2,
+      false,
+      forceNoReference ? { forceNoReference: true } : undefined,
+    )
+  }
+  const openImagePromptPreview = async () => {
+    setPromptPreviewOpen(true)
+    setPromptPreview(null)
+    setPromptPreviewError(null)
+    try {
+      const preview = await promptPreviewMutation.mutateAsync({
+        panelId: item.panel.id,
+        storyboardId: item.storyboard.id,
+        panelIndex: item.panel.panelIndex,
+        mode: 'image',
+        overrides: {
+          panel: {
+            shotType: panelData.shotType,
+            cameraMove: panelData.cameraMove,
+            description: panelData.description,
+            imagePrompt: panelData.imagePrompt ?? null,
+            videoPrompt: panelData.videoPrompt,
+            location: panelData.location,
+            characters: panelData.characters,
+            props: panelData.props,
+            duration: panelData.duration,
+            photographyRules: panelData.photographyRules,
+            actingNotes: panelData.actingNotes,
+          },
+        },
+      })
+      setPromptPreview(preview)
+    } catch (error) {
+      setPromptPreviewError(error instanceof Error ? error.message : '获取最终提示词失败')
+    }
+  }
 
   return (
+    <>
     <aside className="rounded-lg border border-white/10 bg-[#151613]">
       <header className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-4">
         <div>
@@ -130,7 +189,7 @@ function BoardDetailPanel({
         </div>
 
         <div className="grid grid-cols-2 gap-2">
-          <StudioButton size="sm" icon="sparkles" loading={isSubmitting} onClick={() => { void controller.regeneratePanelImage(item.panel.id, 2, false) }} disabled={disabled}>
+          <StudioButton size="sm" icon="sparkles" loading={isSubmitting} onClick={() => { void regenerateCurrentPanelImage(false) }} disabled={disabled}>
             生成候选图
           </StudioButton>
           {referenceBlocked ? (
@@ -138,7 +197,7 @@ function BoardDetailPanel({
               size="sm"
               variant="secondary"
               icon="sparkles"
-              onClick={() => { void controller.regeneratePanelImage(item.panel.id, 2, true, { forceNoReference: true }) }}
+              onClick={() => { void regenerateCurrentPanelImage(true) }}
             >
               无参考生成
             </StudioButton>
@@ -159,6 +218,15 @@ function BoardDetailPanel({
             onClick={() => controller.setAIDataPanel({ storyboardId: item.storyboard.id, panelIndex: item.panelOffset })}
           >
             生成参数
+          </StudioButton>
+          <StudioButton
+            size="sm"
+            variant="secondary"
+            icon="info"
+            loading={promptPreviewMutation.isPending}
+            onClick={() => { void openImagePromptPreview() }}
+          >
+            查看提示词
           </StudioButton>
           <StudioButton
             size="sm"
@@ -398,6 +466,15 @@ function BoardDetailPanel({
       </div>
 
     </aside>
+    {promptPreviewOpen ? (
+      <PanelGenerationPromptPreviewModal
+        preview={promptPreview}
+        loading={promptPreviewMutation.isPending}
+        errorMessage={promptPreviewError}
+        onClose={() => setPromptPreviewOpen(false)}
+      />
+    ) : null}
+    </>
   )
 }
 
@@ -630,6 +707,7 @@ function StudioBoardRuntime({
                 </div>
                 {selectedItem ? (
                   <BoardDetailPanel
+                    projectId={projectId}
                     item={selectedItem}
                     controller={controller}
                     confirmLabel={reviewMode && reviewItems.length > 1 ? '确认并查看下一个' : undefined}

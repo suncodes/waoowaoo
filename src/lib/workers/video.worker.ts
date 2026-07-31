@@ -23,15 +23,15 @@ import { createCreativeQualityHash } from '@/lib/creative-quality/contracts'
 import { createOptionalGenerationSnapshotArtifact } from '@/lib/creative-quality/runtime-artifacts'
 import {
   buildPanelVideoGenerationSnapshot,
-  buildPanelVideoPromptSpec,
-  compilePanelVideoPrompt,
 } from '@/lib/prompt-compiler/panel-video-prompt-compiler'
 import {
-  compilePanelSpeechPromptSection,
-  panelSpeechHasContent,
   validatePanelSpeechReadyForVideo,
 } from '@/lib/novel-promotion/panel-speech'
 import { resolvePanelVideoReferenceAudios } from './panel-video-reference-audio'
+import {
+  buildPanelVideoPromptFromResolvedInputs,
+  resolveNativeAudioRequest,
+} from '@/lib/novel-promotion/panel-generation-prompt-preview'
 
 type AnyObj = Record<string, unknown>
 type VideoOptionValue = string | number | boolean
@@ -58,23 +58,6 @@ function extractGenerationOptions(payload: AnyObj): VideoOptionMap {
     }
   }
   return next
-}
-
-function resolveNativeAudioRequest(
-  modelKey: string,
-  generationOptions: VideoOptionMap,
-  speech: { originalContent: string; deliveryContent?: string | null } | null,
-): boolean | undefined {
-  if (typeof generationOptions.generateAudio === 'boolean') {
-    return generationOptions.generateAudio
-  }
-
-  const capabilities = resolveBuiltinCapabilitiesByModelKey('video', modelKey)
-  const options = capabilities?.video?.generateAudioOptions
-  if (!Array.isArray(options) || !options.includes(true)) return undefined
-
-  if (panelSpeechHasContent(speech)) return true
-  return options.includes(false) ? false : undefined
 }
 
 async function fetchPanelByStoryboardIndex(storyboardId: string, panelIndex: number) {
@@ -178,42 +161,37 @@ async function generateVideoForPanel(
     requestedGenerateAudio,
     speech: panelSpeech,
   })
-  const promptSpec = buildPanelVideoPromptSpec({
-    context: {
-      panel: {
-        panelId: panel.id,
-        description: panel.description,
-        videoPrompt: panel.videoPrompt,
-        imagePrompt: panel.imagePrompt,
-        cameraMove: panel.cameraMove,
-        duration: panel.duration,
-        photographyRules: (panel as { photographyRules?: unknown }).photographyRules,
-        promptSpec: (panel as { promptSpec?: unknown }).promptSpec,
-        referencePlan: (panel as { referencePlan?: unknown }).referencePlan,
-        continuityGroupId: (panel as { continuityGroupId?: string | null }).continuityGroupId,
-        generationRoute: (panel as { generationRoute?: string | null }).generationRoute,
-        primarySubject: (panel as { primarySubject?: string | null }).primarySubject,
-      },
-      generationMode,
-      customPrompt: firstLastCustomPrompt || persistedFirstLastPrompt || customPrompt || null,
-      lastFrameProvided: Boolean(lastFrameImageUrl),
+  const videoPromptCompilation = buildPanelVideoPromptFromResolvedInputs({
+    panel: {
+      id: panel.id,
+      storyboardId: panel.storyboardId,
+      panelIndex: panel.panelIndex,
+      description: panel.description,
+      videoPrompt: panel.videoPrompt,
+      imagePrompt: panel.imagePrompt,
+      cameraMove: panel.cameraMove,
+      duration: panel.duration,
+      photographyRules: (panel as { photographyRules?: unknown }).photographyRules,
+      promptSpec: (panel as { promptSpec?: unknown }).promptSpec,
+      referencePlan: (panel as { referencePlan?: unknown }).referencePlan,
+      continuityGroupId: (panel as { continuityGroupId?: string | null }).continuityGroupId,
+      generationRoute: (panel as { generationRoute?: string | null }).generationRoute,
+      primarySubject: (panel as { primarySubject?: string | null }).primarySubject,
+      imageUrl: panel.imageUrl,
     },
-    locale: job.data.locale === 'en' ? 'en' : 'zh',
+    locale: job.data.locale,
+    generationMode,
+    customPrompt: firstLastCustomPrompt || persistedFirstLastPrompt || customPrompt || null,
+    lastFrameProvided: Boolean(lastFrameImageUrl),
+    generationOptions,
+    panelSpeech,
   })
-  const speechPromptSection = panelSpeech
-    ? compilePanelSpeechPromptSection({
-      speech: panelSpeech,
-      locale: job.data.locale === 'en' ? 'en' : 'zh',
-    })
-    : ''
-  const prompt = [
-    compilePanelVideoPrompt(promptSpec, job.data.locale === 'en' ? 'en' : 'zh'),
-    speechPromptSection,
-  ].filter(Boolean).join('\n\n')
+  const promptSpec = videoPromptCompilation.promptSpec
+  const prompt = videoPromptCompilation.compiledPrompt
   const promptSnapshot = buildPanelVideoGenerationSnapshot({
     targetId: panel.id,
     modelKey: model,
-    promptTemplateId: 'prompt_compiler.panel_video.v1',
+    promptTemplateId: videoPromptCompilation.promptTemplateId,
     referenceImages: [sourceImageUrl, ...(lastFrameImageUrl ? [lastFrameImageUrl] : [])],
     promptSpec,
     compiledPrompt: prompt,

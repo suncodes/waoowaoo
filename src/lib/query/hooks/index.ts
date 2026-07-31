@@ -114,6 +114,7 @@ export {
     useUpdateProjectEpisodeField,
     useAnalyzeProjectAssets,
     useGetProjectStoryboardStats,
+    usePanelGenerationPromptPreview,
     useUpdateProjectPanelImagePrompt,
     useUpdateProjectPanelVideoPrompt,
     useRegenerateProjectPanelImage,
