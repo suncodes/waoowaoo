@@ -667,7 +667,7 @@ function StudioBoardRuntime({
     setIsBatchPreparingPrompts(true)
     try {
       const artifactIds: Record<string, string> = {}
-      const failedNumbers: number[] = []
+      const failures: Array<{ panelNumber: number; message: string }> = []
       for (const item of missingImageItems) {
         try {
           const result = await batchPromptPreparationMutation.mutateAsync({
@@ -677,13 +677,16 @@ function StudioBoardRuntime({
             mode: 'image',
           })
           artifactIds[item.panel.id] = result.prepared.artifactId
-        } catch {
-          failedNumbers.push(item.globalNumber)
+        } catch (error) {
+          failures.push({
+            panelNumber: item.globalNumber,
+            message: error instanceof Error ? error.message : '未知错误',
+          })
         }
       }
       setPreparedPromptArtifactIds((current) => ({ ...current, ...artifactIds }))
-      if (failedNumbers.length > 0) {
-        window.alert(`以下镜头提示词固定失败：${failedNumbers.map((number) => `镜头 ${number}`).join('、')}`)
+      if (failures.length > 0) {
+        window.alert(`以下镜头提示词固定失败：\n${failures.map((failure) => `镜头 ${failure.panelNumber}：${failure.message}`).join('\n')}`)
       }
     } finally {
       setIsBatchPreparingPrompts(false)

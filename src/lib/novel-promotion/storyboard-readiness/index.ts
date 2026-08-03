@@ -14,9 +14,11 @@ import {
   type PanelAssetBindingPlan,
 } from '@/lib/visual-production/binding-plan'
 import {
-  resolvePanelVisualReferences,
+  resolvePanelVisualReferenceSelection,
+  serializePanelVisualReferenceSelection,
   visualReferencesForPrompt,
   type PanelReferenceProjectData,
+  type PanelVisualReferenceSelection,
 } from '@/lib/visual-production/references'
 import { decidePanelGenerationRoute } from '@/lib/visual-production/panel-generation-router'
 import {
@@ -305,6 +307,7 @@ function buildPanelReferencePlan(params: {
   bindingPlan: PanelAssetBindingPlan
   references: ReturnType<typeof visualReferencesForPrompt>
   decision: ReturnType<typeof decidePanelGenerationRoute>
+  referenceSelection?: PanelVisualReferenceSelection
   backfill?: unknown
 }) {
   return {
@@ -313,6 +316,9 @@ function buildPanelReferencePlan(params: {
     bindingPlan: params.bindingPlan,
     references: params.references,
     decision: params.decision,
+    ...(params.referenceSelection ? {
+      referenceSelection: serializePanelVisualReferenceSelection(params.referenceSelection),
+    } : {}),
     ...(params.backfill ? { backfill: params.backfill } : {}),
   }
 }
@@ -329,8 +335,8 @@ function buildVisualIssuesAndActions(params: {
   const issues: StoryboardReadinessIssue[] = []
   const actions: StoryboardAutoFixAction[] = []
   const bindingPlan = resolvePanelAssetBindingPlan(panel)
-  const references = resolvePanelVisualReferences({ projectData, panel })
-  const decision = decidePanelGenerationRoute({ panel, bindingPlan, references })
+  const referenceSelection = resolvePanelVisualReferenceSelection({ projectData, panel })
+  const decision = decidePanelGenerationRoute({ panel, bindingPlan, references: referenceSelection.candidates })
 
   if (decision.route === 'asset_backfill') {
     issues.push({
@@ -772,8 +778,8 @@ async function refreshPanelBindingAndRoute(params: {
   runBackfill: boolean
 }) {
   let bindingPlan = resolvePanelAssetBindingPlan(params.panel)
-  let references = resolvePanelVisualReferences({ projectData: params.projectData, panel: params.panel })
-  let decision = decidePanelGenerationRoute({ panel: params.panel, bindingPlan, references })
+  let referenceSelection = resolvePanelVisualReferenceSelection({ projectData: params.projectData, panel: params.panel })
+  let decision = decidePanelGenerationRoute({ panel: params.panel, bindingPlan, references: referenceSelection.candidates })
   let backfill: unknown = null
 
   if (params.runBackfill && (decision.route === 'asset_backfill' || decision.route === 'human_required')) {
@@ -794,7 +800,7 @@ async function refreshPanelBindingAndRoute(params: {
       panel: params.panel,
       requirementPlan: updatedRequirementPlan || bindingPlan.requirementPlan || null,
     })
-    references = resolvePanelVisualReferences({
+    referenceSelection = resolvePanelVisualReferenceSelection({
       projectData: params.projectData,
       panel: {
         ...params.panel,
@@ -805,7 +811,7 @@ async function refreshPanelBindingAndRoute(params: {
         }),
       },
     })
-    decision = decidePanelGenerationRoute({ panel: params.panel, bindingPlan, references })
+    decision = decidePanelGenerationRoute({ panel: params.panel, bindingPlan, references: referenceSelection.candidates })
   }
 
   await prisma.novelPromotionPanel.update({
@@ -820,8 +826,9 @@ async function refreshPanelBindingAndRoute(params: {
       }),
       referencePlan: asInputJson(buildPanelReferencePlan({
         bindingPlan,
-        references: visualReferencesForPrompt(references),
+        references: visualReferencesForPrompt(referenceSelection.selected),
         decision,
+        referenceSelection,
         ...(backfill ? { backfill } : {}),
       })),
     },

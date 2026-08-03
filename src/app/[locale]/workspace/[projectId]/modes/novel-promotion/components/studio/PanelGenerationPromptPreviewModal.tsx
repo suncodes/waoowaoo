@@ -81,6 +81,12 @@ export default function PanelGenerationPromptPreviewModal({
                 </div>
               ) : null}
 
+              {preview.referenceSelection && preview.referenceSelection.droppedNames.length > 0 ? (
+                <div className="rounded-md border border-cyan-400/25 bg-cyan-400/10 px-3 py-3 text-xs leading-5 text-cyan-100">
+                  本次参考图按优先级精简：{preview.referenceSelection.candidateCount} 张 -&gt; {preview.referenceSelection.selectedCount} 张（上限 {preview.referenceSelection.maxReferences}）。未提交：{preview.referenceSelection.droppedNames.join('、')}
+                </div>
+              ) : null}
+
               <section className="rounded-md border border-white/10 bg-[#0f100e]">
                 <div className="flex items-center justify-between gap-3 border-b border-white/10 px-3 py-2">
                   <h3 className="text-xs font-semibold text-stone-300">Compiled Prompt</h3>

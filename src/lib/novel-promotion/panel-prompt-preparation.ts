@@ -110,6 +110,7 @@ export async function preparePanelGenerationPrompt(params: {
         storyboardId: preview.storyboardId,
         panelIndex: preview.panelIndex,
         referencePlan: preview.referencePlan || null,
+        referenceSelection: preview.referenceSelection || null,
         generationRouteDecision: preview.generationRouteDecision || null,
       },
     })

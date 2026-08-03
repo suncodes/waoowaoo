@@ -73,6 +73,22 @@ export interface ResolvePanelVisualReferencesOptions {
   signImageUrl?: (value: string | null | undefined) => string | null
 }
 
+export interface PanelVisualReferenceSelection {
+  maxReferences: number
+  candidates: VisualReference[]
+  selected: VisualReference[]
+  dropped: VisualReference[]
+}
+
+export function serializePanelVisualReferenceSelection(selection: PanelVisualReferenceSelection) {
+  return {
+    maxReferences: selection.maxReferences,
+    candidates: visualReferencesForPrompt(selection.candidates),
+    selected: visualReferencesForPrompt(selection.selected),
+    dropped: visualReferencesForPrompt(selection.dropped),
+  }
+}
+
 function defaultSignImageUrl(value: string | null | undefined): string | null {
   return value || null
 }
@@ -284,7 +300,7 @@ function appendSourceAnchorFallbackReferences(params: {
   }
 }
 
-export function resolvePanelVisualReferences(params: {
+export function resolvePanelVisualReferenceCandidates(params: {
   projectData: PanelReferenceProjectData
   panel: PanelForVisualBindings & { sketchImageUrl?: string | null }
   options?: ResolvePanelVisualReferencesOptions
@@ -333,10 +349,52 @@ export function resolvePanelVisualReferences(params: {
     })
   }
 
-  const max = maxReferenceCount(params.panel, options.maxReferences)
   return refs
     .sort((left, right) => right.weight - left.weight)
-    .slice(0, max)
+}
+
+export function selectPanelVisualReferences(params: {
+  panel: PanelForVisualBindings
+  candidates: VisualReference[]
+  maxReferences?: number
+}): PanelVisualReferenceSelection {
+  const maxReferences = maxReferenceCount(params.panel, params.maxReferences)
+  const seenUrls = new Set<string>()
+  const candidates = [...params.candidates]
+    .sort((left, right) => right.weight - left.weight)
+    .filter((reference) => {
+      if (seenUrls.has(reference.url)) return false
+      seenUrls.add(reference.url)
+      return true
+    })
+  return {
+    maxReferences,
+    candidates,
+    selected: candidates.slice(0, maxReferences),
+    dropped: candidates.slice(maxReferences),
+  }
+}
+
+export function resolvePanelVisualReferenceSelection(params: {
+  projectData: PanelReferenceProjectData
+  panel: PanelForVisualBindings & { sketchImageUrl?: string | null }
+  options?: ResolvePanelVisualReferencesOptions
+}): PanelVisualReferenceSelection {
+  const options = params.options || {}
+  const candidates = resolvePanelVisualReferenceCandidates(params)
+  return selectPanelVisualReferences({
+    panel: params.panel,
+    candidates,
+    maxReferences: options.maxReferences,
+  })
+}
+
+export function resolvePanelVisualReferences(params: {
+  projectData: PanelReferenceProjectData
+  panel: PanelForVisualBindings & { sketchImageUrl?: string | null }
+  options?: ResolvePanelVisualReferencesOptions
+}): VisualReference[] {
+  return resolvePanelVisualReferenceSelection(params).selected
 }
 
 export function visualReferencesToImageUrls(references: VisualReference[]): string[] {

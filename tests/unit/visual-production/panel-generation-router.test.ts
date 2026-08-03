@@ -214,6 +214,50 @@ describe('panel generation router', () => {
     })
   })
 
+  it('does not treat a capacity-trimmed stable reference as a missing asset', () => {
+    const requirementPlan = buildRequirementPlan({
+      primarySubject: '唐僧师徒',
+      subjectType: 'character',
+      visualIntent: 'character_action',
+      requirements: [{
+        name: '白龙马',
+        kind: 'character',
+        assetId: 'character-horse',
+        role: 'supporting_identity',
+        required: true,
+        mustLock: true,
+        reuseExpected: true,
+        reason: '白龙马形象需要稳定',
+      }],
+    })
+    const allCandidates = [
+      buildPrimaryReference(),
+      {
+        assetId: 'character-horse',
+        renderId: 'render-horse',
+        assetKind: 'character' as const,
+        assetName: '白龙马',
+        url: 'https://example.test/horse.png',
+        role: 'supporting_identity' as const,
+        usage: 'must_match' as const,
+        weight: 0.75,
+        source: 'requirement_plan' as const,
+      },
+    ]
+    const decision = decidePanelGenerationRoute({
+      panel: { id: 'panel-capacity', visualType: 'illustration', renderMode: 'generated_image' },
+      bindingPlan: buildBindingPlan({
+        primarySubject: '唐僧师徒',
+        requirementPlan,
+        unresolvedRequirements: [],
+      }),
+      // The final submission list may omit 白龙马 due to capacity, but route validation must see all candidates.
+      references: allCandidates,
+    })
+
+    expect(decision.route).toBe('generate')
+  })
+
   it('allows one-off generic characters without stable reference images', () => {
     const requirementPlan = buildRequirementPlan({
       primarySubject: '成年读者',

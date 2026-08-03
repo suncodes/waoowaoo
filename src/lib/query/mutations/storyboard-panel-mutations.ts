@@ -59,6 +59,12 @@ export interface PanelGenerationPromptPreview {
     promptSpec: unknown
     generationOptions: Record<string, PanelGenerationPromptPreviewOptionValue>
     referenceImages: string[]
+    referenceSelection?: {
+        maxReferences: number
+        candidateCount: number
+        selectedCount: number
+        droppedNames: string[]
+    }
     structuredReferences?: unknown
     warnings: string[]
 }

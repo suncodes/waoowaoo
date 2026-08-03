@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildPanelImagePromptFromResolvedInputs,
+  buildPanelReferencePlan,
   buildPanelVideoPromptFromResolvedInputs,
 } from '@/lib/novel-promotion/panel-generation-prompt-preview'
 import type { PanelAssetBindingPlan } from '@/lib/visual-production/binding-plan'
 import type { PanelVisualBindings } from '@/lib/visual-production/bindings'
 import type { PanelGenerationRouteDecision } from '@/lib/visual-production/panel-generation-router'
+import type { PanelVisualReferenceSelection, VisualReference } from '@/lib/visual-production/references'
 
 const emptyBindingPlan: PanelAssetBindingPlan = {
   schemaVersion: 1,
@@ -45,6 +47,47 @@ const generateDecision: PanelGenerationRouteDecision = {
 }
 
 describe('panel generation prompt preview compiler', () => {
+  it('records both submitted and capacity-trimmed references in the prompt plan', () => {
+    const selectedReference: VisualReference = {
+      assetId: 'character-1',
+      renderId: 'render-1',
+      assetKind: 'character',
+      assetName: '主角',
+      url: 'hero.png',
+      role: 'primary_identity',
+      usage: 'must_match',
+      weight: 1,
+      source: 'requirement_plan',
+    }
+    const droppedReference: VisualReference = {
+      assetId: 'location-1',
+      renderId: 'render-2',
+      assetKind: 'location',
+      assetName: '古道',
+      url: 'road.png',
+      role: 'environment',
+      usage: 'adapt',
+      weight: 0.6,
+      source: 'requirement_plan',
+    }
+    const referenceSelection: PanelVisualReferenceSelection = {
+      maxReferences: 1,
+      candidates: [selectedReference, droppedReference],
+      selected: [selectedReference],
+      dropped: [droppedReference],
+    }
+
+    const plan = buildPanelReferencePlan({
+      bindingPlan: emptyBindingPlan,
+      references: [],
+      decision: generateDecision,
+      referenceSelection,
+    }) as { referenceSelection?: { selected?: Array<{ assetName?: string }>; dropped?: Array<{ assetName?: string }> } }
+
+    expect(plan.referenceSelection?.selected?.map((item) => item.assetName)).toEqual(['主角'])
+    expect(plan.referenceSelection?.dropped?.map((item) => item.assetName)).toEqual(['古道'])
+  })
+
   it('compiles an image prompt from the current panel values before any generation snapshot exists', () => {
     const result = buildPanelImagePromptFromResolvedInputs({
       panel: {
