@@ -155,6 +155,7 @@ describe('worker location-image-task-handler behavior', () => {
       where: { id: 'location-image-1' },
       data: { imageUrl: 'cos/location-generated-1.png' },
     })
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
   })
 
   it('payload artStyle overrides project artStyle in prompt', async () => {
