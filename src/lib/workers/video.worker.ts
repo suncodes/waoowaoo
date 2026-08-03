@@ -8,30 +8,25 @@ import { reportTaskProgress, withTaskLifecycle } from './shared'
 import { withUserConcurrencyGate } from './user-concurrency-gate'
 import {
   assertTaskActive,
-  getProjectModels,
   resolveLipSyncVideoSource,
   resolveVideoSourceFromGeneration,
   toSignedUrlIfCos,
   uploadVideoSourceToCos,
 } from './utils'
-import { resolveBuiltinCapabilitiesByModelKey } from '@/lib/model-capabilities/lookup'
 import { parseModelKeyStrict } from '@/lib/model-config-contract'
 import { getProviderConfig } from '@/lib/api-config'
 import { mergeProjectVideosToStorage } from '@/lib/novel-promotion/video-merge-export'
 import { mixPanelAudioToStorage } from '@/lib/novel-promotion/audio-mix'
-import { createCreativeQualityHash } from '@/lib/creative-quality/contracts'
 import { createOptionalGenerationSnapshotArtifact } from '@/lib/creative-quality/runtime-artifacts'
-import {
-  buildPanelVideoGenerationSnapshot,
-} from '@/lib/prompt-compiler/panel-video-prompt-compiler'
 import {
   validatePanelSpeechReadyForVideo,
 } from '@/lib/novel-promotion/panel-speech'
 import { resolvePanelVideoReferenceAudios } from './panel-video-reference-audio'
 import {
-  buildPanelVideoPromptFromResolvedInputs,
-  resolveNativeAudioRequest,
-} from '@/lib/novel-promotion/panel-generation-prompt-preview'
+  attachPreparedPromptToSnapshot,
+  requirePreparedPrompt,
+  type PreparedGenerationPrompt,
+} from '@/lib/creative-quality/prepared-prompts'
 
 type AnyObj = Record<string, unknown>
 type VideoOptionValue = string | number | boolean
@@ -91,150 +86,66 @@ async function getPanelForVideoTask(job: Job<TaskJobData>) {
   return panel
 }
 
-async function generateVideoForPanel(
+async function generateVideoForPreparedPrompt(
   job: Job<TaskJobData>,
   panel: PanelRecord,
-  payload: AnyObj,
-  modelId: string,
-  projectVideoRatio: string | null | undefined,
-  generationOptions: VideoOptionMap,
+  prepared: PreparedGenerationPrompt,
 ): Promise<{ cosKey: string; generationMode: VideoGenerationMode; actualVideoTokens?: number }> {
-  if (!panel.imageUrl) {
-    throw new Error(`Panel ${panel.id} has no imageUrl`)
-  }
-
-  const firstLastFramePayload =
-    typeof payload.firstLastFrame === 'object' && payload.firstLastFrame !== null
-      ? (payload.firstLastFrame as AnyObj)
-      : null
-  const firstLastCustomPrompt = typeof firstLastFramePayload?.customPrompt === 'string' ? firstLastFramePayload.customPrompt : null
-  const persistedFirstLastPrompt = firstLastFramePayload ? panel.firstLastFramePrompt : null
-  const customPrompt = typeof payload.customPrompt === 'string' ? payload.customPrompt : null
-  const sourcePrompt = firstLastCustomPrompt || persistedFirstLastPrompt || customPrompt || panel.videoPrompt || panel.description
-  if (!sourcePrompt) {
-    throw new Error(`Panel ${panel.id} has no video prompt`)
-  }
-
-  const sourceImageUrl = toSignedUrlIfCos(panel.imageUrl, 3600)
+  const snapshot = attachPreparedPromptToSnapshot(prepared.snapshot, prepared.artifactId)
+  const sourceImageUrl = toSignedUrlIfCos(snapshot.referenceImages[0], 3600)
   if (!sourceImageUrl) {
-    throw new Error(`Panel ${panel.id} image url invalid`)
+    throw new Error(`PREPARED_PROMPT_REFERENCE_MISSING: ${panel.id}`)
   }
-  let lastFrameImageUrl: string | undefined
-  const generationMode: VideoGenerationMode = firstLastFramePayload ? 'firstlastframe' : 'normal'
-  let model = modelId
+  const generationMode: VideoGenerationMode = prepared.generationMode === 'firstlastframe'
+    ? 'firstlastframe'
+    : 'normal'
+  const lastFrameImageUrl = generationMode === 'firstlastframe'
+    ? toSignedUrlIfCos(snapshot.referenceImages[1], 3600)
+    : undefined
+  if (generationMode === 'firstlastframe' && !lastFrameImageUrl) {
+    throw new Error(`PREPARED_PROMPT_LAST_FRAME_MISSING: ${panel.id}`)
+  }
+  const generationOptions = extractGenerationOptions({ generationOptions: prepared.generationOptions })
+  const requestedGenerateAudio = typeof generationOptions.generateAudio === 'boolean'
+    ? generationOptions.generateAudio
+    : undefined
+  let referenceAudios: Awaited<ReturnType<typeof resolvePanelVideoReferenceAudios>>['referenceAudios'] = []
+  if (requestedGenerateAudio) {
+    const panelSpeechState = await validatePanelSpeechReadyForVideo(panel.id)
+    if (!panelSpeechState.ready) {
+      throw new Error(`PANEL_SPEECH_NOT_READY: ${panel.id}: ${panelSpeechState.reasons.join(' | ')}`)
+    }
+    const resolved = await resolvePanelVideoReferenceAudios({
+      job,
+      modelKey: snapshot.modelKey,
+      requestedGenerateAudio,
+      speech: panelSpeechState.speech,
+    })
+    referenceAudios = resolved.referenceAudios
+  }
 
-  if (firstLastFramePayload) {
-    model =
-      typeof firstLastFramePayload.flModel === 'string' && firstLastFramePayload.flModel
-        ? firstLastFramePayload.flModel
-        : modelId
-    const firstLastFrameCapabilities = resolveBuiltinCapabilitiesByModelKey('video', model)
-    if (firstLastFrameCapabilities?.video?.firstlastframe !== true) {
-      throw new Error(`VIDEO_FIRSTLASTFRAME_MODEL_UNSUPPORTED: ${model}`)
-    }
-    if (
-      typeof firstLastFramePayload.lastFrameStoryboardId === 'string' &&
-      firstLastFramePayload.lastFrameStoryboardId &&
-      firstLastFramePayload.lastFramePanelIndex !== undefined
-    ) {
-      const lastPanel = await fetchPanelByStoryboardIndex(
-        firstLastFramePayload.lastFrameStoryboardId,
-        Number(firstLastFramePayload.lastFramePanelIndex),
-      )
-      if (lastPanel?.imageUrl) {
-        const lastFrameUrl = toSignedUrlIfCos(lastPanel.imageUrl, 3600)
-        if (lastFrameUrl) {
-          lastFrameImageUrl = lastFrameUrl
-        }
-      }
-    }
-  }
-  const panelSpeechState = await validatePanelSpeechReadyForVideo(panel.id)
-  const panelSpeech = panelSpeechState.speech
-  if (!panelSpeechState.ready) {
-    throw new Error(`PANEL_SPEECH_NOT_READY: ${panel.id}: ${panelSpeechState.reasons.join(' | ')}`)
-  }
-  const requestedGenerateAudio = resolveNativeAudioRequest(model, generationOptions, panelSpeech)
-  const { referenceAudios, referenceAudioSummary } = await resolvePanelVideoReferenceAudios({
-    job,
-    modelKey: model,
-    requestedGenerateAudio,
-    speech: panelSpeech,
-  })
-  const videoPromptCompilation = buildPanelVideoPromptFromResolvedInputs({
-    panel: {
-      id: panel.id,
-      storyboardId: panel.storyboardId,
-      panelIndex: panel.panelIndex,
-      description: panel.description,
-      videoPrompt: panel.videoPrompt,
-      imagePrompt: panel.imagePrompt,
-      cameraMove: panel.cameraMove,
-      duration: panel.duration,
-      photographyRules: (panel as { photographyRules?: unknown }).photographyRules,
-      promptSpec: (panel as { promptSpec?: unknown }).promptSpec,
-      referencePlan: (panel as { referencePlan?: unknown }).referencePlan,
-      continuityGroupId: (panel as { continuityGroupId?: string | null }).continuityGroupId,
-      generationRoute: (panel as { generationRoute?: string | null }).generationRoute,
-      primarySubject: (panel as { primarySubject?: string | null }).primarySubject,
-      imageUrl: panel.imageUrl,
-    },
-    locale: job.data.locale,
-    generationMode,
-    customPrompt: firstLastCustomPrompt || persistedFirstLastPrompt || customPrompt || null,
-    lastFrameProvided: Boolean(lastFrameImageUrl),
-    generationOptions,
-    includeNativeAudio: requestedGenerateAudio === true,
-    panelSpeech,
-  })
-  const promptSpec = videoPromptCompilation.promptSpec
-  const prompt = videoPromptCompilation.compiledPrompt
-  const promptSnapshot = buildPanelVideoGenerationSnapshot({
-    targetId: panel.id,
-    modelKey: model,
-    promptTemplateId: videoPromptCompilation.promptTemplateId,
-    referenceImages: [sourceImageUrl, ...(lastFrameImageUrl ? [lastFrameImageUrl] : [])],
-    promptSpec,
-    compiledPrompt: prompt,
-    referenceAudioSummary,
-    assetVersionHash: createCreativeQualityHash({
-      sourceImageUrl,
-      lastFrameImageUrl: lastFrameImageUrl || null,
-      generationMode,
-      referenceAudioSummary,
-      panelSpeech: panelSpeech
-        ? {
-          speaker: panelSpeech.speaker,
-          originalContent: panelSpeech.originalContent,
-          deliveryContent: panelSpeech.deliveryContent,
-          status: panelSpeech.status,
-          voiceConfigJson: panelSpeech.voiceConfigJson,
-          updatedAt: panelSpeech.updatedAt?.toISOString?.() || null,
-        }
-        : null,
-    }),
-  })
   await createOptionalGenerationSnapshotArtifact({
     job,
     stepKey: 'panel_video_prompt',
     artifactType: 'prompt.panel_video.snapshot',
     refId: panel.id,
-    versionHash: promptSnapshot.promptHash,
-    payload: promptSnapshot,
+    versionHash: snapshot.promptHash,
+    payload: snapshot,
   })
 
   const generatedVideo = await resolveVideoSourceFromGeneration(job, {
     userId: job.data.userId,
-    modelId: model,
+    modelId: snapshot.modelKey,
     imageUrl: sourceImageUrl,
     options: {
-      prompt,
-      ...(projectVideoRatio ? { aspectRatio: projectVideoRatio } : {}),
+      prompt: snapshot.compiledPrompt,
+      ...(typeof prepared.generationOptions.aspectRatio === 'string'
+        ? { aspectRatio: prepared.generationOptions.aspectRatio }
+        : {}),
       ...generationOptions,
       generationMode,
-      ...(typeof requestedGenerateAudio === 'boolean' ? { generateAudio: requestedGenerateAudio } : {}),
-      ...(referenceAudios.length > 0 ? { referenceAudios } : {}),
       ...(lastFrameImageUrl ? { lastFrameImageUrl } : {}),
+      ...(referenceAudios.length > 0 ? { referenceAudios } : {}),
     },
   })
 
@@ -243,7 +154,7 @@ async function generateVideoForPanel(
   if (generatedVideo.downloadHeaders) {
     downloadHeaders = generatedVideo.downloadHeaders
   } else if (typeof videoSource === 'string') {
-    const parsedModel = parseModelKeyStrict(model)
+    const parsedModel = parseModelKeyStrict(snapshot.modelKey)
     const isGoogleDownloadUrl = videoSource.includes('generativelanguage.googleapis.com/')
       && videoSource.includes('/files/')
       && videoSource.includes(':download')
@@ -265,28 +176,31 @@ async function generateVideoForPanel(
 
 async function handleVideoPanelTask(job: Job<TaskJobData>) {
   const payload = (job.data.payload || {}) as AnyObj
-  const projectModels = await getProjectModels(job.data.projectId, job.data.userId)
-
-  const modelId = typeof payload.videoModel === 'string' ? payload.videoModel.trim() : ''
-  if (!modelId) throw new Error('VIDEO_MODEL_REQUIRED: payload.videoModel is required')
-
   const panel = await getPanelForVideoTask(job)
-
-  const generationOptions = extractGenerationOptions(payload)
 
   await reportTaskProgress(job, 10, {
     stage: 'generate_panel_video',
     panelId: panel.id,
   })
 
-  const { cosKey, generationMode, actualVideoTokens } = await generateVideoForPanel(
+  const preparedPromptArtifactId = typeof payload.preparedPromptArtifactId === 'string'
+    ? payload.preparedPromptArtifactId.trim()
+    : ''
+  if (!preparedPromptArtifactId) {
+    throw new Error('PREPARED_PROMPT_REQUIRED: panel video generation requires a prepared prompt')
+  }
+  const result = await generateVideoForPreparedPrompt(
     job,
     panel,
-    payload,
-    modelId,
-    projectModels.videoRatio,
-    generationOptions,
+    await requirePreparedPrompt({
+      artifactId: preparedPromptArtifactId,
+      projectId: job.data.projectId,
+      targetId: panel.id,
+      kind: 'panel_video',
+      userId: job.data.userId,
+    }),
   )
+  const { cosKey, generationMode, actualVideoTokens } = result
 
   await assertTaskActive(job, 'persist_panel_video')
   await prisma.novelPromotionPanel.update({

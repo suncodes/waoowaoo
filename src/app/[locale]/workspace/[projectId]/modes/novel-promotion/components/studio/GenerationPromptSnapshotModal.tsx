@@ -44,6 +44,9 @@ export default function GenerationPromptSnapshotModal({
   loading,
   errorMessage,
   onClose,
+  promptVersions,
+  selectedArtifactId,
+  onSelectArtifact,
 }: {
   title: string
   contextLabel: string
@@ -51,6 +54,9 @@ export default function GenerationPromptSnapshotModal({
   loading: boolean
   errorMessage: string | null
   onClose: () => void
+  promptVersions?: Array<{ artifactId: string; label: string }>
+  selectedArtifactId?: string | null
+  onSelectArtifact?: (artifactId: string) => void
 }) {
   const [mounted, setMounted] = useState(false)
   const promptSpecText = useMemo(() => stringifyJson(snapshot?.promptSpec), [snapshot?.promptSpec])
@@ -69,6 +75,20 @@ export default function GenerationPromptSnapshotModal({
             <p className="text-xs font-semibold text-[#c8a85f]">生成快照</p>
             <h2 className="mt-1 text-base font-semibold text-stone-50">{title}</h2>
             <p className="mt-1 text-xs text-stone-500">{contextLabel}</p>
+            {promptVersions && promptVersions.length > 1 && onSelectArtifact ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {promptVersions.map((version) => (
+                  <StudioButton
+                    key={version.artifactId}
+                    size="sm"
+                    variant={version.artifactId === selectedArtifactId ? 'primary' : 'secondary'}
+                    onClick={() => onSelectArtifact(version.artifactId)}
+                  >
+                    {version.label}
+                  </StudioButton>
+                ))}
+              </div>
+            ) : null}
           </div>
           <button type="button" onClick={onClose} className="rounded-md p-2 text-stone-500 transition-colors hover:bg-white/[0.06] hover:text-stone-100 focus:outline-none focus:ring-2 focus:ring-[#e8d18a]" aria-label="关闭">
             <AppIcon name="closeSm" className="h-4 w-4" />

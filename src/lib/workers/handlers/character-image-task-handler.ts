@@ -1,25 +1,14 @@
 import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
-import { CHARACTER_ASSET_IMAGE_RATIO, isArtStyleValue, prependStyleReferenceImage, PRIMARY_APPEARANCE_INDEX, type ArtStyleValue } from '@/lib/constants'
+import { CHARACTER_ASSET_IMAGE_RATIO, isArtStyleValue, type ArtStyleValue } from '@/lib/constants'
 import { resolveArtStyleForGeneration } from '@/lib/art-style-generation'
 import { submitTask } from '@/lib/task/submitter'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 import { encodeImageUrls } from '@/lib/contracts/image-urls-contract'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
 import { assertVisionInputSupported, createVisualVersionHash } from '@/lib/visual-quality'
-import { createCreativeQualityHash, type GenerationSnapshot } from '@/lib/creative-quality/contracts'
+import type { GenerationSnapshot } from '@/lib/creative-quality/contracts'
 import { createOptionalGenerationSnapshotArtifact } from '@/lib/creative-quality/runtime-artifacts'
-import {
-  ASSET_PROMPT_TEMPLATE_ID,
-  buildAssetImageGenerationSnapshot,
-  buildAssetPromptSpec,
-  compileAssetImagePrompt,
-} from '@/lib/prompt-compiler/asset-prompt-compiler'
-import {
-  createAssetVisualFactPreparationHash,
-  findReusableAssetVisualFactOptimization,
-  resolveAssetVisualFactsWithAI,
-} from '@/lib/prompt-compiler/asset-visual-fact-extractor'
 import { reportTaskProgress } from '../shared'
 import {
   assertTaskActive,
@@ -30,11 +19,15 @@ import {
   AnyObj,
   generateProjectLabeledImageToStorage,
   parseImageUrls,
-  parseJsonStringArray,
   pickFirstString,
 } from './image-task-handler-shared'
 import { buildCharacterAssetTargetSpec } from './visual-quality-review-helpers'
 import { scheduleReadyBackfilledPanelImageTasks } from '@/lib/visual-production/panel-backfill-resume'
+import {
+  attachPreparedPromptToSnapshot,
+  requirePreparedPrompt,
+  type PreparedGenerationPrompt,
+} from '@/lib/creative-quality/prepared-prompts'
 
 function resolvePayloadArtStyle(payload: AnyObj): ArtStyleValue | undefined {
   if (!Object.prototype.hasOwnProperty.call(payload, 'artStyle')) return undefined
@@ -67,6 +60,22 @@ interface CharacterAppearanceWithCharacter extends CharacterAppearanceRecord {
   }
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function readPreparedPromptArtifactId(payload: AnyObj, index: number): string {
+  const byIndex = asRecord(payload.preparedPromptArtifactIds)
+  const indexed = byIndex[String(index)]
+  if (typeof indexed === 'string' && indexed.trim()) return indexed.trim()
+  if (typeof payload.preparedPromptArtifactId === 'string' && payload.preparedPromptArtifactId.trim()) {
+    return payload.preparedPromptArtifactId.trim()
+  }
+  return ''
+}
+
 interface CharacterRecord {
   id: string
   name: string
@@ -77,15 +86,9 @@ interface CharacterRecord {
   appearances: CharacterAppearanceRecord[]
 }
 
-interface PrimaryAppearanceRecord {
-  imageUrl: string | null
-  imageUrls: string | null
-}
-
 interface CharacterImageDb {
   characterAppearance: {
     findUnique(args: Record<string, unknown>): Promise<CharacterAppearanceWithCharacter | null>
-    findFirst(args: Record<string, unknown>): Promise<PrimaryAppearanceRecord | null>
     update(args: Record<string, unknown>): Promise<unknown>
   }
   novelPromotionCharacter: {
@@ -99,8 +102,6 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
   const projectId = job.data.projectId
   const userId = job.data.userId
   const models = await getProjectModels(projectId, userId)
-  const modelId = models.characterModel
-  if (!modelId) throw new Error('Character model not configured')
 
   const appearanceId = pickFirstString(job.data.targetId, payload.appearanceId)
   let appearance: CharacterAppearanceRecord | null = null
@@ -153,61 +154,27 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
     artStyleReferenceEnabled: models.artStyleReferenceEnabled,
     locale: job.data.locale,
   })
-  const descriptions = parseJsonStringArray(appearance.descriptions)
-  const baseDescriptions = descriptions.length > 0 ? descriptions : [appearance.description || '']
-  const profileData = appearanceForQuality?.character.profileData
-  const assetFactInput = {
-    model: models.analysisModel,
-    assetKind: 'character' as const,
-    assetName: characterName,
-    description: baseDescriptions[0] || '',
-    semanticType: appearanceForQuality?.character.semanticType,
-    variantLabel: appearance.changeReason,
-    profileData,
-    locale: job.data.locale,
-  }
-  const reusableAssetOptimization = await findReusableAssetVisualFactOptimization({
-    projectId,
-    targetId: appearance.id,
-    preparationHash: createAssetVisualFactPreparationHash(assetFactInput),
-  })
-  const resolvedAssetFacts = await resolveAssetVisualFactsWithAI({
-    userId,
-    projectId,
-    input: assetFactInput,
-    reusableOptimization: reusableAssetOptimization,
-  })
-
-  // 子形象（不是主形象）生成时，引用主形象图片保持一致性
-  const primaryReferenceInputs: string[] = []
-  if (appearance.appearanceIndex > PRIMARY_APPEARANCE_INDEX) {
-    const primaryAppearance = await db.characterAppearance.findFirst({
-      where: {
-        characterId: appearance.characterId,
-        appearanceIndex: PRIMARY_APPEARANCE_INDEX,
-      },
-      select: { imageUrl: true, imageUrls: true },
-    })
-    if (primaryAppearance) {
-      const primaryMainUrl = primaryAppearance.imageUrl
-        ? toSignedUrlIfCos(primaryAppearance.imageUrl, 3600)
-        : null
-      if (primaryMainUrl) {
-        primaryReferenceInputs.push(primaryMainUrl)
-      }
-    }
-  }
-  const referenceImages = prependStyleReferenceImage(
-    primaryReferenceInputs,
-    resolvedArtStyle.referenceImage,
-    resolvedArtStyle.referenceEnabled,
-  )
-
   const singleIndex = payload.imageIndex ?? payload.descriptionIndex
   const count = normalizeImageGenerationCount('character', payload.count)
   const indexes = singleIndex !== undefined
     ? [Number(singleIndex)]
     : Array.from({ length: count }, (_value, index) => index)
+  const preparedPrompts = new Map<number, PreparedGenerationPrompt>()
+  for (const index of indexes) {
+    const preparedPromptArtifactId = readPreparedPromptArtifactId(payload, index)
+    if (!preparedPromptArtifactId) {
+      throw new Error(`PREPARED_PROMPT_REQUIRED: character image index ${index}`)
+    }
+    const prepared = await requirePreparedPrompt({
+      artifactId: preparedPromptArtifactId,
+      projectId,
+      targetId: appearance.id,
+      refId: `${appearance.id}:${index}`,
+      kind: 'asset_image',
+      userId,
+    })
+    preparedPrompts.set(index, prepared)
+  }
 
   const imageUrls = parseImageUrls(appearance.imageUrls, 'characterAppearance.imageUrls')
   const nextImageUrls = [...imageUrls]
@@ -216,47 +183,15 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
 
   for (let i = 0; i < indexes.length; i++) {
     const index = indexes[i]
-    const raw = baseDescriptions[index] || baseDescriptions[0]
-      const promptSpec = buildAssetPromptSpec({
-        assetId: appearance.id,
-        assetKind: 'character',
-        assetName: characterName,
-        description: raw,
-        profileData,
-        extractedFacts: resolvedAssetFacts.facts,
-        promptOptimization: resolvedAssetFacts.optimization,
-        semanticType: appearanceForQuality?.character.semanticType,
-        assetTier: appearanceForQuality?.character.assetTier,
-        usageScope: appearanceForQuality?.character.usageScope,
-        renderPurpose: appearance.appearanceIndex === PRIMARY_APPEARANCE_INDEX ? 'reference_sheet' : 'variant',
-      variantLabel: appearance.changeReason,
-      styleText: resolvedArtStyle.prompt,
-      styleReferenceInstruction: resolvedArtStyle.referenceInstruction,
-      locale: job.data.locale,
-    })
-    const prompt = compileAssetImagePrompt({
-      spec: promptSpec,
-      locale: job.data.locale,
-    })
-    const assetVersionHash = createCreativeQualityHash({
-      assetKind: 'character',
-      appearanceId: appearance.id,
-      characterId: appearance.characterId,
-      characterName,
-      appearanceIndex: appearance.appearanceIndex,
-      changeReason: appearance.changeReason,
-      description: raw,
-      referenceImages,
-    })
-    const promptSnapshot = buildAssetImageGenerationSnapshot({
-      targetType: 'CharacterAppearance',
-      targetId: appearance.id,
-      modelKey: modelId,
-      promptTemplateId: ASSET_PROMPT_TEMPLATE_ID,
-      referenceImages,
-      promptSpec,
-      compiledPrompt: prompt,
-      assetVersionHash,
+    const prepared = preparedPrompts.get(index)
+    if (!prepared) {
+      throw new Error(`PREPARED_PROMPT_REQUIRED: character image index ${index}`)
+    }
+    const promptSnapshot = attachPreparedPromptToSnapshot(prepared.snapshot, prepared.artifactId)
+    const prompt = promptSnapshot.compiledPrompt
+    const promptReferenceImages = promptSnapshot.referenceImages.flatMap((referenceImage) => {
+      const signed = toSignedUrlIfCos(referenceImage, 3600)
+      return signed ? [signed] : []
     })
     promptSnapshots.push(promptSnapshot)
     await createOptionalGenerationSnapshotArtifact({
@@ -276,14 +211,17 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
     const imageKey = await generateProjectLabeledImageToStorage({
       job,
       userId,
-      modelId,
+      modelId: promptSnapshot.modelKey,
       prompt,
       label,
       targetId: `${appearance.id}-${index}`,
       keyPrefix: 'character',
       options: {
-        referenceImages: referenceImages.length > 0 ? referenceImages : undefined,
-        aspectRatio: CHARACTER_ASSET_IMAGE_RATIO,
+        referenceImages: promptReferenceImages.length > 0 ? promptReferenceImages : undefined,
+        aspectRatio: typeof prepared.generationOptions.aspectRatio === 'string'
+          ? prepared.generationOptions.aspectRatio
+          : CHARACTER_ASSET_IMAGE_RATIO,
+        generationOptions: prepared.generationOptions,
       },
     })
 

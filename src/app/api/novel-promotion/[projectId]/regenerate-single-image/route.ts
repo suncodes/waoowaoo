@@ -6,11 +6,13 @@ import { resolveRequiredTaskLocale } from '@/lib/task/resolve-locale'
 import { TASK_TYPE } from '@/lib/task/types'
 import { buildDefaultTaskBillingInfo } from '@/lib/billing'
 import { withTaskUiPayload } from '@/lib/task/ui-payload'
-import { getProjectModelConfig, buildImageBillingPayload } from '@/lib/config-service'
+import { buildImageBillingPayload } from '@/lib/config-service'
 import {
   hasCharacterAppearanceOutput,
   hasLocationImageOutput
 } from '@/lib/task/has-output'
+import { PreparedPromptError, requirePreparedPrompt } from '@/lib/creative-quality/prepared-prompts'
+import { prisma } from '@/lib/prisma'
 
 function toNumber(value: unknown) {
   const parsed = Number(value)
@@ -42,10 +44,51 @@ export const POST = apiHandler(async (
     throw new ApiError('INVALID_PARAMS')
   }
 
+  const parsedImageIndex = toNumber(imageIndex)
+  if (parsedImageIndex === null || parsedImageIndex < 0) {
+    throw new ApiError('INVALID_PARAMS')
+  }
+
   const taskType = type === 'character' ? TASK_TYPE.IMAGE_CHARACTER : TASK_TYPE.IMAGE_LOCATION
   const targetType = type === 'character' ? 'CharacterAppearance' : 'LocationImage'
   const targetId = type === 'character' ? (appearanceId || id) : id
-  const parsedImageIndex = toNumber(imageIndex)
+  let preparedTargetId = targetId
+  let preparedRefId = `${targetId}:${Math.floor(parsedImageIndex)}`
+  if (type === 'location') {
+    const locationImage = await prisma.locationImage.findFirst({
+      where: {
+        locationId: id,
+        imageIndex: Math.floor(parsedImageIndex),
+        location: { novelPromotionProject: { projectId } },
+      },
+      select: { id: true },
+    })
+    if (!locationImage) throw new ApiError('NOT_FOUND')
+    preparedTargetId = locationImage.id
+    preparedRefId = locationImage.id
+  }
+
+  let preparedPrompt
+  try {
+    preparedPrompt = await requirePreparedPrompt({
+      artifactId: typeof body?.preparedPromptArtifactId === 'string'
+        ? body.preparedPromptArtifactId
+        : type === 'character'
+          ? body?.preparedPromptArtifactIds?.[String(Math.floor(parsedImageIndex))]
+          : body?.preparedPromptArtifactIds?.[preparedTargetId],
+      projectId,
+      targetId: preparedTargetId,
+      refId: preparedRefId,
+      kind: 'asset_image',
+      userId: session.user.id,
+    })
+  } catch (error) {
+    if (error instanceof PreparedPromptError) {
+      throw new ApiError('CONFLICT', { code: error.code, message: error.message })
+    }
+    throw error
+  }
+
   const hasOutputAtStart = type === 'character'
     ? await hasCharacterAppearanceOutput({
       appearanceId: targetId,
@@ -56,22 +99,32 @@ export const POST = apiHandler(async (
       imageIndex: parsedImageIndex
     })
 
-  const projectModelConfig = await getProjectModelConfig(projectId, session.user.id)
-  const imageModel = type === 'character'
-    ? projectModelConfig.characterModel
-    : projectModelConfig.locationModel
-
   let billingPayload: Record<string, unknown>
   try {
     billingPayload = await buildImageBillingPayload({
       projectId,
       userId: session.user.id,
-      imageModel,
-      basePayload: body,
+      imageModel: preparedPrompt.snapshot.modelKey,
+      basePayload: {
+        ...body,
+        imageModel: preparedPrompt.snapshot.modelKey,
+        generationOptions: preparedPrompt.generationOptions,
+        preparedPromptArtifactIds: type === 'character'
+          ? { [String(Math.floor(parsedImageIndex))]: preparedPrompt.artifactId }
+          : { [preparedTargetId]: preparedPrompt.artifactId },
+      },
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Image model capability not configured'
     throw new ApiError('INVALID_PARAMS', { code: 'IMAGE_MODEL_CAPABILITY_NOT_CONFIGURED', message })
+  }
+  billingPayload = {
+    ...billingPayload,
+    imageModel: preparedPrompt.snapshot.modelKey,
+    generationOptions: preparedPrompt.generationOptions,
+    preparedPromptArtifactIds: type === 'character'
+      ? { [String(Math.floor(parsedImageIndex))]: preparedPrompt.artifactId }
+      : { [preparedTargetId]: preparedPrompt.artifactId },
   }
   const result = await submitTask({
     userId: session.user.id,
@@ -85,7 +138,7 @@ export const POST = apiHandler(async (
       intent: 'regenerate',
       hasOutputAtStart
     }),
-    dedupeKey: `${taskType}:${targetId}:single:${imageIndex}`,
+    dedupeKey: `${taskType}:${targetId}:single:${imageIndex}:${preparedPrompt.artifactId}`,
     billingInfo: buildDefaultTaskBillingInfo(taskType, billingPayload)
   })
 

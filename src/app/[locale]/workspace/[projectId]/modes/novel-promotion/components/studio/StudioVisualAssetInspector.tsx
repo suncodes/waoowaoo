@@ -13,6 +13,10 @@ import { useAssetActions } from '@/lib/query/hooks'
 import { StudioButton, StudioPanel, StudioStatusBadge } from './StudioPrimitives'
 import GenerationPromptSnapshotModal from './GenerationPromptSnapshotModal'
 import { useGenerationPromptSnapshot } from './useGenerationPromptSnapshot'
+import {
+  fetchLatestPreparedGenerationPrompts,
+  type PreparedGenerationPromptLookup,
+} from '@/lib/query/prepared-generation-prompts'
 import type { StudioProductStatus } from './studio-types'
 import { resolveVisualAssetWorkflowPresentation } from './studio-visual-asset-status'
 import {
@@ -51,6 +55,90 @@ type CandidateDisplayGroup = {
   key: string
   label: string
   cards: CandidateCard[]
+}
+
+export type PreparedAssetPrompt = {
+  artifactId: string
+  refId: string
+  targetId: string
+  preparedAt: string
+}
+
+export function buildPreparedPromptLookups(
+  asset: VisualAssetSummary,
+  maxCount = 3,
+): PreparedGenerationPromptLookup[] {
+  if (asset.kind === 'character') {
+    const appearanceId = asset.variants[0]?.id
+    if (!appearanceId) return []
+    return Array.from({ length: maxCount }, (_value, index) => ({
+      kind: 'asset_image' as const,
+      targetId: appearanceId,
+      refId: `${appearanceId}:${index}`,
+    }))
+  }
+  return asset.variants
+    .slice()
+    .sort((left, right) => left.index - right.index)
+    .slice(0, maxCount)
+    .map((variant) => ({
+      kind: 'asset_image' as const,
+      targetId: variant.id,
+      refId: variant.id,
+    }))
+}
+
+export async function loadPreparedAssetPrompts(
+  projectId: string,
+  asset: VisualAssetSummary,
+  maxCount = 3,
+): Promise<PreparedAssetPrompt[]> {
+  const prepared = await fetchLatestPreparedGenerationPrompts(
+    projectId,
+    buildPreparedPromptLookups(asset, maxCount),
+  )
+  return prepared.map((item) => ({
+    artifactId: item.artifactId,
+    refId: item.refId,
+    targetId: item.targetId,
+    preparedAt: item.preparedAt,
+  }))
+}
+
+export function buildPreparedPromptArtifactIds(
+  asset: VisualAssetSummary,
+  prompts: PreparedAssetPrompt[],
+): Record<string, string> {
+  const result: Record<string, string> = {}
+  for (const prompt of prompts) {
+    if (asset.kind === 'character') {
+      const index = prompt.refId.split(':').at(-1)
+      if (index !== undefined) result[index] = prompt.artifactId
+      continue
+    }
+    result[prompt.targetId] = prompt.artifactId
+  }
+  return result
+}
+
+export function preparedAssetImageCount(
+  asset: VisualAssetSummary,
+  prompts: PreparedAssetPrompt[],
+): number {
+  if (asset.kind === 'character') {
+    const preparedIndexes = new Set(prompts.map((prompt) => Number(prompt.refId.split(':').at(-1))))
+    let count = 0
+    while (preparedIndexes.has(count)) count += 1
+    return count
+  }
+  const preparedTargetIds = new Set(prompts.map((prompt) => prompt.targetId))
+  const variants = asset.variants.slice().sort((left, right) => left.index - right.index)
+  let count = 0
+  for (const variant of variants) {
+    if (!preparedTargetIds.has(variant.id)) break
+    count += 1
+  }
+  return count
 }
 
 function assetDescription(asset: VisualAssetSummary) {
@@ -213,6 +301,7 @@ export default function StudioVisualAssetInspector({
   onRun,
   pendingKey,
   onRemove,
+  onPreparedPrompts,
 }: {
   projectId: string
   item: VisualKitItem
@@ -220,6 +309,7 @@ export default function StudioVisualAssetInspector({
   onRun: (key: string, label: string, operation: () => Promise<unknown>) => Promise<void>
   pendingKey: string
   onRemove?: () => void
+  onPreparedPrompts?: (assetId: string, prompts: PreparedAssetPrompt[]) => void
 }) {
   const [editing, setEditing] = useState(false)
   const [draftName, setDraftName] = useState(item.asset?.name || item.name)
@@ -245,6 +335,12 @@ export default function StudioVisualAssetInspector({
   const confirmedRenderKey = confirmedRender ? renderKey(confirmedRender.variant, confirmedRender.render) : ''
   const [selectedRenderKey, setSelectedRenderKey] = useState(confirmedRenderKey)
   const [actualPromptOpen, setActualPromptOpen] = useState(false)
+  const [preparedPrompts, setPreparedPrompts] = useState<PreparedAssetPrompt[]>([])
+  const [selectedPreparedPromptArtifactId, setSelectedPreparedPromptArtifactId] = useState<string | null>(null)
+  const [preparedPromptOpen, setPreparedPromptOpen] = useState(false)
+  const preparedImageCount = item.asset
+    ? preparedAssetImageCount(item.asset, preparedPrompts)
+    : 0
   const selectedRender = renders.find(({ variant, render }) => renderKey(variant, render) === selectedRenderKey) || confirmedRender || null
   const selectedCandidate = candidateGroups.flatMap((group) => group.cards).find((card) => card.key === selectedRenderKey) || null
   const actualPromptSnapshot = useGenerationPromptSnapshot({
@@ -253,8 +349,29 @@ export default function StudioVisualAssetInspector({
     artifactId: selectedRender?.render.promptSnapshot?.artifactId || null,
     source: 'asset',
   })
+  const preparedPromptSnapshot = useGenerationPromptSnapshot({
+    isOpen: preparedPromptOpen,
+    projectId,
+    artifactId: selectedPreparedPromptArtifactId || preparedPrompts[0]?.artifactId || null,
+    source: 'asset',
+  })
 
   useEffect(() => setSelectedRenderKey(confirmedRenderKey), [confirmedRenderKey])
+
+  useEffect(() => {
+    let cancelled = false
+    setPreparedPrompts([])
+    setSelectedPreparedPromptArtifactId(null)
+    if (!item.asset) return () => { cancelled = true }
+    void loadPreparedAssetPrompts(projectId, item.asset)
+      .then((prompts) => {
+        if (cancelled) return
+        setPreparedPrompts(prompts)
+        setSelectedPreparedPromptArtifactId(prompts[0]?.artifactId || null)
+      })
+      .catch(() => undefined)
+    return () => { cancelled = true }
+  }, [item.asset, projectId])
 
   const save = async () => {
     if (!item.asset || !actions) return
@@ -266,13 +383,35 @@ export default function StudioVisualAssetInspector({
       if (primaryVariant && draftDescription.trim()) {
         await actions.updateVariant(item.asset!.id, primaryVariant.id, { description: draftDescription.trim() })
       }
+      setPreparedPrompts([])
+      setSelectedPreparedPromptArtifactId(null)
+      onPreparedPrompts?.(item.asset!.id, [])
       setEditing(false)
     })
   }
 
-  const generate = async (count: number) => {
+  const preparePrompt = async (count: number) => {
     if (!item.asset || !actions) return
-    await onRun(`generate:${item.id}`, `生成 ${item.name} 候选图`, () => actions.generate(buildVisualAssetGeneratePayload(item.asset!, count)))
+    await onRun(`prepare:${item.id}`, `固定 ${item.name} 的生成提示词`, async () => {
+      const result = await actions.prepareGenerationPrompt(buildVisualAssetGeneratePayload(item.asset!, count))
+      setPreparedPrompts(result.preparedPrompts)
+      setSelectedPreparedPromptArtifactId(result.preparedPrompts[0]?.artifactId || null)
+      onPreparedPrompts?.(item.asset!.id, result.preparedPrompts)
+      setPreparedPromptOpen(true)
+    })
+  }
+
+  const generate = async () => {
+    if (!item.asset || !actions) return
+    const count = preparedAssetImageCount(item.asset, preparedPrompts)
+    if (count === 0) {
+      window.alert('请先固定提示词，再提交图片生成。')
+      return
+    }
+    await onRun(`generate:${item.id}`, `按已固定提示词生成 ${item.name} 候选图`, () => actions.generate({
+      ...buildVisualAssetGeneratePayload(item.asset!, count),
+      preparedPromptArtifactIds: buildPreparedPromptArtifactIds(item.asset!, preparedPrompts),
+    }))
   }
 
   const select = async (variant: AssetVariantSummary, render: AssetRenderSummary) => {
@@ -330,8 +469,10 @@ export default function StudioVisualAssetInspector({
             <div><div className="text-xs font-semibold text-stone-500">标准描述</div><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-stone-300">{item.asset ? assetDescription(item.asset) : item.description || '待补充标准描述'}</p></div>
           )}
           <div className="mt-4 flex flex-wrap gap-2">
-            <StudioButton size="sm" icon="imageEdit" loading={pendingKey === `generate:${item.id}`} onClick={() => { void generate(3) }} disabled={!item.asset || disabled}>生成候选</StudioButton>
-            <StudioButton size="sm" variant="secondary" onClick={() => { void generate(1) }} disabled={!item.asset || disabled}>单张重试</StudioButton>
+            <StudioButton size="sm" variant="secondary" icon="info" loading={pendingKey === `prepare:${item.id}`} onClick={() => { void preparePrompt(3) }} disabled={!item.asset || disabled}>固定 3 张提示词</StudioButton>
+            <StudioButton size="sm" icon="imageEdit" loading={pendingKey === `generate:${item.id}`} onClick={() => { void generate() }} disabled={!item.asset || disabled || preparedImageCount === 0}>按已固定提示词生成（{preparedImageCount}）</StudioButton>
+            <StudioButton size="sm" variant="secondary" onClick={() => { void preparePrompt(1) }} disabled={!item.asset || disabled}>重新固定单张提示词</StudioButton>
+            {preparedPrompts.length > 0 ? <StudioButton size="sm" variant="ghost" icon="info" onClick={() => setPreparedPromptOpen(true)}>查看已固定提示词（{preparedPrompts.length}）</StudioButton> : null}
           </div>
         </div>
       </div>
@@ -419,6 +560,22 @@ export default function StudioVisualAssetInspector({
           loading={actualPromptSnapshot.loading}
           errorMessage={actualPromptSnapshot.errorMessage}
           onClose={() => setActualPromptOpen(false)}
+        />
+      ) : null}
+      {preparedPromptOpen ? (
+        <GenerationPromptSnapshotModal
+          title="资产图已固定提示词"
+          contextLabel={`${item.name} · 固定后按此版本生成，可重新固定创建新版本`}
+          snapshot={preparedPromptSnapshot.snapshot}
+          loading={preparedPromptSnapshot.loading}
+          errorMessage={preparedPromptSnapshot.errorMessage}
+          promptVersions={preparedPrompts.map((prompt, index) => ({
+            artifactId: prompt.artifactId,
+            label: `候选 ${index + 1}`,
+          }))}
+          selectedArtifactId={selectedPreparedPromptArtifactId}
+          onSelectArtifact={setSelectedPreparedPromptArtifactId}
+          onClose={() => setPreparedPromptOpen(false)}
         />
       ) : null}
     </StudioPanel>

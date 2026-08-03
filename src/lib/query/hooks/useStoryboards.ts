@@ -56,6 +56,7 @@ interface BatchVideoGenerationParams {
     videoModel: string
     mode?: 'normal' | 'firstlastframe'
     generationOptions?: VideoGenerationOptions
+    preparedPromptArtifactIds?: Record<string, string>
     allowSpeechPlanMissing?: boolean
     allowSpeechlessVideo?: boolean
 }
@@ -165,6 +166,7 @@ export function useGenerateVideo(projectId: string | null, episodeId: string | n
             panelId?: string
             videoModel: string
             generationOptions?: VideoGenerationOptions
+            preparedPromptArtifactId?: string
             allowSpeechPlanMissing?: boolean
             allowSpeechlessVideo?: boolean
             firstLastFrame?: {
@@ -188,6 +190,7 @@ export function useGenerateVideo(projectId: string | null, episodeId: string | n
                 }
                 videoModel: string
                 generationOptions?: VideoGenerationOptions
+                preparedPromptArtifactId?: string
                 allowSpeechPlanMissing?: boolean
                 allowSpeechlessVideo?: boolean
             } = {
@@ -202,7 +205,10 @@ export function useGenerateVideo(projectId: string | null, episodeId: string | n
             }
 
             if (params.generationOptions && typeof params.generationOptions === 'object') {
-                requestBody.generationOptions = params.generationOptions
+              requestBody.generationOptions = params.generationOptions
+            }
+            if (params.preparedPromptArtifactId) {
+                requestBody.preparedPromptArtifactId = params.preparedPromptArtifactId
             }
             if (params.allowSpeechPlanMissing === true) {
                 requestBody.allowSpeechPlanMissing = true
@@ -268,6 +274,7 @@ export function useBatchGenerateVideos(projectId: string | null, episodeId: stri
                 videoModel: string
                 batchMode: 'normal' | 'firstlastframe'
                 generationOptions?: VideoGenerationOptions
+                preparedPromptArtifactIds?: Record<string, string>
                 allowSpeechPlanMissing?: boolean
                 allowSpeechlessVideo?: boolean
             } = {
@@ -278,6 +285,9 @@ export function useBatchGenerateVideos(projectId: string | null, episodeId: stri
             }
             if (params.generationOptions && typeof params.generationOptions === 'object') {
                 requestBody.generationOptions = params.generationOptions
+            }
+            if (params.preparedPromptArtifactIds && typeof params.preparedPromptArtifactIds === 'object') {
+                requestBody.preparedPromptArtifactIds = params.preparedPromptArtifactIds
             }
             if (params.allowSpeechPlanMissing === true) {
                 requestBody.allowSpeechPlanMissing = true

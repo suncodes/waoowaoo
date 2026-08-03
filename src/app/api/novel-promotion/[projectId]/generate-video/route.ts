@@ -18,14 +18,10 @@ import { resolveProjectModelCapabilityGenerationOptions } from '@/lib/config-ser
 import { evaluateVisualReadiness } from '@/lib/visual-readiness'
 import { hasUnconfirmedVisualCandidates } from '@/lib/quality-workflow'
 import {
-  pickVideoDurationSeconds,
-  readPanelTargetDurationMs,
-} from '@/lib/video-generation-duration'
-import {
   listEpisodePanelSpeeches,
-  panelSpeechHasContent,
   validatePanelSpeechReadyForVideo,
 } from '@/lib/novel-promotion/panel-speech'
+import { PreparedPromptError, requirePreparedPrompt } from '@/lib/creative-quality/prepared-prompts'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
@@ -46,6 +42,9 @@ function toVideoRuntimeSelections(value: unknown): Record<string, CapabilityValu
 function resolveVideoGenerationMode(payload: unknown): 'normal' | 'firstlastframe' {
   if (!isRecord(payload)) return 'normal'
   if (payload.batchMode === 'firstlastframe') return 'firstlastframe'
+  if (isRecord(payload.generationOptions) && payload.generationOptions.generationMode === 'firstlastframe') {
+    return 'firstlastframe'
+  }
   return isRecord(payload.firstLastFrame) ? 'firstlastframe' : 'normal'
 }
 
@@ -68,42 +67,6 @@ function resolveVideoModelKeyFromPayload(payload: Record<string, unknown>): stri
     return payload.videoModel
   }
   return null
-}
-
-function requireVideoModelKeyFromPayload(payload: unknown): string {
-  if (!isRecord(payload) || typeof payload.videoModel !== 'string' || !parseModelKeyStrict(payload.videoModel)) {
-    throw new ApiError('INVALID_PARAMS', {
-      code: 'VIDEO_MODEL_REQUIRED',
-      field: 'videoModel',
-    })
-  }
-  return payload.videoModel
-}
-
-function validateFirstLastFrameModel(input: unknown) {
-  if (input === undefined || input === null) return
-  if (!isRecord(input)) {
-    throw new ApiError('INVALID_PARAMS', {
-      code: 'FIRSTLASTFRAME_PAYLOAD_INVALID',
-      field: 'firstLastFrame',
-    })
-  }
-
-  const flModel = input.flModel
-  if (typeof flModel !== 'string' || !parseModelKeyStrict(flModel)) {
-    throw new ApiError('INVALID_PARAMS', {
-      code: 'FIRSTLASTFRAME_MODEL_INVALID',
-      field: 'firstLastFrame.flModel',
-    })
-  }
-
-  const capabilities = resolveBuiltinCapabilitiesByModelKey('video', flModel)
-  if (capabilities?.video?.firstlastframe !== true) {
-    throw new ApiError('INVALID_PARAMS', {
-      code: 'FIRSTLASTFRAME_MODEL_UNSUPPORTED',
-      field: 'firstLastFrame.flModel',
-    })
-  }
 }
 
 async function validateVideoCapabilityCombination(input: {
@@ -225,105 +188,6 @@ function readPanelSpeechProjection(value: unknown): {
   }
 }
 
-function resolveNativeAudioDefault(input: {
-  payload: Record<string, unknown>
-  speech?: { originalContent: string; deliveryContent?: string | null } | null
-}): boolean | undefined {
-  const modelKey = resolveVideoModelKeyFromPayload(input.payload)
-  if (!modelKey) return undefined
-
-  const generationOptions = isRecord(input.payload.generationOptions)
-    ? input.payload.generationOptions
-    : {}
-  if (typeof generationOptions.generateAudio === 'boolean') {
-    return undefined
-  }
-
-  const capabilities = resolveBuiltinCapabilitiesByModelKey('video', modelKey)
-  const options = capabilities?.video?.generateAudioOptions
-  if (!Array.isArray(options) || !options.includes(true)) return undefined
-
-  const hasSpeech = panelSpeechHasContent(input.speech)
-  if (hasSpeech) return true
-  return options.includes(false) ? false : undefined
-}
-
-function normalizePromptText(value: string | null | undefined): string {
-  return typeof value === 'string' ? value.trim() : ''
-}
-
-function buildDefaultFirstLastFramePrompt(
-  firstPanel: { videoPrompt?: string | null; description?: string | null },
-  lastPanel: { videoPrompt?: string | null; description?: string | null },
-  locale?: string,
-): string | undefined {
-  const firstPrompt = normalizePromptText(firstPanel.videoPrompt) || normalizePromptText(firstPanel.description)
-  const lastPrompt = normalizePromptText(lastPanel.videoPrompt) || normalizePromptText(lastPanel.description)
-  if (!firstPrompt && !lastPrompt) return undefined
-  if (!lastPrompt) return firstPrompt
-  const transitionLabel = locale?.startsWith('zh') ? '然后自然过渡到' : 'Then transition naturally to'
-  if (!firstPrompt) return `${transitionLabel}: ${lastPrompt}`
-  return `${firstPrompt}\n${transitionLabel}: ${lastPrompt}`
-}
-
-function resolveFirstLastFramePrompt(
-  firstPanel: { firstLastFramePrompt?: string | null; videoPrompt?: string | null; description?: string | null },
-  lastPanel: { videoPrompt?: string | null; description?: string | null },
-  locale?: string,
-): string | undefined {
-  if (firstPanel.firstLastFramePrompt !== null && firstPanel.firstLastFramePrompt !== undefined) {
-    return normalizePromptText(firstPanel.firstLastFramePrompt) || undefined
-  }
-  return buildDefaultFirstLastFramePrompt(firstPanel, lastPanel, locale)
-}
-
-function buildPayloadWithPanelGenerationDefaults(
-  payload: Record<string, unknown>,
-  panel: {
-    targetDurationMs?: number | null
-    duration?: number | null
-    speech?: { originalContent: string; deliveryContent?: string | null } | null
-  },
-): Record<string, unknown> {
-  const modelKey = resolveVideoModelKeyFromPayload(payload)
-  if (!modelKey) return payload
-
-  const capabilities = resolveBuiltinCapabilitiesByModelKey('video', modelKey)
-  const duration = pickVideoDurationSeconds({
-    targetDurationMs: readPanelTargetDurationMs(panel),
-    supportedDurations: capabilities?.video?.durationOptions,
-  })
-  const generateAudio = resolveNativeAudioDefault({
-    payload,
-    speech: panel.speech,
-  })
-  const generationOptions = isRecord(payload.generationOptions)
-    ? payload.generationOptions
-    : {}
-  const shouldApplyDurationDefault = generationOptions.duration === undefined
-  const nextGenerationOptions = {
-    ...generationOptions,
-    ...(shouldApplyDurationDefault && duration !== undefined ? { duration } : {}),
-    ...(typeof generateAudio === 'boolean' ? { generateAudio } : {}),
-  }
-  const unchanged = (!shouldApplyDurationDefault || duration === undefined || generationOptions.duration === duration)
-    && (typeof generateAudio !== 'boolean' || generationOptions.generateAudio === generateAudio)
-  if (unchanged) {
-    return payload
-  }
-  const nextPayload = {
-    ...payload,
-    generationOptions: nextGenerationOptions,
-  }
-
-  try {
-    buildVideoPanelBillingInfoOrThrow(nextPayload)
-    return nextPayload
-  } catch {
-    return payload
-  }
-}
-
 export const POST = apiHandler(async (
   request: NextRequest,
   context: { params: Promise<{ projectId: string }> },
@@ -335,18 +199,14 @@ export const POST = apiHandler(async (
   const { session } = authResult
 
   const body = await request.json()
-  requireVideoModelKeyFromPayload(body)
+  const requestedPreparedPromptArtifactId = typeof body?.preparedPromptArtifactId === 'string'
+    ? body.preparedPromptArtifactId.trim()
+    : ''
   const locale = resolveRequiredTaskLocale(request, body)
   const isBatch = body?.all === true
   const batchMode: 'normal' | 'firstlastframe' = body?.batchMode === 'firstlastframe'
     ? 'firstlastframe'
     : 'normal'
-
-  validateFirstLastFrameModel(
-    isBatch && batchMode === 'firstlastframe'
-      ? { flModel: body?.videoModel }
-      : body?.firstLastFrame,
-  )
 
   if (isBatch) {
     const episodeId = body?.episodeId
@@ -423,95 +283,103 @@ export const POST = apiHandler(async (
     const skip = (reason: string) => {
       reasonCounts[reason] = (reasonCounts[reason] || 0) + 1
     }
-    const basePayload = { ...body }
-    delete basePayload.all
-    delete basePayload.episodeId
-    delete basePayload.batchMode
-    delete basePayload.allowSpeechPlanMissing
-    delete basePayload.allowSpeechlessVideo
+    const preparedPromptArtifactIds = isRecord(body?.preparedPromptArtifactIds)
+      ? body.preparedPromptArtifactIds
+      : {}
     const targets: Array<{ panelId: string; payload: Record<string, unknown> }> = []
 
-    panels.forEach((panel, index) => {
+    for (let index = 0; index < panels.length; index += 1) {
+      const panel = panels[index]
       if (panel.videoUrl?.trim() || panel.lipSyncVideoUrl?.trim()) {
         skip('video_exists')
-        return
+        continue
       }
       if (!panel.imageUrl?.trim()) {
         skip('image_missing')
-        return
+        continue
       }
       if (
         hasUnconfirmedVisualCandidates(panel.candidateImages, panel.visualQualityState)
         || !evaluateVisualReadiness(panel.visualQualityState).ready
       ) {
         skip('quality_not_ready')
-        return
+        continue
       }
       const panelSpeech = readPanelSpeechProjection(panel)
       if (panelSpeech && panelSpeech.status !== 'ready') {
         skip('speech_not_ready')
-        return
+        continue
       }
       if (!panelSpeech && panel.matchedVoiceLines.length > 0) {
         skip('legacy_speech_rebuild_required')
-        return
-      }
-      if (batchMode === 'normal') {
-        const payload = buildPayloadWithPanelGenerationDefaults({
-          ...basePayload,
-          storyboardId: panel.storyboardId,
-          panelIndex: panel.panelIndex,
-        }, {
-          ...panel,
-          speech: panelSpeech,
-        })
-        targets.push({
-          panelId: panel.id,
-          payload,
-        })
-        return
+        continue
       }
 
-      const nextPanel = panels[index + 1]
-      if (!nextPanel) {
-        skip('last_panel')
-        return
+      if (batchMode === 'firstlastframe') {
+        const nextPanel = panels[index + 1]
+        if (!nextPanel) {
+          skip('last_panel')
+          continue
+        }
+        if (!panel.linkedToNextPanel) {
+          skip('not_linked')
+          continue
+        }
+        if (!nextPanel.imageUrl?.trim()) {
+          skip('last_image_missing')
+          continue
+        }
+        if (
+          hasUnconfirmedVisualCandidates(nextPanel.candidateImages, nextPanel.visualQualityState)
+          || !evaluateVisualReadiness(nextPanel.visualQualityState).ready
+        ) {
+          skip('last_quality_not_ready')
+          continue
+        }
       }
-      if (!panel.linkedToNextPanel) {
-        skip('not_linked')
-        return
+
+      const artifactId = typeof preparedPromptArtifactIds[panel.id] === 'string'
+        ? preparedPromptArtifactIds[panel.id].trim()
+        : ''
+      if (!artifactId) {
+        skip('prompt_not_prepared')
+        continue
       }
-      if (!nextPanel.imageUrl?.trim()) {
-        skip('last_image_missing')
-        return
+      let preparedPrompt
+      try {
+        preparedPrompt = await requirePreparedPrompt({
+          artifactId,
+          projectId,
+          targetId: panel.id,
+          kind: 'panel_video',
+          userId: session.user.id,
+        })
+      } catch (error) {
+        if (error instanceof PreparedPromptError) {
+          skip('prepared_prompt_invalid')
+          continue
+        }
+        throw error
       }
-      if (
-        hasUnconfirmedVisualCandidates(nextPanel.candidateImages, nextPanel.visualQualityState)
-        || !evaluateVisualReadiness(nextPanel.visualQualityState).ready
-      ) {
-        skip('last_quality_not_ready')
-        return
+      if (preparedPrompt.generationMode !== batchMode) {
+        skip('prepared_mode_mismatch')
+        continue
       }
-      const firstLastPrompt = resolveFirstLastFramePrompt(panel, nextPanel, locale)
-      const payload = buildPayloadWithPanelGenerationDefaults({
-        ...basePayload,
-        storyboardId: panel.storyboardId,
-        panelIndex: panel.panelIndex,
-        firstLastFrame: {
-          lastFrameStoryboardId: nextPanel.storyboardId,
-          lastFramePanelIndex: nextPanel.panelIndex,
-          flModel: body.videoModel,
-          ...(firstLastPrompt ? { customPrompt: firstLastPrompt } : {}),
-        },
-      }, {
-        ...panel,
-        speech: panelSpeech,
-      })
+      if (batchMode === 'firstlastframe' && preparedPrompt.snapshot.referenceImages.length < 2) {
+        skip('prepared_reference_missing')
+        continue
+      }
       targets.push({
         panelId: panel.id,
-        payload,
+        payload: {
+          preparedPromptArtifactId: preparedPrompt.artifactId,
+          storyboardId: panel.storyboardId,
+          panelIndex: panel.panelIndex,
+          videoModel: preparedPrompt.snapshot.modelKey,
+          generationOptions: preparedPrompt.generationOptions,
+        },
       })
-    })
+    }
 
     await Promise.all(targets.map((target) => validateVideoCapabilityCombination({
       payload: target.payload,
@@ -533,7 +401,7 @@ export const POST = apiHandler(async (
           payload: withTaskUiPayload(target.payload, {
             hasOutputAtStart: await hasPanelVideoOutput(target.panelId),
           }),
-          dedupeKey: `video_panel:${target.panelId}`,
+          dedupeKey: `video_panel:${target.panelId}:${String(target.payload.preparedPromptArtifactId)}`,
           billingInfo: buildVideoPanelBillingInfoOrThrow(target.payload),
         }),
       ),
@@ -568,6 +436,21 @@ export const POST = apiHandler(async (
   if (!panel) {
     throw new ApiError('NOT_FOUND')
   }
+  let preparedPrompt
+  try {
+    preparedPrompt = await requirePreparedPrompt({
+      artifactId: requestedPreparedPromptArtifactId,
+      projectId,
+      targetId: panel.id,
+      kind: 'panel_video',
+      userId: session.user.id,
+    })
+  } catch (error) {
+    if (error instanceof PreparedPromptError) {
+      throw new ApiError('CONFLICT', { code: error.code, message: error.message })
+    }
+    throw error
+  }
   assertVisualReady(panel)
   const panelSpeechState = await validatePanelSpeechReadyForVideo(panel.id)
   if (!panelSpeechState.ready) {
@@ -579,30 +462,13 @@ export const POST = apiHandler(async (
     })
   }
 
-  const firstLastFrame = isRecord(body?.firstLastFrame) ? body.firstLastFrame : null
-  if (
-    firstLastFrame
-    && typeof firstLastFrame.lastFrameStoryboardId === 'string'
-    && firstLastFrame.lastFramePanelIndex !== undefined
-  ) {
-    const lastFramePanel = await prisma.novelPromotionPanel.findFirst({
-      where: {
-        storyboardId: firstLastFrame.lastFrameStoryboardId,
-        panelIndex: Number(firstLastFrame.lastFramePanelIndex),
-      },
-      select: { id: true, candidateImages: true, visualQualityState: true },
-    })
-    if (!lastFramePanel) throw new ApiError('NOT_FOUND')
-    assertVisualReady(lastFramePanel)
+  const taskPayload = {
+    storyboardId,
+    panelIndex: Number(panelIndex),
+    preparedPromptArtifactId: preparedPrompt.artifactId,
+    videoModel: preparedPrompt.snapshot.modelKey,
+    generationOptions: preparedPrompt.generationOptions,
   }
-
-  const requestPayload = { ...body }
-  delete requestPayload.allowSpeechPlanMissing
-  delete requestPayload.allowSpeechlessVideo
-  const taskPayload = buildPayloadWithPanelGenerationDefaults(requestPayload, {
-    ...panel,
-    speech: panelSpeechState.speech,
-  })
   await validateVideoCapabilityCombination({
     payload: taskPayload,
     projectId,
@@ -620,7 +486,7 @@ export const POST = apiHandler(async (
     payload: withTaskUiPayload(taskPayload, {
       hasOutputAtStart: await hasPanelVideoOutput(panel.id),
     }),
-    dedupeKey: `video_panel:${panel.id}`,
+    dedupeKey: `video_panel:${panel.id}:${preparedPrompt.artifactId}`,
     billingInfo: buildVideoPanelBillingInfoOrThrow(taskPayload),
   })
 

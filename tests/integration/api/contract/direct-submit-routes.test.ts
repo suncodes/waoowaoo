@@ -67,6 +67,7 @@ const hasOutputMock = vi.hoisted(() => ({
   hasPanelLipSyncOutput: vi.fn(async () => false),
   hasPanelImageOutput: vi.fn(async () => false),
   hasPanelVideoOutput: vi.fn(async () => false),
+  hasPanelSpeechAudioOutput: vi.fn(async () => false),
   hasVoiceLineAudioOutput: vi.fn(async () => false),
 }))
 
@@ -170,6 +171,18 @@ const prismaMock = vi.hoisted(() => ({
       speaker: 'Narrator',
       content: 'hello world voice line',
     })),
+  },
+  novelPromotionPanelSpeech: {
+    findFirst: vi.fn(async () => ({
+      id: 'speech-1',
+      speaker: 'Narrator',
+      originalContent: 'hello world voice line',
+      deliveryContent: null,
+    })),
+    findMany: vi.fn(async () => []),
+  },
+  novelPromotionPanelSpeechAudio: {
+    findFirst: vi.fn(async () => ({ id: 'speech-audio-1' })),
   },
   $transaction: vi.fn(async (fn: (tx: {
     novelPromotionPanel: {
@@ -291,6 +304,19 @@ vi.mock('@/lib/api-config', () => ({
 vi.mock('@/lib/prisma', () => ({
   prisma: prismaMock,
 }))
+const preparedPromptMock = vi.hoisted(() => ({
+  requirePreparedPrompt: vi.fn(),
+}))
+vi.mock('@/lib/creative-quality/prepared-prompts', () => preparedPromptMock)
+vi.mock('@/lib/visual-production/targets', () => ({
+  isVisualTargetResolutionError: vi.fn(() => false),
+  resolveProjectCharacterAppearanceTarget: vi.fn(async (input: { characterId: string; appearanceId?: string | null }) => ({
+    assetId: input.characterId,
+    targetType: 'CharacterAppearance',
+    targetId: input.appearanceId || 'appearance-1',
+    appearanceId: input.appearanceId || 'appearance-1',
+  })),
+}))
 
 function toApiPath(routeFile: string, params?: Record<string, string>): string {
   return routeFile
@@ -346,6 +372,7 @@ const DIRECT_CASES: ReadonlyArray<DirectRouteCase> = [
       kind: 'character',
       projectId: 'project-1',
       appearanceId: 'appearance-1',
+      preparedPromptArtifactId: 'prepared-asset-image-1',
     },
     params: { assetId: 'character-1' },
     expectedTaskType: TASK_TYPE.IMAGE_CHARACTER,
@@ -391,7 +418,12 @@ const DIRECT_CASES: ReadonlyArray<DirectRouteCase> = [
   },
   {
     routeFile: 'src/app/api/novel-promotion/[projectId]/generate-image/route.ts',
-    body: { type: 'character', id: 'character-1', appearanceId: 'appearance-1' },
+    body: {
+      type: 'character',
+      id: 'character-1',
+      appearanceId: 'appearance-1',
+      preparedPromptArtifactId: 'prepared-asset-image-1',
+    },
     params: { projectId: 'project-1' },
     expectedTaskType: TASK_TYPE.IMAGE_CHARACTER,
     expectedTargetType: 'CharacterAppearance',
@@ -400,6 +432,7 @@ const DIRECT_CASES: ReadonlyArray<DirectRouteCase> = [
   {
     routeFile: 'src/app/api/novel-promotion/[projectId]/generate-video/route.ts',
     body: {
+      preparedPromptArtifactId: 'prepared-panel-video-1',
       videoModel: 'ark::doubao-seedance-2-0-260128',
       storyboardId: 'storyboard-1',
       panelIndex: 0,
@@ -416,13 +449,12 @@ const DIRECT_CASES: ReadonlyArray<DirectRouteCase> = [
     expectedTargetType: 'NovelPromotionPanel',
     expectedProjectId: 'project-1',
     expectedPayloadSubset: {
+      preparedPromptArtifactId: 'prepared-panel-video-1',
       videoModel: 'ark::doubao-seedance-2-0-260128',
       generationOptions: {
         resolution: '720p',
         duration: 5,
-      },
-      firstLastFrame: {
-        flModel: 'ark::doubao-seedance-2-0-260128',
+        generationMode: 'firstlastframe',
       },
     },
   },
@@ -503,7 +535,7 @@ const DIRECT_CASES: ReadonlyArray<DirectRouteCase> = [
   },
   {
     routeFile: 'src/app/api/novel-promotion/[projectId]/regenerate-panel-image/route.ts',
-    body: { panelId: 'panel-1', count: 1 },
+    body: { panelId: 'panel-1', count: 1, preparedPromptArtifactId: 'prepared-panel-image-1' },
     params: { projectId: 'project-1' },
     expectedTaskType: TASK_TYPE.IMAGE_PANEL,
     expectedTargetType: 'NovelPromotionPanel',
@@ -511,7 +543,13 @@ const DIRECT_CASES: ReadonlyArray<DirectRouteCase> = [
   },
   {
     routeFile: 'src/app/api/novel-promotion/[projectId]/regenerate-single-image/route.ts',
-    body: { type: 'character', id: 'character-1', appearanceId: 'appearance-1', imageIndex: 0 },
+    body: {
+      type: 'character',
+      id: 'character-1',
+      appearanceId: 'appearance-1',
+      imageIndex: 0,
+      preparedPromptArtifactId: 'prepared-asset-image-1',
+    },
     params: { projectId: 'project-1' },
     expectedTaskType: TASK_TYPE.IMAGE_CHARACTER,
     expectedTargetType: 'CharacterAppearance',
@@ -538,7 +576,7 @@ const DIRECT_CASES: ReadonlyArray<DirectRouteCase> = [
     body: { episodeId: 'episode-1', lineId: 'line-1', audioModel: 'fal::audio-model' },
     params: { projectId: 'project-1' },
     expectedTaskType: TASK_TYPE.VOICE_LINE,
-    expectedTargetType: 'NovelPromotionVoiceLine',
+    expectedTargetType: 'NovelPromotionPanelSpeech',
     expectedProjectId: 'project-1',
   },
 ]
@@ -564,6 +602,33 @@ describe('api contract - direct submit routes (behavior)', () => {
       taskId: `task-${++seq}`,
       async: true,
     }))
+    preparedPromptMock.requirePreparedPrompt.mockImplementation(async (input: {
+      artifactId: string
+      kind: 'asset_image' | 'panel_image' | 'panel_video'
+      targetId: string
+    }) => {
+      const modelKey = input.kind === 'panel_video'
+        ? 'ark::doubao-seedance-2-0-260128'
+        : input.kind === 'panel_image'
+          ? 'img::storyboard'
+          : 'img::character'
+      return {
+        artifactId: input.artifactId,
+        kind: input.kind,
+        targetId: input.targetId,
+        refId: input.targetId,
+        generationMode: input.kind === 'panel_video' ? 'firstlastframe' : null,
+        generationOptions: input.kind === 'panel_video'
+          ? { resolution: '720p', duration: 5, generationMode: 'firstlastframe' }
+          : { resolution: '1024x1024' },
+        snapshot: {
+          modelKey,
+          referenceImages: input.kind === 'panel_video'
+            ? ['cos/panel-first.png', 'cos/panel-last.png']
+            : [],
+        },
+      }
+    })
   })
 
   it('keeps expected coverage size', () => {

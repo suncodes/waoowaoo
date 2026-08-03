@@ -74,7 +74,11 @@ export interface WorkspaceStageRuntimeValue {
     },
     generationOptions?: VideoGenerationOptions,
     panelId?: string,
-    requestOptions?: { allowSpeechPlanMissing?: boolean; allowSpeechlessVideo?: boolean },
+    requestOptions?: {
+      allowSpeechPlanMissing?: boolean
+      allowSpeechlessVideo?: boolean
+      preparedPromptArtifactId?: string
+    },
   ) => Promise<void>
   onGenerateAllVideos: (options?: BatchVideoGenerationParams) => Promise<void>
   onUpdateVideoPrompt: (

@@ -50,10 +50,15 @@ export function useWorkspaceVideoActions({
     },
     generationOptions?: VideoGenerationOptions,
     panelId?: string,
-    requestOptions?: { allowSpeechPlanMissing?: boolean; allowSpeechlessVideo?: boolean },
+    requestOptions?: {
+      allowSpeechPlanMissing?: boolean
+      allowSpeechlessVideo?: boolean
+      preparedPromptArtifactId?: string
+    },
   ) => {
     const normalizedVideoModel = typeof videoModel === 'string' ? videoModel.trim() : ''
-    if (!normalizedVideoModel) {
+    const preparedPromptArtifactId = requestOptions?.preparedPromptArtifactId?.trim() || ''
+    if (!normalizedVideoModel && !preparedPromptArtifactId) {
       alert('Video model is required')
       return
     }
@@ -67,6 +72,7 @@ export function useWorkspaceVideoActions({
         generationOptions,
         allowSpeechPlanMissing: requestOptions?.allowSpeechPlanMissing,
         allowSpeechlessVideo: requestOptions?.allowSpeechlessVideo,
+        preparedPromptArtifactId: preparedPromptArtifactId || undefined,
       })
     } catch (err: unknown) {
       if (isAbortError(err)) {
@@ -84,7 +90,8 @@ export function useWorkspaceVideoActions({
       return
     }
     const normalizedVideoModel = typeof options?.videoModel === 'string' ? options.videoModel.trim() : ''
-    if (!normalizedVideoModel) {
+    const hasPreparedPrompts = Object.values(options?.preparedPromptArtifactIds || {}).some((artifactId) => artifactId.trim())
+    if (!normalizedVideoModel && !hasPreparedPrompts) {
       alert('Video model is required')
       return
     }

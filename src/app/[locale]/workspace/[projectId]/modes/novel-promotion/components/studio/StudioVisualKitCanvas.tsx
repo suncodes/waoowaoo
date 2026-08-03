@@ -22,7 +22,13 @@ import {
 import { type StudioWorkspaceModel } from './studio-types'
 import { resolveVisualAssetWorkflowPresentation } from './studio-visual-asset-status'
 import { buildVisualAssetGeneratePayload } from './studio-visual-asset-generation'
-import StudioVisualAssetInspector, { type VisualKitItem } from './StudioVisualAssetInspector'
+import StudioVisualAssetInspector, {
+  buildPreparedPromptArtifactIds,
+  loadPreparedAssetPrompts,
+  preparedAssetImageCount,
+  type PreparedAssetPrompt,
+  type VisualKitItem,
+} from './StudioVisualAssetInspector'
 
 interface StudioVisualKitCanvasProps {
   model: StudioWorkspaceModel
@@ -113,6 +119,7 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
   const [pending, setPending] = useState<PendingAction>(null)
   const [error, setError] = useState('')
   const [selectedId, setSelectedId] = useState('')
+  const [preparedPromptsByAsset, setPreparedPromptsByAsset] = useState<Record<string, PreparedAssetPrompt[]>>({})
   const visualAssets = assetsQuery.data.filter((asset): asset is VisualAssetSummary => asset.family === 'visual')
   const contentMeta = useMemo(() => readContentArtifactMeta(contentPlan), [contentPlan])
   const visualMeta = useMemo(() => readVisualArtifactMeta(productionBible), [productionBible])
@@ -180,24 +187,62 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
           : unresolvedCount > 0
           ? `完善 ${unresolvedCount} 项视觉资产`
           : '进入镜头规划'
+  const batchPrepare = async () => {
+    if (batchGenerationTargets.length === 0 || pending) return
+    const confirmed = window.confirm(
+      `将为 ${batchGenerationTargets.length} 个待出图资产固定 3 张候选图提示词。固定后可先查看，再单独提交生成。是否继续？`,
+    )
+    if (!confirmed) return
+    await run('batch-prepare', `批量固定 ${batchGenerationTargets.length} 个资产的候选图提示词`, async () => {
+      const failedNames: string[] = []
+      const nextPreparedPrompts: Record<string, PreparedAssetPrompt[]> = {}
+      for (const target of batchGenerationTargets) {
+        if (!target.asset) continue
+        try {
+          const payload = buildVisualAssetGeneratePayload(target.asset, 3)
+          const preparation = await actionFor(target.asset).prepareGenerationPrompt(payload)
+          nextPreparedPrompts[target.asset.id] = preparation.preparedPrompts
+        } catch {
+          failedNames.push(target.name)
+        }
+      }
+      setPreparedPromptsByAsset((current) => ({ ...current, ...nextPreparedPrompts }))
+      if (failedNames.length > 0) {
+        throw new Error(`以下资产提示词固定失败：${failedNames.join('、')}`)
+      }
+    })
+  }
+
   const batchGenerate = async () => {
     if (batchGenerationTargets.length === 0 || pending) return
     const confirmed = window.confirm(
-      `将为 ${batchGenerationTargets.length} 个待出图资产分别创建 3 张候选图任务。已有候选和已定稿资产不会被覆盖，是否继续？`,
+      `将为已固定提示词的待出图资产分别创建候选图任务。未固定提示词的资产会被跳过，已有候选和已定稿资产不会被覆盖，是否继续？`,
     )
     if (!confirmed) return
-    await run('batch-generate', `批量提交 ${batchGenerationTargets.length} 个资产的候选图`, async () => {
+    await run('batch-generate', `按已固定提示词提交 ${batchGenerationTargets.length} 个资产的候选图`, async () => {
       const failedNames: string[] = []
       for (const target of batchGenerationTargets) {
         if (!target.asset) continue
         try {
-          await actionFor(target.asset).generate(buildVisualAssetGeneratePayload(target.asset, 3))
+          const persistedPrompts = await loadPreparedAssetPrompts(projectId, target.asset)
+          const preparedPrompts = persistedPrompts.length > 0
+            ? persistedPrompts
+            : preparedPromptsByAsset[target.asset.id] || []
+          const count = preparedAssetImageCount(target.asset, preparedPrompts)
+          if (count === 0) {
+            failedNames.push(`${target.name}（未固定提示词）`)
+            continue
+          }
+          await actionFor(target.asset).generate({
+            ...buildVisualAssetGeneratePayload(target.asset, count),
+            preparedPromptArtifactIds: buildPreparedPromptArtifactIds(target.asset, preparedPrompts),
+          })
         } catch {
           failedNames.push(target.name)
         }
       }
       if (failedNames.length > 0) {
-        throw new Error(`以下资产提交失败：${failedNames.join('、')}`)
+        throw new Error(`以下资产未提交：${failedNames.join('、')}`)
       }
     })
   }
@@ -217,12 +262,22 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
               <StudioButton
                 size="sm"
                 variant="secondary"
+                icon="info"
+                loading={pending?.key === 'batch-prepare'}
+                onClick={() => { void batchPrepare() }}
+                disabled={!!pending || batchGenerationTargets.length === 0}
+              >
+                批量固定提示词（{batchGenerationTargets.length}）
+              </StudioButton>
+              <StudioButton
+                size="sm"
+                variant="secondary"
                 icon="imageEdit"
                 loading={pending?.key === 'batch-generate'}
                 onClick={() => { void batchGenerate() }}
                 disabled={!!pending || batchGenerationTargets.length === 0}
               >
-                批量生成待出图（{batchGenerationTargets.length}）
+                按已固定提示词批量生成（{batchGenerationTargets.length}）
               </StudioButton>
               <StudioButton
                 size="sm"
@@ -295,6 +350,9 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
               actions={selectedItem.asset ? actionFor(selectedItem.asset) : null}
               onRun={run}
               pendingKey={pending?.key || ''}
+              onPreparedPrompts={(assetId, prompts) => {
+                setPreparedPromptsByAsset((current) => ({ ...current, [assetId]: prompts }))
+              }}
             />
           ) : null}
         </div>

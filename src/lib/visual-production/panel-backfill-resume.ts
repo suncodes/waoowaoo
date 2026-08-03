@@ -3,6 +3,7 @@ import { buildImageBillingPayload } from '@/lib/config-service'
 import { submitTask } from '@/lib/task/submitter'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 import { withTaskUiPayload } from '@/lib/task/ui-payload'
+import { preparePanelGenerationPrompt } from '@/lib/novel-promotion/panel-prompt-preparation'
 import {
   readBackfillRequests,
   resolvePanelBackfillReadiness,
@@ -59,6 +60,13 @@ export async function scheduleReadyBackfilledPanelImageTasks(params: {
       imageModel: params.storyboardModel,
       basePayload: payloadBase,
     })
+    const preparation = await preparePanelGenerationPrompt({
+      projectId: params.projectId,
+      userId: params.userId,
+      locale: params.locale,
+      mode: 'image',
+      locator: { panelId: panel.id },
+    })
     const submitted = await submitTask({
       userId: params.userId,
       locale: params.locale,
@@ -67,11 +75,16 @@ export async function scheduleReadyBackfilledPanelImageTasks(params: {
       type: TASK_TYPE.IMAGE_PANEL,
       targetType: 'NovelPromotionPanel',
       targetId: panel.id,
-      payload: withTaskUiPayload(billingPayload, {
+      payload: withTaskUiPayload({
+        ...billingPayload,
+        imageModel: preparation.prepared.snapshot.modelKey,
+        generationOptions: preparation.prepared.generationOptions,
+        preparedPromptArtifactId: preparation.prepared.artifactId,
+      }, {
         intent: 'generate',
         source: 'asset_backfill_resume',
       }),
-      dedupeKey: `image_panel:${panel.id}:asset_backfill:${stableBackfillAssetIds.join(',')}`,
+      dedupeKey: `image_panel:${panel.id}:${preparation.prepared.artifactId}:asset_backfill:${stableBackfillAssetIds.join(',')}`,
     })
     scheduled.push(submitted.taskId)
   }

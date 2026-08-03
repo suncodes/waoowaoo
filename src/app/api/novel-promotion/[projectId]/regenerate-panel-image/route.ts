@@ -7,10 +7,9 @@ import { TASK_TYPE } from '@/lib/task/types'
 import { buildDefaultTaskBillingInfo } from '@/lib/billing'
 import { hasPanelImageOutput } from '@/lib/task/has-output'
 import { withTaskUiPayload } from '@/lib/task/ui-payload'
-import { getProjectModelConfig } from '@/lib/config-service'
-import { resolveProjectModelCapabilityGenerationOptions } from '@/lib/config-service'
 import { resolveModelSelection } from '@/lib/api-config'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
+import { PreparedPromptError, requirePreparedPrompt } from '@/lib/creative-quality/prepared-prompts'
 
 export const POST = apiHandler(async (
   request: NextRequest,
@@ -33,13 +32,24 @@ export const POST = apiHandler(async (
     throw new ApiError('INVALID_PARAMS')
   }
 
-  const projectModelConfig = await getProjectModelConfig(projectId, session.user.id)
-  if (!projectModelConfig.storyboardModel) {
-    throw new ApiError('INVALID_PARAMS', {
-      code: 'STORYBOARD_MODEL_NOT_CONFIGURED'})
-  }
+  let preparedPrompt
   try {
-    await resolveModelSelection(session.user.id, projectModelConfig.storyboardModel, 'image')
+    preparedPrompt = await requirePreparedPrompt({
+      artifactId: body?.preparedPromptArtifactId,
+      projectId,
+      targetId: panelId,
+      kind: 'panel_image',
+      userId: session.user.id,
+    })
+  } catch (error) {
+    if (error instanceof PreparedPromptError) {
+      throw new ApiError('CONFLICT', { code: error.code, message: error.message })
+    }
+    throw error
+  }
+
+  try {
+    await resolveModelSelection(session.user.id, preparedPrompt.snapshot.modelKey, 'image')
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Storyboard image model is invalid'
     throw new ApiError('INVALID_PARAMS', {
@@ -47,17 +57,14 @@ export const POST = apiHandler(async (
       message})
   }
 
-  const capabilityOptions = await resolveProjectModelCapabilityGenerationOptions({
-    projectId,
-    userId: session.user.id,
-    modelType: 'image',
-    modelKey: projectModelConfig.storyboardModel})
   const billingPayload = {
     ...body,
     candidateCount,
     forceNoReference,
-    imageModel: projectModelConfig.storyboardModel,
-    ...(Object.keys(capabilityOptions).length > 0 ? { generationOptions: capabilityOptions } : {})}
+    preparedPromptArtifactId: preparedPrompt.artifactId,
+    imageModel: preparedPrompt.snapshot.modelKey,
+    generationOptions: preparedPrompt.generationOptions,
+  }
 
   const hasOutputAtStart = await hasPanelImageOutput(panelId)
 
@@ -72,7 +79,7 @@ export const POST = apiHandler(async (
     payload: withTaskUiPayload(billingPayload, {
       intent: 'regenerate',
       hasOutputAtStart}),
-    dedupeKey: `image_panel:${panelId}:${candidateCount}${forceNoReference ? ':force_no_reference' : ''}`,
+    dedupeKey: `image_panel:${panelId}:${preparedPrompt.artifactId}:${candidateCount}${forceNoReference ? ':force_no_reference' : ''}`,
     billingInfo: buildDefaultTaskBillingInfo(TASK_TYPE.IMAGE_PANEL, billingPayload)})
 
   return NextResponse.json(result)

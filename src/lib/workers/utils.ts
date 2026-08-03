@@ -177,6 +177,7 @@ export async function resolveImageSourceFromGeneration(
       resolution?: string
       size?: string
       provider?: string
+      generationOptions?: Record<string, string | number | boolean>
     }
     allowTaskExternalIdResume?: boolean
     pollProgress?: { start?: number; end?: number }
@@ -211,6 +212,9 @@ export async function resolveImageSourceFromGeneration(
   })
 
   const runtimeSelections: Record<string, string | number | boolean> = {}
+  for (const [key, value] of Object.entries(params.options?.generationOptions || {})) {
+    if (key !== 'aspectRatio') runtimeSelections[key] = value
+  }
   if (typeof params.options?.resolution === 'string') {
     runtimeSelections.resolution = params.options.resolution
   }

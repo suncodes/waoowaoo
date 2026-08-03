@@ -28,7 +28,6 @@ import {
   panelSpeechHasContent,
   validatePanelSpeechReadyForVideo,
 } from '@/lib/novel-promotion/panel-speech'
-import { getSignedUrl } from '@/lib/storage'
 import {
   type PanelVisualBindings,
 } from '@/lib/visual-production/bindings'
@@ -97,6 +96,11 @@ export interface PanelGenerationPromptPreview {
   generationOptions: Record<string, CapabilityValue>
   referenceImages: string[]
   structuredReferences?: unknown
+  bindingPlan?: unknown
+  referencePlan?: unknown
+  generationRouteDecision?: unknown
+  assetVersionHash?: string | null
+  promptOptimization?: GenerationPromptOptimization | null
   warnings: string[]
 }
 
@@ -281,11 +285,8 @@ function findCharacterByName<T extends { name: string }>(characters: T[], refere
   return undefined
 }
 
-function toSignedUrlIfCos(keyOrUrl: string | null | undefined, ttlSeconds = 3600) {
-  if (!keyOrUrl) return null
-  return keyOrUrl.startsWith('images/') || keyOrUrl.startsWith('voice/') || keyOrUrl.startsWith('video/')
-    ? getSignedUrl(keyOrUrl, ttlSeconds)
-    : keyOrUrl
+function normalizeReferenceImage(value: string | null | undefined) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
 function normalizeStringOverride(current: string | null, value: string | null | undefined): string | null {
@@ -754,7 +755,7 @@ export async function buildPanelImageGenerationPromptPreview(params: {
     projectData,
     panel: panelForPreview,
     options: {
-      signImageUrl: (value) => toSignedUrlIfCos(value, 3600),
+      signImageUrl: normalizeReferenceImage,
     },
   })
   const generationRouteDecision = decidePanelGenerationRoute({
@@ -837,6 +838,11 @@ export async function buildPanelImageGenerationPromptPreview(params: {
     },
     referenceImages,
     structuredReferences: compiled.structuredReferences,
+    bindingPlan: visualBindingPlan,
+    referencePlan: compiled.referencePlan,
+    generationRouteDecision,
+    assetVersionHash: compiled.assetVersionHash,
+    promptOptimization: visualFacts.optimization,
     warnings: Array.from(new Set(warnings.filter(Boolean))),
   }
 }
@@ -873,7 +879,7 @@ export async function buildPanelVideoGenerationPromptPreview(params: {
     : null
   const warnings: string[] = []
   const referenceImages: string[] = []
-  const sourceImageUrl = toSignedUrlIfCos(panelForPreview.imageUrl || null, 3600)
+  const sourceImageUrl = normalizeReferenceImage(panelForPreview.imageUrl || null)
   if (sourceImageUrl) {
     referenceImages.push(sourceImageUrl)
   } else {
@@ -890,7 +896,7 @@ export async function buildPanelVideoGenerationPromptPreview(params: {
         storyboardId: lastFrameStoryboardId,
         panelIndex: lastFramePanelIndex,
       })
-      const lastFrameImageUrl = toSignedUrlIfCos(lastPanel?.imageUrl || null, 3600)
+      const lastFrameImageUrl = normalizeReferenceImage(lastPanel?.imageUrl || null)
       if (lastFrameImageUrl) {
         referenceImages.push(lastFrameImageUrl)
         lastFrameProvided = true
@@ -947,6 +953,20 @@ export async function buildPanelVideoGenerationPromptPreview(params: {
       ...(typeof requestedGenerateAudio === 'boolean' ? { generateAudio: requestedGenerateAudio } : {}),
     },
     referenceImages: Array.from(new Set(referenceImages.filter(Boolean))),
+    assetVersionHash: createCreativeQualityHash({
+      referenceImages: Array.from(new Set(referenceImages.filter(Boolean))),
+      generationMode,
+      generationOptions,
+      panelSpeech: panelSpeech
+        ? {
+          speaker: panelSpeech.speaker,
+          originalContent: panelSpeech.originalContent,
+          deliveryContent: panelSpeech.deliveryContent || null,
+          status: panelSpeech.status || null,
+          voiceConfigJson: panelSpeech.voiceConfigJson || null,
+        }
+        : null,
+    }),
     warnings: Array.from(new Set(warnings.filter(Boolean))),
   }
 }

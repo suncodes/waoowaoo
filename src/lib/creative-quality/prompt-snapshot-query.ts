@@ -11,7 +11,21 @@ export const ASSET_PROMPT_SNAPSHOT_TYPES = [
 ] as const
 
 export type AssetPromptSnapshotArtifactType = typeof ASSET_PROMPT_SNAPSHOT_TYPES[number]
-export type GenerationPromptSnapshotArtifactType = PanelPromptSnapshotArtifactType | AssetPromptSnapshotArtifactType
+export const PANEL_PREPARED_PROMPT_TYPES = [
+  'prompt.panel_image.prepared',
+  'prompt.panel_video.prepared',
+] as const
+export const ASSET_PREPARED_PROMPT_TYPES = [
+  'prompt.asset_image.prepared',
+] as const
+
+export type PanelPreparedPromptArtifactType = typeof PANEL_PREPARED_PROMPT_TYPES[number]
+export type AssetPreparedPromptArtifactType = typeof ASSET_PREPARED_PROMPT_TYPES[number]
+export type GenerationPromptSnapshotArtifactType =
+  | PanelPromptSnapshotArtifactType
+  | AssetPromptSnapshotArtifactType
+  | PanelPreparedPromptArtifactType
+  | AssetPreparedPromptArtifactType
 
 export interface GenerationPromptSnapshotView {
   artifactId: string
@@ -37,11 +51,11 @@ export interface GenerationPromptSnapshotView {
 }
 
 export type PanelPromptSnapshotView = GenerationPromptSnapshotView & {
-  artifactType: PanelPromptSnapshotArtifactType
+  artifactType: PanelPromptSnapshotArtifactType | PanelPreparedPromptArtifactType
 }
 
 export type AssetPromptSnapshotView = GenerationPromptSnapshotView & {
-  artifactType: AssetPromptSnapshotArtifactType
+  artifactType: AssetPromptSnapshotArtifactType | AssetPreparedPromptArtifactType
 }
 
 export interface LatestPanelPromptSnapshots {
@@ -76,8 +90,19 @@ function isAssetPromptSnapshotType(value: string): value is AssetPromptSnapshotA
   return ASSET_PROMPT_SNAPSHOT_TYPES.includes(value as AssetPromptSnapshotArtifactType)
 }
 
+function isPanelPreparedPromptType(value: string): value is PanelPreparedPromptArtifactType {
+  return PANEL_PREPARED_PROMPT_TYPES.includes(value as PanelPreparedPromptArtifactType)
+}
+
+function isAssetPreparedPromptType(value: string): value is AssetPreparedPromptArtifactType {
+  return ASSET_PREPARED_PROMPT_TYPES.includes(value as AssetPreparedPromptArtifactType)
+}
+
 function isGenerationPromptSnapshotType(value: string): value is GenerationPromptSnapshotArtifactType {
-  return isPanelPromptSnapshotType(value) || isAssetPromptSnapshotType(value)
+  return isPanelPromptSnapshotType(value)
+    || isAssetPromptSnapshotType(value)
+    || isPanelPreparedPromptType(value)
+    || isAssetPreparedPromptType(value)
 }
 
 function toIsoDate(value: Date | string): string {
@@ -138,7 +163,7 @@ export function normalizePanelPromptSnapshotArtifact(row: {
   createdAt: Date | string
 }): PanelPromptSnapshotView | null {
   const snapshot = normalizeGenerationPromptSnapshotArtifact(row)
-  return snapshot && isPanelPromptSnapshotType(snapshot.artifactType)
+  return snapshot && (isPanelPromptSnapshotType(snapshot.artifactType) || isPanelPreparedPromptType(snapshot.artifactType))
     ? snapshot as PanelPromptSnapshotView
     : null
 }
@@ -154,7 +179,7 @@ export function normalizeAssetPromptSnapshotArtifact(row: {
   createdAt: Date | string
 }): AssetPromptSnapshotView | null {
   const snapshot = normalizeGenerationPromptSnapshotArtifact(row)
-  return snapshot && isAssetPromptSnapshotType(snapshot.artifactType)
+  return snapshot && (isAssetPromptSnapshotType(snapshot.artifactType) || isAssetPreparedPromptType(snapshot.artifactType))
     ? snapshot as AssetPromptSnapshotView
     : null
 }
@@ -188,7 +213,7 @@ export async function getPanelPromptSnapshotByArtifactId(params: {
     where: {
       id: params.artifactId,
       refId: params.panelId,
-      artifactType: { in: [...PANEL_PROMPT_SNAPSHOT_TYPES] },
+      artifactType: { in: [...PANEL_PROMPT_SNAPSHOT_TYPES, ...PANEL_PREPARED_PROMPT_TYPES] },
       run: { projectId: params.projectId },
     },
   })
@@ -202,7 +227,7 @@ export async function getAssetPromptSnapshotByArtifactId(params: {
   const row = await prisma.graphArtifact.findFirst({
     where: {
       id: params.artifactId,
-      artifactType: { in: [...ASSET_PROMPT_SNAPSHOT_TYPES] },
+      artifactType: { in: [...ASSET_PROMPT_SNAPSHOT_TYPES, ...ASSET_PREPARED_PROMPT_TYPES] },
       run: { projectId: params.projectId },
     },
   })
@@ -229,6 +254,7 @@ export async function getLatestPanelPromptSnapshots(params: {
   for (const row of rows) {
     const snapshot = normalizePanelPromptSnapshotArtifact(row)
     if (!snapshot) continue
+    if (!isPanelPromptSnapshotType(snapshot.artifactType)) continue
     const slot = snapshotSlot(snapshot.artifactType)
     if (!snapshots[slot]) snapshots[slot] = snapshot
     if (snapshots.image && snapshots.video) break

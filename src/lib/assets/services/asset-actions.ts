@@ -34,6 +34,12 @@ import {
   isVisualTargetResolutionError,
   resolveProjectCharacterAppearanceTarget,
 } from '@/lib/visual-production/targets'
+import {
+  PreparedPromptError,
+  requirePreparedPrompt,
+  type PreparedGenerationPrompt,
+} from '@/lib/creative-quality/prepared-prompts'
+import { prepareProjectAssetImagePrompts } from './project-asset-prompt-preparation'
 
 type AssetWriteAccess = {
   scope: AssetScope
@@ -117,6 +123,114 @@ function toObject(value: unknown): Record<string, unknown> {
 function toNumber(value: unknown): number | null {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : null
+}
+
+function readPreparedPromptArtifactId(
+  body: Record<string, unknown>,
+  key: string,
+): string {
+  const byTarget = toObject(body.preparedPromptArtifactIds)
+  const mapped = normalizeString(byTarget[key])
+  if (mapped) return mapped
+  return normalizeString(body.preparedPromptArtifactId)
+}
+
+function preparedPromptConfigurationKey(prepared: PreparedGenerationPrompt): string {
+  return JSON.stringify({
+    modelKey: prepared.snapshot.modelKey,
+    generationOptions: Object.entries(prepared.generationOptions).sort(([left], [right]) => left.localeCompare(right)),
+  })
+}
+
+function assertPreparedPromptConfigurationsMatch(preparedPrompts: PreparedGenerationPrompt[]) {
+  const [first] = preparedPrompts
+  if (!first) {
+    throw new ApiError('CONFLICT', {
+      code: 'PREPARED_PROMPT_REQUIRED',
+      message: '请先固定提示词，再提交图片生成。',
+    })
+  }
+  const expected = preparedPromptConfigurationKey(first)
+  if (preparedPrompts.some((prepared) => preparedPromptConfigurationKey(prepared) !== expected)) {
+    throw new ApiError('CONFLICT', {
+      code: 'PREPARED_PROMPT_CONFIGURATION_MISMATCH',
+      message: '本次批量生成的已固定提示词使用了不同模型或参数，请重新统一固定后再生成。',
+    })
+  }
+}
+
+async function requireProjectAssetPreparedPrompts(params: {
+  projectId: string
+  userId: string
+  kind: 'character' | 'location' | 'prop'
+  assetId: string
+  appearanceId: string
+  imageIndex: number | null
+  count: number
+  body: Record<string, unknown>
+}): Promise<{ prompts: PreparedGenerationPrompt[]; artifactIds: Record<string, string> }> {
+  try {
+    if (params.kind === 'character') {
+      const rawIndex = toNumber(params.body.imageIndex ?? params.body.descriptionIndex)
+      const indexes = rawIndex === null
+        ? Array.from({ length: params.count }, (_value, index) => index)
+        : [Math.max(0, Math.floor(rawIndex))]
+      const prompts: PreparedGenerationPrompt[] = []
+      const artifactIds: Record<string, string> = {}
+      for (const index of indexes) {
+        const refId = `${params.appearanceId}:${index}`
+        const prepared = await requirePreparedPrompt({
+          artifactId: readPreparedPromptArtifactId(params.body, String(index)),
+          projectId: params.projectId,
+          targetId: params.appearanceId,
+          refId,
+          kind: 'asset_image',
+          userId: params.userId,
+        })
+        prompts.push(prepared)
+        artifactIds[String(index)] = prepared.artifactId
+      }
+      assertPreparedPromptConfigurationsMatch(prompts)
+      return { prompts, artifactIds }
+    }
+
+    const location = await prisma.novelPromotionLocation.findUnique({
+      where: { id: params.assetId },
+      select: {
+        images: {
+          orderBy: { imageIndex: 'asc' },
+          select: { id: true, imageIndex: true },
+        },
+      },
+    })
+    if (!location) throw new ApiError('NOT_FOUND')
+    const selectedImages = params.imageIndex === null
+      ? location.images.slice(0, params.count)
+      : location.images.filter((image) => image.imageIndex === params.imageIndex)
+    if (selectedImages.length === 0) throw new ApiError('NOT_FOUND')
+
+    const prompts: PreparedGenerationPrompt[] = []
+    const artifactIds: Record<string, string> = {}
+    for (const image of selectedImages) {
+      const prepared = await requirePreparedPrompt({
+        artifactId: readPreparedPromptArtifactId(params.body, image.id),
+        projectId: params.projectId,
+        targetId: image.id,
+        refId: image.id,
+        kind: 'asset_image',
+        userId: params.userId,
+      })
+      prompts.push(prepared)
+      artifactIds[image.id] = prepared.artifactId
+    }
+    assertPreparedPromptConfigurationsMatch(prompts)
+    return { prompts, artifactIds }
+  } catch (error) {
+    if (error instanceof PreparedPromptError) {
+      throw new ApiError('CONFLICT', { code: error.code, message: error.message })
+    }
+    throw error
+  }
 }
 
 function resolveOptionalArtStyle(body: Record<string, unknown>): ArtStyleValue | undefined {
@@ -251,6 +365,13 @@ async function submitGlobalAssetGenerateTask(input: AssetGenerateInput) {
     throw new ApiError('INVALID_PARAMS', { code: 'IMAGE_MODEL_CAPABILITY_NOT_CONFIGURED', message })
   }
 
+  if (input.body.prepareOnly === true) {
+    throw new ApiError('INVALID_PARAMS', {
+      code: 'PROMPT_PREPARATION_GLOBAL_UNSUPPORTED',
+      message: '全局资产暂不支持固定提示词，请在项目资产库中操作。',
+    })
+  }
+
   return submitTask({
     userId: input.access.userId,
     locale,
@@ -348,7 +469,7 @@ async function submitProjectAssetGenerateTask(input: AssetGenerateInput) {
     })
 
   const projectModelConfig = await getProjectModelConfig(projectId, input.access.userId)
-  const imageModel = normalizedKind === 'character'
+  const configuredImageModel = normalizedKind === 'character'
     ? projectModelConfig.characterModel
     : projectModelConfig.locationModel
   const payloadBase = {
@@ -360,17 +481,73 @@ async function submitProjectAssetGenerateTask(input: AssetGenerateInput) {
     count,
   }
 
-  let billingPayload: Record<string, unknown>
-  try {
-    billingPayload = await buildImageBillingPayload({
+  if (input.body.prepareOnly === true) {
+    let preparationPayload: Record<string, unknown>
+    try {
+      preparationPayload = await buildImageBillingPayload({
+        projectId,
+        userId: input.access.userId,
+        imageModel: configuredImageModel,
+        basePayload: payloadBase,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Image model capability not configured'
+      throw new ApiError('INVALID_PARAMS', { code: 'IMAGE_MODEL_CAPABILITY_NOT_CONFIGURED', message })
+    }
+    const preparedPrompts = await prepareProjectAssetImagePrompts({
       projectId,
       userId: input.access.userId,
-      imageModel,
-      basePayload: payloadBase,
+      locale,
+      kind: input.kind,
+      assetId: input.assetId,
+      targetType,
+      targetId,
+      payload: preparationPayload,
+    })
+    return {
+      success: true,
+      preparedPrompts,
+    }
+  }
+
+  const prepared = await requireProjectAssetPreparedPrompts({
+    projectId,
+    userId: input.access.userId,
+    kind: input.kind,
+    assetId: input.assetId,
+    appearanceId: resolvedAppearanceId,
+    imageIndex,
+    count,
+    body: input.body,
+  })
+  const firstPrepared = prepared.prompts[0]
+  if (!firstPrepared) {
+    throw new ApiError('CONFLICT', {
+      code: 'PREPARED_PROMPT_REQUIRED',
+      message: '请先固定提示词，再提交图片生成。',
+    })
+  }
+
+  let resolvedBillingPayload: Record<string, unknown>
+  try {
+    resolvedBillingPayload = await buildImageBillingPayload({
+      projectId,
+      userId: input.access.userId,
+      imageModel: firstPrepared.snapshot.modelKey,
+      basePayload: {
+        ...payloadBase,
+        preparedPromptArtifactIds: prepared.artifactIds,
+      },
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Image model capability not configured'
     throw new ApiError('INVALID_PARAMS', { code: 'IMAGE_MODEL_CAPABILITY_NOT_CONFIGURED', message })
+  }
+  const billingPayload = {
+    ...resolvedBillingPayload,
+    imageModel: firstPrepared.snapshot.modelKey,
+    generationOptions: firstPrepared.generationOptions,
+    preparedPromptArtifactIds: prepared.artifactIds,
   }
 
   return submitTask({
@@ -382,7 +559,7 @@ async function submitProjectAssetGenerateTask(input: AssetGenerateInput) {
     targetType,
     targetId,
     payload: withTaskUiPayload(billingPayload, { hasOutputAtStart }),
-    dedupeKey: `${taskType}:${targetId}:${imageIndex === null ? count : `single:${imageIndex}`}`,
+    dedupeKey: `${taskType}:${targetId}:${firstPrepared.artifactId}:${imageIndex === null ? count : `single:${imageIndex}`}`,
     billingInfo: buildDefaultTaskBillingInfo(taskType, billingPayload),
   })
 }

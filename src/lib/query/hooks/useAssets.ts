@@ -391,6 +391,34 @@ export function useAssetActions(input: AssetActionScopeInput) {
     }
   }
 
+  const prepareGenerationPrompt = async (payload: Record<string, unknown>) => {
+    const assetId = String(payload.id)
+    const response = await apiFetch(`/api/assets/${assetId}/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scope: input.scope,
+        kind: input.kind,
+        projectId: input.projectId,
+        ...payload,
+        prepareOnly: true,
+      }),
+    })
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      throw new Error(typeof body?.message === 'string' ? body.message : 'Failed to prepare asset prompt')
+    }
+    return await response.json() as {
+      success: boolean
+      preparedPrompts: Array<{
+        artifactId: string
+        refId: string
+        targetId: string
+        preparedAt: string
+      }>
+    }
+  }
+
   const selectRender = async (payload: Record<string, unknown>) => {
     const response = await apiFetch(`/api/assets/${String(payload.id ?? payload.characterId ?? payload.locationId)}/select-render`, {
       method: 'POST',
@@ -527,6 +555,7 @@ export function useAssetActions(input: AssetActionScopeInput) {
     updateVariant,
     remove,
     generate,
+    prepareGenerationPrompt,
     selectRender,
     revertRender,
     modifyRender,

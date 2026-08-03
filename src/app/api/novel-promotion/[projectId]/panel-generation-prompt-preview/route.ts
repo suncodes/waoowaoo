@@ -3,11 +3,14 @@ import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { resolveRequiredTaskLocale } from '@/lib/task/resolve-locale'
 import {
-  buildPanelImageGenerationPromptPreview,
-  buildPanelVideoGenerationPromptPreview,
   PanelPromptPreviewError,
   type PanelGenerationPromptPreviewMode,
 } from '@/lib/novel-promotion/panel-generation-prompt-preview'
+import {
+  PanelPromptPreparationError,
+  preparePanelGenerationPrompt,
+} from '@/lib/novel-promotion/panel-prompt-preparation'
+import { PreparedPromptError } from '@/lib/creative-quality/prepared-prompts'
 
 export const runtime = 'nodejs'
 
@@ -32,6 +35,9 @@ function mapPromptPreviewError(error: unknown): never {
     if (error.code === 'PANEL_NOT_FOUND' || error.code === 'PROJECT_NOT_FOUND') {
       throw new ApiError('NOT_FOUND')
     }
+  }
+  if (error instanceof PanelPromptPreparationError || error instanceof PreparedPromptError) {
+    throw new ApiError('INVALID_PARAMS', { code: error.code, message: error.message })
   }
   throw error
 }
@@ -67,29 +73,18 @@ export const POST = apiHandler(async (
       ? body.overrides
       : undefined
 
-    if (mode === 'image') {
-      const preview = await buildPanelImageGenerationPromptPreview({
-        projectId,
-        userId: session.user.id,
-        locale,
-        locator,
-        overrides,
-        forceNoReference: body.forceNoReference === true,
-      })
-      return NextResponse.json({ success: true, preview })
-    }
-
-    const preview = await buildPanelVideoGenerationPromptPreview({
+    const result = await preparePanelGenerationPrompt({
       projectId,
       userId: session.user.id,
       locale,
-      locator,
       mode,
+      locator,
       videoModel: typeof body.videoModel === 'string' ? body.videoModel : null,
       generationOptions: body.generationOptions,
       overrides,
+      forceNoReference: body.forceNoReference === true,
     })
-    return NextResponse.json({ success: true, preview })
+    return NextResponse.json({ success: true, ...result })
   } catch (error) {
     mapPromptPreviewError(error)
   }

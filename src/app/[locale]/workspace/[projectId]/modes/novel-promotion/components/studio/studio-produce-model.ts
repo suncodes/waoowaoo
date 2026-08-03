@@ -41,6 +41,37 @@ function addReason(
   reasonCounts[reason] = (reasonCounts[reason] || 0) + 1
 }
 
+function batchVideoSkipReason(
+  items: ProduceItem[],
+  linkedPanels: ReadonlyMap<string, boolean>,
+  mode: BatchVideoMode,
+  index: number,
+): BatchVideoSkipReason | null {
+  const item = items[index]
+  if (!item) return 'last_panel'
+  if (panelVideoUrl(item.panel)) return 'video_exists'
+  if (item.panel.videoTaskRunning) return 'video_running'
+  if (!item.panel.imageUrl) return 'image_missing'
+  if (!isPanelVisualReadyForVideo(item.panel)) return 'quality_not_ready'
+  if (mode === 'normal') return null
+
+  const nextItem = items[index + 1]
+  if (!nextItem) return 'last_panel'
+  const key = `${item.storyboard.id}-${item.panel.panelIndex}`
+  if (!linkedPanels.get(key)) return 'not_linked'
+  if (!nextItem.panel.imageUrl) return 'last_image_missing'
+  if (!isPanelVisualReadyForVideo(nextItem.panel)) return 'last_quality_not_ready'
+  return null
+}
+
+export function listEligibleBatchVideoItems(
+  items: ProduceItem[],
+  linkedPanels: ReadonlyMap<string, boolean>,
+  mode: BatchVideoMode,
+): ProduceItem[] {
+  return items.filter((_item, index) => !batchVideoSkipReason(items, linkedPanels, mode, index))
+}
+
 export function buildBatchVideoPreflight(
   items: ProduceItem[],
   linkedPanels: ReadonlyMap<string, boolean>,
@@ -49,44 +80,10 @@ export function buildBatchVideoPreflight(
   const reasonCounts: BatchVideoPreflight['reasonCounts'] = {}
   let eligibleCount = 0
 
-  items.forEach((item, index) => {
-    if (panelVideoUrl(item.panel)) {
-      addReason(reasonCounts, 'video_exists')
-      return
-    }
-    if (item.panel.videoTaskRunning) {
-      addReason(reasonCounts, 'video_running')
-      return
-    }
-    if (!item.panel.imageUrl) {
-      addReason(reasonCounts, 'image_missing')
-      return
-    }
-    if (!isPanelVisualReadyForVideo(item.panel)) {
-      addReason(reasonCounts, 'quality_not_ready')
-      return
-    }
-    if (mode === 'normal') {
-      eligibleCount += 1
-      return
-    }
-
-    const nextItem = items[index + 1]
-    if (!nextItem) {
-      addReason(reasonCounts, 'last_panel')
-      return
-    }
-    const key = `${item.storyboard.id}-${item.panel.panelIndex}`
-    if (!linkedPanels.get(key)) {
-      addReason(reasonCounts, 'not_linked')
-      return
-    }
-    if (!nextItem.panel.imageUrl) {
-      addReason(reasonCounts, 'last_image_missing')
-      return
-    }
-    if (!isPanelVisualReadyForVideo(nextItem.panel)) {
-      addReason(reasonCounts, 'last_quality_not_ready')
+  items.forEach((_item, index) => {
+    const reason = batchVideoSkipReason(items, linkedPanels, mode, index)
+    if (reason) {
+      addReason(reasonCounts, reason)
       return
     }
     eligibleCount += 1

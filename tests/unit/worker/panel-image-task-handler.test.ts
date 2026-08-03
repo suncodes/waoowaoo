@@ -11,90 +11,75 @@ const prismaMock = vi.hoisted(() => ({
 
 const utilsMock = vi.hoisted(() => ({
   assertTaskActive: vi.fn(async () => undefined),
-  getProjectModels: vi.fn(async () => ({ storyboardModel: 'storyboard-model-1', artStyle: 'realistic' })),
   resolveImageSourceFromGeneration: vi.fn(),
+  toSignedUrlIfCos: vi.fn((url: string | null | undefined) => (url ? `https://signed.example/${url}` : null)),
   uploadImageSourceToCos: vi.fn(),
 }))
 
-const sharedMock = vi.hoisted(() => ({
-  collectPanelVisualReferences: vi.fn(async () => [{
-    assetId: 'asset-1',
-    renderId: 'render-1',
-    assetKind: 'character',
-    assetName: 'Hero',
-    url: 'https://signed.example/ref-1.png',
-    role: 'primary_identity',
-    usage: 'must_match',
-    weight: 1,
-    source: 'shot_spec',
-  }]),
-  resolveNovelData: vi.fn(async () => ({
-    videoRatio: '16:9',
-    characters: [],
-    locations: [
-      {
-        name: 'Old Town',
-        images: [
-          {
-            isSelected: true,
-            description: '雨夜街道',
-            availableSlots: JSON.stringify([
-              '街道左侧靠墙的留白位置',
-            ]),
-          },
-        ],
-      },
-    ],
-  })),
-}))
-
-const outboundMock = vi.hoisted(() => ({
-  normalizeReferenceImagesForGeneration: vi.fn(async () => ['normalized-ref-1']),
-}))
-
-const promptMock = vi.hoisted(() => ({
-  buildPrompt: vi.fn(() => 'panel-image-prompt'),
-}))
 const qualityMock = vi.hoisted(() => ({
   persistPanelCandidatesAndScheduleReview: vi.fn(),
 }))
+
 const runRuntimeMock = vi.hoisted(() => ({
   createArtifact: vi.fn(),
 }))
 
-vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
-vi.mock('@/lib/workers/utils', () => utilsMock)
-vi.mock('@/lib/media/outbound-image', () => outboundMock)
-vi.mock('@/lib/workers/shared', () => ({ reportTaskProgress: vi.fn(async () => undefined) }))
-vi.mock('@/lib/logging/core', () => ({
-  logInfo: vi.fn(),
-  createScopedLogger: vi.fn(() => ({
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    event: vi.fn(),
-    child: vi.fn(),
+const preparedPromptMock = vi.hoisted(() => ({
+  requirePreparedPrompt: vi.fn(),
+  attachPreparedPromptToSnapshot: vi.fn((snapshot: Record<string, unknown>, artifactId: string) => ({
+    ...snapshot,
+    preparedPromptArtifactId: artifactId,
   })),
 }))
-vi.mock('@/lib/workers/handlers/image-task-handler-shared', async () => {
-  const actual = await vi.importActual<typeof import('@/lib/workers/handlers/image-task-handler-shared')>(
-    '@/lib/workers/handlers/image-task-handler-shared',
-  )
-  return {
-    ...actual,
-    collectPanelVisualReferences: sharedMock.collectPanelVisualReferences,
-    resolveNovelData: sharedMock.resolveNovelData,
-  }
-})
-vi.mock('@/lib/prompt-i18n', () => ({
-  PROMPT_IDS: { NP_SINGLE_PANEL_IMAGE: 'np_single_panel_image' },
-  buildPrompt: promptMock.buildPrompt,
-}))
+
+vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
+vi.mock('@/lib/workers/utils', () => utilsMock)
+vi.mock('@/lib/workers/shared', () => ({ reportTaskProgress: vi.fn(async () => undefined) }))
 vi.mock('@/lib/workers/handlers/panel-visual-quality-trigger', () => qualityMock)
 vi.mock('@/lib/run-runtime/service', () => runRuntimeMock)
+vi.mock('@/lib/creative-quality/prepared-prompts', () => preparedPromptMock)
 
 import { handlePanelImageTask } from '@/lib/workers/handlers/panel-image-task-handler'
+
+function buildPreparedPrompt(overrides: Record<string, unknown> = {}) {
+  const artifactId = typeof overrides.artifactId === 'string' ? overrides.artifactId : 'prepared-panel-image-1'
+  const modelKey = typeof overrides.modelKey === 'string' ? overrides.modelKey : 'prepared-storyboard-model'
+  const compiledPrompt = typeof overrides.compiledPrompt === 'string' ? overrides.compiledPrompt : '已固定的分镜图提示词'
+  const referenceImages = Array.isArray(overrides.referenceImages)
+    ? overrides.referenceImages
+    : ['cos/fixed-panel-reference.png']
+  const generationOptions = overrides.generationOptions && typeof overrides.generationOptions === 'object'
+    ? overrides.generationOptions
+    : { aspectRatio: '16:9', seed: 12 }
+  return {
+    artifactId,
+    artifactType: 'prompt.panel_image.prepared',
+    runId: 'run-prepared-panel-image',
+    kind: 'panel_image',
+    refId: 'panel-1',
+    targetType: 'NovelPromotionPanel',
+    targetId: 'panel-1',
+    generationMode: null,
+    generationOptions,
+    snapshot: {
+      schemaVersion: 1,
+      snapshotType: 'panel_image_prompt',
+      targetType: 'NovelPromotionPanel',
+      targetId: 'panel-1',
+      modelKey,
+      promptTemplateId: 'panel-image-v2',
+      promptHash: 'panel-image-prompt-hash',
+      specHash: 'panel-image-spec-hash',
+      inputHash: 'panel-image-input-hash',
+      assetVersionHash: 'panel-image-assets-hash',
+      referenceImages,
+      promptSpec: { composition: 'fixed' },
+      compiledPrompt,
+      createdAt: '2026-08-03T00:00:00.000Z',
+    },
+    preparedAt: '2026-08-03T00:00:00.000Z',
+  }
+}
 
 function buildJob(payload: Record<string, unknown>, targetId = 'panel-1'): Job<TaskJobData> {
   return {
@@ -115,33 +100,20 @@ function buildJob(payload: Record<string, unknown>, targetId = 'panel-1'): Job<T
 describe('worker panel-image-task-handler behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    runRuntimeMock.createArtifact.mockResolvedValue({ id: 'artifact-default' })
+    runRuntimeMock.createArtifact.mockResolvedValue({ id: 'artifact-prompt-snapshot' })
+    preparedPromptMock.requirePreparedPrompt.mockImplementation(async ({ artifactId }: { artifactId: string }) => {
+      return buildPreparedPrompt({ artifactId })
+    })
 
     prismaMock.novelPromotionPanel.findUnique.mockResolvedValue({
       id: 'panel-1',
       storyboardId: 'storyboard-1',
       panelIndex: 0,
-      shotType: 'close-up',
-      cameraMove: 'static',
-      description: 'hero close-up',
-      imagePrompt: 'panel anchor prompt',
-      videoPrompt: 'dramatic',
-      location: 'Old Town',
-      characters: JSON.stringify([{ name: 'Hero', appearance: 'default', slot: '街道左侧靠墙的留白位置' }]),
-      srtSegment: '台词片段',
-      photographyRules: null,
-      actingNotes: null,
-      visualType: 'book_cover',
-      renderMode: 'composite',
-      onScreenText: '准确标题由后期渲染',
-      sketchImageUrl: null,
       imageUrl: null,
     })
-
     utilsMock.resolveImageSourceFromGeneration
       .mockResolvedValueOnce('generated-source-1')
       .mockResolvedValueOnce('generated-source-2')
-
     utilsMock.uploadImageSourceToCos
       .mockResolvedValueOnce('cos/panel-candidate-1.png')
       .mockResolvedValueOnce('cos/panel-candidate-2.png')
@@ -154,83 +126,80 @@ describe('worker panel-image-task-handler behavior', () => {
     })
   })
 
-  it('missing panelId -> explicit error', async () => {
-    const job = buildJob({}, '')
-    await expect(handlePanelImageTask(job)).rejects.toThrow('panelId missing')
+  it('缺少固定提示词版本时显式拒绝生成', async () => {
+    await expect(handlePanelImageTask(buildJob({ candidateCount: 1 }))).rejects.toThrow(
+      'PREPARED_PROMPT_REQUIRED: panel image generation requires a prepared prompt',
+    )
+    expect(preparedPromptMock.requirePreparedPrompt).not.toHaveBeenCalled()
   })
 
-  it('first generation -> persists main image and candidate list', async () => {
-    const job = buildJob({ candidateCount: 2 })
-    const result = await handlePanelImageTask(job)
-
-    expect(result).toMatchObject({
-      panelId: 'panel-1',
-      candidateCount: 2,
-      imageUrl: 'cos/panel-candidate-1.png',
-      visualQualityMode: 'shadow',
-      visualQualityVersionHash: 'version-panel-1',
-      visualQualityReviewScheduled: true,
-      visualQualityReviewTaskId: 'task-quality-1',
-      promptSnapshot: expect.objectContaining({
-        snapshotType: 'panel_image_prompt',
-        targetId: 'panel-1',
-      }),
+  it('严格使用固定快照提交所有分镜候选图', async () => {
+    const prepared = buildPreparedPrompt({
+      artifactId: 'prepared-panel-image-1',
+      modelKey: 'frozen-storyboard-model',
+      compiledPrompt: '这是已固定的分镜图提示词',
+      referenceImages: ['cos/frozen-panel-reference.png'],
+      generationOptions: { aspectRatio: '9:16', seed: 88 },
     })
+    preparedPromptMock.requirePreparedPrompt.mockResolvedValueOnce(prepared)
 
+    const result = await handlePanelImageTask(buildJob({
+      candidateCount: 2,
+      preparedPromptArtifactId: prepared.artifactId,
+    }))
+
+    expect(preparedPromptMock.requirePreparedPrompt).toHaveBeenCalledWith({
+      artifactId: prepared.artifactId,
+      projectId: 'project-1',
+      targetId: 'panel-1',
+      refId: 'panel-1',
+      kind: 'panel_image',
+      userId: 'user-1',
+    })
     expect(utilsMock.resolveImageSourceFromGeneration).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        modelId: 'storyboard-model-1',
-        prompt: 'panel-image-prompt',
+        modelId: 'frozen-storyboard-model',
+        prompt: '这是已固定的分镜图提示词',
         allowTaskExternalIdResume: false,
         options: expect.objectContaining({
-          referenceImages: ['https://signed.example/ref-1.png'],
-          aspectRatio: '16:9',
+          referenceImages: ['https://signed.example/cos/frozen-panel-reference.png'],
+          aspectRatio: '9:16',
+          generationOptions: { aspectRatio: '9:16', seed: 88 },
         }),
       }),
     )
-    expect(promptMock.buildPrompt).toHaveBeenCalledWith(expect.objectContaining({
-      variables: expect.objectContaining({
-        render_brief: expect.stringContaining('特殊处理：生成无文字的干净底图或单个前景素材'),
-      }),
-    }))
-
+    expect(prismaMock.novelPromotionPanel.update).toHaveBeenCalledWith({
+      where: { id: 'panel-1' },
+      data: { promptSpec: { composition: 'fixed' } },
+    })
     expect(qualityMock.persistPanelCandidatesAndScheduleReview).toHaveBeenCalledWith(expect.objectContaining({
-      panel: expect.objectContaining({ id: 'panel-1' }),
       candidates: ['cos/panel-candidate-1.png', 'cos/panel-candidate-2.png'],
       isFirstGeneration: true,
     }))
+    expect(result).toMatchObject({
+      candidateCount: 2,
+      preparedPromptArtifactId: prepared.artifactId,
+      promptSnapshot: expect.objectContaining({
+        compiledPrompt: '这是已固定的分镜图提示词',
+        preparedPromptArtifactId: prepared.artifactId,
+      }),
+    })
   })
 
-  it('regeneration branch -> keeps old image in previousImageUrl and stores candidates only', async () => {
-    utilsMock.resolveImageSourceFromGeneration.mockReset()
-    utilsMock.uploadImageSourceToCos.mockReset()
-
+  it('重新生成保持旧图，并按候选数量下限生成候选图', async () => {
     prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce({
       id: 'panel-1',
       storyboardId: 'storyboard-1',
       panelIndex: 0,
-      shotType: 'close-up',
-      cameraMove: 'static',
-      description: 'hero close-up',
-      imagePrompt: null,
-      videoPrompt: 'dramatic',
-      location: 'Old Town',
-      characters: '[]',
-      srtSegment: null,
-      photographyRules: null,
-      actingNotes: null,
-      visualType: 'illustration',
-      renderMode: 'generated_image',
-      onScreenText: null,
-      sketchImageUrl: null,
       imageUrl: 'cos/panel-old.png',
     })
-
     utilsMock.resolveImageSourceFromGeneration
+      .mockReset()
       .mockResolvedValueOnce('generated-source-regen-1')
       .mockResolvedValueOnce('generated-source-regen-2')
     utilsMock.uploadImageSourceToCos
+      .mockReset()
       .mockResolvedValueOnce('cos/panel-regenerated-1.png')
       .mockResolvedValueOnce('cos/panel-regenerated-2.png')
     qualityMock.persistPanelCandidatesAndScheduleReview.mockResolvedValueOnce({
@@ -241,40 +210,36 @@ describe('worker panel-image-task-handler behavior', () => {
       reviewTaskId: 'task-quality-2',
     })
 
-    const job = buildJob({ candidateCount: 1 })
-    const result = await handlePanelImageTask(job)
+    const result = await handlePanelImageTask(buildJob({
+      candidateCount: 1,
+      preparedPromptArtifactId: 'prepared-panel-image-1',
+    }))
 
     expect(result).toMatchObject({
-      panelId: 'panel-1',
       candidateCount: 2,
       imageUrl: null,
       visualQualityMode: 'auto',
-      visualQualityVersionHash: 'version-panel-2',
-      visualQualityReviewScheduled: true,
-      visualQualityReviewTaskId: 'task-quality-2',
-      promptSnapshot: expect.objectContaining({
-        snapshotType: 'panel_image_prompt',
-        targetId: 'panel-1',
-      }),
     })
-
     expect(qualityMock.persistPanelCandidatesAndScheduleReview).toHaveBeenCalledWith(expect.objectContaining({
       candidates: ['cos/panel-regenerated-1.png', 'cos/panel-regenerated-2.png'],
       isFirstGeneration: false,
     }))
   })
 
-  it('associates each candidate group with the prompt snapshot artifact', async () => {
-    runRuntimeMock.createArtifact
-      .mockResolvedValueOnce({ id: 'artifact-binding-plan' })
-      .mockResolvedValueOnce({ id: 'artifact-generation-route' })
-      .mockResolvedValueOnce({ id: 'artifact-prompt-snapshot' })
+  it('将实际使用的固定快照写入任务运行产物', async () => {
+    await handlePanelImageTask(buildJob({
+      candidateCount: 1,
+      runId: 'run-1',
+      preparedPromptArtifactId: 'prepared-panel-image-1',
+    }))
 
-    await handlePanelImageTask(buildJob({ candidateCount: 1, runId: 'run-1' }))
-
-    expect(runRuntimeMock.createArtifact).toHaveBeenNthCalledWith(3, expect.objectContaining({
+    expect(runRuntimeMock.createArtifact).toHaveBeenCalledWith(expect.objectContaining({
+      runId: 'run-1',
       artifactType: 'prompt.panel_image.snapshot',
       refId: 'panel-1',
+      payload: expect.objectContaining({
+        preparedPromptArtifactId: 'prepared-panel-image-1',
+      }),
     }))
     expect(qualityMock.persistPanelCandidatesAndScheduleReview).toHaveBeenCalledWith(expect.objectContaining({
       promptSnapshot: expect.objectContaining({

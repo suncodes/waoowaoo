@@ -1,12 +1,11 @@
 import type { Job } from 'bullmq'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { CHARACTER_PROMPT_SUFFIX, getArtStylePrompt } from '@/lib/constants'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 
 const utilsMock = vi.hoisted(() => ({
   assertTaskActive: vi.fn(async () => undefined),
   getProjectModels: vi.fn(async () => ({
-    characterModel: 'image-model-1',
+    characterModel: 'current-project-model',
     artStyle: 'realistic',
     artStyleReferenceEnabled: false,
   })),
@@ -28,13 +27,38 @@ const sharedMock = vi.hoisted(() => ({
   generateProjectLabeledImageToStorage: vi.fn<(input: {
     prompt: string
     label: string
-    options?: { referenceImages?: string[]; aspectRatio?: string }
+    modelId: string
+    options?: { referenceImages?: string[]; aspectRatio?: string; generationOptions?: Record<string, unknown> }
   }) => Promise<string>>(async () => 'cos/character-generated-0.png'),
+}))
+
+const preparedPromptMock = vi.hoisted(() => ({
+  requirePreparedPrompt: vi.fn(),
+  attachPreparedPromptToSnapshot: vi.fn((snapshot: Record<string, unknown>, artifactId: string) => ({
+    ...snapshot,
+    preparedPromptArtifactId: artifactId,
+  })),
+}))
+
+const runtimeArtifactMock = vi.hoisted(() => ({
+  createOptionalGenerationSnapshotArtifact: vi.fn(async () => false),
+}))
+
+const panelBackfillMock = vi.hoisted(() => ({
+  scheduleReadyBackfilledPanelImageTasks: vi.fn(async () => []),
+}))
+
+const taskSubmitterMock = vi.hoisted(() => ({
+  submitTask: vi.fn(async () => ({ id: 'quality-task-1' })),
 }))
 
 vi.mock('@/lib/workers/utils', () => utilsMock)
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('@/lib/workers/shared', () => ({ reportTaskProgress: vi.fn(async () => undefined) }))
+vi.mock('@/lib/creative-quality/prepared-prompts', () => preparedPromptMock)
+vi.mock('@/lib/creative-quality/runtime-artifacts', () => runtimeArtifactMock)
+vi.mock('@/lib/visual-production/panel-backfill-resume', () => panelBackfillMock)
+vi.mock('@/lib/task/submitter', () => taskSubmitterMock)
 vi.mock('@/lib/workers/handlers/image-task-handler-shared', async () => {
   const actual = await vi.importActual<typeof import('@/lib/workers/handlers/image-task-handler-shared')>(
     '@/lib/workers/handlers/image-task-handler-shared',
@@ -46,6 +70,52 @@ vi.mock('@/lib/workers/handlers/image-task-handler-shared', async () => {
 })
 
 import { handleCharacterImageTask } from '@/lib/workers/handlers/character-image-task-handler'
+
+function buildPreparedPrompt(index: number, overrides: Record<string, unknown> = {}) {
+  const artifactId = typeof overrides.artifactId === 'string'
+    ? overrides.artifactId
+    : `prepared-character-${index}`
+  const modelKey = typeof overrides.modelKey === 'string'
+    ? overrides.modelKey
+    : 'prepared-character-model'
+  const compiledPrompt = typeof overrides.compiledPrompt === 'string'
+    ? overrides.compiledPrompt
+    : `固定角色提示词 ${index}`
+  const referenceImages = Array.isArray(overrides.referenceImages)
+    ? overrides.referenceImages
+    : ['cos/fixed-character-reference.png']
+  const generationOptions = overrides.generationOptions && typeof overrides.generationOptions === 'object'
+    ? overrides.generationOptions
+    : { aspectRatio: '1:1', seed: 42 }
+  return {
+    artifactId,
+    artifactType: 'prompt.asset_image.prepared',
+    runId: 'run-prepared-character',
+    kind: 'asset_image',
+    refId: `appearance-2:${index}`,
+    targetType: 'CharacterAppearance',
+    targetId: 'appearance-2',
+    generationMode: null,
+    generationOptions,
+    snapshot: {
+      schemaVersion: 1,
+      snapshotType: 'asset_image_prompt',
+      targetType: 'CharacterAppearance',
+      targetId: 'appearance-2',
+      modelKey,
+      promptTemplateId: 'asset-image-v2',
+      promptHash: `prompt-hash-${index}`,
+      specHash: `spec-hash-${index}`,
+      inputHash: `input-hash-${index}`,
+      assetVersionHash: null,
+      referenceImages,
+      promptSpec: { index },
+      compiledPrompt,
+      createdAt: '2026-08-03T00:00:00.000Z',
+    },
+    preparedAt: '2026-08-03T00:00:00.000Z',
+  }
+}
 
 function buildJob(payload: Record<string, unknown>, targetId = 'appearance-2'): Job<TaskJobData> {
   return {
@@ -79,58 +149,71 @@ describe('worker character-image-task-handler behavior', () => {
       changeReason: '战斗形态',
       character: { name: 'Hero' },
     })
-
     prismaMock.characterAppearance.findFirst.mockResolvedValue({
       imageUrl: 'cos/primary.png',
       imageUrls: JSON.stringify(['cos/primary.png']),
     })
-  })
-
-  it('characterModel not configured -> explicit error', async () => {
-    utilsMock.getProjectModels.mockResolvedValueOnce({
-      characterModel: '',
-      artStyle: 'realistic',
-      artStyleReferenceEnabled: false,
+    preparedPromptMock.requirePreparedPrompt.mockImplementation(async ({ artifactId }: { artifactId: string }) => {
+      const index = Number(artifactId.split('-').at(-1)) || 0
+      return buildPreparedPrompt(index, { artifactId })
     })
-    await expect(handleCharacterImageTask(buildJob({}))).rejects.toThrow('Character model not configured')
   })
 
-  it('success path -> uses primary appearance as reference and persists imageUrls', async () => {
-    const job = buildJob({ imageIndex: 0 })
-    const result = await handleCharacterImageTask(job)
+  it('缺少固定提示词版本时显式拒绝生成', async () => {
+    await expect(handleCharacterImageTask(buildJob({ imageIndex: 0 }))).rejects.toThrow(
+      'PREPARED_PROMPT_REQUIRED: character image index 0',
+    )
+    expect(preparedPromptMock.requirePreparedPrompt).not.toHaveBeenCalled()
+  })
 
+  it('严格使用固定快照的模型、提示词、参考图和参数', async () => {
+    utilsMock.getProjectModels.mockResolvedValueOnce({
+      characterModel: 'changed-after-preparation-model',
+      artStyle: 'japanese-anime',
+      artStyleReferenceEnabled: true,
+    })
+    const prepared = buildPreparedPrompt(0, {
+      artifactId: 'prepared-character-0',
+      modelKey: 'frozen-character-model',
+      compiledPrompt: '这是已固定的角色图片提示词',
+      referenceImages: ['cos/frozen-character-reference.png'],
+      generationOptions: { aspectRatio: '3:2', seed: 99 },
+    })
+    preparedPromptMock.requirePreparedPrompt.mockResolvedValueOnce(prepared)
+
+    const result = await handleCharacterImageTask(buildJob({
+      imageIndex: 0,
+      preparedPromptArtifactId: prepared.artifactId,
+      artStyle: 'realistic',
+    }))
+
+    expect(preparedPromptMock.requirePreparedPrompt).toHaveBeenCalledWith({
+      artifactId: prepared.artifactId,
+      projectId: 'project-1',
+      targetId: 'appearance-2',
+      refId: 'appearance-2:0',
+      kind: 'asset_image',
+      userId: 'user-1',
+    })
+    expect(sharedMock.generateProjectLabeledImageToStorage).toHaveBeenCalledWith(expect.objectContaining({
+      modelId: 'frozen-character-model',
+      prompt: '这是已固定的角色图片提示词',
+      label: 'Hero - 战斗形态',
+      options: expect.objectContaining({
+        referenceImages: ['https://signed.example/cos/frozen-character-reference.png'],
+        aspectRatio: '3:2',
+        generationOptions: { aspectRatio: '3:2', seed: 99 },
+      }),
+    }))
     expect(result).toMatchObject({
       appearanceId: 'appearance-2',
       imageCount: 1,
       imageUrl: 'cos/character-generated-0.png',
       promptSnapshots: [expect.objectContaining({
-        snapshotType: 'asset_image_prompt',
-        targetType: 'CharacterAppearance',
-        targetId: 'appearance-2',
+        compiledPrompt: '这是已固定的角色图片提示词',
+        preparedPromptArtifactId: prepared.artifactId,
       })],
     })
-
-    const generationInput = sharedMock.generateProjectLabeledImageToStorage.mock.calls[0]?.[0] as {
-      prompt: string
-      label: string
-      options?: { referenceImages?: string[]; aspectRatio?: string }
-    }
-    const realisticStylePrompt = getArtStylePrompt('realistic', 'zh')
-
-    expect(generationInput.prompt).toContain(CHARACTER_PROMPT_SUFFIX)
-    expect(generationInput.prompt).toContain(realisticStylePrompt)
-    expect(generationInput.prompt.split(CHARACTER_PROMPT_SUFFIX).length - 1).toBe(1)
-    expect(generationInput.prompt.split(realisticStylePrompt).length - 1).toBe(1)
-    expect(generationInput.prompt.endsWith(CHARACTER_PROMPT_SUFFIX)).toBe(true)
-    expect(generationInput.prompt.indexOf(realisticStylePrompt)).toBeLessThan(
-      generationInput.prompt.indexOf(CHARACTER_PROMPT_SUFFIX),
-    )
-    expect(generationInput.label).toBe('Hero - 战斗形态')
-    expect(generationInput.options).toEqual(expect.objectContaining({
-      referenceImages: ['https://signed.example/cos/primary.png'],
-      aspectRatio: '3:2',
-    }))
-
     expect(prismaMock.characterAppearance.update).toHaveBeenCalledWith({
       where: { id: 'appearance-2' },
       data: {
@@ -140,76 +223,39 @@ describe('worker character-image-task-handler behavior', () => {
     })
   })
 
-  it('payload artStyle overrides project artStyle in prompt without enabling style references implicitly', async () => {
-    const job = buildJob({ imageIndex: 0, artStyle: 'japanese-anime' })
-    await handleCharacterImageTask(job)
-
-    const generationInput = sharedMock.generateProjectLabeledImageToStorage.mock.calls[0]?.[0] as {
-      prompt: string
-      options?: { referenceImages?: string[] }
-    }
-    expect(generationInput.prompt).toContain(getArtStylePrompt('japanese-anime', 'zh'))
-    expect(generationInput.prompt).not.toContain(getArtStylePrompt('realistic', 'zh'))
-    expect(generationInput.options?.referenceImages).toEqual(['https://signed.example/cos/primary.png'])
-  })
-
-  it('prepends the selected style reference only when the project enables it', async () => {
-    utilsMock.getProjectModels.mockResolvedValueOnce({
-      characterModel: 'image-model-1',
-      artStyle: 'realistic',
-      artStyleReferenceEnabled: true,
-    })
-
-    await handleCharacterImageTask(buildJob({ imageIndex: 0, artStyle: 'japanese-anime' }))
-
-    const generationInput = sharedMock.generateProjectLabeledImageToStorage.mock.calls[0]?.[0] as {
-      options?: { referenceImages?: string[] }
-    }
-    expect(generationInput.options?.referenceImages).toEqual([
-      '/art-styles/japanese-anime.jpg',
-      'https://signed.example/cos/primary.png',
-    ])
-  })
-
-  it('invalid payload artStyle -> explicit error', async () => {
-    await expect(handleCharacterImageTask(buildJob({ imageIndex: 0, artStyle: 'noir' }))).rejects.toThrow(
-      'Invalid artStyle in IMAGE_CHARACTER payload',
-    )
-  })
-
-  it('uses requested count for grouped generation and expands imageUrls to requested size', async () => {
+  it('批量生成要求每个图片索引都有对应的固定版本', async () => {
     sharedMock.generateProjectLabeledImageToStorage
       .mockResolvedValueOnce('cos/character-generated-0.png')
       .mockResolvedValueOnce('cos/character-generated-1.png')
       .mockResolvedValueOnce('cos/character-generated-2.png')
-      .mockResolvedValueOnce('cos/character-generated-3.png')
-      .mockResolvedValueOnce('cos/character-generated-4.png')
 
-    const result = await handleCharacterImageTask(buildJob({ count: 5 }))
-
-    expect(sharedMock.generateProjectLabeledImageToStorage).toHaveBeenCalledTimes(4)
-    expect(result).toMatchObject({
-      appearanceId: 'appearance-2',
-      imageCount: 4,
-      imageUrl: 'cos/character-generated-0.png',
-      promptSnapshots: [
-        expect.objectContaining({ snapshotType: 'asset_image_prompt' }),
-        expect.objectContaining({ snapshotType: 'asset_image_prompt' }),
-        expect.objectContaining({ snapshotType: 'asset_image_prompt' }),
-        expect.objectContaining({ snapshotType: 'asset_image_prompt' }),
-      ],
-    })
-    expect(prismaMock.characterAppearance.update).toHaveBeenCalledWith({
-      where: { id: 'appearance-2' },
-      data: {
-        imageUrls: JSON.stringify([
-          'cos/character-generated-0.png',
-          'cos/character-generated-1.png',
-          'cos/character-generated-2.png',
-          'cos/character-generated-3.png',
-        ]),
-        imageUrl: 'cos/character-generated-0.png',
+    const result = await handleCharacterImageTask(buildJob({
+      count: 3,
+      preparedPromptArtifactIds: {
+        0: 'prepared-character-0',
+        1: 'prepared-character-1',
+        2: 'prepared-character-2',
       },
+    }))
+
+    expect(preparedPromptMock.requirePreparedPrompt).toHaveBeenCalledTimes(3)
+    expect(preparedPromptMock.requirePreparedPrompt).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      artifactId: 'prepared-character-1',
+      refId: 'appearance-2:1',
+    }))
+    expect(sharedMock.generateProjectLabeledImageToStorage).toHaveBeenCalledTimes(3)
+    expect(sharedMock.generateProjectLabeledImageToStorage.mock.calls.map(([input]) => input.prompt)).toEqual([
+      '固定角色提示词 0',
+      '固定角色提示词 1',
+      '固定角色提示词 2',
+    ])
+    expect(result).toMatchObject({
+      imageCount: 3,
+      promptSnapshots: [
+        expect.objectContaining({ preparedPromptArtifactId: 'prepared-character-0' }),
+        expect.objectContaining({ preparedPromptArtifactId: 'prepared-character-1' }),
+        expect.objectContaining({ preparedPromptArtifactId: 'prepared-character-2' }),
+      ],
     })
   })
 })

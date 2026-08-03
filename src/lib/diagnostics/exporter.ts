@@ -23,7 +23,14 @@ import { reviewPromptSnapshotQuality } from '@/lib/creative-quality/prompt-revie
 const DEFAULT_MAX_FILE_BYTES = 25 * 1024 * 1024
 const DEFAULT_MAX_ARCHIVE_BYTES = 400 * 1024 * 1024
 const DIAGNOSTIC_SCHEMA_VERSION = 8
-const PROMPT_SNAPSHOT_ARTIFACT_TYPES = new Set(['prompt.panel_image.snapshot', 'prompt.panel_video.snapshot', 'prompt.asset_image.snapshot'])
+const PROMPT_SNAPSHOT_ARTIFACT_TYPES = new Set([
+  'prompt.panel_image.snapshot',
+  'prompt.panel_video.snapshot',
+  'prompt.asset_image.snapshot',
+  'prompt.panel_image.prepared',
+  'prompt.panel_video.prepared',
+  'prompt.asset_image.prepared',
+])
 const ASSET_BIBLE_REUSE_ARTIFACT_TYPES = new Set(['asset.bible.reuse'])
 const CONTENT_QUALITY_REVIEW_ARTIFACT_TYPES = new Set(['content.quality.review'])
 const CONTENT_PLAN_REUSE_ARTIFACT_TYPES = new Set(['content.plan.reuse'])

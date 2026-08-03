@@ -1,28 +1,18 @@
 import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
-import { LOCATION_IMAGE_RATIO, PROP_IMAGE_RATIO, isArtStyleValue, prependStyleReferenceImage, type ArtStyleValue } from '@/lib/constants'
+import { LOCATION_IMAGE_RATIO, PROP_IMAGE_RATIO, isArtStyleValue, type ArtStyleValue } from '@/lib/constants'
 import { resolveArtStyleForGeneration } from '@/lib/art-style-generation'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
 import { submitTask } from '@/lib/task/submitter'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 import { assertVisionInputSupported, createVisualVersionHash } from '@/lib/visual-quality'
-import { createCreativeQualityHash, type GenerationSnapshot } from '@/lib/creative-quality/contracts'
+import type { GenerationSnapshot } from '@/lib/creative-quality/contracts'
 import { createOptionalGenerationSnapshotArtifact } from '@/lib/creative-quality/runtime-artifacts'
-import {
-  ASSET_PROMPT_TEMPLATE_ID,
-  buildAssetImageGenerationSnapshot,
-  buildAssetPromptSpec,
-  compileAssetImagePrompt,
-} from '@/lib/prompt-compiler/asset-prompt-compiler'
-import {
-  createAssetVisualFactPreparationHash,
-  findReusableAssetVisualFactOptimization,
-  resolveAssetVisualFactsWithAI,
-} from '@/lib/prompt-compiler/asset-visual-fact-extractor'
 import { reportTaskProgress } from '../shared'
 import {
   assertTaskActive,
   getProjectModels,
+  toSignedUrlIfCos,
 } from '../utils'
 import {
   AnyObj,
@@ -31,6 +21,11 @@ import {
 } from './image-task-handler-shared'
 import { buildLocationAssetTargetSpec } from './visual-quality-review-helpers'
 import { scheduleReadyBackfilledPanelImageTasks } from '@/lib/visual-production/panel-backfill-resume'
+import {
+  attachPreparedPromptToSnapshot,
+  requirePreparedPrompt,
+  type PreparedGenerationPrompt,
+} from '@/lib/creative-quality/prepared-prompts'
 
 function resolvePayloadArtStyle(payload: AnyObj): ArtStyleValue | undefined {
   if (!Object.prototype.hasOwnProperty.call(payload, 'artStyle')) return undefined
@@ -84,14 +79,28 @@ function resolveRequestedLocationCount(payload: AnyObj): number | null {
   return normalizeImageGenerationCount('location', payload.count)
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function readPreparedPromptArtifactId(payload: AnyObj, imageId: string): string {
+  const byImageId = asRecord(payload.preparedPromptArtifactIds)
+  const indexed = byImageId[imageId]
+  if (typeof indexed === 'string' && indexed.trim()) return indexed.trim()
+  if (typeof payload.preparedPromptArtifactId === 'string' && payload.preparedPromptArtifactId.trim()) {
+    return payload.preparedPromptArtifactId.trim()
+  }
+  return ''
+}
+
 export async function handleLocationImageTask(job: Job<TaskJobData>) {
   const payload = (job.data.payload || {}) as AnyObj
   const projectId = job.data.projectId
   const userId = job.data.userId
   const db = prisma as unknown as LocationImageTaskDb
   const models = await getProjectModels(projectId, userId)
-  const modelId = models.locationModel
-  if (!modelId) throw new Error('Location model not configured')
   const requestedCount = resolveRequestedLocationCount(payload)
 
   const payloadArtStyle = resolvePayloadArtStyle(payload)
@@ -104,7 +113,6 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
     artStyleReferenceEnabled: models.artStyleReferenceEnabled,
     locale: job.data.locale,
   })
-  const styleReferenceImages = prependStyleReferenceImage([], resolvedArtStyle.referenceImage, resolvedArtStyle.referenceEnabled)
   const assetType = payload.type === 'prop' ? 'prop' : 'location'
 
   // targetId may be locationId (group) or locationImageId (single)
@@ -206,6 +214,22 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
   }
 
   const locationIds = Array.from(new Set(locationImages.map((it) => it.locationId)))
+  const preparedPrompts = new Map<string, PreparedGenerationPrompt>()
+  for (const item of locationImages) {
+    const preparedPromptArtifactId = readPreparedPromptArtifactId(payload, item.id)
+    if (!preparedPromptArtifactId) {
+      throw new Error(`PREPARED_PROMPT_REQUIRED: location image ${item.id}`)
+    }
+    const prepared = await requirePreparedPrompt({
+      artifactId: preparedPromptArtifactId,
+      projectId,
+      targetId: item.id,
+      refId: item.id,
+      kind: 'asset_image',
+      userId,
+    })
+    preparedPrompts.set(item.id, prepared)
+  }
   const generatedByLocationId = new Map<string, Array<{
     item: LocationImageRecord
     imageKey: string
@@ -218,65 +242,15 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
     // 优先用映射表中的名字，回退到 item.location?.name，最后才用默认值
     const name = locationNameMap[item.locationId] || item.location?.name || '场景'
     const promptBody = item.description || ''
-    if (!promptBody) continue
-    const assetFactInput = {
-      model: models.analysisModel,
-      assetKind: assetType as 'location' | 'prop',
-      assetName: name,
-      description: promptBody,
-      semanticType: locationMetaMap[item.locationId]?.semanticType,
-      locale: job.data.locale,
+    const prepared = preparedPrompts.get(item.id)
+    if (!prepared) {
+      throw new Error(`PREPARED_PROMPT_REQUIRED: location image ${item.id}`)
     }
-    const reusableAssetOptimization = await findReusableAssetVisualFactOptimization({
-      projectId,
-      targetId: item.id,
-      preparationHash: createAssetVisualFactPreparationHash(assetFactInput),
-    })
-    const resolvedAssetFacts = await resolveAssetVisualFactsWithAI({
-      userId,
-      projectId,
-      input: assetFactInput,
-      reusableOptimization: reusableAssetOptimization,
-    })
-    const promptSpec = buildAssetPromptSpec({
-      assetId: item.id,
-      assetKind: assetType,
-      assetName: name,
-      description: promptBody,
-      extractedFacts: resolvedAssetFacts.facts,
-      promptOptimization: resolvedAssetFacts.optimization,
-      semanticType: locationMetaMap[item.locationId]?.semanticType,
-      assetTier: locationMetaMap[item.locationId]?.assetTier,
-      usageScope: locationMetaMap[item.locationId]?.usageScope,
-      renderPurpose: assetType === 'prop' ? 'reference_sheet' : 'single_reference',
-      styleText: resolvedArtStyle.prompt,
-      styleReferenceInstruction: resolvedArtStyle.referenceInstruction,
-      availableSlotsRaw: item.availableSlots,
-      locale: job.data.locale,
-    })
-    const prompt = compileAssetImagePrompt({
-      spec: promptSpec,
-      locale: job.data.locale,
-    })
-    const aspectRatio = assetType === 'prop' ? PROP_IMAGE_RATIO : LOCATION_IMAGE_RATIO
-    const assetVersionHash = createCreativeQualityHash({
-      assetKind: assetType,
-      locationImageId: item.id,
-      locationId: item.locationId,
-      name,
-      description: promptBody,
-      availableSlots: item.availableSlots,
-      referenceImages: styleReferenceImages,
-    })
-    const promptSnapshot = buildAssetImageGenerationSnapshot({
-      targetType: 'LocationImage',
-      targetId: item.id,
-      modelKey: modelId,
-      promptTemplateId: ASSET_PROMPT_TEMPLATE_ID,
-      referenceImages: styleReferenceImages,
-      promptSpec,
-      compiledPrompt: prompt,
-      assetVersionHash,
+    const promptSnapshot = attachPreparedPromptToSnapshot(prepared.snapshot, prepared.artifactId)
+    const prompt = promptSnapshot.compiledPrompt
+    const promptReferenceImages = promptSnapshot.referenceImages.flatMap((referenceImage) => {
+      const signed = toSignedUrlIfCos(referenceImage, 3600)
+      return signed ? [signed] : []
     })
     promptSnapshots.push(promptSnapshot)
     await createOptionalGenerationSnapshotArtifact({
@@ -295,14 +269,17 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
     const imageKey = await generateProjectLabeledImageToStorage({
       job,
       userId,
-      modelId,
+      modelId: promptSnapshot.modelKey,
       prompt,
       label: name,
       targetId: item.id,
       keyPrefix: 'location',
       options: {
-        referenceImages: styleReferenceImages.length > 0 ? styleReferenceImages : undefined,
-        aspectRatio,
+        referenceImages: promptReferenceImages.length > 0 ? promptReferenceImages : undefined,
+        aspectRatio: typeof prepared.generationOptions.aspectRatio === 'string'
+          ? prepared.generationOptions.aspectRatio
+          : (assetType === 'prop' ? PROP_IMAGE_RATIO : LOCATION_IMAGE_RATIO),
+        generationOptions: prepared.generationOptions,
       },
     })
 

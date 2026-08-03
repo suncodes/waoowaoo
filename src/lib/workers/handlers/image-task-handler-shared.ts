@@ -123,6 +123,7 @@ async function generateImageToStorage(params: {
     referenceImages?: string[]
     aspectRatio?: string
     size?: string
+    generationOptions?: Record<string, string | number | boolean>
   }
   label?: string
 }) {
@@ -151,6 +152,7 @@ export async function generateCleanImageToStorage(params: {
     referenceImages?: string[]
     aspectRatio?: string
     size?: string
+    generationOptions?: Record<string, string | number | boolean>
   }
 }) {
   return await generateImageToStorage(params)
@@ -168,6 +170,7 @@ export async function generateProjectLabeledImageToStorage(params: {
     referenceImages?: string[]
     aspectRatio?: string
     size?: string
+    generationOptions?: Record<string, string | number | boolean>
   }
 }) {
   return await generateImageToStorage(params)

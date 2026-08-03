@@ -63,12 +63,28 @@ export interface PanelGenerationPromptPreview {
     warnings: string[]
 }
 
+export interface PreparedPanelGenerationPrompt {
+    artifactId: string
+    runId: string
+    kind: 'panel_image' | 'panel_video'
+    targetId: string
+    generationMode: string | null
+    generationOptions: Record<string, PanelGenerationPromptPreviewOptionValue>
+    preparedAt: string
+}
+
+export interface PanelGenerationPromptPreparation {
+    preview: PanelGenerationPromptPreview
+    prepared: PreparedPanelGenerationPrompt
+}
+
 export function usePanelGenerationPromptPreview(projectId: string) {
     return useMutation({
         mutationFn: async (payload: PanelGenerationPromptPreviewPayload) => {
             const response = await requestJsonWithError<{
                 success: boolean
                 preview: PanelGenerationPromptPreview
+                prepared: PreparedPanelGenerationPrompt
             }>(
                 `/api/novel-promotion/${projectId}/panel-generation-prompt-preview`,
                 {
@@ -78,7 +94,10 @@ export function usePanelGenerationPromptPreview(projectId: string) {
                 },
                 '获取最终提示词失败',
             )
-            return response.preview
+            return {
+                preview: response.preview,
+                prepared: response.prepared,
+            }
         },
     })
 }
@@ -86,7 +105,7 @@ export function usePanelGenerationPromptPreview(projectId: string) {
 export function useRegenerateProjectPanelImage(projectId: string) {
     const queryClient = useQueryClient()
     return useMutation({
-        mutationFn: async ({ panelId, count, forceNoReference }: { panelId: string; count?: number; forceNoReference?: boolean }) => {
+        mutationFn: async ({ panelId, count, forceNoReference, preparedPromptArtifactId }: { panelId: string; count?: number; forceNoReference?: boolean; preparedPromptArtifactId?: string }) => {
             const res = await apiFetch(`/api/novel-promotion/${projectId}/regenerate-panel-image`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -94,6 +113,7 @@ export function useRegenerateProjectPanelImage(projectId: string) {
                     panelId,
                     ...(count === undefined ? {} : { count }),
                     ...(forceNoReference ? { forceNoReference: true } : {}),
+                    ...(preparedPromptArtifactId ? { preparedPromptArtifactId } : {}),
                 }),
             })
             if (!res.ok) {

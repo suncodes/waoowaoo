@@ -31,6 +31,7 @@ import PanelGenerationPromptPreviewModal from './PanelGenerationPromptPreviewMod
 import GenerationPromptSnapshotModal from './GenerationPromptSnapshotModal'
 import StudioShotPlanEditor from './StudioShotPlanEditor'
 import { useGenerationPromptSnapshot } from './useGenerationPromptSnapshot'
+import { fetchLatestPreparedGenerationPrompts } from '@/lib/query/prepared-generation-prompts'
 import { currentImageUrl, flattenBoardItems, isPanelReadyForProduction, type BoardItem } from './studio-board-model'
 
 interface StudioBoardCanvasProps {
@@ -57,6 +58,8 @@ function BoardDetailPanel({
   const [promptPreviewOpen, setPromptPreviewOpen] = useState(false)
   const [promptPreview, setPromptPreview] = useState<PanelGenerationPromptPreview | null>(null)
   const [promptPreviewError, setPromptPreviewError] = useState<string | null>(null)
+  const [preparedPromptArtifactId, setPreparedPromptArtifactId] = useState<string | null>(null)
+  const [preparedPromptOpen, setPreparedPromptOpen] = useState(false)
   const [actualPromptOpen, setActualPromptOpen] = useState(false)
   const saveState = controller.saveStateByPanel[item.panel.id]
   const candidates = controller.getPanelCandidates(item.sourcePanel)
@@ -98,6 +101,26 @@ function BoardDetailPanel({
     source: 'panel',
     panelId: item.panel.id,
   })
+  const preparedPromptSnapshot = useGenerationPromptSnapshot({
+    isOpen: preparedPromptOpen,
+    projectId,
+    artifactId: preparedPromptArtifactId,
+    source: 'panel',
+    panelId: item.panel.id,
+  })
+  useEffect(() => {
+    let cancelled = false
+    setPreparedPromptArtifactId(null)
+    void fetchLatestPreparedGenerationPrompts(projectId, [{
+      kind: 'panel_image',
+      targetId: item.panel.id,
+    }])
+      .then((prepared) => {
+        if (!cancelled) setPreparedPromptArtifactId(prepared[0]?.artifactId || null)
+      })
+      .catch(() => undefined)
+    return () => { cancelled = true }
+  }, [item.panel.id, projectId])
   const confirmedCandidateIndex = candidates
     ? resolveConfirmedCandidateIndex(item.sourcePanel, candidates.candidates)
     : -1
@@ -109,6 +132,7 @@ function BoardDetailPanel({
       : !qualityState && selectedCandidateUrl === item.panel.imageUrl
   )
   const update = (updates: Partial<PanelEditData>) => {
+    setPreparedPromptArtifactId(null)
     controller.handlePanelUpdate(item.panel.id, item.panel, updates)
   }
   const saveCurrentPanel = async (): Promise<boolean> => {
@@ -122,11 +146,18 @@ function BoardDetailPanel({
   }
   const regenerateCurrentPanelImage = async (forceNoReference: boolean) => {
     if (!await saveCurrentPanel()) return
+    if (!preparedPromptArtifactId) {
+      window.alert('请先固定提示词，再提交分镜图片生成。')
+      return
+    }
     await controller.regeneratePanelImage(
       item.panel.id,
       2,
       false,
-      forceNoReference ? { forceNoReference: true } : undefined,
+      {
+        ...(forceNoReference ? { forceNoReference: true } : {}),
+        preparedPromptArtifactId,
+      },
     )
   }
   const openImagePromptPreview = async () => {
@@ -134,7 +165,7 @@ function BoardDetailPanel({
     setPromptPreview(null)
     setPromptPreviewError(null)
     try {
-      const preview = await promptPreviewMutation.mutateAsync({
+      const result = await promptPreviewMutation.mutateAsync({
         panelId: item.panel.id,
         storyboardId: item.storyboard.id,
         panelIndex: item.panel.panelIndex,
@@ -156,7 +187,8 @@ function BoardDetailPanel({
           },
         },
       })
-      setPromptPreview(preview)
+      setPromptPreview(result.preview)
+      setPreparedPromptArtifactId(result.prepared.artifactId)
     } catch (error) {
       setPromptPreviewError(error instanceof Error ? error.message : '获取最终提示词失败')
     }
@@ -200,8 +232,8 @@ function BoardDetailPanel({
         </div>
 
         <div className="grid grid-cols-2 gap-2">
-          <StudioButton size="sm" icon="sparkles" loading={isSubmitting} onClick={() => { void regenerateCurrentPanelImage(false) }} disabled={disabled}>
-            生成候选图
+          <StudioButton size="sm" icon="sparkles" loading={isSubmitting} onClick={() => { void regenerateCurrentPanelImage(false) }} disabled={disabled || !preparedPromptArtifactId}>
+            按已固定提示词生成
           </StudioButton>
           {referenceBlocked ? (
             <StudioButton
@@ -209,8 +241,9 @@ function BoardDetailPanel({
               variant="secondary"
               icon="sparkles"
               onClick={() => { void regenerateCurrentPanelImage(true) }}
+              disabled={!preparedPromptArtifactId}
             >
-              无参考生成
+              按已固定提示词无参考生成
             </StudioButton>
           ) : null}
           <StudioButton
@@ -237,7 +270,16 @@ function BoardDetailPanel({
             loading={promptPreviewMutation.isPending}
             onClick={() => { void openImagePromptPreview() }}
           >
-            预览本次提示词
+            固定并查看提示词
+          </StudioButton>
+          <StudioButton
+            size="sm"
+            variant="secondary"
+            icon="info"
+            onClick={() => setPreparedPromptOpen(true)}
+            disabled={!preparedPromptArtifactId}
+          >
+            查看已固定提示词
           </StudioButton>
           <StudioButton
             size="sm"
@@ -504,6 +546,16 @@ function BoardDetailPanel({
         onClose={() => setActualPromptOpen(false)}
       />
     ) : null}
+    {preparedPromptOpen ? (
+      <GenerationPromptSnapshotModal
+        title="分镜图片已固定提示词"
+        contextLabel={`镜头 ${item.globalNumber} · 生成将严格使用该固定版本`}
+        snapshot={preparedPromptSnapshot.snapshot}
+        loading={preparedPromptSnapshot.loading}
+        errorMessage={preparedPromptSnapshot.errorMessage}
+        onClose={() => setPreparedPromptOpen(false)}
+      />
+    ) : null}
     </>
   )
 }
@@ -520,6 +572,10 @@ function StudioBoardRuntime({
   const [selectedPanelId, setSelectedPanelId] = useState('')
   const activeStep: 'plan' | 'images' = model.activeMode === 'storyboard-images' ? 'images' : 'plan'
   const [reviewMode, setReviewMode] = useState(false)
+  const [isBatchPreparingPrompts, setIsBatchPreparingPrompts] = useState(false)
+  const [isBatchGeneratingImages, setIsBatchGeneratingImages] = useState(false)
+  const [preparedPromptArtifactIds, setPreparedPromptArtifactIds] = useState<Record<string, string>>({})
+  const batchPromptPreparationMutation = usePanelGenerationPromptPreview(projectId)
   const controller = useStoryboardStageController({
     projectId,
     episodeId,
@@ -554,7 +610,13 @@ function StudioBoardRuntime({
     })
   }).length
   const productionReady = items.length > 0 && blockedProductionCount === 0 && controller.runningCount === 0
-  const imageGenerationBlockLabel = '生成缺失图片'
+  const missingImageItems = items.filter((item) => {
+    const candidates = controller.getPanelCandidates(item.sourcePanel)
+    return !currentImageUrl(item, candidates)
+      && !item.sourcePanel.imageTaskRunning
+      && !controller.submittingPanelImageIds.has(item.panel.id)
+      && !controller.modifyingPanels.has(item.panel.id)
+  })
   const productionBlockLabel = productionReady ? '确认并进入制作' : `${blockedProductionCount} 个镜头待确认`
 
   const modalRuntime = useStoryboardModalRuntime({
@@ -596,6 +658,83 @@ function StudioBoardRuntime({
     if (nextItem) setSelectedPanelId(nextItem.panel.id)
   }
 
+  const prepareMissingImagePrompts = async () => {
+    if (missingImageItems.length === 0 || isBatchPreparingPrompts || isBatchGeneratingImages) return
+    if (!window.confirm(`将为 ${missingImageItems.length} 个待生成镜头固定图片提示词。固定后可逐镜头查看，再按固定版本批量生成。是否继续？`)) {
+      return
+    }
+
+    setIsBatchPreparingPrompts(true)
+    try {
+      const artifactIds: Record<string, string> = {}
+      const failedNumbers: number[] = []
+      for (const item of missingImageItems) {
+        try {
+          const result = await batchPromptPreparationMutation.mutateAsync({
+            panelId: item.panel.id,
+            storyboardId: item.storyboard.id,
+            panelIndex: item.panel.panelIndex,
+            mode: 'image',
+          })
+          artifactIds[item.panel.id] = result.prepared.artifactId
+        } catch {
+          failedNumbers.push(item.globalNumber)
+        }
+      }
+      setPreparedPromptArtifactIds((current) => ({ ...current, ...artifactIds }))
+      if (failedNumbers.length > 0) {
+        window.alert(`以下镜头提示词固定失败：${failedNumbers.map((number) => `镜头 ${number}`).join('、')}`)
+      }
+    } finally {
+      setIsBatchPreparingPrompts(false)
+    }
+  }
+
+  const generateMissingImages = async () => {
+    if (missingImageItems.length === 0 || isBatchPreparingPrompts || isBatchGeneratingImages) return
+    setIsBatchGeneratingImages(true)
+    try {
+      const persistedPrompts = await fetchLatestPreparedGenerationPrompts(
+        projectId,
+        missingImageItems.map((item) => ({
+          kind: 'panel_image' as const,
+          targetId: item.panel.id,
+        })),
+      )
+      const artifactIds = {
+        ...preparedPromptArtifactIds,
+        ...Object.fromEntries(persistedPrompts.map((prompt) => [prompt.targetId, prompt.artifactId])),
+      }
+      const targets = missingImageItems.flatMap((item) => {
+        const preparedPromptArtifactId = artifactIds[item.panel.id]
+        return preparedPromptArtifactId ? [{ item, preparedPromptArtifactId }] : []
+      })
+      const missingNumbers = missingImageItems
+        .filter((item) => !artifactIds[item.panel.id])
+        .map((item) => item.globalNumber)
+      if (targets.length === 0) {
+        window.alert('请先批量固定提示词，再提交分镜图片生成。')
+        return
+      }
+      if (!window.confirm(`将按已固定提示词为 ${targets.length} 个镜头生成候选图。${missingNumbers.length > 0 ? `另有 ${missingNumbers.length} 个镜头未固定提示词并会跳过。` : ''}是否继续？`)) {
+        return
+      }
+      await Promise.all(targets.map(({ item, preparedPromptArtifactId }) => controller.regeneratePanelImage(
+        item.panel.id,
+        2,
+        false,
+        { preparedPromptArtifactId },
+      )))
+      if (missingNumbers.length > 0) {
+        window.alert(`以下镜头尚未固定提示词，未提交生成：${missingNumbers.map((number) => `镜头 ${number}`).join('、')}`)
+      }
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : '批量提交分镜图片生成失败')
+    } finally {
+      setIsBatchGeneratingImages(false)
+    }
+  }
+
   return (
     <div className="space-y-4">
       {model.workflow.storyboardGenerating ? (
@@ -616,11 +755,22 @@ function StudioBoardRuntime({
               <StudioButton
                 size="sm"
                 variant="secondary"
-                icon="sparkles"
-                loading={controller.isEpisodeBatchSubmitting}
-                onClick={() => { void controller.handleGenerateAllPanels() }}
+                icon="info"
+                loading={isBatchPreparingPrompts}
+                onClick={() => { void prepareMissingImagePrompts() }}
+                disabled={missingImageItems.length === 0 || isBatchGeneratingImages}
               >
-                {imageGenerationBlockLabel}
+                批量固定图片提示词（{missingImageItems.length}）
+              </StudioButton>
+              <StudioButton
+                size="sm"
+                variant="secondary"
+                icon="sparkles"
+                loading={isBatchGeneratingImages}
+                onClick={() => { void generateMissingImages() }}
+                disabled={missingImageItems.length === 0 || isBatchPreparingPrompts}
+              >
+                按已固定提示词批量生成
               </StudioButton>
               <StudioButton size="sm" icon="check" onClick={() => onNavigate('videos')} disabled={!productionReady}>
                 {productionBlockLabel}

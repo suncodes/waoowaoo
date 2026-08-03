@@ -72,6 +72,10 @@ const prismaMock = vi.hoisted(() => ({
   },
 }))
 
+const preparedPromptMock = vi.hoisted(() => ({
+  requirePreparedPrompt: vi.fn(),
+}))
+
 vi.mock('@/lib/api-auth', () => ({
   requireProjectAuthLight: vi.fn(async () => ({
     session: { user: { id: 'user-1' } },
@@ -99,10 +103,27 @@ vi.mock('@/lib/config-service', () => ({
     resolution: '720p',
   })),
 }))
+vi.mock('@/lib/creative-quality/prepared-prompts', () => preparedPromptMock)
 
 describe('api specific - batch first-last-frame video generation', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    preparedPromptMock.requirePreparedPrompt.mockImplementation(async (input: { artifactId: string }) => ({
+      artifactId: input.artifactId,
+      kind: 'panel_video',
+      targetId: 'panel-1',
+      refId: 'panel-1',
+      generationMode: 'firstlastframe',
+      generationOptions: {
+        generationMode: 'firstlastframe',
+        resolution: '720p',
+        duration: input.artifactId.includes('duration-4') ? 4 : 8,
+      },
+      snapshot: {
+        modelKey: 'ark::doubao-seedance-2-0-260128',
+        referenceImages: ['frame-1.png', 'frame-2.png'],
+      },
+    }))
   })
 
   it('submits only linked adjacent pairs and builds per-panel first-last-frame payloads', async () => {
@@ -114,6 +135,9 @@ describe('api specific - batch first-last-frame video generation', () => {
         all: true,
         episodeId: 'episode-1',
         batchMode: 'firstlastframe',
+        preparedPromptArtifactIds: {
+          'panel-1': 'prepared-panel-1',
+        },
         videoModel: 'ark::doubao-seedance-2-0-260128',
         generationOptions: {
           generationMode: 'firstlastframe',
@@ -139,14 +163,9 @@ describe('api specific - batch first-last-frame video generation', () => {
     expect(submitTaskMock).toHaveBeenCalledWith(expect.objectContaining({
       targetId: 'panel-1',
       payload: expect.objectContaining({
+        preparedPromptArtifactId: 'prepared-panel-1',
         storyboardId: 'storyboard-1',
         panelIndex: 0,
-        firstLastFrame: {
-          lastFrameStoryboardId: 'storyboard-1',
-          lastFramePanelIndex: 1,
-          flModel: 'ark::doubao-seedance-2-0-260128',
-          customPrompt: '从近景自然过渡到远景',
-        },
         generationOptions: expect.objectContaining({
           generationMode: 'firstlastframe',
           resolution: '720p',
@@ -165,6 +184,9 @@ describe('api specific - batch first-last-frame video generation', () => {
         all: true,
         episodeId: 'episode-1',
         batchMode: 'firstlastframe',
+        preparedPromptArtifactIds: {
+          'panel-1': 'prepared-panel-1-duration-4',
+        },
         videoModel: 'ark::doubao-seedance-2-0-260128',
         generationOptions: {
           generationMode: 'firstlastframe',
@@ -181,6 +203,7 @@ describe('api specific - batch first-last-frame video generation', () => {
     expect(submitTaskMock).toHaveBeenCalledWith(expect.objectContaining({
       targetId: 'panel-1',
       payload: expect.objectContaining({
+        preparedPromptArtifactId: 'prepared-panel-1-duration-4',
         generationOptions: expect.objectContaining({
           generationMode: 'firstlastframe',
           resolution: '720p',

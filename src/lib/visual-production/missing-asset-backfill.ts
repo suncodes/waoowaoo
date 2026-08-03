@@ -8,6 +8,7 @@ import { ensureProjectLocationImageSlots } from '@/lib/image-generation/location
 import { PRIMARY_APPEARANCE_INDEX } from '@/lib/constants'
 import { TASK_TYPE } from '@/lib/task/types'
 import { withTaskUiPayload } from '@/lib/task/ui-payload'
+import { prepareProjectAssetImagePrompts } from '@/lib/assets/services/project-asset-prompt-preparation'
 import type { Locale } from '@/i18n/routing'
 import type { PanelAssetBindingPlan } from './binding-plan'
 import type { PanelGenerationRouteDecision } from './panel-generation-router'
@@ -395,6 +396,18 @@ export async function ensureMissingAssetBackfill(params: {
           imageModel: modelConfig.characterModel,
           basePayload: payloadBase,
         })
+        const preparedPrompts = await prepareProjectAssetImagePrompts({
+          projectId: params.projectId,
+          userId: params.userId,
+          locale: params.locale,
+          kind: 'character',
+          assetId: asset.id,
+          targetType: 'CharacterAppearance',
+          targetId: appearance.id,
+          payload: billingPayload,
+        })
+        const prepared = preparedPrompts[0]
+        if (!prepared) throw new Error('PREPARED_PROMPT_REQUIRED: asset backfill character prompt')
         const { submitTask } = await import('@/lib/task/submitter')
         const submitted = await submitTask({
           userId: params.userId,
@@ -403,7 +416,12 @@ export async function ensureMissingAssetBackfill(params: {
           type: TASK_TYPE.IMAGE_CHARACTER,
           targetType: 'CharacterAppearance',
           targetId: appearance.id,
-          payload: withTaskUiPayload(billingPayload, {
+          payload: withTaskUiPayload({
+            ...billingPayload,
+            imageModel: prepared.snapshot.modelKey,
+            generationOptions: prepared.generationOptions,
+            preparedPromptArtifactIds: { 0: prepared.artifactId },
+          }, {
             intent: 'generate',
             hasOutputAtStart: false,
             source: 'asset_backfill',
@@ -525,6 +543,21 @@ export async function ensureMissingAssetBackfill(params: {
         imageModel: modelConfig.locationModel,
         basePayload: payloadBase,
       })
+      const preparedPrompts = await prepareProjectAssetImagePrompts({
+        projectId: params.projectId,
+        userId: params.userId,
+        locale: params.locale,
+        kind: request.kind,
+        assetId: asset.id,
+        targetType: 'LocationImage',
+        targetId: targetImageId,
+        payload: {
+          ...billingPayload,
+          imageIndex: asset.images?.find((image) => image.id === targetImageId)?.imageIndex,
+        },
+      })
+      const prepared = preparedPrompts[0]
+      if (!prepared) throw new Error('PREPARED_PROMPT_REQUIRED: asset backfill location prompt')
       const { submitTask } = await import('@/lib/task/submitter')
       const submitted = await submitTask({
         userId: params.userId,
@@ -533,7 +566,12 @@ export async function ensureMissingAssetBackfill(params: {
         type: TASK_TYPE.IMAGE_LOCATION,
         targetType: 'LocationImage',
         targetId: targetImageId,
-        payload: withTaskUiPayload(billingPayload, {
+        payload: withTaskUiPayload({
+          ...billingPayload,
+          imageModel: prepared.snapshot.modelKey,
+          generationOptions: prepared.generationOptions,
+          preparedPromptArtifactIds: { [targetImageId]: prepared.artifactId },
+        }, {
           intent: 'generate',
           hasOutputAtStart: false,
           source: 'asset_backfill',

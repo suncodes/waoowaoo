@@ -69,6 +69,8 @@ export interface GenerationSnapshot {
   optimization?: GenerationPromptOptimization
   promptSpec: unknown
   compiledPrompt: string
+  /** Immutable prepared prompt artifact consumed by this generation, when applicable. */
+  preparedPromptArtifactId?: string
   createdAt: string
 }
 
