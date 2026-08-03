@@ -39,6 +39,26 @@ type PendingAction = {
   label: string
 } | null
 
+type BatchGenerationPlan = {
+  item: VisualKitItem
+  asset: VisualAssetSummary
+  prompts: PreparedAssetPrompt[]
+  count: number
+}
+
+type BatchGenerationIssue = {
+  name: string
+  reason: string
+}
+
+type BatchGenerationSummary = {
+  submitted: string[]
+  skipped: BatchGenerationIssue[]
+  failed: BatchGenerationIssue[]
+}
+
+const BATCH_SUBMISSION_CONCURRENCY = 3
+
 function assetDescription(asset: VisualAssetSummary) {
   if (asset.kind === 'character') return asset.introduction || asset.variants[0]?.description || ''
   return asset.summary || asset.variants[0]?.description || ''
@@ -54,6 +74,10 @@ function assetKindLabel(kind: VisualKitItem['kind']) {
   if (kind === 'vehicle') return '载具'
   if (kind === 'book_cover') return '书封'
   return '图表'
+}
+
+function batchIssueMessage(issues: BatchGenerationIssue[]) {
+  return issues.slice(0, 5).map((issue) => `${issue.name}（${issue.reason}）`).join('、')
 }
 
 function useVisualKitActions(projectId: string) {
@@ -120,6 +144,7 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
   const [error, setError] = useState('')
   const [selectedId, setSelectedId] = useState('')
   const [preparedPromptsByAsset, setPreparedPromptsByAsset] = useState<Record<string, PreparedAssetPrompt[]>>({})
+  const [batchGenerationSummary, setBatchGenerationSummary] = useState<BatchGenerationSummary | null>(null)
   const visualAssets = assetsQuery.data.filter((asset): asset is VisualAssetSummary => asset.family === 'visual')
   const contentMeta = useMemo(() => readContentArtifactMeta(contentPlan), [contentPlan])
   const visualMeta = useMemo(() => readVisualArtifactMeta(productionBible), [productionBible])
@@ -139,8 +164,8 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
   const availableAssetIds = useMemo(() => new Set(visualAssets.map((asset) => asset.id)), [visualAssets])
   const missingRequirementCount = [...requiredAssetIds].filter((assetId) => !availableAssetIds.has(assetId)).length
   const unresolvedCount = items.filter((item) => item.status !== 'locked').length + missingRequirementCount
-  const batchGenerationTargets = useMemo(() => items.filter((item) => {
-    if (!item.asset || !item.asset.capabilities.canGenerate) return false
+  const batchGenerationTargets = useMemo(() => items.filter((item): item is VisualKitItem & { asset: VisualAssetSummary } => {
+    if (!item.asset?.capabilities.canGenerate) return false
     const hasAnyRender = item.asset.variants.some((variant) => variant.renders.some((render) => !!render.imageUrl))
     return !hasAnyRender && !resolveVisualAssetWorkflowPresentation(item.asset).blocksConfirmation
   }), [items])
@@ -193,11 +218,11 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
       `将为 ${batchGenerationTargets.length} 个待出图资产固定 3 张候选图提示词。固定后可先查看，再单独提交生成。是否继续？`,
     )
     if (!confirmed) return
+    setBatchGenerationSummary(null)
     await run('batch-prepare', `批量固定 ${batchGenerationTargets.length} 个资产的候选图提示词`, async () => {
       const failedNames: string[] = []
       const nextPreparedPrompts: Record<string, PreparedAssetPrompt[]> = {}
       for (const target of batchGenerationTargets) {
-        if (!target.asset) continue
         try {
           const payload = buildVisualAssetGeneratePayload(target.asset, 3)
           const preparation = await actionFor(target.asset).prepareGenerationPrompt(payload)
@@ -215,35 +240,59 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
 
   const batchGenerate = async () => {
     if (batchGenerationTargets.length === 0 || pending) return
-    const confirmed = window.confirm(
-      `将为已固定提示词的待出图资产分别创建候选图任务。未固定提示词的资产会被跳过，已有候选和已定稿资产不会被覆盖，是否继续？`,
-    )
-    if (!confirmed) return
-    await run('batch-generate', `按已固定提示词提交 ${batchGenerationTargets.length} 个资产的候选图`, async () => {
-      const failedNames: string[] = []
+    setBatchGenerationSummary(null)
+    await run('batch-generate', `读取 ${batchGenerationTargets.length} 个资产的已固定提示词`, async () => {
+      const plans: BatchGenerationPlan[] = []
+      const skipped: BatchGenerationIssue[] = []
+      const failed: BatchGenerationIssue[] = []
       for (const target of batchGenerationTargets) {
-        if (!target.asset) continue
         try {
-          const persistedPrompts = await loadPreparedAssetPrompts(projectId, target.asset)
-          const preparedPrompts = persistedPrompts.length > 0
-            ? persistedPrompts
-            : preparedPromptsByAsset[target.asset.id] || []
+          const cachedPrompts = preparedPromptsByAsset[target.asset.id] || []
+          const preparedPrompts = cachedPrompts.length > 0
+            ? cachedPrompts
+            : await loadPreparedAssetPrompts(projectId, target.asset)
           const count = preparedAssetImageCount(target.asset, preparedPrompts)
           if (count === 0) {
-            failedNames.push(`${target.name}（未固定提示词）`)
+            skipped.push({ name: target.name, reason: '未固定提示词' })
             continue
           }
-          await actionFor(target.asset).generate({
-            ...buildVisualAssetGeneratePayload(target.asset, count),
-            preparedPromptArtifactIds: buildPreparedPromptArtifactIds(target.asset, preparedPrompts),
-          })
-        } catch {
-          failedNames.push(target.name)
+          plans.push({ item: target, asset: target.asset, prompts: preparedPrompts, count })
+        } catch (cause) {
+          failed.push({ name: target.name, reason: cause instanceof Error ? cause.message : '读取提示词失败' })
         }
       }
-      if (failedNames.length > 0) {
-        throw new Error(`以下资产未提交：${failedNames.join('、')}`)
+
+      if (plans.length === 0) {
+        setBatchGenerationSummary({ submitted: [], skipped, failed })
+        throw new Error('没有可提交的资产：请先固定提示词，或检查提示词读取失败项。')
       }
+
+      const candidateCount = plans.reduce((total, plan) => total + plan.count, 0)
+      const confirmed = window.confirm(
+        `将按已固定提示词为 ${plans.length} 个资产提交 ${candidateCount} 张候选图任务。${skipped.length > 0 ? `另有 ${skipped.length} 个资产未固定提示词并会跳过。` : ''}已有候选和已定稿资产不会被覆盖，是否继续？`,
+      )
+      if (!confirmed) return
+
+      const submitted: string[] = []
+      for (let start = 0; start < plans.length; start += BATCH_SUBMISSION_CONCURRENCY) {
+        const currentPlans = plans.slice(start, start + BATCH_SUBMISSION_CONCURRENCY)
+        const results = await Promise.allSettled(currentPlans.map((plan) => actionFor(plan.asset).generate({
+          ...buildVisualAssetGeneratePayload(plan.asset, plan.count),
+          preparedPromptArtifactIds: buildPreparedPromptArtifactIds(plan.asset, plan.prompts),
+        })))
+        results.forEach((result, index) => {
+          const plan = currentPlans[index]
+          if (result.status === 'fulfilled') {
+            submitted.push(plan.item.name)
+            return
+          }
+          failed.push({
+            name: plan.item.name,
+            reason: result.reason instanceof Error ? result.reason.message : '提交生成任务失败',
+          })
+        })
+      }
+      setBatchGenerationSummary({ submitted, skipped, failed })
     })
   }
 
@@ -302,6 +351,18 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
       {error ? (
         <div className="rounded-md border border-rose-400/30 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
           {error}
+        </div>
+      ) : null}
+
+      {batchGenerationSummary ? (
+        <div className="rounded-md border border-cyan-400/30 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100">
+          <div>批量生成已提交 {batchGenerationSummary.submitted.length} 个资产任务。</div>
+          {batchGenerationSummary.skipped.length > 0 ? (
+            <div className="mt-1 text-amber-100">跳过 {batchGenerationSummary.skipped.length} 项：{batchIssueMessage(batchGenerationSummary.skipped)}</div>
+          ) : null}
+          {batchGenerationSummary.failed.length > 0 ? (
+            <div className="mt-1 text-rose-100">失败 {batchGenerationSummary.failed.length} 项：{batchIssueMessage(batchGenerationSummary.failed)}</div>
+          ) : null}
         </div>
       ) : null}
 
