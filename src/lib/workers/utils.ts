@@ -211,8 +211,9 @@ export async function resolveImageSourceFromGeneration(
     },
   })
 
+  const { generationOptions = {}, ...providerOptions } = params.options || {}
   const runtimeSelections: Record<string, string | number | boolean> = {}
-  for (const [key, value] of Object.entries(params.options?.generationOptions || {})) {
+  for (const [key, value] of Object.entries(generationOptions)) {
     if (key !== 'aspectRatio') runtimeSelections[key] = value
   }
   if (typeof params.options?.resolution === 'string') {
@@ -240,7 +241,7 @@ export async function resolveImageSourceFromGeneration(
   const result = await withLogContext(
     { projectId: job.data.projectId, taskId: job.data.taskId, userId: params.userId },
     () => generateImage(params.userId, params.modelId, params.prompt, {
-      ...params.options,
+      ...providerOptions,
       ...capabilityOptions,
     }),
   )

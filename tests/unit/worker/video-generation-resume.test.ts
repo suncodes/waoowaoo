@@ -22,6 +22,12 @@ const generatorApiMock = vi.hoisted(() => ({
   generateVideo: vi.fn(),
 }))
 
+const configServiceMock = vi.hoisted(() => ({
+  getProjectModelConfig: vi.fn(),
+  getUserModelConfig: vi.fn(),
+  resolveProjectModelCapabilityGenerationOptions: vi.fn(),
+}))
+
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('@/lib/task/service', () => taskServiceMock)
 vi.mock('@/lib/async-poll', () => asyncPollMock)
@@ -33,11 +39,7 @@ vi.mock('@/lib/storage', () => ({
 }))
 vi.mock('@/lib/fonts', () => ({ initializeFonts: vi.fn(), createLabelSVG: vi.fn() }))
 vi.mock('@/lib/media-process', () => ({ processMediaResult: vi.fn() }))
-vi.mock('@/lib/config-service', () => ({
-  getProjectModelConfig: vi.fn(),
-  getUserModelConfig: vi.fn(),
-  resolveProjectModelCapabilityGenerationOptions: vi.fn(),
-}))
+vi.mock('@/lib/config-service', () => configServiceMock)
 
 import { resolveImageSourceFromGeneration, resolveVideoSourceFromGeneration } from '@/lib/workers/utils'
 
@@ -60,6 +62,7 @@ function buildJob(): Job<TaskJobData> {
 describe('worker utils video generation resume', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    configServiceMock.resolveProjectModelCapabilityGenerationOptions.mockResolvedValue({})
   })
 
   it('continues polling from existing externalId without re-submitting generation', async () => {
@@ -113,5 +116,40 @@ describe('worker utils video generation resume', () => {
     expect(prismaMock.task.findUnique).not.toHaveBeenCalled()
     expect(asyncPollMock.pollAsyncTask).not.toHaveBeenCalled()
     expect(generatorApiMock.generateImage).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps prepared generation options internal to capability resolution', async () => {
+    configServiceMock.resolveProjectModelCapabilityGenerationOptions.mockResolvedValueOnce({ resolution: '3K' })
+    generatorApiMock.generateImage.mockResolvedValueOnce({
+      success: true,
+      imageUrl: 'https://ark.test/new-image.png',
+    })
+
+    await resolveImageSourceFromGeneration(buildJob(), {
+      userId: 'user-1',
+      modelId: 'ark::doubao-seedream-4-5-251128',
+      prompt: '生成道具参考图',
+      options: {
+        aspectRatio: '3:2',
+        generationOptions: {
+          aspectRatio: '3:2',
+          resolution: '3K',
+        },
+      },
+      allowTaskExternalIdResume: false,
+    })
+
+    expect(configServiceMock.resolveProjectModelCapabilityGenerationOptions).toHaveBeenCalledWith(expect.objectContaining({
+      runtimeSelections: { resolution: '3K' },
+    }))
+    expect(generatorApiMock.generateImage).toHaveBeenCalledWith(
+      'user-1',
+      'ark::doubao-seedream-4-5-251128',
+      '生成道具参考图',
+      {
+        aspectRatio: '3:2',
+        resolution: '3K',
+      },
+    )
   })
 })
