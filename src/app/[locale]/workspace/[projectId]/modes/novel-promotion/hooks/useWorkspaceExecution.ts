@@ -11,6 +11,7 @@ import { resolveBookGuideSeed } from '@/lib/book-guide/seed'
 import { isBookGuideProfile, resolveVideoProfile } from '@/lib/video-profile'
 import { useWorkspacePlanningFlows } from './useWorkspacePlanningFlows'
 import { readVisualArtifactMeta } from '@/lib/creation-workspace/artifact-state'
+import type { StoryboardCompletionStage, StoryboardGenerationOptions } from '../WorkspaceStageRuntimeContext'
 
 interface UseWorkspaceExecutionParams {
   projectId: string
@@ -78,6 +79,7 @@ export function useWorkspaceExecution({
   const handledScriptToStoryboardRunIdsRef = useRef<Set<string>>(new Set())
   const storyToScriptWasActiveRef = useRef(false)
   const scriptToStoryboardWasActiveRef = useRef(false)
+  const storyboardCompletionStageRef = useRef<StoryboardCompletionStage>('storyboard')
 
   const finalizeStoryToScriptSuccess = useCallback(async (runId: string) => {
     const normalizedRunId = runId.trim()
@@ -103,6 +105,8 @@ export function useWorkspaceExecution({
     if (!normalizedRunId) return
     if (handledScriptToStoryboardRunIdsRef.current.has(normalizedRunId)) return
     handledScriptToStoryboardRunIdsRef.current.add(normalizedRunId)
+    const completionStage = storyboardCompletionStageRef.current
+    storyboardCompletionStageRef.current = 'storyboard'
 
     try {
       await onRefresh()
@@ -113,7 +117,7 @@ export function useWorkspaceExecution({
       })
     }
 
-    onStageChange('storyboard')
+    onStageChange(completionStage)
   }, [onRefresh, onStageChange])
 
   const handleGenerateTTS = useCallback(async () => {
@@ -253,7 +257,7 @@ export function useWorkspaceExecution({
     }
   }, [episodeId, novelText, onRefresh, onStageChange, planning, t])
 
-  const runScriptToStoryboardFlow = useCallback(async (options?: { visualApprovalConfirmed?: boolean }) => {
+  const runScriptToStoryboardFlow = useCallback(async (options?: StoryboardGenerationOptions) => {
     if (!episodeId) {
       alert(t('execution.selectEpisode'))
       return
@@ -268,6 +272,7 @@ export function useWorkspaceExecution({
       ) {
         throw new Error(t('execution.visualApprovalRequired'))
       }
+      storyboardCompletionStageRef.current = options?.completionStage || 'storyboard'
       setTransitionProgress({ message: t('execution.scriptToStoryboardRunning'), step: 'streaming' })
       const runResult = await scriptToStoryboardStream.run({
         episodeId,
@@ -280,6 +285,7 @@ export function useWorkspaceExecution({
       }
       await finalizeScriptToStoryboardSuccess(runResult.runId || '')
     } catch (err: unknown) {
+      storyboardCompletionStageRef.current = 'storyboard'
       if (isAbortError(err)) {
         _ulogInfo(t('execution.requestAborted'))
         return

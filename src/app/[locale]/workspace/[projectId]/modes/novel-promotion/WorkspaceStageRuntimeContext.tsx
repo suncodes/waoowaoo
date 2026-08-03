@@ -18,6 +18,13 @@ export interface WorkspaceStageVideoModelOption {
   videoPricingTiers?: VideoPricingTier[]
 }
 
+export type StoryboardCompletionStage = 'storyboard' | 'voice'
+
+export interface StoryboardGenerationOptions {
+  visualApprovalConfirmed?: boolean
+  completionStage?: StoryboardCompletionStage
+}
+
 export interface WorkspaceStageRuntimeValue {
   assetsLoading: boolean
   isAssetAnalysisRunning: boolean
@@ -60,7 +67,7 @@ export interface WorkspaceStageRuntimeValue {
   onAnalyzeAssets: () => Promise<void>
   onClipUpdate: (clipId: string, data: unknown) => Promise<void>
   onOpenAssetLibrary: () => void
-  onRunScriptToStoryboard: (options?: { visualApprovalConfirmed?: boolean }) => Promise<void>
+  onRunScriptToStoryboard: (options?: StoryboardGenerationOptions) => Promise<void>
   onStageChange: (stage: string) => void
   onGenerateVideo: (
     storyboardId: string,

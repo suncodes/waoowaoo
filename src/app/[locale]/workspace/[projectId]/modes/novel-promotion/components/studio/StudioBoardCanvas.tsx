@@ -807,7 +807,7 @@ function StudioBoardRuntime({
 
         {activeStep === 'plan' ? (
           <div className="p-4">
-            <StudioShotPlanEditor model={model} workflowState={workflowState} onStoryboardReady={() => onNavigate('voice')} />
+            <StudioShotPlanEditor model={model} workflowState={workflowState} />
           </div>
         ) : (
           <>

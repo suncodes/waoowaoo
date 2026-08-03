@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useMemo, useState } from 'react'
-import type { WorkspaceStageRuntimeValue } from '../WorkspaceStageRuntimeContext'
+import type { StoryboardGenerationOptions, WorkspaceStageRuntimeValue } from '../WorkspaceStageRuntimeContext'
 import type { CapabilitySelections, ModelCapabilities } from '@/lib/model-config-contract'
 import type { VideoPricingTier } from '@/lib/model-pricing/video-tier'
 import type { BatchVideoGenerationParams, VideoGenerationOptions } from '../components/video'
@@ -38,7 +38,7 @@ interface UseWorkspaceStageRuntimeParams {
   runStoryToScriptFlow: () => Promise<void>
   runContentUnitRewrite: (unitId: string, instruction?: string) => Promise<void>
   runVisualPlanFlow: (instruction?: string, options?: { forceRegenerate?: boolean }) => Promise<void>
-  runScriptToStoryboardFlow: (options?: { visualApprovalConfirmed?: boolean }) => Promise<void>
+  runScriptToStoryboardFlow: (options?: StoryboardGenerationOptions) => Promise<void>
   handleAnalyzeAssets: () => Promise<void>
   handleUpdateClip: (clipId: string, updates: Record<string, unknown>) => Promise<void>
   openAssetLibrary: (characterId?: string | null, refreshAssets?: boolean) => void

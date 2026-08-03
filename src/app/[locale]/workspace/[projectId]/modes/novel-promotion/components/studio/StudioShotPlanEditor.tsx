@@ -92,13 +92,11 @@ function planStatusLabel(status: WorkspaceArtifactStatus) {
 interface StudioShotPlanEditorProps {
   model: StudioWorkspaceModel
   workflowState: CreationWorkflowState
-  onStoryboardReady: () => void
 }
 
 export default function StudioShotPlanEditor({
   model,
   workflowState,
-  onStoryboardReady,
 }: StudioShotPlanEditorProps) {
   const runtime = useWorkspaceStageRuntime()
   const { clips, productionBible } = useWorkspaceEpisodeStageData()
@@ -189,10 +187,13 @@ export default function StudioShotPlanEditor({
       await runtime.onApproveStage('visual-design')
       if (model.workflow.isBookGuide) {
         await runtime.onMaterializeGuideStoryboard()
+        runtime.onStageChange('voice')
       } else {
-        await runtime.onRunScriptToStoryboard({ visualApprovalConfirmed: true })
+        await runtime.onRunScriptToStoryboard({
+          visualApprovalConfirmed: true,
+          completionStage: 'voice',
+        })
       }
-      onStoryboardReady()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '生成分镜失败')
     } finally {
