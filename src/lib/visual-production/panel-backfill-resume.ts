@@ -1,23 +1,32 @@
 import { prisma } from '@/lib/prisma'
-import { buildImageBillingPayload } from '@/lib/config-service'
-import { submitTask } from '@/lib/task/submitter'
-import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
-import { withTaskUiPayload } from '@/lib/task/ui-payload'
+import type { TaskJobData } from '@/lib/task/types'
 import { preparePanelGenerationPrompt } from '@/lib/novel-promotion/panel-prompt-preparation'
 import {
   readBackfillRequests,
   resolvePanelBackfillReadiness,
 } from './panel-backfill-readiness'
 
-export async function scheduleReadyBackfilledPanelImageTasks(params: {
+export type BackfilledPanelPromptPreparationResult = {
+  prepared: Array<{
+    panelId: string
+    artifactId: string
+  }>
+  failed: Array<{
+    panelId: string
+    message: string
+  }>
+}
+
+export async function prepareReadyBackfilledPanelPrompts(params: {
   projectId: string
   userId: string
   locale: TaskJobData['locale']
   assetIds: string[]
   storyboardModel: string | null
-}) {
+}): Promise<BackfilledPanelPromptPreparationResult> {
+  const result: BackfilledPanelPromptPreparationResult = { prepared: [], failed: [] }
   const changedAssetIds = Array.from(new Set(params.assetIds.filter(Boolean)))
-  if (changedAssetIds.length === 0 || !params.storyboardModel) return []
+  if (changedAssetIds.length === 0 || !params.storyboardModel) return result
 
   const panels = await prisma.novelPromotionPanel.findMany({
     where: {
@@ -33,11 +42,9 @@ export async function scheduleReadyBackfilledPanelImageTasks(params: {
     select: {
       id: true,
       referencePlan: true,
-      storyboard: { select: { episodeId: true } },
     },
   })
 
-  const scheduled: string[] = []
   for (const panel of panels) {
     const panelBackfillAssetIds = readBackfillRequests(panel.referencePlan)
       .flatMap((request) => request.assetId ? [request.assetId] : [])
@@ -46,47 +53,24 @@ export async function scheduleReadyBackfilledPanelImageTasks(params: {
     const readiness = await resolvePanelBackfillReadiness(panel.referencePlan)
     if (!readiness.ready) continue
 
-    const stableBackfillAssetIds = Array.from(new Set(panelBackfillAssetIds)).sort()
-    const payloadBase = {
-      panelId: panel.id,
-      candidateCount: 1,
-      count: 1,
-      source: 'asset_backfill_resume',
-      backfillAssetIds: stableBackfillAssetIds,
+    try {
+      const preparation = await preparePanelGenerationPrompt({
+        projectId: params.projectId,
+        userId: params.userId,
+        locale: params.locale,
+        mode: 'image',
+        locator: { panelId: panel.id },
+      })
+      result.prepared.push({
+        panelId: panel.id,
+        artifactId: preparation.prepared.artifactId,
+      })
+    } catch (error) {
+      result.failed.push({
+        panelId: panel.id,
+        message: error instanceof Error ? error.message : '分镜提示词固定失败',
+      })
     }
-    const billingPayload = await buildImageBillingPayload({
-      projectId: params.projectId,
-      userId: params.userId,
-      imageModel: params.storyboardModel,
-      basePayload: payloadBase,
-    })
-    const preparation = await preparePanelGenerationPrompt({
-      projectId: params.projectId,
-      userId: params.userId,
-      locale: params.locale,
-      mode: 'image',
-      locator: { panelId: panel.id },
-    })
-    const submitted = await submitTask({
-      userId: params.userId,
-      locale: params.locale,
-      projectId: params.projectId,
-      episodeId: panel.storyboard.episodeId,
-      type: TASK_TYPE.IMAGE_PANEL,
-      targetType: 'NovelPromotionPanel',
-      targetId: panel.id,
-      payload: withTaskUiPayload({
-        ...billingPayload,
-        imageModel: preparation.prepared.snapshot.modelKey,
-        generationOptions: preparation.prepared.generationOptions,
-        preparedPromptArtifactId: preparation.prepared.artifactId,
-      }, {
-        intent: 'generate',
-        source: 'asset_backfill_resume',
-      }),
-      dedupeKey: `image_panel:${panel.id}:${preparation.prepared.artifactId}:asset_backfill:${stableBackfillAssetIds.join(',')}`,
-    })
-    scheduled.push(submitted.taskId)
   }
-  return scheduled
+  return result
 }

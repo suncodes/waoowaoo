@@ -5,6 +5,7 @@ import { apiFetch } from '@/lib/api-fetch'
 import { queryKeys } from '../keys'
 import { resolveTaskErrorMessage } from '@/lib/task/error-message'
 import type {
+  StoryboardAssetBackfillResult,
   StoryboardAutoFixApplyResult,
   StoryboardReadinessResult,
 } from '@/lib/novel-promotion/storyboard-readiness/types'
@@ -64,6 +65,26 @@ export function useStoryboardAutoFix(projectId: string | null, episodeId: string
       })
       if (!response.ok) throw await readApiError(response, '分镜自动修复失败')
       return await response.json() as StoryboardAutoFixClientResult
+    },
+    onSettled: async () => {
+      invalidateStoryboardReadiness(queryClient, projectId, episodeId)
+    },
+  })
+}
+
+export function useStoryboardAssetBackfill(projectId: string | null, episodeId: string | null) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async () => {
+      if (!projectId || !episodeId) throw new Error('Project ID and Episode ID are required')
+      const response = await apiFetch(`/api/novel-promotion/${projectId}/storyboard-asset-backfill`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ episodeId }),
+      })
+      if (!response.ok) throw await readApiError(response, '缺失资产回填失败')
+      return await response.json() as StoryboardAssetBackfillResult
     },
     onSettled: async () => {
       invalidateStoryboardReadiness(queryClient, projectId, episodeId)

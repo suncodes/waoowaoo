@@ -92,3 +92,15 @@ export interface StoryboardAutoFixApplyResult {
   skippedActionIds: string[]
   readiness: StoryboardReadinessResult
 }
+
+export interface StoryboardAssetBackfillResult {
+  episodeId: string
+  requestedPanelIds: string[]
+  promptFixedPanelIds: string[]
+  manualPanelIds: string[]
+  failedPanels: Array<{
+    panelId: string
+    message: string
+  }>
+  readiness: StoryboardReadinessResult
+}

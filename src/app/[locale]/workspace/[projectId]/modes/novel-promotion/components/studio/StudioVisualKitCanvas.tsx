@@ -110,6 +110,7 @@ function buildItems(
         statusLabel: presentation.label,
         imageUrl: item.imageUrl,
         sourceCount: item.anchor.sourceUnitIds.length,
+        backfill: item.asset?.backfill || null,
         asset: item.asset,
       }
     })
@@ -129,6 +130,7 @@ function buildItems(
       statusLabel: presentation.label,
       imageUrl: selectedVisualAssetImage(asset),
       sourceCount: 0,
+      backfill: asset.backfill || null,
       asset,
     }
   })
@@ -156,8 +158,9 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
     () => buildItems(visualMeta?.anchors || [], visualAssets, requiredAssetIds),
     [requiredAssetIds, visualAssets, visualMeta?.anchors],
   )
-  const coreItems = items.filter((item) => item.importance === 'core')
-  const supportingItems = items.filter((item) => item.importance === 'supporting')
+  const backfillItems = items.filter((item) => !!item.backfill)
+  const coreItems = items.filter((item) => item.importance === 'core' && !item.backfill)
+  const supportingItems = items.filter((item) => item.importance === 'supporting' && !item.backfill)
   const selectedItem = items.find((item) => item.id === selectedId) || items[0] || null
   const confirmedCount = items.filter((item) => item.status === 'locked').length
   const generatedCount = items.filter((item) => item.imageUrl).length
@@ -340,9 +343,10 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
             </>
           )}
         />
-        <div className="grid gap-4 border-b border-white/10 px-6 py-4 sm:grid-cols-4">
+        <div className="grid gap-4 border-b border-white/10 px-6 py-4 sm:grid-cols-3 xl:grid-cols-5">
           <StudioMetric label="全部资产" value={items.length} />
           <StudioMetric label="核心资产" value={coreItems.length} />
+          <StudioMetric label="系统补齐" value={backfillItems.length} />
           <StudioMetric label="已有定稿" value={`${confirmedCount}/${items.length}`} />
           <StudioMetric label="已有图片" value={generatedCount} />
         </div>
@@ -389,6 +393,12 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
               />
             </div>
             <div className="space-y-4 p-3">
+              <AssetRailSection
+                title="系统补齐"
+                items={backfillItems}
+                selectedId={selectedItem?.id || ''}
+                onSelect={setSelectedId}
+              />
               <AssetRailSection
                 title="核心资产"
                 items={coreItems}
@@ -521,7 +531,7 @@ function AssetRailItem({
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold text-stone-100">{item.name}</div>
-            <div className="mt-1 text-[11px] text-stone-500">{assetKindLabel(item.kind)} · 来源 {item.sourceCount}</div>
+            <div className="mt-1 text-[11px] text-stone-500">{assetKindLabel(item.kind)} · {item.backfill ? `系统补齐 · 关联 ${item.backfill.sourcePanelIds.length} 个镜头` : `来源 ${item.sourceCount}`}</div>
           </div>
           <StudioStatusBadge status={item.status} label={item.statusLabel} />
         </div>

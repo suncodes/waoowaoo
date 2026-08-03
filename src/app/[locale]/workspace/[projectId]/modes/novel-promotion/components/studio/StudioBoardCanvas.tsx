@@ -7,7 +7,7 @@ import ImagePreviewModal from '@/components/ui/ImagePreviewModal'
 import { AppIcon } from '@/components/ui/icons'
 import type { CreationWorkflowState } from '@/lib/creation-workspace/workflow-state'
 import { parseVisualQualityState } from '@/lib/quality-workflow'
-import { usePanelGenerationPromptPreview } from '@/lib/query/hooks'
+import { usePanelGenerationPromptPreview, useStoryboardAssetBackfill } from '@/lib/query/hooks'
 import type { PanelGenerationPromptPreview } from '@/lib/query/mutations/storyboard-panel-mutations'
 import { useWorkspaceProvider } from '../../WorkspaceProvider'
 import { useWorkspaceStageRuntime } from '../../WorkspaceStageRuntimeContext'
@@ -23,6 +23,7 @@ import { StudioButton, StudioEmptyState, StudioMetric, StudioSectionHeader, Stud
 import type { StudioWorkspaceModel } from './studio-types'
 import {
   buildPanelCandidateDisplayGroups,
+  readPanelBackfillMessages,
   resolvePanelImageWorkflowPresentation,
 } from './studio-board-image-workflow'
 import StudioBoardEmpty from './StudioBoardEmpty'
@@ -46,12 +47,16 @@ function BoardDetailPanel({
   controller,
   confirmLabel,
   onCandidateConfirmed,
+  onBackfillAssets,
+  backfillPending,
 }: {
   projectId: string
   item: BoardItem
   controller: ReturnType<typeof useStoryboardStageController>
   confirmLabel?: string
   onCandidateConfirmed?: () => void
+  onBackfillAssets: () => void
+  backfillPending: boolean
 }) {
   const panelData = controller.getPanelEditData(item.panel)
   const promptPreviewMutation = usePanelGenerationPromptPreview(projectId)
@@ -83,6 +88,9 @@ function BoardDetailPanel({
     && (item.sourcePanel.generationRoute === 'asset_backfill' || item.sourcePanel.generationRoute === 'human_required')
     && !isSubmitting
     && !localSubmitting
+  const assetBackfillRequired = referenceBlocked && item.sourcePanel.generationRoute === 'asset_backfill'
+  const manualReferenceRequired = referenceBlocked && item.sourcePanel.generationRoute === 'human_required'
+  const backfillMessages = readPanelBackfillMessages(item.sourcePanel)
   const selectedCandidateUrl = candidates?.candidates[candidates.selectedIndex] || null
   const candidateDisplayGroups = candidates
     ? buildPanelCandidateDisplayGroups({
@@ -120,7 +128,7 @@ function BoardDetailPanel({
       })
       .catch(() => undefined)
     return () => { cancelled = true }
-  }, [item.panel.id, projectId])
+  }, [item.panel.id, item.sourcePanel.generationRoute, projectId])
   const confirmedCandidateIndex = candidates
     ? resolveConfirmedCandidateIndex(item.sourcePanel, candidates.candidates)
     : -1
@@ -160,7 +168,7 @@ function BoardDetailPanel({
       },
     )
   }
-  const openImagePromptPreview = async () => {
+  const openImagePromptPreview = async (forceNoReference = false) => {
     setPromptPreviewOpen(true)
     setPromptPreview(null)
     setPromptPreviewError(null)
@@ -170,7 +178,7 @@ function BoardDetailPanel({
         storyboardId: item.storyboard.id,
         panelIndex: item.panel.panelIndex,
         mode: 'image',
-        forceNoReference: referenceBlocked,
+        forceNoReference,
         overrides: {
           panel: {
             shotType: panelData.shotType,
@@ -192,6 +200,11 @@ function BoardDetailPanel({
     } catch (error) {
       setPromptPreviewError(error instanceof Error ? error.message : '获取最终提示词失败')
     }
+  }
+  const openNoReferencePromptPreview = async () => {
+    const confirmed = window.confirm('无参考生成会降低角色、场景或道具的一致性。仍要固定无参考提示词吗？')
+    if (!confirmed) return
+    await openImagePromptPreview(true)
   }
 
   return (
@@ -232,18 +245,30 @@ function BoardDetailPanel({
         </div>
 
         <div className="grid grid-cols-2 gap-2">
-          <StudioButton size="sm" icon="sparkles" loading={isSubmitting} onClick={() => { void regenerateCurrentPanelImage(false) }} disabled={disabled || !preparedPromptArtifactId}>
+          <StudioButton size="sm" icon="sparkles" loading={isSubmitting} onClick={() => { void regenerateCurrentPanelImage(false) }} disabled={disabled || referenceBlocked || !preparedPromptArtifactId}>
             按已固定提示词生成
           </StudioButton>
-          {referenceBlocked ? (
+          {assetBackfillRequired ? (
             <StudioButton
               size="sm"
               variant="secondary"
               icon="sparkles"
-              onClick={() => { void regenerateCurrentPanelImage(true) }}
-              disabled={!preparedPromptArtifactId}
+              loading={backfillPending}
+              onClick={onBackfillAssets}
+              disabled={backfillPending}
             >
-              按已固定提示词无参考生成
+              补齐缺失资产
+            </StudioButton>
+          ) : null}
+          {manualReferenceRequired ? (
+            <StudioButton
+              size="sm"
+              variant="secondary"
+              icon="info"
+              loading={promptPreviewMutation.isPending}
+              onClick={() => { void openNoReferencePromptPreview() }}
+            >
+              无参考固定提示词
             </StudioButton>
           ) : null}
           <StudioButton
@@ -269,6 +294,7 @@ function BoardDetailPanel({
             icon="info"
             loading={promptPreviewMutation.isPending}
             onClick={() => { void openImagePromptPreview() }}
+            disabled={assetBackfillRequired || manualReferenceRequired}
           >
             固定并查看提示词
           </StudioButton>
@@ -308,6 +334,22 @@ function BoardDetailPanel({
               {workflowNotice}
             </div>
             <p className="mt-1 text-xs leading-5 text-cyan-100/70">检查与修复流程完成前不能确认；已有候选图可继续预览和比较。</p>
+          </div>
+        ) : null}
+
+        {assetBackfillRequired ? (
+          <div className="rounded-md border border-cyan-400/25 bg-cyan-400/10 p-3 text-sm text-cyan-100" role="status">
+            <div className="flex items-center gap-2 font-semibold">
+              <AppIcon name="sparkles" className="h-4 w-4" />
+              等待补齐参考资产
+            </div>
+            <p className="mt-1 text-xs leading-5 text-cyan-100/75">{backfillMessages.length > 0 ? backfillMessages.join('；') : '系统会先固定并生成缺失资产图；资产可引用后自动固定本镜头提示词，但不会自动提交分镜图片。'}</p>
+          </div>
+        ) : null}
+
+        {manualReferenceRequired ? (
+          <div className="rounded-md border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-100" role="alert">
+            缺少无法自动补齐的稳定参考。请在资产库补充或选择已有资产；无参考固定提示词仅作为显式兜底。
           </div>
         ) : null}
 
@@ -578,7 +620,9 @@ function StudioBoardRuntime({
   const [isBatchPreparingPrompts, setIsBatchPreparingPrompts] = useState(false)
   const [isBatchGeneratingImages, setIsBatchGeneratingImages] = useState(false)
   const [preparedPromptArtifactIds, setPreparedPromptArtifactIds] = useState<Record<string, string>>({})
+  const [backfillNotice, setBackfillNotice] = useState<{ tone: 'success' | 'error' | 'info'; message: string } | null>(null)
   const batchPromptPreparationMutation = usePanelGenerationPromptPreview(projectId)
+  const assetBackfillMutation = useStoryboardAssetBackfill(projectId, episodeId)
   const controller = useStoryboardStageController({
     projectId,
     episodeId,
@@ -620,6 +664,12 @@ function StudioBoardRuntime({
       && !controller.submittingPanelImageIds.has(item.panel.id)
       && !controller.modifyingPanels.has(item.panel.id)
   })
+  const assetBackfillItems = missingImageItems.filter((item) => item.sourcePanel.generationRoute === 'asset_backfill')
+  const manualReferenceItems = missingImageItems.filter((item) => item.sourcePanel.generationRoute === 'human_required')
+  const promptPreparationItems = missingImageItems.filter((item) => (
+    item.sourcePanel.generationRoute !== 'asset_backfill'
+    && item.sourcePanel.generationRoute !== 'human_required'
+  ))
   const productionBlockLabel = productionReady ? '确认并进入制作' : `${blockedProductionCount} 个镜头待确认`
 
   const modalRuntime = useStoryboardModalRuntime({
@@ -661,9 +711,43 @@ function StudioBoardRuntime({
     if (nextItem) setSelectedPanelId(nextItem.panel.id)
   }
 
+  const backfillMissingAssets = async () => {
+    if (assetBackfillItems.length === 0 || assetBackfillMutation.isPending) return
+    const panelNumbers = assetBackfillItems.map((item) => item.globalNumber).join('、')
+    const confirmed = window.confirm(
+      `将为镜头 ${panelNumbers} 自动创建或复用缺失资产，固定资产提示词并提交资产候选图生成。资产图完成后会自动固定受影响镜头的提示词，但不会自动生成分镜图片。是否继续？`,
+    )
+    if (!confirmed) return
+
+    setBackfillNotice(null)
+    try {
+      const result = await assetBackfillMutation.mutateAsync()
+      const failedNumbers = result.failedPanels
+        .map((failure) => items.find((item) => item.panel.id === failure.panelId)?.globalNumber)
+        .filter((number): number is number => number !== undefined)
+      const manualNumbers = result.manualPanelIds
+        .map((panelId) => items.find((item) => item.panel.id === panelId)?.globalNumber)
+        .filter((number): number is number => number !== undefined)
+      setBackfillNotice({
+        tone: result.failedPanels.length > 0 ? 'error' : result.manualPanelIds.length > 0 ? 'info' : 'success',
+        message: result.failedPanels.length > 0
+          ? `已启动 ${result.requestedPanelIds.length} 个镜头的资产回填；镜头 ${failedNumbers.join('、') || '未知'} 启动失败，请检查资产描述或模型配置。`
+          : result.manualPanelIds.length > 0
+            ? `已启动 ${result.requestedPanelIds.length} 个镜头的资产回填；镜头 ${manualNumbers.join('、') || '未知'} 需要人工补充稳定参考。`
+            : `已启动 ${result.requestedPanelIds.length} 个镜头的资产回填。${result.promptFixedPanelIds.length > 0 ? `其中 ${result.promptFixedPanelIds.length} 个镜头已直接固定提示词。` : '资产图完成后将自动固定对应分镜提示词。'}`,
+      })
+    } catch (error) {
+      setBackfillNotice({
+        tone: 'error',
+        message: error instanceof Error ? error.message : '缺失资产回填失败，请稍后重试。',
+      })
+    }
+  }
+
   const prepareMissingImagePrompts = async () => {
-    if (missingImageItems.length === 0 || isBatchPreparingPrompts || isBatchGeneratingImages) return
-    if (!window.confirm(`将为 ${missingImageItems.length} 个待生成镜头固定图片提示词。固定后可逐镜头查看，再按固定版本批量生成。是否继续？`)) {
+    if (promptPreparationItems.length === 0 || isBatchPreparingPrompts || isBatchGeneratingImages) return
+    const skippedCount = assetBackfillItems.length + manualReferenceItems.length
+    if (!window.confirm(`将为 ${promptPreparationItems.length} 个待生成镜头固定图片提示词。${skippedCount > 0 ? `另有 ${skippedCount} 个镜头因参考资产未就绪而跳过。` : ''}固定后可逐镜头查看，再按固定版本批量生成。是否继续？`)) {
       return
     }
 
@@ -671,7 +755,7 @@ function StudioBoardRuntime({
     try {
       const artifactIds: Record<string, string> = {}
       const failures: Array<{ panelNumber: number; message: string }> = []
-      for (const item of missingImageItems) {
+      for (const item of promptPreparationItems) {
         try {
           const result = await batchPromptPreparationMutation.mutateAsync({
             panelId: item.panel.id,
@@ -688,6 +772,12 @@ function StudioBoardRuntime({
         }
       }
       setPreparedPromptArtifactIds((current) => ({ ...current, ...artifactIds }))
+      if (skippedCount > 0) {
+        setBackfillNotice({
+          tone: 'info',
+          message: `${skippedCount} 个镜头仍在等待参考资产；资产就绪后系统会自动固定其分镜提示词。`,
+        })
+      }
       if (failures.length > 0) {
         window.alert(`以下镜头提示词固定失败：\n${failures.map((failure) => `镜头 ${failure.panelNumber}：${failure.message}`).join('\n')}`)
       }
@@ -697,12 +787,12 @@ function StudioBoardRuntime({
   }
 
   const generateMissingImages = async () => {
-    if (missingImageItems.length === 0 || isBatchPreparingPrompts || isBatchGeneratingImages) return
+    if (promptPreparationItems.length === 0 || isBatchPreparingPrompts || isBatchGeneratingImages) return
     setIsBatchGeneratingImages(true)
     try {
       const persistedPrompts = await fetchLatestPreparedGenerationPrompts(
         projectId,
-        missingImageItems.map((item) => ({
+        promptPreparationItems.map((item) => ({
           kind: 'panel_image' as const,
           targetId: item.panel.id,
         })),
@@ -711,18 +801,19 @@ function StudioBoardRuntime({
         ...preparedPromptArtifactIds,
         ...Object.fromEntries(persistedPrompts.map((prompt) => [prompt.targetId, prompt.artifactId])),
       }
-      const targets = missingImageItems.flatMap((item) => {
+      const targets = promptPreparationItems.flatMap((item) => {
         const preparedPromptArtifactId = artifactIds[item.panel.id]
         return preparedPromptArtifactId ? [{ item, preparedPromptArtifactId }] : []
       })
-      const missingNumbers = missingImageItems
+      const missingNumbers = promptPreparationItems
         .filter((item) => !artifactIds[item.panel.id])
         .map((item) => item.globalNumber)
       if (targets.length === 0) {
         window.alert('请先批量固定提示词，再提交分镜图片生成。')
         return
       }
-      if (!window.confirm(`将按已固定提示词为 ${targets.length} 个镜头生成候选图。${missingNumbers.length > 0 ? `另有 ${missingNumbers.length} 个镜头未固定提示词并会跳过。` : ''}是否继续？`)) {
+      const blockedCount = assetBackfillItems.length + manualReferenceItems.length
+      if (!window.confirm(`将按已固定提示词为 ${targets.length} 个镜头生成候选图。${missingNumbers.length > 0 ? `另有 ${missingNumbers.length} 个镜头未固定提示词并会跳过。` : ''}${blockedCount > 0 ? `另有 ${blockedCount} 个镜头仍在等待参考资产，不会提交。` : ''}是否继续？`)) {
         return
       }
       await Promise.all(targets.map(({ item, preparedPromptArtifactId }) => controller.regeneratePanelImage(
@@ -761,12 +852,22 @@ function StudioBoardRuntime({
               <StudioButton
                 size="sm"
                 variant="secondary"
+                icon="sparkles"
+                loading={assetBackfillMutation.isPending}
+                onClick={() => { void backfillMissingAssets() }}
+                disabled={assetBackfillItems.length === 0 || isBatchPreparingPrompts || isBatchGeneratingImages}
+              >
+                补齐缺失资产（{assetBackfillItems.length}）
+              </StudioButton>
+              <StudioButton
+                size="sm"
+                variant="secondary"
                 icon="info"
                 loading={isBatchPreparingPrompts}
                 onClick={() => { void prepareMissingImagePrompts() }}
-                disabled={missingImageItems.length === 0 || isBatchGeneratingImages}
+                disabled={promptPreparationItems.length === 0 || isBatchGeneratingImages || assetBackfillMutation.isPending}
               >
-                批量固定图片提示词（{missingImageItems.length}）
+                批量固定图片提示词（{promptPreparationItems.length}）
               </StudioButton>
               <StudioButton
                 size="sm"
@@ -774,7 +875,7 @@ function StudioBoardRuntime({
                 icon="sparkles"
                 loading={isBatchGeneratingImages}
                 onClick={() => { void generateMissingImages() }}
-                disabled={missingImageItems.length === 0 || isBatchPreparingPrompts}
+                disabled={promptPreparationItems.length === 0 || isBatchPreparingPrompts || assetBackfillMutation.isPending}
               >
                 按已固定提示词批量生成
               </StudioButton>
@@ -823,6 +924,52 @@ function StudioBoardRuntime({
               <StudioMetric label="生成中" value={controller.runningCount} />
               <StudioMetric label="待生成" value={controller.pendingPanelCount} />
             </div>
+
+            {backfillNotice ? (
+              <div
+                className={`border-b px-6 py-3 text-sm ${backfillNotice.tone === 'error'
+                  ? 'border-rose-400/30 bg-rose-400/10 text-rose-100'
+                  : backfillNotice.tone === 'success'
+                    ? 'border-emerald-400/25 bg-emerald-400/10 text-emerald-100'
+                    : 'border-cyan-400/25 bg-cyan-400/10 text-cyan-100'}`}
+                role={backfillNotice.tone === 'error' ? 'alert' : 'status'}
+              >
+                {backfillNotice.message}
+              </div>
+            ) : null}
+
+            {assetBackfillItems.length > 0 ? (
+              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-cyan-400/25 bg-cyan-400/[0.07] px-6 py-4 text-cyan-100" role="status">
+                <div>
+                  <div className="flex items-center gap-2 text-sm font-semibold">
+                    <AppIcon name="sparkles" className="h-4 w-4" />
+                    {assetBackfillItems.length} 个镜头正在等待参考资产
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-cyan-100/75">镜头 {assetBackfillItems.map((item) => item.globalNumber).join('、')}。补齐后会自动固定对应分镜提示词，分镜图片仍需按固定版本手动或批量提交。</p>
+                </div>
+                <StudioButton
+                  size="sm"
+                  icon="sparkles"
+                  loading={assetBackfillMutation.isPending}
+                  onClick={() => { void backfillMissingAssets() }}
+                  disabled={assetBackfillMutation.isPending}
+                >
+                  补齐资产并生成候选图
+                </StudioButton>
+              </div>
+            ) : null}
+
+            {manualReferenceItems.length > 0 ? (
+              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-amber-400/25 bg-amber-400/[0.07] px-6 py-4 text-amber-100" role="alert">
+                <div>
+                  <div className="text-sm font-semibold">{manualReferenceItems.length} 个镜头缺少需要人工处理的稳定参考</div>
+                  <p className="mt-1 text-xs leading-5 text-amber-100/75">镜头 {manualReferenceItems.map((item) => item.globalNumber).join('、')}。请在项目资产库补充或选择参考图，也可以在单镜头内显式选择无参考固定提示词。</p>
+                </div>
+                <StudioButton size="sm" variant="secondary" icon="folderOpen" onClick={runtime.onOpenAssetLibrary}>
+                  打开项目资产库
+                </StudioButton>
+              </div>
+            ) : null}
 
             <div className="flex flex-wrap justify-end gap-2 border-b border-white/10 bg-white/[0.02] px-6 py-4">
               <StudioButton size="sm" variant="secondary" icon="mic" onClick={() => onNavigate('voice')}>
@@ -898,6 +1045,8 @@ function StudioBoardRuntime({
                     controller={controller}
                     confirmLabel={reviewMode && reviewItems.length > 1 ? '确认并查看下一个' : undefined}
                     onCandidateConfirmed={reviewMode ? advanceReview : undefined}
+                    onBackfillAssets={() => { void backfillMissingAssets() }}
+                    backfillPending={assetBackfillMutation.isPending}
                   />
                 ) : null}
               </div>

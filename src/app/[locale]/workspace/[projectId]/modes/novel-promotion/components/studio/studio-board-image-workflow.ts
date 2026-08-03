@@ -56,6 +56,35 @@ function readBlockingAssetNames(panel: NovelPromotionPanel): string[] {
   })
 }
 
+type PanelBackfillRequest = {
+  name: string
+  status: string | null
+  reason: string | null
+}
+
+function readBackfillRequests(panel: NovelPromotionPanel): PanelBackfillRequest[] {
+  const referencePlan = asRecord(panel.referencePlan)
+  const backfill = asRecord(referencePlan.backfill)
+  const requests = Array.isArray(backfill.requests) ? backfill.requests : []
+  return requests.flatMap((item) => {
+    const request = asRecord(item)
+    const name = typeof request.name === 'string' && request.name.trim() ? request.name.trim() : ''
+    if (!name) return []
+    return [{
+      name,
+      status: typeof request.status === 'string' && request.status.trim() ? request.status.trim() : null,
+      reason: typeof request.reason === 'string' && request.reason.trim() ? request.reason.trim() : null,
+    }]
+  })
+}
+
+export function readPanelBackfillMessages(panel: NovelPromotionPanel): string[] {
+  return Array.from(new Set(readBackfillRequests(panel).flatMap((request) => {
+    if (!request.reason) return []
+    return [`${request.name}：${request.reason}`]
+  })))
+}
+
 function buildReferenceBlockedPresentation(panel: NovelPromotionPanel): PanelImageWorkflowPresentation | null {
   if (panel.imageUrl) return null
   const route = panel.generationRoute
@@ -63,6 +92,38 @@ function buildReferenceBlockedPresentation(panel: NovelPromotionPanel): PanelIma
   const names = readBlockingAssetNames(panel)
   const suffix = names.length > 0 ? `：${names.join('、')}` : ''
   if (route === 'asset_backfill') {
+    const requests = readBackfillRequests(panel)
+    const needsManualHandling = requests.filter((request) => request.status === 'human_required' || request.status === 'skipped')
+    if (needsManualHandling.length > 0) {
+      return {
+        phase: 'human_required',
+        status: 'needs_review',
+        label: `资产回填需处理${suffix}`,
+        blocksConfirmation: true,
+        progress: null,
+        activeTaskType: 'image_panel',
+      }
+    }
+    if (requests.some((request) => request.status === 'created_asset_queued' || request.status === 'existing_asset_queued')) {
+      return {
+        phase: 'generating',
+        status: 'generating',
+        label: `正在补齐资产${suffix}`,
+        blocksConfirmation: true,
+        progress: null,
+        activeTaskType: 'image_panel',
+      }
+    }
+    if (requests.length > 0 && requests.every((request) => request.status === 'existing_asset_ready')) {
+      return {
+        phase: 'generating',
+        status: 'generating',
+        label: `资产已就绪，正在固定提示词${suffix}`,
+        blocksConfirmation: true,
+        progress: null,
+        activeTaskType: 'image_panel',
+      }
+    }
     return {
       phase: 'generating',
       status: 'generating',

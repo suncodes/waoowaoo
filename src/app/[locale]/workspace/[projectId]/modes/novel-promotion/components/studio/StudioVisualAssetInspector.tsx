@@ -35,6 +35,7 @@ export interface VisualKitItem {
   statusLabel: string
   imageUrl: string | null
   sourceCount: number
+  backfill?: VisualAssetSummary['backfill']
   asset?: VisualAssetSummary
 }
 
@@ -431,9 +432,10 @@ export default function StudioVisualAssetInspector({
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="truncate text-base font-semibold text-stone-50">{item.name}</h2>
             <span className="rounded-md bg-white/[0.05] px-2 py-0.5 text-[11px] text-stone-400">{assetKindLabel(item.kind)}</span>
+            {item.backfill ? <span className="rounded-md border border-cyan-400/30 bg-cyan-400/10 px-2 py-0.5 text-[11px] text-cyan-100">系统补齐</span> : null}
             <StudioStatusBadge status={workflowPresentation.status} label={workflowPresentation.label || item.statusLabel} />
           </div>
-          <p className="mt-1 text-xs text-stone-500">{item.importance === 'core' ? '核心资产' : '辅助资产'} · 来源 {item.sourceCount}</p>
+          <p className="mt-1 text-xs text-stone-500">{item.importance === 'core' ? '核心资产' : '辅助资产'} · {item.backfill ? `关联 ${item.backfill.sourcePanelIds.length} 个缺失镜头` : `来源 ${item.sourceCount}`}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {onRemove && (item.kind === 'location' || item.kind === 'prop') ? <StudioButton size="sm" variant="ghost" icon="trash" onClick={onRemove} disabled={disabled}>删除</StudioButton> : null}
@@ -456,6 +458,12 @@ export default function StudioVisualAssetInspector({
           ) : null}
         </div>
         <div className="min-w-0">
+          {item.backfill ? (
+            <div className="mb-4 rounded-md border border-cyan-400/25 bg-cyan-400/10 px-3 py-2 text-xs leading-5 text-cyan-100">
+              系统依据镜头资产需求自动补齐。候选图可作为参考使用，但不会自动设为定稿。
+              {item.backfill.reason ? ` ${item.backfill.reason}` : ''}
+            </div>
+          ) : null}
           {editing ? (
             <div className="space-y-3">
               <input value={draftName} onChange={(event) => setDraftName(event.target.value)} className="h-9 w-full rounded-md border border-white/10 bg-[#0f100e] px-3 text-sm text-stone-100 outline-none focus:border-[#e8d18a]" placeholder="资产名称" />

@@ -45,7 +45,7 @@ const runtimeArtifactMock = vi.hoisted(() => ({
 }))
 
 const panelBackfillMock = vi.hoisted(() => ({
-  scheduleReadyBackfilledPanelImageTasks: vi.fn(async () => []),
+  prepareReadyBackfilledPanelPrompts: vi.fn(async () => ({ prepared: [], failed: [] })),
 }))
 
 const taskSubmitterMock = vi.hoisted(() => ({

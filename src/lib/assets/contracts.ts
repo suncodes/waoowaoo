@@ -40,6 +40,11 @@ export type AssetTaskRef = {
   types: string[]
 }
 
+export type AssetBackfillSummary = {
+  sourcePanelIds: string[]
+  reason: string | null
+}
+
 export type AssetCandidateGroupSummary = {
   id: string
   origin: 'initial' | 'repair'
@@ -93,6 +98,7 @@ export type BaseAssetSummary = {
   folderId: string | null
   capabilities: AssetCapabilityMap
   candidateGroups?: AssetCandidateGroupSummary[]
+  backfill?: AssetBackfillSummary | null
   taskRefs: AssetTaskRef[]
   taskState: AssetTaskState
 }

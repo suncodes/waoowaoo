@@ -22,7 +22,7 @@ import {
   pickFirstString,
 } from './image-task-handler-shared'
 import { buildCharacterAssetTargetSpec } from './visual-quality-review-helpers'
-import { scheduleReadyBackfilledPanelImageTasks } from '@/lib/visual-production/panel-backfill-resume'
+import { prepareReadyBackfilledPanelPrompts } from '@/lib/visual-production/panel-backfill-resume'
 import {
   attachPreparedPromptToSnapshot,
   requirePreparedPrompt,
@@ -279,7 +279,7 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
     }
   }
 
-  const resumedPanelTaskIds = await scheduleReadyBackfilledPanelImageTasks({
+  const backfilledPanelPrompts = await prepareReadyBackfilledPanelPrompts({
     projectId,
     userId,
     locale: job.data.locale,
@@ -291,7 +291,7 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
     appearanceId: appearance.id,
     imageCount: nextImageUrls.filter(Boolean).length,
     imageUrl: mainImage || null,
-    resumedPanelTaskIds,
+    backfilledPanelPrompts,
     promptSnapshots,
   }
 }

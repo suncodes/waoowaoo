@@ -20,7 +20,7 @@ import {
   pickFirstString,
 } from './image-task-handler-shared'
 import { buildLocationAssetTargetSpec } from './visual-quality-review-helpers'
-import { scheduleReadyBackfilledPanelImageTasks } from '@/lib/visual-production/panel-backfill-resume'
+import { prepareReadyBackfilledPanelPrompts } from '@/lib/visual-production/panel-backfill-resume'
 import {
   attachPreparedPromptToSnapshot,
   requirePreparedPrompt,
@@ -342,7 +342,7 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
     }
   }
 
-  const resumedPanelTaskIds = await scheduleReadyBackfilledPanelImageTasks({
+  const backfilledPanelPrompts = await prepareReadyBackfilledPanelPrompts({
     projectId,
     userId,
     locale: job.data.locale,
@@ -353,7 +353,7 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
   return {
     updated: locationImages.length,
     locationIds,
-    resumedPanelTaskIds,
+    backfilledPanelPrompts,
     promptSnapshots,
   }
 }

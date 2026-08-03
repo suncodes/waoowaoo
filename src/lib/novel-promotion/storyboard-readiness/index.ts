@@ -27,11 +27,14 @@ import { decidePanelGenerationRoute } from '@/lib/visual-production/panel-genera
 import {
   applyBackfillRequestsToRequirementPlan,
   ensureMissingAssetBackfill,
+  type MissingAssetBackfillPlan,
 } from '@/lib/visual-production/missing-asset-backfill'
+import { preparePanelGenerationPrompt } from '@/lib/novel-promotion/panel-prompt-preparation'
 import type { Locale } from '@/i18n/routing'
 import type {
   StoryboardAutoFixAction,
   StoryboardAutoFixApplyResult,
+  StoryboardAssetBackfillResult,
   StoryboardAutoFixPlan,
   StoryboardReadinessIssue,
   StoryboardReadinessResult,
@@ -778,6 +781,78 @@ export async function getStoryboardReadiness(params: {
   }
 }
 
+export async function startStoryboardAssetBackfill(params: {
+  projectId: string
+  episodeId: string
+  userId: string
+  locale?: string | null
+}): Promise<StoryboardAssetBackfillResult> {
+  const locale = normalizeLocale(params.locale)
+  const episode = await loadEpisode(params.episodeId)
+  if (!episode || episode.novelPromotionProject.projectId !== params.projectId) {
+    throw new Error('EPISODE_NOT_FOUND')
+  }
+
+  const analysis = analyzeEpisodeReadiness(episode)
+  const backfillPanelIds = new Set(
+    analysis.actions
+      .filter((action) => action.type === 'backfill_assets')
+      .flatMap((action) => action.panelId ? [action.panelId] : []),
+  )
+  const requestedPanelIds: string[] = []
+  const promptFixedPanelIds: string[] = []
+  const manualPanelIds: string[] = []
+  const failedPanels: StoryboardAssetBackfillResult['failedPanels'] = []
+  const projectData: PanelReferenceProjectData = episode.novelPromotionProject
+
+  for (const panel of flattenPanels(episode)) {
+    if (!backfillPanelIds.has(panel.id)) continue
+    try {
+      const refreshed = await refreshPanelBindingAndRoute({
+        projectId: params.projectId,
+        userId: params.userId,
+        locale,
+        panel,
+        projectData,
+        runBackfill: true,
+      })
+      if (refreshed.backfill?.status === 'human_required' || refreshed.backfill?.status === 'not_needed') {
+        manualPanelIds.push(panel.id)
+        continue
+      }
+      requestedPanelIds.push(panel.id)
+      if (refreshed.backfill?.status === 'ready' && refreshed.decision.route !== 'asset_backfill' && refreshed.decision.route !== 'human_required') {
+        await preparePanelGenerationPrompt({
+          projectId: params.projectId,
+          userId: params.userId,
+          locale,
+          mode: 'image',
+          locator: { panelId: panel.id },
+        })
+        promptFixedPanelIds.push(panel.id)
+      }
+    } catch (error) {
+      failedPanels.push({
+        panelId: panel.id,
+        message: error instanceof Error ? error.message : '缺失资产回填失败',
+      })
+    }
+  }
+
+  const readiness = await getStoryboardReadiness({
+    projectId: params.projectId,
+    episodeId: params.episodeId,
+  })
+  return {
+    episodeId: params.episodeId,
+    requestedPanelIds,
+    promptFixedPanelIds,
+    manualPanelIds,
+    failedPanels,
+    readiness,
+  }
+}
+
 export async function prepareStoryboardAutoFix(params: {
   projectId: string
   episodeId: string
@@ -841,7 +916,7 @@ async function refreshPanelBindingAndRoute(params: {
     bindingPlan,
     references: visualReferencesForGenerationRoute(referenceSelection.candidates),
   })
-  let backfill: unknown = null
+  let backfill: MissingAssetBackfillPlan | null = null
 
   if (params.runBackfill && (decision.route === 'asset_backfill' || decision.route === 'human_required')) {
     const backfillPlan = await ensureMissingAssetBackfill({
@@ -878,6 +953,19 @@ async function refreshPanelBindingAndRoute(params: {
       bindingPlan,
       references: visualReferencesForGenerationRoute(referenceSelection.candidates),
     })
+    if (backfillPlan.status === 'human_required' || (backfillPlan.status === 'not_needed' && decision.route === 'asset_backfill')) {
+      decision = {
+        ...decision,
+        route: 'human_required',
+        noReferenceReason: 'manual_reference_required',
+        reasons: Array.from(new Set([
+          ...decision.reasons,
+          backfillPlan.status === 'not_needed'
+            ? '缺失资产没有可执行的回填描述，请手动选择稳定参考。'
+            : '缺失资产无法自动生成，请补充模型配置或手动选择稳定参考。',
+        ])),
+      }
+    }
   }
 
   await prisma.novelPromotionPanel.update({
@@ -899,6 +987,7 @@ async function refreshPanelBindingAndRoute(params: {
       })),
     },
   })
+  return { decision, backfill }
 }
 
 async function applyDeliveryRewriteAction(action: StoryboardAutoFixAction): Promise<boolean> {

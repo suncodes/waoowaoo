@@ -16,6 +16,7 @@ type ProjectLocationBackedAssetRow = {
   selectedImageId: string | null
   sourceGlobalLocationId: string | null
   assetKind: LocationBackedAssetKind
+  assetMeta: unknown | null
 }
 
 type GlobalLocationBackedAssetRow = {
@@ -144,7 +145,8 @@ export async function listProjectLocationBackedAssets(
       summary,
       selectedImageId,
       sourceGlobalLocationId,
-      assetKind
+      assetKind,
+      assetMeta
     FROM novel_promotion_locations
     WHERE novelPromotionProjectId = ${novelPromotionProjectId}
       AND assetKind = ${kind}

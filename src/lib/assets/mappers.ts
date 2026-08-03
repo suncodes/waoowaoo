@@ -1,4 +1,5 @@
 import {
+  type AssetBackfillSummary,
   createIdleTaskState,
   type AssetRenderSummary,
   type AssetSummary,
@@ -33,6 +34,7 @@ type ProjectCharacterRecord = {
   name: string
   introduction?: string | null
   profileData?: string | null
+  assetMeta?: unknown | null
   voiceType?: 'custom' | 'qwen-designed' | 'uploaded' | null
   voiceId?: string | null
   customVoiceUrl?: string | null
@@ -79,6 +81,7 @@ type ProjectLocationRecord = {
   id: string
   name: string
   summary: string | null
+  assetMeta?: unknown | null
   images: LocationImageRecord[]
 }
 
@@ -94,6 +97,7 @@ type ProjectPropRecord = {
   id: string
   name: string
   summary: string | null
+  assetMeta?: unknown | null
   images: LocationImageRecord[]
 }
 
@@ -117,6 +121,40 @@ type GlobalVoiceRecord = {
   gender: string | null
   language: string
   folderId: string | null
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function parseRecord(value: unknown): Record<string, unknown> {
+  if (typeof value !== 'string') return asRecord(value)
+  try {
+    return asRecord(JSON.parse(value))
+  } catch {
+    return {}
+  }
+}
+
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return Array.from(new Set(value.flatMap((item) => (
+    typeof item === 'string' && item.trim() ? [item.trim()] : []
+  ))))
+}
+
+function readBackfillSummary(...sources: unknown[]): AssetBackfillSummary | null {
+  for (const source of sources) {
+    const record = parseRecord(source)
+    if (record.source !== 'missing_asset_backfill') continue
+    return {
+      sourcePanelIds: readStringArray(record.sourcePanelIds),
+      reason: typeof record.reason === 'string' && record.reason.trim() ? record.reason.trim() : null,
+    }
+  }
+  return null
 }
 
 const PROJECT_VISUAL_ASSET_TASK_TYPES = [
@@ -218,6 +256,7 @@ export function mapProjectCharacterToAsset(character: ProjectCharacterRecord): C
     taskRefs: [],
     taskState: createIdleTaskState(),
     variants,
+    backfill: readBackfillSummary(character.assetMeta, character.profileData),
     introduction: character.introduction ?? null,
     profileData: character.profileData ?? null,
     profileConfirmed: character.profileConfirmed ?? null,
@@ -376,6 +415,7 @@ function mapLocationLikeProjectAsset(
     ],
     taskState: createIdleTaskState(),
     variants,
+    backfill: readBackfillSummary(asset.assetMeta),
     summary: asset.summary,
     selectedVariantId: selectedVariant?.id ?? null,
   }
