@@ -22,6 +22,8 @@ export interface ImageTargetSpec {
   aspectRatio: string
   visualType: string
   renderMode: string
+  renderPurpose?: 'reference_sheet' | 'single_reference' | 'variant' | 'repair'
+  templateKind?: string
   shotType: string
   cameraMove: string
   location: string

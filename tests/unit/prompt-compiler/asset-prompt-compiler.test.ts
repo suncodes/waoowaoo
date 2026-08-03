@@ -27,7 +27,7 @@ describe('asset image prompt compiler', () => {
     expect(prompt.indexOf('真人电影感')).toBeLessThan(prompt.indexOf(CHARACTER_PROMPT_SUFFIX))
   })
 
-  it('emits repeated source fragments once as visual features', () => {
+  it('emits an unstructured source once as a fallback visual feature', () => {
     const spec = buildAssetPromptSpec({
       assetId: 'appearance-2',
       assetKind: 'character',
@@ -38,7 +38,7 @@ describe('asset image prompt compiler', () => {
     })
     const prompt = compileAssetImagePrompt({ spec, locale: 'zh' })
 
-    expect(prompt).toContain('视觉特征：中年男性；深色船长制服；银灰鬓角；神情冷峻')
+    expect(prompt).toContain('视觉特征：中年男性，深色船长制服，银灰鬓角，神情冷峻')
     expect(prompt).not.toContain('形体轮廓：')
     expect(prompt).not.toContain('材质纹理：')
     expect(prompt).not.toContain('颜色与关键部件：')
@@ -52,6 +52,12 @@ describe('asset image prompt compiler', () => {
       assetKind: 'prop',
       assetName: '黄铜钥匙',
       description: '旧黄铜材质，方形齿纹，顶部有圆形孔洞，表面有磨损痕迹',
+      extractedFacts: {
+        silhouetteLocks: ['细长钥匙轮廓'],
+        costumeOrMaterialLocks: ['旧黄铜材质，表面有磨损痕迹'],
+        colorLocks: ['暗金色'],
+        keyPartLocks: ['方形齿纹', '顶部有圆形孔洞'],
+      },
       styleText: '十九世纪幻想工业风',
       locale: 'zh',
     })
@@ -64,6 +70,56 @@ describe('asset image prompt compiler', () => {
     expect(prompt).toContain('单一道具设定图')
     expect(prompt.endsWith(PROP_PROMPT_SUFFIX)).toBe(true)
     expect(prompt.indexOf('十九世纪幻想工业风')).toBeLessThan(prompt.indexOf(PROP_PROMPT_SUFFIX))
+  })
+
+  it('prioritizes profile visual locks and excludes narrative relations from the final prompt', () => {
+    const spec = buildAssetPromptSpec({
+      assetId: 'appearance-tang-seng',
+      assetKind: 'character',
+      assetName: '唐僧',
+      description: '唐僧与孙悟空在流沙河边争论取经路线。',
+      profileData: {
+        identity_locks: ['青年僧人，温和坚定的气质'],
+        silhouette_locks: ['清瘦修长体态，光头，长脸'],
+        costume_locks: ['朴素僧袍，外披锦襕袈裟'],
+        color_locks: ['米白僧袍，朱红袈裟边饰'],
+        primary_identifier: '九环锡杖与佛珠',
+      },
+      styleText: '新国风电影感',
+      locale: 'zh',
+    })
+    const prompt = compileAssetImagePrompt({ spec, locale: 'zh' })
+
+    expect(spec.shapeAndSilhouette).toEqual(['清瘦修长体态，光头，长脸'])
+    expect(spec.materialAndTexture).toEqual(['朴素僧袍，外披锦襕袈裟'])
+    expect(spec.colorPalette).toEqual(['米白僧袍，朱红袈裟边饰'])
+    expect(spec.keyParts).toEqual(['九环锡杖与佛珠'])
+    expect(prompt).toContain('青年僧人，温和坚定的气质')
+    expect(prompt).toContain('清瘦修长体态，光头，长脸')
+    expect(prompt).toContain('九环锡杖与佛珠')
+    expect(prompt).not.toContain('孙悟空在流沙河边')
+  })
+
+  it('does not leak a raw JSON source into the compiled prompt', () => {
+    const rawDescription = JSON.stringify({
+      id: '4be4c9ba-70d9-4c2e-9a10-7a83a36ff891',
+      task_status: 'completed',
+      description: '磨损黄铜钥匙',
+    })
+    const spec = buildAssetPromptSpec({
+      assetId: 'prop-json-source',
+      assetKind: 'prop',
+      assetName: '黄铜钥匙',
+      description: rawDescription,
+      styleText: '电影感棚拍',
+      locale: 'zh',
+    })
+    const prompt = compileAssetImagePrompt({ spec, locale: 'zh' })
+
+    expect(spec.visualContract.validationIssues).toContain('NON_RENDERABLE_SOURCE_DESCRIPTION')
+    expect(prompt).not.toContain('task_status')
+    expect(prompt).not.toContain('4be4c9ba-70d9-4c2e-9a10-7a83a36ff891')
+    expect(prompt).not.toContain(rawDescription)
   })
 
   it('routes vehicle props to a vehicle turnaround template', () => {

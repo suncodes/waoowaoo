@@ -133,6 +133,12 @@ describe('panel image prompt compiler', () => {
     expect(spec.promptBlueprint.subject).toEqual(expect.arrayContaining(['brass key identity locked to prop reference']))
     expect(spec.negativeConstraints).toContain('no extra hands')
     expect(spec.negativeConstraints).toContain('无水印')
+    expect(spec.visualContract).toMatchObject({
+      primarySubject: 'brass key',
+      assetLocks: ['brass key'],
+      actionState: 'The key is held still at the lock.',
+      textPolicy: 'no_text',
+    })
   })
 
   it('builds stable prompt, spec and input hashes for the same generation inputs', () => {

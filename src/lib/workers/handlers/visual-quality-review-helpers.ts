@@ -38,6 +38,7 @@ type PanelForQuality = {
 
 type CharacterAppearanceForQuality = {
   id: string
+  appearanceIndex: number
   changeReason: string | null
   description: string | null
   descriptions?: string | null
@@ -222,6 +223,8 @@ export function buildCharacterAssetTargetSpec(params: {
     aspectRatio: CHARACTER_ASSET_IMAGE_RATIO,
     visualType: 'character',
     renderMode: 'generated_image',
+    renderPurpose: params.appearance.appearanceIndex === 0 ? 'reference_sheet' : 'variant',
+    templateKind: 'character_reference_sheet',
     shotType: '',
     cameraMove: '',
     location: '',
@@ -231,6 +234,9 @@ export function buildCharacterAssetTargetSpec(params: {
     styleBaseline: params.artStyle,
     continuityRules: [
       `${params.appearance.character.name} must match the character description.`,
+      params.appearance.appearanceIndex === 0
+        ? 'This is one character reference sheet: consistent multi-view depictions of the same character are required, not a collage of different subjects.'
+        : 'This is one character variant reference: preserve the same character identity across the image.',
       params.appearance.changeReason ? `Appearance variant: ${params.appearance.changeReason}.` : '',
     ].filter(Boolean),
     forbiddenPatterns: [],
@@ -251,6 +257,8 @@ export function buildLocationAssetTargetSpec(params: {
     aspectRatio: isProp ? PROP_IMAGE_RATIO : LOCATION_IMAGE_RATIO,
     visualType: isProp ? 'prop' : 'location',
     renderMode: 'generated_image',
+    renderPurpose: isProp ? 'reference_sheet' : 'single_reference',
+    templateKind: isProp ? 'prop_turnaround' : 'environment_plate',
     shotType: '',
     cameraMove: '',
     location: isProp ? '' : params.image.location.name,

@@ -23,6 +23,14 @@ export interface PanelVideoPromptSpec {
   continuityConstraints: string[]
   continuityGroupId: string | null
   generationRoute: string | null
+  visualContract: {
+    primarySubject: string
+    assetLocks: string[]
+    composition: string
+    settingAndLight: string
+    continuity: string[]
+    textPolicy: 'no_text' | 'safe_area_only' | null
+  }
   imagePromptSpec: unknown
   referencePlan: unknown
   durationSec: number | null
@@ -192,6 +200,7 @@ export function buildPanelVideoPromptSpec(params: {
   const promptBlueprint = readPromptBlueprint(shotSpec)
   const imagePromptSpec = readImagePromptSpec(params.context)
   const referencePlan = readReferencePlan(params.context)
+  const panelVisualContract = asRecord(imagePromptSpec.visualContract)
   const imageContinuity = asRecord(imagePromptSpec.continuity)
   const actionBeats = stringArray(shotSpec.actionBeats)
   const blueprintActions = stringArray(promptBlueprint.action)
@@ -200,6 +209,26 @@ export function buildPanelVideoPromptSpec(params: {
   const customPrompt = readString(params.context.customPrompt)
   const rawVideoPrompt = readString(params.context.panel.videoPrompt)
   const description = readString(params.context.panel.description)
+  const primarySubject = firstNonEmpty(
+    readString(panelVisualContract.primarySubject),
+    readString(params.context.panel.primarySubject),
+    readString(imagePromptSpec.primarySubject),
+    readString(shotSpec.primarySubject),
+    description,
+    locale === 'en' ? 'the locked source-frame subject' : '首帧中的锁定主体',
+  )
+  const visualTextPolicy: 'no_text' | 'safe_area_only' | null = panelVisualContract.textPolicy === 'no_text'
+    || panelVisualContract.textPolicy === 'safe_area_only'
+    ? panelVisualContract.textPolicy
+    : null
+  const visualContract = {
+    primarySubject,
+    assetLocks: stringArray(panelVisualContract.assetLocks),
+    composition: readString(panelVisualContract.composition),
+    settingAndLight: readString(panelVisualContract.settingAndLight),
+    continuity: stringArray(panelVisualContract.continuity),
+    textPolicy: visualTextPolicy,
+  }
   const narrativeIntent = firstNonEmpty(
     readString(imagePromptSpec.narrativeIntent),
     readString(shotSpec.narrativeIntent),
@@ -228,21 +257,16 @@ export function buildPanelVideoPromptSpec(params: {
     generationMode: params.context.generationMode,
     narrativeIntent,
     sourceFramePolicy: sourceFramePolicy(params.context.generationMode, params.context.lastFrameProvided === true, locale),
-    primarySubject: firstNonEmpty(
-      readString(params.context.panel.primarySubject),
-      readString(imagePromptSpec.primarySubject),
-      readString(shotSpec.primarySubject),
-      description,
-      locale === 'en' ? 'the locked source-frame subject' : '首帧中的锁定主体',
-    ),
+    primarySubject,
     startState: firstNonEmpty(readString(shotSpec.startState), locale === 'en' ? 'start from the exact source frame' : '从源图首帧状态开始'),
     primaryMotion,
-    secondaryMotion: shortClip ? [] : actionBeats.slice(1, 2),
+    secondaryMotion: [],
     cameraMotion: firstNonEmpty(readString(shotSpec.camera), blueprintCamera[0], readString(params.context.panel.cameraMove), locale === 'en' ? 'locked or gently moving camera' : '锁定机位或轻微镜头运动'),
     focusChange: locale === 'en' ? 'keep focus on the primary subject unless the prompt explicitly asks otherwise' : '焦点保持在主视觉主体上，除非提示词明确要求转移',
     environmentMotion: locale === 'en' ? 'only subtle environmental motion that supports the main action' : '只加入服务主体动作的轻微环境运动',
     endState: firstNonEmpty(readString(shotSpec.endState), locale === 'en' ? 'end in a stable readable pose' : '结束在稳定可读的姿态或画面状态'),
     continuityConstraints: [
+      ...visualContract.continuity,
       firstNonEmpty(readString(continuity.fromPrevious), locale === 'en' ? 'preserve established spatial continuity' : '保持已建立的空间连续性'),
       firstNonEmpty(readString(continuity.toNext), locale === 'en' ? 'leave a clear visual handoff for the next shot' : '为下一镜保留清晰视觉衔接'),
       firstNonEmpty(readString(imageContinuity.screenDirection), readString(continuity.screenDirection), locale === 'en' ? 'preserve screen direction' : '保持视线和运动方向'),
@@ -265,9 +289,10 @@ export function buildPanelVideoPromptSpec(params: {
         : locale === 'en'
           ? 'Keep motion continuous and avoid multiple narrative beats inside the same generated clip.'
           : '保持运动连续，不要在同一个生成片段里塞入多个叙事节拍。',
-    ].filter(Boolean),
+    ].filter((value, index, values) => Boolean(value) && values.indexOf(value) === index),
     continuityGroupId: params.context.panel.continuityGroupId || null,
     generationRoute: params.context.panel.generationRoute || null,
+    visualContract,
     imagePromptSpec: Object.keys(imagePromptSpec).length > 0 ? imagePromptSpec : null,
     referencePlan: Object.keys(referencePlan).length > 0 ? referencePlan : params.context.panel.referencePlan || null,
     durationSec,
@@ -283,12 +308,26 @@ function joinLines(lines: string[]): string {
 }
 
 export function compilePanelVideoPrompt(spec: PanelVideoPromptSpec, locale: Locale = 'zh'): string {
+  const inheritedVisual = locale === 'en'
+    ? [
+      `subject: ${spec.visualContract.primarySubject}`,
+      spec.visualContract.assetLocks.length ? `locked assets: ${spec.visualContract.assetLocks.join(', ')}` : '',
+      spec.visualContract.composition ? `composition: ${spec.visualContract.composition}` : '',
+      spec.visualContract.settingAndLight ? `setting and light: ${spec.visualContract.settingAndLight}` : '',
+      spec.visualContract.textPolicy === 'safe_area_only' ? 'text-free clean plate for downstream typography' : '',
+    ].filter(Boolean).join('; ')
+    : [
+      `主体：${spec.visualContract.primarySubject}`,
+      spec.visualContract.assetLocks.length ? `资产锁：${spec.visualContract.assetLocks.join('、')}` : '',
+      spec.visualContract.composition ? `构图：${spec.visualContract.composition}` : '',
+      spec.visualContract.settingAndLight ? `场景与光色：${spec.visualContract.settingAndLight}` : '',
+      spec.visualContract.textPolicy === 'safe_area_only' ? '无字底图，文字后期合成' : '',
+    ].filter(Boolean).join('；')
   if (locale === 'en') {
     return joinLines([
       `Image-to-video shot, ${spec.generationMode} mode.`,
       `Source frame policy: ${spec.sourceFramePolicy}`,
-      `Narrative intent: ${spec.narrativeIntent}`,
-      `Primary subject: ${spec.primarySubject}`,
+      `Inherited visual contract: ${inheritedVisual}.`,
       `Start state: ${spec.startState}`,
       `Primary motion: ${spec.primaryMotion}`,
       spec.secondaryMotion.length ? `Secondary motion: ${spec.secondaryMotion.join('; ')}` : '',
@@ -304,8 +343,7 @@ export function compilePanelVideoPrompt(spec: PanelVideoPromptSpec, locale: Loca
   return joinLines([
     `图生视频镜头，${spec.generationMode === 'firstlastframe' ? '首尾帧' : '普通 I2V'}模式。`,
     `首帧规则：${spec.sourceFramePolicy}`,
-    `叙事目的：${spec.narrativeIntent}`,
-    `主视觉主体：${spec.primarySubject}`,
+    `继承画面合同：${inheritedVisual}。`,
     `起始状态：${spec.startState}`,
     `主体主运动：${spec.primaryMotion}`,
     spec.secondaryMotion.length ? `二级动画：${spec.secondaryMotion.join('；')}` : '',

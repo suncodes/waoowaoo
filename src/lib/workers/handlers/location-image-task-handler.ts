@@ -14,6 +14,7 @@ import {
   buildAssetPromptSpec,
   compileAssetImagePrompt,
 } from '@/lib/prompt-compiler/asset-prompt-compiler'
+import { extractAssetVisualFactsWithAI } from '@/lib/prompt-compiler/asset-visual-fact-extractor'
 import { reportTaskProgress } from '../shared'
 import {
   assertTaskActive,
@@ -252,11 +253,21 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
     const name = locationNameMap[item.locationId] || item.location?.name || '场景'
     const promptBody = item.description || ''
     if (!promptBody) continue
+    const extractedFacts = await extractAssetVisualFactsWithAI({
+      userId,
+      projectId,
+      model: models.analysisModel,
+      assetKind: assetType,
+      assetName: name,
+      description: promptBody,
+      semanticType: locationMetaMap[item.locationId]?.semanticType,
+    })
     const promptSpec = buildAssetPromptSpec({
       assetId: item.id,
       assetKind: assetType,
       assetName: name,
       description: promptBody,
+      extractedFacts,
       semanticType: locationMetaMap[item.locationId]?.semanticType,
       assetTier: locationMetaMap[item.locationId]?.assetTier,
       usageScope: locationMetaMap[item.locationId]?.usageScope,

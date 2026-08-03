@@ -13,6 +13,8 @@ import {
   buildAssetPromptSpec,
   compileAssetImagePrompt,
 } from '@/lib/prompt-compiler/asset-prompt-compiler'
+import { extractAssetVisualFactsWithAI } from '@/lib/prompt-compiler/asset-visual-fact-extractor'
+import { hasStructuredAssetVisualFacts } from '@/lib/prompt-compiler/asset-visual-contract'
 import {
   assertTaskActive,
   getUserModels,
@@ -34,6 +36,7 @@ interface GlobalCharacterAppearanceRecord {
 interface GlobalCharacterRecord {
   id: string
   name: string
+  profileData?: string | null
   semanticType?: string | null
   assetTier?: string | null
   usageScope?: string | null
@@ -107,6 +110,18 @@ export async function handleAssetHubImageTask(job: Job<TaskJobData>) {
 
     const descriptions = parseJsonStringArray(appearance.descriptions)
     const base = descriptions.length ? descriptions : [appearance.description || '']
+    const extractedFacts = hasStructuredAssetVisualFacts(character.profileData)
+      ? null
+      : await extractAssetVisualFactsWithAI({
+        userId,
+        projectId: 'asset-hub',
+        model: userModels.analysisModel,
+        assetKind: 'character',
+        assetName: character.name,
+        description: base[0] || '',
+        semanticType: character.semanticType,
+        variantLabel: appearance.changeReason,
+      })
     const count = normalizeImageGenerationCount('character', payload.count)
     const imageUrls: string[] = []
     const promptSnapshots: GenerationSnapshot[] = []
@@ -118,6 +133,8 @@ export async function handleAssetHubImageTask(job: Job<TaskJobData>) {
         assetKind: 'character',
         assetName: character.name,
         description: raw,
+        profileData: character.profileData,
+        extractedFacts,
         semanticType: character.semanticType,
         assetTier: character.assetTier,
         usageScope: character.usageScope,
@@ -211,11 +228,21 @@ export async function handleAssetHubImageTask(job: Job<TaskJobData>) {
     for (const image of targetImages) {
       if (!image.description) continue
       const assetKind = payload.type === 'prop' ? 'prop' : 'location'
+      const extractedFacts = await extractAssetVisualFactsWithAI({
+        userId,
+        projectId: 'asset-hub',
+        model: userModels.analysisModel,
+        assetKind,
+        assetName: location.name,
+        description: image.description,
+        semanticType: location.semanticType,
+      })
       const promptSpec = buildAssetPromptSpec({
         assetId: image.id,
         assetKind,
         assetName: location.name,
         description: image.description,
+        extractedFacts,
         semanticType: location.semanticType,
         assetTier: location.assetTier,
         usageScope: location.usageScope,

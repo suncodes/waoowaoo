@@ -8,6 +8,10 @@ import {
   type PanelAssetBindingPlan,
 } from '@/lib/visual-production/binding-plan'
 import type { PanelGenerationRoute } from '@/lib/visual-production/panel-generation-router'
+import {
+  buildPanelVisualContract,
+  type PanelVisualContract,
+} from './panel-visual-contract'
 
 export interface PanelPromptAssetRef {
   id: string | null
@@ -54,6 +58,7 @@ export interface PanelImagePromptSpec {
   generationRoute: PanelGenerationRoute
   noReferenceReason: string | null
   referencePlan: unknown
+  visualContract: PanelVisualContract
   textPolicy: 'no_text' | 'safe_area_only'
   negativeConstraints: string[]
   promptBlueprint: {
@@ -504,11 +509,12 @@ export function compilePanelImageRenderBrief(
   spec: PanelImagePromptSpec,
   locale: RenderBriefLocale = 'zh',
 ): string {
+  const visualContract = spec.visualContract
   const blueprint = spec.promptBlueprint
   const anchors = new Set(uniquePromptTerms([
     spec.narrativeIntent,
-    spec.primarySubject,
-    spec.actionState,
+    visualContract.primarySubject,
+    visualContract.actionState,
     spec.environment,
     spec.composition.shotType,
     spec.composition.cameraAngle,
@@ -523,7 +529,7 @@ export function compilePanelImageRenderBrief(
     ...blueprint.camera,
     ...blueprint.lighting,
   ]).filter((value) => !anchors.has(value))
-  const composition = joinPromptTerms([
+  const composition = visualContract.composition || joinPromptTerms([
     spec.composition.shotType,
     spec.composition.cameraAngle,
     spec.spatialLayout,
@@ -532,15 +538,17 @@ export function compilePanelImageRenderBrief(
     spec.composition.background,
   ], locale)
   const references = uniquePromptTerms(spec.assetRefs.map((asset) => renderAssetReference(asset, locale)))
-  const continuity = joinPromptTerms([
-    spec.continuity.fromPrevious,
-    spec.continuity.toNext,
-    spec.continuity.screenDirection,
-    spec.continuity.lightingContinuity,
-  ], locale)
+  const continuity = joinPromptTerms(visualContract.continuity.length > 0
+    ? visualContract.continuity
+    : [
+      spec.continuity.fromPrevious,
+      spec.continuity.toNext,
+      spec.continuity.screenDirection,
+      spec.continuity.lightingContinuity,
+    ], locale)
   const style = joinPromptTerms([spec.styleAndTexture, ...blueprint.style], locale)
   const negativeConstraints = joinPromptTerms([
-    ...spec.negativeConstraints,
+    ...visualContract.negativeConstraints,
     ...blueprint.negative,
   ], locale)
   const specialHandling = renderSpecialHandling(spec, locale)
@@ -549,7 +557,7 @@ export function compilePanelImageRenderBrief(
   if (locale === 'en') {
     return [
       `Shot goal: ${spec.narrativeIntent}.`,
-      `Main subject and action: ${joinPromptTerms([spec.primarySubject, spec.actionState], locale)}.`,
+      `Main subject and action: ${joinPromptTerms([visualContract.primarySubject, visualContract.actionState], locale)}.`,
       `Environment: ${spec.environment}.`,
       `Composition: ${composition}.`,
       `Lighting and color: ${spec.lightingAndColor}.`,
@@ -564,7 +572,7 @@ export function compilePanelImageRenderBrief(
 
   return [
     `镜头目的：${spec.narrativeIntent}。`,
-    `主体与关键动作：${joinPromptTerms([spec.primarySubject, spec.actionState], locale)}。`,
+    `主体与关键动作：${joinPromptTerms([visualContract.primarySubject, visualContract.actionState], locale)}。`,
     `场景：${spec.environment}。`,
     `构图：${composition}。`,
     `光色：${spec.lightingAndColor}。`,
@@ -607,6 +615,51 @@ export function buildPanelImagePromptSpec(params: {
     cleanPlate,
   )
   const referenceInstructions = bindingPlan ? bindingPlanPromptGuidance(bindingPlan) : []
+  const assetRefs = buildAssetRefs(params.context, primarySubject)
+  const actionState = resolveActionState(params.context)
+  const environment = firstNonEmpty(
+    location?.description,
+    location?.name,
+    params.context.panel.location,
+    '与镜头内容一致的具体物理空间',
+  )
+  const spatialLayout = resolveSpatialLayout(params.context)
+  const composition = {
+    shotType: firstNonEmpty(params.context.panel.shot_type, '中景'),
+    cameraAngle: resolveCameraAngle(params.context),
+    foreground: '必要时使用轻量前景建立临场感，但不得遮挡主体',
+    midground: `${primarySubject} 承担画面主视觉焦点${propNames.length ? `，关键道具：${propNames.join('、')}` : ''}`,
+    background: firstNonEmpty(location?.name, params.context.panel.location, '背景服务于主体和叙事，不添加无关角色或标志物'),
+  }
+  const lightingAndColor = resolveLightingAndColor(params.context)
+  const textPolicy = params.context.panel.on_screen_text_for_downstream_composition ? 'safe_area_only' : 'no_text'
+  const negativeConstraints = Array.from(new Set([
+    '无文字',
+    '无水印',
+    '无标志',
+    '无多格拼图',
+    '无混剪画面',
+    '无未指定角色',
+    '无风格关联 IP 角色',
+    ...(cleanPlate ? ['无可读文字', '无书名', '无作者名', '无标题', '无字幕', '无伪文字', '无字母', '无数字', '无素材墙'] : []),
+    ...promptBlueprint.negative,
+  ]))
+  const continuity = resolveContinuity(params.context)
+  const visualContract = buildPanelVisualContract({
+    primarySubject,
+    assetLocks: assetRefs.map((item) => item.name),
+    actionState,
+    composition: [composition.shotType, composition.cameraAngle, spatialLayout],
+    settingAndLight: [environment, lightingAndColor],
+    continuity: [
+      continuity.fromPrevious,
+      continuity.toNext,
+      continuity.screenDirection,
+      continuity.lightingContinuity,
+    ],
+    textPolicy,
+    negativeConstraints,
+  })
   return {
     schemaVersion: CREATIVE_QUALITY_SCHEMA_VERSION,
     panelId: params.context.panel.panel_id,
@@ -616,23 +669,12 @@ export function buildPanelImagePromptSpec(params: {
     narrativeIntent,
     shotFunction: firstNonEmpty(readNestedString(shotSpec, ['shotFunction']), 'setup'),
     primarySubject,
-    assetRefs: buildAssetRefs(params.context, primarySubject),
-    actionState: resolveActionState(params.context),
-    environment: firstNonEmpty(
-      location?.description,
-      location?.name,
-      params.context.panel.location,
-      '与镜头内容一致的具体物理空间',
-    ),
-    spatialLayout: resolveSpatialLayout(params.context),
-    composition: {
-      shotType: firstNonEmpty(params.context.panel.shot_type, '中景'),
-      cameraAngle: resolveCameraAngle(params.context),
-      foreground: '必要时使用轻量前景建立临场感，但不得遮挡主体',
-      midground: `${primarySubject} 承担画面主视觉焦点${propNames.length ? `，关键道具：${propNames.join('、')}` : ''}`,
-      background: firstNonEmpty(location?.name, params.context.panel.location, '背景服务于主体和叙事，不添加无关角色或标志物'),
-    },
-    lightingAndColor: resolveLightingAndColor(params.context),
+    assetRefs,
+    actionState,
+    environment,
+    spatialLayout,
+    composition,
+    lightingAndColor,
     styleAndTexture: params.styleText,
     qualityTerms: [
       '主体清晰',
@@ -650,20 +692,11 @@ export function buildPanelImagePromptSpec(params: {
     generationRoute,
     noReferenceReason: params.noReferenceReason || null,
     referencePlan: params.referencePlan || params.context.context.visual_references || null,
-    textPolicy: params.context.panel.on_screen_text_for_downstream_composition ? 'safe_area_only' : 'no_text',
-    negativeConstraints: Array.from(new Set([
-      '无文字',
-      '无水印',
-      '无标志',
-      '无多格拼图',
-      '无混剪画面',
-      '无未指定角色',
-      '无风格关联 IP 角色',
-      ...(cleanPlate ? ['无可读文字', '无书名', '无作者名', '无标题', '无字幕', '无伪文字', '无字母', '无数字', '无素材墙'] : []),
-      ...promptBlueprint.negative,
-    ])),
+    visualContract,
+    textPolicy,
+    negativeConstraints,
     promptBlueprint,
-    continuity: resolveContinuity(params.context),
+    continuity,
     singleImageFeasibility: resolveSingleImageFeasibility(params.context),
   }
 }

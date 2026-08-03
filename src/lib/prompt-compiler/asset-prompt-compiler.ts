@@ -21,9 +21,15 @@ import {
   type AssetTier,
   type AssetUsageScope,
 } from '@/lib/assets/asset-semantics'
+import {
+  buildAssetVisualContract,
+  promptFactValues,
+  type AssetVisualContract,
+  type AssetVisualFactInput,
+} from './asset-visual-contract'
 
 type Locale = 'zh' | 'en'
-type AssetImageTemplateKind =
+export type AssetImageTemplateKind =
   | 'character_reference_sheet'
   | 'vehicle_turnaround'
   | 'prop_turnaround'
@@ -46,6 +52,7 @@ export interface AssetPromptSpec {
   materialAndTexture: string[]
   colorPalette: string[]
   keyParts: string[]
+  visualContract: AssetVisualContract
   viewAndComposition: string
   backgroundRule: string
   styleApplication: string
@@ -64,10 +71,6 @@ function firstNonEmpty(...values: Array<string | null | undefined>): string {
 
 function uniqueStrings(values: Array<string | null | undefined>): string[] {
   return Array.from(new Set(values.map((value) => value?.trim() || '').filter(Boolean)))
-}
-
-function splitDescription(value: string): string[] {
-  return uniqueStrings(value.split(/[，,；;\n。.!！?？]+/g).map((item) => item.trim())).slice(0, 8)
 }
 
 function buildDefaultNegativeConstraints(kind: AssetPromptSpec['assetKind'], locale: Locale): string[] {
@@ -213,6 +216,8 @@ export function buildAssetPromptSpec(params: {
   styleText: string
   styleReferenceInstruction?: string
   availableSlotsRaw?: string | null
+  profileData?: unknown
+  extractedFacts?: AssetVisualFactInput | null
   locale: Locale
 }): AssetPromptSpec {
   const description = params.description.trim()
@@ -223,12 +228,16 @@ export function buildAssetPromptSpec(params: {
     explicitSemanticType: typeof params.semanticType === 'string' ? params.semanticType : null,
   })
   const templateKind = resolveTemplateKind(params.assetKind, semanticType)
-  const evidence = uniqueStrings([description])
-  const descriptionFragments = splitDescription(description)
+  const visualContract = buildAssetVisualContract({
+    assetKind: params.assetKind,
+    description,
+    profileData: params.profileData,
+    extractedFacts: params.extractedFacts,
+  })
   const identityLocks = uniqueStrings([
     semanticType === 'book' ? null : params.assetName,
     params.variantLabel || null,
-    description,
+    ...promptFactValues(visualContract.identityLocks),
   ])
   const availableSlots = params.assetKind === 'location'
     ? parseLocationAvailableSlots(params.availableSlotsRaw)
@@ -244,16 +253,20 @@ export function buildAssetPromptSpec(params: {
     assetName: params.assetName,
     renderPurpose: params.renderPurpose || (params.assetKind === 'location' ? 'single_reference' : 'reference_sheet'),
     identityLocks,
-    shapeAndSilhouette: descriptionFragments.length > 0 ? descriptionFragments : [params.assetName],
-    materialAndTexture: descriptionFragments,
-    colorPalette: descriptionFragments,
-    keyParts: descriptionFragments,
+    shapeAndSilhouette: promptFactValues(visualContract.silhouetteLocks),
+    materialAndTexture: promptFactValues(visualContract.costumeOrMaterialLocks),
+    colorPalette: promptFactValues(visualContract.colorLocks),
+    keyParts: promptFactValues(visualContract.keyPartLocks),
+    visualContract,
     viewAndComposition: resolveViewAndComposition(params.assetKind, semanticType, params.locale),
     backgroundRule: resolveBackgroundRule(params.assetKind, semanticType, params.locale),
     styleApplication: resolveStyleApplication(params.styleText, params.styleReferenceInstruction || '', params.locale),
     qualityTerms: resolveQualityTerms(params.assetKind, semanticType, params.locale),
-    negativeConstraints: buildDefaultNegativeConstraints(params.assetKind, params.locale),
-    sourceEvidence: evidence,
+    negativeConstraints: uniqueStrings([
+      ...promptFactValues(visualContract.exclusions),
+      ...buildDefaultNegativeConstraints(params.assetKind, params.locale),
+    ]),
+    sourceEvidence: visualContract.sourceEvidence.map((item) => item.text),
     availableSlots,
   }
 }
@@ -263,7 +276,7 @@ function listLine(label: string, values: string[], fallback: string): string {
 }
 
 function inlineIdentityLocks(spec: AssetPromptSpec): string[] {
-  return uniqueStrings(spec.identityLocks.filter((value) => !spec.sourceEvidence.includes(value)))
+  return uniqueStrings(spec.identityLocks)
 }
 
 function visualFeatureTerms(spec: AssetPromptSpec): string[] {
@@ -367,5 +380,5 @@ export function buildAssetImageGenerationSnapshot(params: {
   }
 }
 
-export const ASSET_PROMPT_TEMPLATE_ID = 'asset_image_prompt_compiler.v1'
+export const ASSET_PROMPT_TEMPLATE_ID = 'asset_image_prompt_compiler.v2'
 export const DEFAULT_LOCATION_ASSET_ASPECT_RATIO = LOCATION_IMAGE_RATIO

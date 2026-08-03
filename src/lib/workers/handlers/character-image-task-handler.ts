@@ -15,6 +15,8 @@ import {
   buildAssetPromptSpec,
   compileAssetImagePrompt,
 } from '@/lib/prompt-compiler/asset-prompt-compiler'
+import { extractAssetVisualFactsWithAI } from '@/lib/prompt-compiler/asset-visual-fact-extractor'
+import { hasStructuredAssetVisualFacts } from '@/lib/prompt-compiler/asset-visual-contract'
 import { reportTaskProgress } from '../shared'
 import {
   assertTaskActive,
@@ -55,6 +57,7 @@ interface CharacterAppearanceRecord {
 interface CharacterAppearanceWithCharacter extends CharacterAppearanceRecord {
   character: {
     name: string
+    profileData?: string | null
     semanticType?: string | null
     assetTier?: string | null
     usageScope?: string | null
@@ -64,6 +67,7 @@ interface CharacterAppearanceWithCharacter extends CharacterAppearanceRecord {
 interface CharacterRecord {
   id: string
   name: string
+  profileData?: string | null
   semanticType?: string | null
   assetTier?: string | null
   usageScope?: string | null
@@ -125,6 +129,7 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
         ...appearance,
         character: {
           name: character.name,
+          profileData: character.profileData,
           semanticType: character.semanticType,
           assetTier: character.assetTier,
           usageScope: character.usageScope,
@@ -147,6 +152,19 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
   })
   const descriptions = parseJsonStringArray(appearance.descriptions)
   const baseDescriptions = descriptions.length > 0 ? descriptions : [appearance.description || '']
+  const profileData = appearanceForQuality?.character.profileData
+  const extractedFacts = hasStructuredAssetVisualFacts(profileData)
+    ? null
+    : await extractAssetVisualFactsWithAI({
+      userId,
+      projectId,
+      model: models.analysisModel,
+      assetKind: 'character',
+      assetName: characterName,
+      description: baseDescriptions[0] || '',
+      semanticType: appearanceForQuality?.character.semanticType,
+      variantLabel: appearance.changeReason,
+    })
 
   // 子形象（不是主形象）生成时，引用主形象图片保持一致性
   const primaryReferenceInputs: string[] = []
@@ -192,6 +210,8 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
         assetKind: 'character',
         assetName: characterName,
         description: raw,
+        profileData,
+        extractedFacts,
         semanticType: appearanceForQuality?.character.semanticType,
         assetTier: appearanceForQuality?.character.assetTier,
         usageScope: appearanceForQuality?.character.usageScope,

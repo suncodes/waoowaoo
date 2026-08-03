@@ -146,4 +146,37 @@ describe('panel video prompt compiler', () => {
     expect(spec.continuityConstraints.join('\n')).toContain('黄铜罗盘')
     expect(spec.continuityConstraints.join('\n')).toContain('短视频段')
   })
+
+  it('inherits the validated panel visual contract without repeating raw story text', () => {
+    const spec = buildPanelVideoPromptSpec({
+      locale: 'zh',
+      context: {
+        generationMode: 'normal',
+        panel: {
+          panelId: 'panel-contract',
+          description: '这段长描述不应被当作静态画面合同重复输出。',
+          videoPrompt: '罗盘指针缓慢转动',
+          promptSpec: {
+            visualContract: {
+              primarySubject: '黄铜罗盘',
+              assetLocks: ['黄铜罗盘', '木桌'],
+              actionState: '罗盘静置于桌面',
+              composition: '特写；俯视机位',
+              settingAndLight: '昏暗木桌；暖色侧光',
+              continuity: ['保持罗盘方向'],
+              textPolicy: 'no_text',
+              negativeConstraints: ['无文字'],
+            },
+          },
+        },
+      },
+    })
+    const prompt = compilePanelVideoPrompt(spec, 'zh')
+
+    expect(spec.visualContract.primarySubject).toBe('黄铜罗盘')
+    expect(spec.secondaryMotion).toEqual([])
+    expect(prompt).toContain('继承画面合同：主体：黄铜罗盘')
+    expect(prompt).toContain('主体主运动：罗盘指针缓慢转动')
+    expect(prompt).not.toContain('这段长描述不应被当作静态画面合同重复输出')
+  })
 })
