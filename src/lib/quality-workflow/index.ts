@@ -4,7 +4,11 @@ import {
   type VisualAutoRepairLineage,
 } from '@/lib/creative-quality/contracts'
 import { VISUAL_REPAIR_MAX_ATTEMPTS } from '@/lib/visual-quality/repair-policy'
-import type { VisualCandidateGroup, VisualQualityState } from './types'
+import type {
+  VisualCandidateGroup,
+  VisualCandidatePromptSnapshotRef,
+  VisualQualityState,
+} from './types'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
@@ -24,6 +28,27 @@ function parseStringArrayValue(value: unknown): string[] {
     return Array.isArray(parsed) ? uniqueStrings(parsed) : []
   } catch {
     return []
+  }
+}
+
+function normalizePromptSnapshot(value: unknown): VisualCandidatePromptSnapshotRef | null {
+  if (!isRecord(value)) return null
+  const artifactId = typeof value.artifactId === 'string' ? value.artifactId.trim() : ''
+  const runId = typeof value.runId === 'string' ? value.runId.trim() : ''
+  const promptHash = typeof value.promptHash === 'string' ? value.promptHash.trim() : ''
+  const inputHash = typeof value.inputHash === 'string' ? value.inputHash.trim() : ''
+  if (!artifactId || !runId || !promptHash || !inputHash) return null
+  return {
+    artifactId,
+    runId,
+    promptHash,
+    inputHash,
+    preparationHash: typeof value.preparationHash === 'string' && value.preparationHash.trim()
+      ? value.preparationHash.trim()
+      : null,
+    createdAt: typeof value.createdAt === 'string' && value.createdAt.trim()
+      ? value.createdAt
+      : new Date(0).toISOString(),
   }
 }
 
@@ -56,6 +81,7 @@ function normalizeCandidateGroup(value: unknown): VisualCandidateGroup | null {
       ? value.sourceCandidateUrl.trim()
       : null,
     action,
+    promptSnapshot: normalizePromptSnapshot(value.promptSnapshot),
     createdAt: typeof value.createdAt === 'string' && value.createdAt.trim()
       ? value.createdAt
       : new Date(0).toISOString(),
@@ -83,6 +109,7 @@ export function createVisualCandidateGroup(params: {
   candidateUrls: string[]
   sourceCandidateUrl?: string | null
   action?: VisualCandidateGroup['action']
+  promptSnapshot?: VisualCandidatePromptSnapshotRef | null
   createdAt?: string
 }): VisualCandidateGroup {
   const attempt = Math.max(0, Math.floor(params.attempt || 0))
@@ -96,6 +123,7 @@ export function createVisualCandidateGroup(params: {
     candidateUrls: uniqueStrings(params.candidateUrls),
     sourceCandidateUrl: params.sourceCandidateUrl?.trim() || null,
     action: params.action || null,
+    promptSnapshot: normalizePromptSnapshot(params.promptSnapshot),
     createdAt: params.createdAt || new Date().toISOString(),
   }
 }

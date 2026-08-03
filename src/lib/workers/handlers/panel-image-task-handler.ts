@@ -45,6 +45,7 @@ import {
   buildPanelImagePromptFromResolvedInputs,
   buildPanelReferencePlan,
 } from '@/lib/novel-promotion/panel-generation-prompt-preview'
+import { resolvePanelVisualFactsWithAI } from '@/lib/prompt-compiler/panel-visual-fact-extractor'
 import type { Prisma } from '@prisma/client'
 
 function parseJsonUnknown(raw: string | null | undefined): unknown | null {
@@ -299,7 +300,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
   }
 
   if (!projectData.videoRatio) throw new Error('Project videoRatio not configured')
-  const imagePromptCompilation = buildPanelImagePromptFromResolvedInputs({
+  const provisionalCompilation = buildPanelImagePromptFromResolvedInputs({
     panel: {
       id: panelForGeneration.id,
       storyboardId: panelForGeneration.storyboardId,
@@ -337,6 +338,55 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
     generationRouteDecision,
     referenceImages,
   })
+  const visualFacts = await resolvePanelVisualFactsWithAI({
+    userId: job.data.userId,
+    projectId: job.data.projectId,
+    input: {
+      ...provisionalCompilation.factPreparationInput,
+      model: modelConfig.analysisModel || null,
+    },
+    reusableOptimization: asJsonRecord(panelForGeneration.promptSpec).promptOptimization,
+  })
+  const imagePromptCompilation = buildPanelImagePromptFromResolvedInputs({
+    panel: {
+      id: panelForGeneration.id,
+      storyboardId: panelForGeneration.storyboardId,
+      panelIndex: panelForGeneration.panelIndex,
+      shotType: panelForGeneration.shotType,
+      cameraMove: panelForGeneration.cameraMove,
+      description: panelForGeneration.description,
+      imagePrompt: panelForGeneration.imagePrompt,
+      videoPrompt: panelForGeneration.videoPrompt,
+      location: panelForGeneration.location,
+      characters: panelForGeneration.characters,
+      props: panelForGeneration.props,
+      sourceAnchor: panelForGeneration.sourceAnchor,
+      srtSegment: panelForGeneration.srtSegment,
+      photographyRules: panelForGeneration.photographyRules,
+      actingNotes: panelForGeneration.actingNotes,
+      visualType: panelForGeneration.visualType,
+      renderMode: panelForGeneration.renderMode,
+      onScreenText: panelForGeneration.onScreenText,
+      sketchImageUrl: panelForGeneration.sketchImageUrl,
+      duration: panelForGeneration.duration,
+      promptSpec: panelForGeneration.promptSpec,
+      referencePlan: panelForGeneration.referencePlan,
+      continuityGroupId: panelForGeneration.continuityGroupId,
+      generationRoute: panelForGeneration.generationRoute,
+      primarySubject: panelForGeneration.primarySubject,
+      imageUrl: panelForGeneration.imageUrl,
+    },
+    projectData,
+    locale: job.data.locale,
+    resolvedArtStyle,
+    visualBindings,
+    visualBindingPlan,
+    visualReferences,
+    generationRouteDecision,
+    referenceImages,
+    optimizedFacts: visualFacts.facts,
+    promptOptimization: visualFacts.optimization,
+  })
   const aspectRatio = imagePromptCompilation.aspectRatio
   const prompt = imagePromptCompilation.compiledPrompt
   const panelPromptSpec = imagePromptCompilation.promptSpec
@@ -358,6 +408,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
     compiledPrompt: prompt,
     assetVersionHash: imagePromptCompilation.assetVersionHash,
   })
+  let promptSnapshotArtifactId: string | null = null
   if (runId) {
     try {
       await createArtifact({
@@ -376,7 +427,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
         versionHash: createCreativeQualityHash(generationRouteDecision),
         payload: toJsonRecord(generationRouteDecision),
       })
-      await createArtifact({
+      const promptSnapshotArtifact = await createArtifact({
         runId,
         stepKey: 'panel_image_prompt',
         artifactType: 'prompt.panel_image.snapshot',
@@ -384,6 +435,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
         versionHash: promptSnapshot.promptHash,
         payload: toJsonRecord(promptSnapshot),
       })
+      promptSnapshotArtifactId = promptSnapshotArtifact.id || null
     } catch (error) {
       logger.warn({
         message: 'panel image prompt snapshot artifact failed',
@@ -438,6 +490,16 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
     panel: panelForGeneration,
     candidates,
     isFirstGeneration,
+    promptSnapshot: runId && promptSnapshotArtifactId
+      ? {
+        artifactId: promptSnapshotArtifactId,
+        runId,
+        promptHash: promptSnapshot.promptHash,
+        inputHash: promptSnapshot.inputHash,
+        preparationHash: promptSnapshot.preparationHash || null,
+        createdAt: promptSnapshot.createdAt,
+      }
+      : null,
   })
 
   return {

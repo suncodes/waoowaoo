@@ -190,6 +190,43 @@ describe('panel image prompt compiler', () => {
     expect(brief).not.toContain('prop-1')
   })
 
+  it('uses validated visual facts without leaking their internal JSON structure', () => {
+    const spec = buildPanelImagePromptSpec({
+      context: buildContext(),
+      aspectRatio: '16:9',
+      styleText: 'cinematic ink illustration',
+      optimizedFacts: {
+        narrativeIntent: '表现钥匙插入锁孔前的犹豫',
+        actionState: '黄铜钥匙停在锁孔前',
+        environment: '狭窄金属走廊与厚重保险库门',
+        composition: ['低机位近景，钥匙位于画面中心'],
+        lightingAndColor: '冷色侧光勾勒钥匙金属边缘',
+        continuity: ['人物持续面朝保险库右侧'],
+        negativeConstraints: ['不要增加第二把钥匙'],
+      },
+      promptOptimization: {
+        schemaVersion: 1,
+        strategy: 'panel_visual_facts',
+        source: 'llm',
+        preparationHash: 'preparation-hash',
+        facts: { action_state: '黄铜钥匙停在锁孔前' },
+        evidence: [],
+        validationIssues: [],
+      },
+    })
+    const brief = compilePanelImageRenderBrief(spec, 'zh')
+
+    expect(spec.narrativeIntent).toBe('表现钥匙插入锁孔前的犹豫')
+    expect(spec.actionState).toBe('黄铜钥匙停在锁孔前')
+    expect(spec.environment).toBe('狭窄金属走廊与厚重保险库门')
+    expect(spec.promptOptimization?.preparationHash).toBe('preparation-hash')
+    expect(brief).toContain('黄铜钥匙停在锁孔前')
+    expect(brief).toContain('不要增加第二把钥匙')
+    expect(brief).not.toContain('action_state')
+    expect(brief).not.toContain('preparation-hash')
+    expect(brief).not.toContain('{"')
+  })
+
   it('turns book cover panels into text-free clean-plate prompt specs', () => {
     const context = buildContext()
     context.panel.visual_type = 'book_cover'

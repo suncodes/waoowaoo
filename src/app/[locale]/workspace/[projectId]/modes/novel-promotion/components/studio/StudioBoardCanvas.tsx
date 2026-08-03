@@ -28,7 +28,9 @@ import {
 import StudioBoardEmpty from './StudioBoardEmpty'
 import StudioBoardShotCard from './StudioBoardShotCard'
 import PanelGenerationPromptPreviewModal from './PanelGenerationPromptPreviewModal'
+import GenerationPromptSnapshotModal from './GenerationPromptSnapshotModal'
 import StudioShotPlanEditor from './StudioShotPlanEditor'
+import { useGenerationPromptSnapshot } from './useGenerationPromptSnapshot'
 import { currentImageUrl, flattenBoardItems, isPanelReadyForProduction, type BoardItem } from './studio-board-model'
 
 interface StudioBoardCanvasProps {
@@ -55,6 +57,7 @@ function BoardDetailPanel({
   const [promptPreviewOpen, setPromptPreviewOpen] = useState(false)
   const [promptPreview, setPromptPreview] = useState<PanelGenerationPromptPreview | null>(null)
   const [promptPreviewError, setPromptPreviewError] = useState<string | null>(null)
+  const [actualPromptOpen, setActualPromptOpen] = useState(false)
   const saveState = controller.saveStateByPanel[item.panel.id]
   const candidates = controller.getPanelCandidates(item.sourcePanel)
   const qualityState = parseVisualQualityState(item.sourcePanel.visualQualityState)
@@ -88,6 +91,13 @@ function BoardDetailPanel({
     .flatMap((group) => group.cards)
     .find((card) => card.index === candidates?.selectedIndex)
     || null
+  const actualPromptSnapshot = useGenerationPromptSnapshot({
+    isOpen: actualPromptOpen,
+    projectId,
+    artifactId: selectedCandidateCard?.promptSnapshot?.artifactId || null,
+    source: 'panel',
+    panelId: item.panel.id,
+  })
   const confirmedCandidateIndex = candidates
     ? resolveConfirmedCandidateIndex(item.sourcePanel, candidates.candidates)
     : -1
@@ -129,6 +139,7 @@ function BoardDetailPanel({
         storyboardId: item.storyboard.id,
         panelIndex: item.panel.panelIndex,
         mode: 'image',
+        forceNoReference: referenceBlocked,
         overrides: {
           panel: {
             shotType: panelData.shotType,
@@ -226,7 +237,16 @@ function BoardDetailPanel({
             loading={promptPreviewMutation.isPending}
             onClick={() => { void openImagePromptPreview() }}
           >
-            查看提示词
+            预览本次提示词
+          </StudioButton>
+          <StudioButton
+            size="sm"
+            variant="secondary"
+            icon="info"
+            onClick={() => setActualPromptOpen(true)}
+            disabled={!selectedCandidateCard?.promptSnapshot}
+          >
+            查看实际提示词
           </StudioButton>
           <StudioButton
             size="sm"
@@ -472,6 +492,16 @@ function BoardDetailPanel({
         loading={promptPreviewMutation.isPending}
         errorMessage={promptPreviewError}
         onClose={() => setPromptPreviewOpen(false)}
+      />
+    ) : null}
+    {actualPromptOpen ? (
+      <GenerationPromptSnapshotModal
+        title="分镜图片实际生成提示词"
+        contextLabel={`镜头 ${String(item.globalNumber).padStart(2, '0')}${selectedCandidateCard ? ` · ${selectedCandidateCard.displayName}` : ''}`}
+        snapshot={actualPromptSnapshot.snapshot}
+        loading={actualPromptSnapshot.loading}
+        errorMessage={actualPromptSnapshot.errorMessage}
+        onClose={() => setActualPromptOpen(false)}
       />
     ) : null}
     </>

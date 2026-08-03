@@ -6,10 +6,16 @@ export const PANEL_PROMPT_SNAPSHOT_TYPES = [
 ] as const
 
 export type PanelPromptSnapshotArtifactType = typeof PANEL_PROMPT_SNAPSHOT_TYPES[number]
+export const ASSET_PROMPT_SNAPSHOT_TYPES = [
+  'prompt.asset_image.snapshot',
+] as const
 
-export interface PanelPromptSnapshotView {
+export type AssetPromptSnapshotArtifactType = typeof ASSET_PROMPT_SNAPSHOT_TYPES[number]
+export type GenerationPromptSnapshotArtifactType = PanelPromptSnapshotArtifactType | AssetPromptSnapshotArtifactType
+
+export interface GenerationPromptSnapshotView {
   artifactId: string
-  artifactType: PanelPromptSnapshotArtifactType
+  artifactType: GenerationPromptSnapshotArtifactType
   runId: string
   stepKey: string | null
   targetId: string
@@ -19,12 +25,23 @@ export interface PanelPromptSnapshotView {
   promptHash: string
   specHash: string
   inputHash: string
+  preparationHash: string | null
   assetVersionHash: string | null
   referenceImages: string[]
+  structuredReferences: unknown | null
+  bindingPlan: unknown | null
   promptSpec: unknown
   compiledPrompt: string
   createdAt: string
   artifactCreatedAt: string
+}
+
+export type PanelPromptSnapshotView = GenerationPromptSnapshotView & {
+  artifactType: PanelPromptSnapshotArtifactType
+}
+
+export type AssetPromptSnapshotView = GenerationPromptSnapshotView & {
+  artifactType: AssetPromptSnapshotArtifactType
 }
 
 export interface LatestPanelPromptSnapshots {
@@ -55,6 +72,14 @@ function isPanelPromptSnapshotType(value: string): value is PanelPromptSnapshotA
   return PANEL_PROMPT_SNAPSHOT_TYPES.includes(value as PanelPromptSnapshotArtifactType)
 }
 
+function isAssetPromptSnapshotType(value: string): value is AssetPromptSnapshotArtifactType {
+  return ASSET_PROMPT_SNAPSHOT_TYPES.includes(value as AssetPromptSnapshotArtifactType)
+}
+
+function isGenerationPromptSnapshotType(value: string): value is GenerationPromptSnapshotArtifactType {
+  return isPanelPromptSnapshotType(value) || isAssetPromptSnapshotType(value)
+}
+
 function toIsoDate(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString()
 }
@@ -63,7 +88,7 @@ function snapshotSlot(type: PanelPromptSnapshotArtifactType): keyof LatestPanelP
   return type === 'prompt.panel_image.snapshot' ? 'image' : 'video'
 }
 
-export function normalizePanelPromptSnapshotArtifact(row: {
+export function normalizeGenerationPromptSnapshotArtifact(row: {
   id: string
   runId: string
   stepKey: string | null
@@ -72,8 +97,8 @@ export function normalizePanelPromptSnapshotArtifact(row: {
   versionHash: string | null
   payload: unknown
   createdAt: Date | string
-}): PanelPromptSnapshotView | null {
-  if (!isPanelPromptSnapshotType(row.artifactType)) return null
+}): GenerationPromptSnapshotView | null {
+  if (!isGenerationPromptSnapshotType(row.artifactType)) return null
   if (!isRecord(row.payload)) return null
   const compiledPrompt = readString(row.payload, 'compiledPrompt')
   if (!compiledPrompt) return null
@@ -90,13 +115,48 @@ export function normalizePanelPromptSnapshotArtifact(row: {
     promptHash: readString(row.payload, 'promptHash') || row.versionHash || '',
     specHash: readString(row.payload, 'specHash'),
     inputHash: readString(row.payload, 'inputHash'),
+    preparationHash: readStringOrNull(row.payload, 'preparationHash'),
     assetVersionHash: readStringOrNull(row.payload, 'assetVersionHash'),
     referenceImages: readStringArray(row.payload.referenceImages),
+    structuredReferences: row.payload.structuredReferences ?? null,
+    bindingPlan: row.payload.bindingPlan ?? null,
     promptSpec: row.payload.promptSpec ?? null,
     compiledPrompt,
     createdAt: readString(row.payload, 'createdAt') || toIsoDate(row.createdAt),
     artifactCreatedAt: toIsoDate(row.createdAt),
   }
+}
+
+export function normalizePanelPromptSnapshotArtifact(row: {
+  id: string
+  runId: string
+  stepKey: string | null
+  artifactType: string
+  refId: string
+  versionHash: string | null
+  payload: unknown
+  createdAt: Date | string
+}): PanelPromptSnapshotView | null {
+  const snapshot = normalizeGenerationPromptSnapshotArtifact(row)
+  return snapshot && isPanelPromptSnapshotType(snapshot.artifactType)
+    ? snapshot as PanelPromptSnapshotView
+    : null
+}
+
+export function normalizeAssetPromptSnapshotArtifact(row: {
+  id: string
+  runId: string
+  stepKey: string | null
+  artifactType: string
+  refId: string
+  versionHash: string | null
+  payload: unknown
+  createdAt: Date | string
+}): AssetPromptSnapshotView | null {
+  const snapshot = normalizeGenerationPromptSnapshotArtifact(row)
+  return snapshot && isAssetPromptSnapshotType(snapshot.artifactType)
+    ? snapshot as AssetPromptSnapshotView
+    : null
 }
 
 export async function panelBelongsToProject(params: {
@@ -117,6 +177,36 @@ export async function panelBelongsToProject(params: {
     select: { id: true },
   })
   return !!panel
+}
+
+export async function getPanelPromptSnapshotByArtifactId(params: {
+  projectId: string
+  panelId: string
+  artifactId: string
+}): Promise<PanelPromptSnapshotView | null> {
+  const row = await prisma.graphArtifact.findFirst({
+    where: {
+      id: params.artifactId,
+      refId: params.panelId,
+      artifactType: { in: [...PANEL_PROMPT_SNAPSHOT_TYPES] },
+      run: { projectId: params.projectId },
+    },
+  })
+  return row ? normalizePanelPromptSnapshotArtifact(row) : null
+}
+
+export async function getAssetPromptSnapshotByArtifactId(params: {
+  projectId: string
+  artifactId: string
+}): Promise<AssetPromptSnapshotView | null> {
+  const row = await prisma.graphArtifact.findFirst({
+    where: {
+      id: params.artifactId,
+      artifactType: { in: [...ASSET_PROMPT_SNAPSHOT_TYPES] },
+      run: { projectId: params.projectId },
+    },
+  })
+  return row ? normalizeAssetPromptSnapshotArtifact(row) : null
 }
 
 export async function getLatestPanelPromptSnapshots(params: {

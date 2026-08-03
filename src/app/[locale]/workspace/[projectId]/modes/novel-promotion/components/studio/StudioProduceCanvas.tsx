@@ -30,7 +30,9 @@ import {
   StudioStatusBadge,
 } from './StudioPrimitives'
 import PanelGenerationPromptPreviewModal from './PanelGenerationPromptPreviewModal'
+import GenerationPromptSnapshotModal from './GenerationPromptSnapshotModal'
 import StudioProduceQueueRow from './StudioProduceQueueRow'
+import { useLatestPanelGenerationPromptSnapshot } from './useGenerationPromptSnapshot'
 import {
   buildProduceItems,
   buildBatchVideoPreflight,
@@ -231,7 +233,14 @@ function ProductionDetailPanel({
   const [promptPreviewOpen, setPromptPreviewOpen] = useState(false)
   const [promptPreview, setPromptPreview] = useState<PanelGenerationPromptPreview | null>(null)
   const [promptPreviewError, setPromptPreviewError] = useState<string | null>(null)
+  const [actualVideoPromptOpen, setActualVideoPromptOpen] = useState(false)
   const videoUrl = panelVideoUrl(item.panel)
+  const actualVideoPromptSnapshot = useLatestPanelGenerationPromptSnapshot({
+    isOpen: actualVideoPromptOpen,
+    projectId,
+    panelId: item.panel.id,
+    kind: 'video',
+  })
   const videoStatus = resolveVideoStatus(item.panel)
   const error = panelVideoError(item.panel)
   const videoErrorCode = item.panel.videoErrorCode || item.panel.lipSyncErrorCode || null
@@ -702,7 +711,16 @@ function ProductionDetailPanel({
           <div className="flex gap-2">
             <StudioButton size="sm" variant="secondary" onClick={() => { void (mode === 'normal' ? saveNormalPrompt() : saveFirstLastPrompt()) }} disabled={promptSaving}>保存提示词</StudioButton>
             <StudioButton size="sm" variant="secondary" icon="info" loading={promptPreviewMutation.isPending} onClick={() => { void openVideoPromptPreview() }}>
-              查看提示词
+              预览本次提示词
+            </StudioButton>
+            <StudioButton
+              size="sm"
+              variant="secondary"
+              icon="info"
+              onClick={() => setActualVideoPromptOpen(true)}
+              disabled={!videoUrl}
+            >
+              查看最近一次实际视频提示词
             </StudioButton>
             <StudioButton size="sm" icon="video" loading={generating || !!item.panel.videoTaskRunning} onClick={() => { void generate() }} disabled={!!readinessMessage || (mode === 'normal' ? !item.panel.imageUrl : missingFirstLastFrameSetup)}>
               {videoUrl ? '重新生成' : mode === 'firstlastframe' ? '生成首尾帧视频' : '生成单图视频'}
@@ -717,6 +735,16 @@ function ProductionDetailPanel({
         loading={promptPreviewMutation.isPending}
         errorMessage={promptPreviewError}
         onClose={() => setPromptPreviewOpen(false)}
+      />
+    ) : null}
+    {actualVideoPromptOpen ? (
+      <GenerationPromptSnapshotModal
+        title="最近一次实际视频生成提示词"
+        contextLabel={`镜头 ${item.number} · ${mode === 'firstlastframe' ? '首尾帧视频' : '单图视频'} · 按该镜头最新生成快照`}
+        snapshot={actualVideoPromptSnapshot.snapshot}
+        loading={actualVideoPromptSnapshot.loading}
+        errorMessage={actualVideoPromptSnapshot.errorMessage}
+        onClose={() => setActualVideoPromptOpen(false)}
       />
     ) : null}
     </>

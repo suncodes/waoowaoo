@@ -13,6 +13,7 @@ import {
 import {
   CREATIVE_QUALITY_SCHEMA_VERSION,
   createCreativeQualityHash,
+  type GenerationPromptOptimization,
   type GenerationSnapshot,
 } from '@/lib/creative-quality/contracts'
 import {
@@ -60,6 +61,7 @@ export interface AssetPromptSpec {
   negativeConstraints: string[]
   sourceEvidence: string[]
   availableSlots: string[]
+  promptOptimization?: GenerationPromptOptimization
 }
 
 function firstNonEmpty(...values: Array<string | null | undefined>): string {
@@ -218,6 +220,7 @@ export function buildAssetPromptSpec(params: {
   availableSlotsRaw?: string | null
   profileData?: unknown
   extractedFacts?: AssetVisualFactInput | null
+  promptOptimization?: GenerationPromptOptimization | null
   locale: Locale
 }): AssetPromptSpec {
   const description = params.description.trim()
@@ -268,6 +271,7 @@ export function buildAssetPromptSpec(params: {
     ]),
     sourceEvidence: visualContract.sourceEvidence.map((item) => item.text),
     availableSlots,
+    ...(params.promptOptimization ? { promptOptimization: params.promptOptimization } : {}),
   }
 }
 
@@ -361,6 +365,10 @@ export function buildAssetImageGenerationSnapshot(params: {
     promptSpecHash: specHash,
     referenceImages: params.referenceImages,
     assetVersionHash: params.assetVersionHash || null,
+    ...(params.promptSpec.promptOptimization ? {
+      preparationHash: params.promptSpec.promptOptimization.preparationHash,
+      optimization: params.promptSpec.promptOptimization,
+    } : {}),
   })
   return {
     schemaVersion: CREATIVE_QUALITY_SCHEMA_VERSION,

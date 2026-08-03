@@ -50,6 +50,14 @@ export type AssetCandidateGroupSummary = {
   createdAt: string
 }
 
+export type AssetPromptSnapshotReference = {
+  artifactId: string
+  promptHash: string
+  inputHash: string
+  preparationHash: string | null
+  createdAt: string
+}
+
 export type AssetRenderSummary = {
   id: string
   index: number
@@ -59,6 +67,7 @@ export type AssetRenderSummary = {
   previousImageUrl: string | null
   previousMedia: MediaRef | null
   taskRefs: AssetTaskRef[]
+  promptSnapshot?: AssetPromptSnapshotReference | null
   taskState: AssetTaskState
 }
 

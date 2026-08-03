@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client'
 import type { Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
 import { createVisualCandidateGroup, createVisualQualityState } from '@/lib/quality-workflow'
+import type { VisualCandidatePromptSnapshotRef } from '@/lib/quality-workflow'
 import { submitTask } from '@/lib/task/submitter'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 import { resolveVideoProfile } from '@/lib/video-profile'
@@ -38,6 +39,7 @@ export async function persistPanelCandidatesAndScheduleReview(params: {
   panel: PanelCandidateTarget
   candidates: string[]
   isFirstGeneration: boolean
+  promptSnapshot?: VisualCandidatePromptSnapshotRef | null
 }) {
   const [novelData, storyboard, modelConfig] = await Promise.all([
     prisma.novelPromotionProject.findUnique({
@@ -74,6 +76,7 @@ export async function persistPanelCandidatesAndScheduleReview(params: {
       origin: 'initial',
       attempt: 0,
       candidateUrls: params.candidates,
+      promptSnapshot: params.promptSnapshot,
     }),
   ]
   const baseState = createVisualQualityState({

@@ -21,6 +21,7 @@ import {
 } from './StudioPrimitives'
 import { type StudioWorkspaceModel } from './studio-types'
 import { resolveVisualAssetWorkflowPresentation } from './studio-visual-asset-status'
+import { buildVisualAssetGeneratePayload } from './studio-visual-asset-generation'
 import StudioVisualAssetInspector, { type VisualKitItem } from './StudioVisualAssetInspector'
 
 interface StudioVisualKitCanvasProps {
@@ -131,6 +132,11 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
   const availableAssetIds = useMemo(() => new Set(visualAssets.map((asset) => asset.id)), [visualAssets])
   const missingRequirementCount = [...requiredAssetIds].filter((assetId) => !availableAssetIds.has(assetId)).length
   const unresolvedCount = items.filter((item) => item.status !== 'locked').length + missingRequirementCount
+  const batchGenerationTargets = useMemo(() => items.filter((item) => {
+    if (!item.asset || !item.asset.capabilities.canGenerate) return false
+    const hasAnyRender = item.asset.variants.some((variant) => variant.renders.some((render) => !!render.imageUrl))
+    return !hasAnyRender && !resolveVisualAssetWorkflowPresentation(item.asset).blocksConfirmation
+  }), [items])
 
   useEffect(() => {
     if (selectedItem && selectedItem.id !== selectedId) {
@@ -171,9 +177,30 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
       ? '重新提取视觉资产'
       : model.workflow.assetRequirementStatus === 'needs_review'
         ? '确认资产清单'
-        : unresolvedCount > 0
+          : unresolvedCount > 0
           ? `完善 ${unresolvedCount} 项视觉资产`
           : '进入镜头规划'
+  const batchGenerate = async () => {
+    if (batchGenerationTargets.length === 0 || pending) return
+    const confirmed = window.confirm(
+      `将为 ${batchGenerationTargets.length} 个待出图资产分别创建 3 张候选图任务。已有候选和已定稿资产不会被覆盖，是否继续？`,
+    )
+    if (!confirmed) return
+    await run('batch-generate', `批量提交 ${batchGenerationTargets.length} 个资产的候选图`, async () => {
+      const failedNames: string[] = []
+      for (const target of batchGenerationTargets) {
+        if (!target.asset) continue
+        try {
+          await actionFor(target.asset).generate(buildVisualAssetGeneratePayload(target.asset, 3))
+        } catch {
+          failedNames.push(target.name)
+        }
+      }
+      if (failedNames.length > 0) {
+        throw new Error(`以下资产提交失败：${failedNames.join('、')}`)
+      }
+    })
+  }
 
   return (
     <div className="space-y-5">
@@ -186,6 +213,16 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
             <>
               <StudioButton size="sm" variant="secondary" icon="folderOpen" onClick={runtime.onOpenAssetLibrary}>
               项目资产
+              </StudioButton>
+              <StudioButton
+                size="sm"
+                variant="secondary"
+                icon="imageEdit"
+                loading={pending?.key === 'batch-generate'}
+                onClick={() => { void batchGenerate() }}
+                disabled={!!pending || batchGenerationTargets.length === 0}
+              >
+                批量生成待出图（{batchGenerationTargets.length}）
               </StudioButton>
               <StudioButton
                 size="sm"
@@ -253,6 +290,7 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
           {selectedItem ? (
             <StudioVisualAssetInspector
               key={selectedItem.id}
+              projectId={projectId}
               item={selectedItem}
               actions={selectedItem.asset ? actionFor(selectedItem.asset) : null}
               onRun={run}

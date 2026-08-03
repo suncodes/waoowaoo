@@ -17,6 +17,7 @@ import {
 import type {
   AssetCandidateGroupSummary,
   AssetKind,
+  AssetPromptSnapshotReference,
   AssetQueryInput,
   AssetSummary,
   VisualAssetSummary,
@@ -27,6 +28,13 @@ import {
 } from '@/lib/assets/services/location-backed-assets'
 
 type ProjectAssetRepairArtifact = {
+  id: string
+  refId: string
+  payload: unknown
+  createdAt: Date
+}
+
+type ProjectAssetPromptArtifact = {
   id: string
   refId: string
   payload: unknown
@@ -54,6 +62,28 @@ function readPositiveInteger(value: unknown, fallback: number): number {
 
 function readRepairAction(value: unknown): 'edit' | 'regenerate' | null {
   return value === 'edit' || value === 'regenerate' ? value : null
+}
+
+function readString(value: unknown): string {
+  return typeof value === 'string' && value.trim() ? value.trim() : ''
+}
+
+function promptSnapshotReference(
+  artifact: ProjectAssetPromptArtifact | undefined,
+): AssetPromptSnapshotReference | null {
+  if (!artifact) return null
+  const payload = asRecord(artifact.payload)
+  if (!payload || !readString(payload.compiledPrompt)) return null
+  const promptHash = readString(payload.promptHash)
+  const inputHash = readString(payload.inputHash)
+  if (!promptHash || !inputHash) return null
+  return {
+    artifactId: artifact.id,
+    promptHash,
+    inputHash,
+    preparationHash: readString(payload.preparationHash) || null,
+    createdAt: artifact.createdAt.toISOString(),
+  }
 }
 
 function collectVisualAssetImageUrls(asset: VisualAssetSummary): string[] {
@@ -141,6 +171,39 @@ async function attachProjectCandidateGroups(
   }))
 }
 
+function latestArtifactsByRefId(artifacts: ProjectAssetPromptArtifact[]) {
+  const result = new Map<string, ProjectAssetPromptArtifact>()
+  for (const artifact of artifacts) {
+    if (!result.has(artifact.refId)) result.set(artifact.refId, artifact)
+  }
+  return result
+}
+
+function attachProjectPromptSnapshotReferences(
+  assets: AssetSummary[],
+  promptArtifacts: ProjectAssetPromptArtifact[],
+): AssetSummary[] {
+  const artifactsByRefId = latestArtifactsByRefId(
+    promptArtifacts.slice().sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime()),
+  )
+  return assets.map((asset) => {
+    if (asset.family !== 'visual') return asset
+    return {
+      ...asset,
+      variants: asset.variants.map((variant) => ({
+        ...variant,
+        renders: variant.renders.map((render) => ({
+          ...render,
+          promptSnapshot: promptSnapshotReference(
+            artifactsByRefId.get(`${variant.id}:${render.index}`)
+            || artifactsByRefId.get(variant.id),
+          ),
+        })),
+      })),
+    } as AssetSummary
+  })
+}
+
 function collectProjectRepairTargetIds(params: {
   characters: Array<{ appearances: Array<{ id: string }> }>
   locations: Array<{ images?: Array<{ id: string }> }>
@@ -182,6 +245,32 @@ async function listProjectAssetRepairArtifacts(
   })
 }
 
+async function listProjectAssetPromptArtifacts(
+  projectId: string,
+  refIds: string[],
+): Promise<ProjectAssetPromptArtifact[]> {
+  const ids = Array.from(new Set(refIds.filter(Boolean)))
+  if (ids.length === 0) return []
+  return await prisma.graphArtifact.findMany({
+    where: {
+      artifactType: 'prompt.asset_image.snapshot',
+      run: { projectId },
+      OR: [
+        { refId: { in: ids } },
+        ...ids.map((refId) => ({ refId: { startsWith: `${refId}:` } })),
+      ],
+    },
+    select: {
+      id: true,
+      refId: true,
+      payload: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 800,
+  })
+}
+
 async function readProjectAssets(projectId: string): Promise<AssetSummary[]> {
   const project = await prisma.novelPromotionProject.findUnique({
     where: { projectId },
@@ -211,12 +300,13 @@ async function readProjectAssets(projectId: string): Promise<AssetSummary[]> {
     props,
   })
 
-  const [withMedia, repairArtifacts] = await Promise.all([
+  const [withMedia, repairArtifacts, promptArtifacts] = await Promise.all([
     attachMediaFieldsToProject({
       characters: project.characters,
       locations: [...locations, ...props],
     }),
     listProjectAssetRepairArtifacts(projectId, repairTargetIds),
+    listProjectAssetPromptArtifacts(projectId, repairTargetIds),
   ])
   const projectCharacters = (withMedia.characters as unknown as Parameters<typeof mapProjectCharacterToAsset>[0][])
     .map(mapProjectCharacterToAsset)
@@ -227,8 +317,12 @@ async function readProjectAssets(projectId: string): Promise<AssetSummary[]> {
   const projectProps = locationLikeAssets
     .filter((asset) => asset.assetKind === 'prop')
     .map((asset) => mapProjectPropToAsset(asset as Parameters<typeof mapProjectPropToAsset>[0]))
-  return await attachProjectCandidateGroups(
+  const assetsWithPromptSnapshots = attachProjectPromptSnapshotReferences(
     [...projectCharacters, ...projectLocations, ...projectProps],
+    promptArtifacts,
+  )
+  return await attachProjectCandidateGroups(
+    assetsWithPromptSnapshots,
     repairArtifacts,
   )
 }

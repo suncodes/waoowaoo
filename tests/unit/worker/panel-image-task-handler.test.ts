@@ -58,6 +58,9 @@ const promptMock = vi.hoisted(() => ({
 const qualityMock = vi.hoisted(() => ({
   persistPanelCandidatesAndScheduleReview: vi.fn(),
 }))
+const runRuntimeMock = vi.hoisted(() => ({
+  createArtifact: vi.fn(),
+}))
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('@/lib/workers/utils', () => utilsMock)
@@ -89,6 +92,7 @@ vi.mock('@/lib/prompt-i18n', () => ({
   buildPrompt: promptMock.buildPrompt,
 }))
 vi.mock('@/lib/workers/handlers/panel-visual-quality-trigger', () => qualityMock)
+vi.mock('@/lib/run-runtime/service', () => runRuntimeMock)
 
 import { handlePanelImageTask } from '@/lib/workers/handlers/panel-image-task-handler'
 
@@ -111,6 +115,7 @@ function buildJob(payload: Record<string, unknown>, targetId = 'panel-1'): Job<T
 describe('worker panel-image-task-handler behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    runRuntimeMock.createArtifact.mockResolvedValue({ id: 'artifact-default' })
 
     prismaMock.novelPromotionPanel.findUnique.mockResolvedValue({
       id: 'panel-1',
@@ -256,6 +261,26 @@ describe('worker panel-image-task-handler behavior', () => {
     expect(qualityMock.persistPanelCandidatesAndScheduleReview).toHaveBeenCalledWith(expect.objectContaining({
       candidates: ['cos/panel-regenerated-1.png', 'cos/panel-regenerated-2.png'],
       isFirstGeneration: false,
+    }))
+  })
+
+  it('associates each candidate group with the prompt snapshot artifact', async () => {
+    runRuntimeMock.createArtifact
+      .mockResolvedValueOnce({ id: 'artifact-binding-plan' })
+      .mockResolvedValueOnce({ id: 'artifact-generation-route' })
+      .mockResolvedValueOnce({ id: 'artifact-prompt-snapshot' })
+
+    await handlePanelImageTask(buildJob({ candidateCount: 1, runId: 'run-1' }))
+
+    expect(runRuntimeMock.createArtifact).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      artifactType: 'prompt.panel_image.snapshot',
+      refId: 'panel-1',
+    }))
+    expect(qualityMock.persistPanelCandidatesAndScheduleReview).toHaveBeenCalledWith(expect.objectContaining({
+      promptSnapshot: expect.objectContaining({
+        artifactId: 'artifact-prompt-snapshot',
+        runId: 'run-1',
+      }),
     }))
   })
 })

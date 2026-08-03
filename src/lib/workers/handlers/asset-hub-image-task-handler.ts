@@ -13,8 +13,11 @@ import {
   buildAssetPromptSpec,
   compileAssetImagePrompt,
 } from '@/lib/prompt-compiler/asset-prompt-compiler'
-import { extractAssetVisualFactsWithAI } from '@/lib/prompt-compiler/asset-visual-fact-extractor'
-import { hasStructuredAssetVisualFacts } from '@/lib/prompt-compiler/asset-visual-contract'
+import {
+  createAssetVisualFactPreparationHash,
+  findReusableAssetVisualFactOptimization,
+  resolveAssetVisualFactsWithAI,
+} from '@/lib/prompt-compiler/asset-visual-fact-extractor'
 import {
   assertTaskActive,
   getUserModels,
@@ -110,18 +113,27 @@ export async function handleAssetHubImageTask(job: Job<TaskJobData>) {
 
     const descriptions = parseJsonStringArray(appearance.descriptions)
     const base = descriptions.length ? descriptions : [appearance.description || '']
-    const extractedFacts = hasStructuredAssetVisualFacts(character.profileData)
-      ? null
-      : await extractAssetVisualFactsWithAI({
-        userId,
-        projectId: 'asset-hub',
-        model: userModels.analysisModel,
-        assetKind: 'character',
-        assetName: character.name,
-        description: base[0] || '',
-        semanticType: character.semanticType,
-        variantLabel: appearance.changeReason,
-      })
+    const assetFactInput = {
+      model: userModels.analysisModel,
+      assetKind: 'character' as const,
+      assetName: character.name,
+      description: base[0] || '',
+      semanticType: character.semanticType,
+      variantLabel: appearance.changeReason,
+      profileData: character.profileData,
+      locale: job.data.locale,
+    }
+    const reusableAssetOptimization = await findReusableAssetVisualFactOptimization({
+      projectId: job.data.projectId,
+      targetId: appearance.id,
+      preparationHash: createAssetVisualFactPreparationHash(assetFactInput),
+    })
+    const resolvedAssetFacts = await resolveAssetVisualFactsWithAI({
+      userId,
+      projectId: job.data.projectId,
+      input: assetFactInput,
+      reusableOptimization: reusableAssetOptimization,
+    })
     const count = normalizeImageGenerationCount('character', payload.count)
     const imageUrls: string[] = []
     const promptSnapshots: GenerationSnapshot[] = []
@@ -134,7 +146,8 @@ export async function handleAssetHubImageTask(job: Job<TaskJobData>) {
         assetName: character.name,
         description: raw,
         profileData: character.profileData,
-        extractedFacts,
+        extractedFacts: resolvedAssetFacts.facts,
+        promptOptimization: resolvedAssetFacts.optimization,
         semanticType: character.semanticType,
         assetTier: character.assetTier,
         usageScope: character.usageScope,
@@ -228,21 +241,32 @@ export async function handleAssetHubImageTask(job: Job<TaskJobData>) {
     for (const image of targetImages) {
       if (!image.description) continue
       const assetKind = payload.type === 'prop' ? 'prop' : 'location'
-      const extractedFacts = await extractAssetVisualFactsWithAI({
-        userId,
-        projectId: 'asset-hub',
+      const assetFactInput = {
         model: userModels.analysisModel,
-        assetKind,
+        assetKind: assetKind as 'location' | 'prop',
         assetName: location.name,
         description: image.description,
         semanticType: location.semanticType,
+        locale: job.data.locale,
+      }
+      const reusableAssetOptimization = await findReusableAssetVisualFactOptimization({
+        projectId: job.data.projectId,
+        targetId: image.id,
+        preparationHash: createAssetVisualFactPreparationHash(assetFactInput),
+      })
+      const resolvedAssetFacts = await resolveAssetVisualFactsWithAI({
+        userId,
+        projectId: job.data.projectId,
+        input: assetFactInput,
+        reusableOptimization: reusableAssetOptimization,
       })
       const promptSpec = buildAssetPromptSpec({
         assetId: image.id,
         assetKind,
         assetName: location.name,
         description: image.description,
-        extractedFacts,
+        extractedFacts: resolvedAssetFacts.facts,
+        promptOptimization: resolvedAssetFacts.optimization,
         semanticType: location.semanticType,
         assetTier: location.assetTier,
         usageScope: location.usageScope,

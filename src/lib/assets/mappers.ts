@@ -140,6 +140,7 @@ function createRender(params: {
 }): AssetRenderSummary {
   return {
     ...params,
+    promptSnapshot: null,
     taskState: createIdleTaskState(),
   }
 }

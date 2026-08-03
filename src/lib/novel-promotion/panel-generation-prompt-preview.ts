@@ -8,10 +8,16 @@ import { resolveBuiltinCapabilitiesByModelKey } from '@/lib/model-capabilities/l
 import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
 import type { PromptLocale } from '@/lib/prompt-i18n/types'
 import {
+  buildPanelVisualFactPreparationInput,
   buildPanelImagePromptSpec,
   compilePanelImageRenderBrief,
   type PanelImagePromptSpec,
 } from '@/lib/prompt-compiler/panel-image-prompt-compiler'
+import type { GenerationPromptOptimization } from '@/lib/creative-quality/contracts'
+import {
+  resolvePanelVisualFactsWithAI,
+  type PanelVisualFactInput,
+} from '@/lib/prompt-compiler/panel-visual-fact-extractor'
 import {
   buildPanelVideoPromptSpec,
   compilePanelVideoPrompt,
@@ -196,6 +202,12 @@ function parseJsonUnknown(raw: string | null | undefined): unknown | null {
   } catch {
     return null
   }
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
 }
 
 function parseDescriptionList(raw: string | null | undefined): string[] {
@@ -563,6 +575,8 @@ export function buildPanelImagePromptFromResolvedInputs(params: {
   visualReferences: VisualReference[]
   generationRouteDecision: ReturnType<typeof decidePanelGenerationRoute>
   referenceImages: string[]
+  optimizedFacts?: PanelVisualFactInput | null
+  promptOptimization?: GenerationPromptOptimization | null
 }) {
   const locale = normalizeLocale(params.locale)
   const styleText = joinPromptSegments([
@@ -587,6 +601,12 @@ export function buildPanelImagePromptFromResolvedInputs(params: {
     references: structuredReferences,
     decision: params.generationRouteDecision,
   })
+  const factPreparationInput = buildPanelVisualFactPreparationInput({
+    context: promptContext,
+    locale,
+    model: null,
+    styleText: resolvedStyleText,
+  })
   const promptSpec = buildPanelImagePromptSpec({
     context: promptContext,
     aspectRatio,
@@ -594,6 +614,8 @@ export function buildPanelImagePromptFromResolvedInputs(params: {
     generationRoute: params.generationRouteDecision.route,
     noReferenceReason: params.generationRouteDecision.noReferenceReason,
     referencePlan,
+    optimizedFacts: params.optimizedFacts,
+    promptOptimization: params.promptOptimization,
   })
   const renderBrief = compilePanelImageRenderBrief(promptSpec, locale)
   const compiledPrompt = buildPanelImagePrompt({
@@ -627,6 +649,7 @@ export function buildPanelImagePromptFromResolvedInputs(params: {
     referencePlan,
     assetVersionHash,
     resolvedStyleText,
+    factPreparationInput,
   }
 }
 
@@ -754,7 +777,7 @@ export async function buildPanelImageGenerationPromptPreview(params: {
     resolvedArtStyle.referenceImage,
     resolvedArtStyle.referenceEnabled,
   )
-  const compiled = buildPanelImagePromptFromResolvedInputs({
+  const provisionalCompilation = buildPanelImagePromptFromResolvedInputs({
     panel: panelForPreview,
     projectData,
     locale,
@@ -765,6 +788,28 @@ export async function buildPanelImageGenerationPromptPreview(params: {
     generationRouteDecision,
     referenceImages,
   })
+  const visualFacts = await resolvePanelVisualFactsWithAI({
+    userId: params.userId,
+    projectId: params.projectId,
+    input: {
+      ...provisionalCompilation.factPreparationInput,
+      model: modelConfig.analysisModel || null,
+    },
+    reusableOptimization: asRecord(panelForPreview.promptSpec).promptOptimization,
+  })
+  const compiled = buildPanelImagePromptFromResolvedInputs({
+    panel: panelForPreview,
+    projectData,
+    locale,
+    resolvedArtStyle,
+    visualBindings,
+    visualBindingPlan,
+    visualReferences,
+    generationRouteDecision,
+    referenceImages,
+    optimizedFacts: visualFacts.facts,
+    promptOptimization: visualFacts.optimization,
+  })
   const warnings = [
     ...(!modelKey ? ['当前项目未配置分镜图片模型，提交生成前仍需先配置模型。'] : []),
     ...(generationRouteDecision.route === 'human_required'
@@ -772,6 +817,9 @@ export async function buildPanelImageGenerationPromptPreview(params: {
       : []),
     ...(generationRouteDecision.noReferenceReason
       ? [generationRouteDecision.noReferenceReason]
+      : []),
+    ...(visualFacts.optimization.source === 'fallback'
+      ? ['视觉事实优化不可用，已使用已保存分镜字段编译预览。']
       : []),
   ]
 

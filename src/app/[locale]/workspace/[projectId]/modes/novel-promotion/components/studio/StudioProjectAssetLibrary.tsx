@@ -192,7 +192,7 @@ export default function StudioProjectAssetLibrary({
             <div className="border-b border-white/10 px-4 py-4"><StudioSectionHeader title="资产清单" description="选择一个资产查看候选图和标准描述。" /></div>
             <div className="space-y-2 p-3">{filteredItems.map((item) => <AssetListItem key={item.id} item={item} selected={selectedItem?.id === item.id} onSelect={() => setSelectedId(item.id)} />)}</div>
           </StudioPanel>
-          {selectedItem ? <StudioVisualAssetInspector item={selectedItem} actions={actionsFor(selectedItem)} onRun={run} pendingKey={pending} onRemove={() => { void remove(selectedItem) }} /> : null}
+          {selectedItem ? <StudioVisualAssetInspector projectId={projectId} item={selectedItem} actions={actionsFor(selectedItem)} onRun={run} pendingKey={pending} onRemove={() => { void remove(selectedItem) }} /> : null}
         </div>
       )}
 

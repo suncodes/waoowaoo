@@ -3,6 +3,15 @@ import type { VisualAutoRepairLineage } from '@/lib/creative-quality/contracts'
 
 export type VisualCandidateGroupOrigin = 'initial' | 'repair'
 
+export interface VisualCandidatePromptSnapshotRef {
+  artifactId: string
+  runId: string
+  promptHash: string
+  inputHash: string
+  preparationHash: string | null
+  createdAt: string
+}
+
 export interface VisualCandidateGroup {
   id: string
   versionHash: string
@@ -12,6 +21,7 @@ export interface VisualCandidateGroup {
   candidateUrls: string[]
   sourceCandidateUrl: string | null
   action: Extract<RepairAction, 'edit' | 'regenerate'> | null
+  promptSnapshot: VisualCandidatePromptSnapshotRef | null
   createdAt: string
 }
 

@@ -60,9 +60,26 @@ export interface GenerationSnapshot {
   referenceImages: string[]
   structuredReferences?: unknown
   bindingPlan?: unknown
+  /**
+   * Hash of the minimal evidence used to prepare AI-extracted facts.  It is
+   * intentionally separate from inputHash, which also covers the compiled
+   * provider request.
+   */
+  preparationHash?: string
+  optimization?: GenerationPromptOptimization
   promptSpec: unknown
   compiledPrompt: string
   createdAt: string
+}
+
+export interface GenerationPromptOptimization {
+  schemaVersion: 1
+  strategy: 'asset_visual_facts' | 'panel_visual_facts'
+  source: 'llm' | 'reused' | 'fallback' | 'structured_profile'
+  preparationHash: string
+  facts: unknown | null
+  evidence: unknown[]
+  validationIssues: string[]
 }
 
 export interface VisualAutoRepairLineage {

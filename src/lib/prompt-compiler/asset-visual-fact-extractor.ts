@@ -1,10 +1,130 @@
 import { executeAiTextStep } from '@/lib/ai-runtime'
-import { safeParseJsonObject } from '@/lib/json-repair'
 import {
+  createCreativeQualityHash,
+  type GenerationPromptOptimization,
+} from '@/lib/creative-quality/contracts'
+import { safeParseJsonObject } from '@/lib/json-repair'
+import { prisma } from '@/lib/prisma'
+import {
+  hasStructuredAssetVisualFacts,
   parseAssetVisualFactInput,
   type AssetPromptKind,
   type AssetVisualFactInput,
 } from './asset-visual-contract'
+
+export interface AssetVisualFactPreparationInput {
+  model: string | null | undefined
+  assetKind: AssetPromptKind
+  assetName: string
+  description: string
+  semanticType?: string | null
+  variantLabel?: string | null
+  profileData?: unknown
+  locale?: string | null
+}
+
+export interface ResolvedAssetVisualFacts {
+  facts: AssetVisualFactInput | null
+  optimization: GenerationPromptOptimization
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function hasFacts(value: AssetVisualFactInput | null | undefined): value is AssetVisualFactInput {
+  if (!value) return false
+  return hasStructuredAssetVisualFacts(value)
+}
+
+export function createAssetVisualFactPreparationHash(
+  params: AssetVisualFactPreparationInput,
+): string {
+  return createCreativeQualityHash({
+    strategy: 'asset_visual_facts.v1',
+    model: params.model || null,
+    assetKind: params.assetKind,
+    assetName: params.assetName.trim(),
+    description: params.description.trim(),
+    semanticType: params.semanticType?.trim() || null,
+    variantLabel: params.variantLabel?.trim() || null,
+    profileData: params.profileData || null,
+    locale: params.locale || null,
+  })
+}
+
+function createOptimization(params: {
+  source: GenerationPromptOptimization['source']
+  preparationHash: string
+  facts: AssetVisualFactInput | null
+  validationIssues?: string[]
+}): GenerationPromptOptimization {
+  return {
+    schemaVersion: 1,
+    strategy: 'asset_visual_facts',
+    source: params.source,
+    preparationHash: params.preparationHash,
+    facts: params.facts,
+    evidence: [{
+      source: 'asset_description',
+      text: params.facts ? '已提取可画出的资产视觉事实。' : '使用已验证的资产资料或受控兜底。',
+    }],
+    validationIssues: Array.from(new Set(params.validationIssues || [])),
+  }
+}
+
+export function readReusableAssetVisualFacts(params: {
+  value: unknown
+  preparationHash: string
+}): AssetVisualFactInput | null {
+  const optimization = asRecord(params.value)
+  if (
+    optimization.schemaVersion !== 1
+    || optimization.strategy !== 'asset_visual_facts'
+    || optimization.preparationHash !== params.preparationHash
+    || (optimization.source !== 'llm' && optimization.source !== 'reused')
+  ) {
+    return null
+  }
+  const facts = parseAssetVisualFactInput(optimization.facts)
+  return hasFacts(facts) ? facts : null
+}
+
+export async function findReusableAssetVisualFactOptimization(params: {
+  projectId: string
+  targetId: string
+  preparationHash: string
+}): Promise<GenerationPromptOptimization | null> {
+  const targetId = params.targetId.trim()
+  if (!params.projectId || !targetId || !params.preparationHash) return null
+  let rows: Array<{ payload: unknown }> = []
+  try {
+    rows = await prisma.graphArtifact.findMany({
+      where: {
+        artifactType: 'prompt.asset_image.snapshot',
+        run: { projectId: params.projectId },
+        OR: [
+          { refId: targetId },
+          { refId: { startsWith: `${targetId}:` } },
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 24,
+    })
+  } catch {
+    return null
+  }
+  for (const row of rows) {
+    const payload = asRecord(row.payload)
+    const optimization = asRecord(payload.optimization)
+    if (payload.preparationHash !== params.preparationHash) continue
+    if (!readReusableAssetVisualFacts({ value: optimization, preparationHash: params.preparationHash })) continue
+    return optimization as unknown as GenerationPromptOptimization
+  }
+  return null
+}
 
 function buildExtractionPrompt(params: {
   assetKind: AssetPromptKind
@@ -64,5 +184,68 @@ export async function extractAssetVisualFactsWithAI(params: {
     return parseAssetVisualFactInput(safeParseJsonObject(completion.text))
   } catch {
     return null
+  }
+}
+
+export async function resolveAssetVisualFactsWithAI(params: {
+  userId: string
+  projectId: string
+  input: AssetVisualFactPreparationInput
+  reusableOptimization?: unknown
+}): Promise<ResolvedAssetVisualFacts> {
+  const preparationHash = createAssetVisualFactPreparationHash(params.input)
+  if (hasStructuredAssetVisualFacts(params.input.profileData)) {
+    return {
+      facts: null,
+      optimization: createOptimization({
+        source: 'structured_profile',
+        preparationHash,
+        facts: null,
+      }),
+    }
+  }
+  const reusedFacts = readReusableAssetVisualFacts({
+    value: params.reusableOptimization,
+    preparationHash,
+  })
+  if (reusedFacts) {
+    return {
+      facts: reusedFacts,
+      optimization: createOptimization({
+        source: 'reused',
+        preparationHash,
+        facts: reusedFacts,
+      }),
+    }
+  }
+  if (!params.input.model || !params.input.description.trim()) {
+    return {
+      facts: null,
+      optimization: createOptimization({
+        source: 'fallback',
+        preparationHash,
+        facts: null,
+        validationIssues: [params.input.model ? 'EMPTY_ASSET_DESCRIPTION' : 'ANALYSIS_MODEL_UNAVAILABLE'],
+      }),
+    }
+  }
+  const facts = await extractAssetVisualFactsWithAI({
+    userId: params.userId,
+    projectId: params.projectId,
+    model: params.input.model,
+    assetKind: params.input.assetKind,
+    assetName: params.input.assetName,
+    description: params.input.description,
+    semanticType: params.input.semanticType,
+    variantLabel: params.input.variantLabel,
+  })
+  return {
+    facts,
+    optimization: createOptimization({
+      source: hasFacts(facts) ? 'llm' : 'fallback',
+      preparationHash,
+      facts,
+      validationIssues: hasFacts(facts) ? [] : ['EMPTY_OR_INVALID_LLM_FACTS'],
+    }),
   }
 }

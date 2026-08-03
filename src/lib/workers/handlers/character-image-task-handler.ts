@@ -15,8 +15,11 @@ import {
   buildAssetPromptSpec,
   compileAssetImagePrompt,
 } from '@/lib/prompt-compiler/asset-prompt-compiler'
-import { extractAssetVisualFactsWithAI } from '@/lib/prompt-compiler/asset-visual-fact-extractor'
-import { hasStructuredAssetVisualFacts } from '@/lib/prompt-compiler/asset-visual-contract'
+import {
+  createAssetVisualFactPreparationHash,
+  findReusableAssetVisualFactOptimization,
+  resolveAssetVisualFactsWithAI,
+} from '@/lib/prompt-compiler/asset-visual-fact-extractor'
 import { reportTaskProgress } from '../shared'
 import {
   assertTaskActive,
@@ -153,18 +156,27 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
   const descriptions = parseJsonStringArray(appearance.descriptions)
   const baseDescriptions = descriptions.length > 0 ? descriptions : [appearance.description || '']
   const profileData = appearanceForQuality?.character.profileData
-  const extractedFacts = hasStructuredAssetVisualFacts(profileData)
-    ? null
-    : await extractAssetVisualFactsWithAI({
-      userId,
-      projectId,
-      model: models.analysisModel,
-      assetKind: 'character',
-      assetName: characterName,
-      description: baseDescriptions[0] || '',
-      semanticType: appearanceForQuality?.character.semanticType,
-      variantLabel: appearance.changeReason,
-    })
+  const assetFactInput = {
+    model: models.analysisModel,
+    assetKind: 'character' as const,
+    assetName: characterName,
+    description: baseDescriptions[0] || '',
+    semanticType: appearanceForQuality?.character.semanticType,
+    variantLabel: appearance.changeReason,
+    profileData,
+    locale: job.data.locale,
+  }
+  const reusableAssetOptimization = await findReusableAssetVisualFactOptimization({
+    projectId,
+    targetId: appearance.id,
+    preparationHash: createAssetVisualFactPreparationHash(assetFactInput),
+  })
+  const resolvedAssetFacts = await resolveAssetVisualFactsWithAI({
+    userId,
+    projectId,
+    input: assetFactInput,
+    reusableOptimization: reusableAssetOptimization,
+  })
 
   // 子形象（不是主形象）生成时，引用主形象图片保持一致性
   const primaryReferenceInputs: string[] = []
@@ -211,7 +223,8 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
         assetName: characterName,
         description: raw,
         profileData,
-        extractedFacts,
+        extractedFacts: resolvedAssetFacts.facts,
+        promptOptimization: resolvedAssetFacts.optimization,
         semanticType: appearanceForQuality?.character.semanticType,
         assetTier: appearanceForQuality?.character.assetTier,
         usageScope: appearanceForQuality?.character.usageScope,

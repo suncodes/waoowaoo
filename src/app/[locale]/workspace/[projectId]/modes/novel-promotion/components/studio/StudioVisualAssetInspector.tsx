@@ -11,12 +11,15 @@ import type {
 } from '@/lib/assets/contracts'
 import { useAssetActions } from '@/lib/query/hooks'
 import { StudioButton, StudioPanel, StudioStatusBadge } from './StudioPrimitives'
+import GenerationPromptSnapshotModal from './GenerationPromptSnapshotModal'
+import { useGenerationPromptSnapshot } from './useGenerationPromptSnapshot'
 import type { StudioProductStatus } from './studio-types'
 import { resolveVisualAssetWorkflowPresentation } from './studio-visual-asset-status'
 import {
   buildVisualAssetSelectPayload,
   visualAssetSelectionIndex,
 } from './studio-visual-asset-selection'
+import { buildVisualAssetGeneratePayload } from './studio-visual-asset-generation'
 
 export interface VisualKitItem {
   id: string
@@ -203,21 +206,15 @@ function buildCandidateDisplayGroups(
   return Array.from(displayGroups.values()).filter((group) => group.cards.length > 0)
 }
 
-function buildGeneratePayload(asset: VisualAssetSummary, count: number) {
-  const primaryVariant = asset.variants[0]
-  if (asset.kind === 'character') {
-    return { id: asset.id, appearanceId: primaryVariant?.id, appearanceIndex: primaryVariant?.index ?? 0, count }
-  }
-  return { id: asset.id, count }
-}
-
 export default function StudioVisualAssetInspector({
+  projectId,
   item,
   actions,
   onRun,
   pendingKey,
   onRemove,
 }: {
+  projectId: string
   item: VisualKitItem
   actions: ReturnType<typeof useAssetActions> | null
   onRun: (key: string, label: string, operation: () => Promise<unknown>) => Promise<void>
@@ -247,8 +244,15 @@ export default function StudioVisualAssetInspector({
   const confirmedRender = renders.find(({ variant, render }) => isSelectedRender(variant, render))
   const confirmedRenderKey = confirmedRender ? renderKey(confirmedRender.variant, confirmedRender.render) : ''
   const [selectedRenderKey, setSelectedRenderKey] = useState(confirmedRenderKey)
+  const [actualPromptOpen, setActualPromptOpen] = useState(false)
   const selectedRender = renders.find(({ variant, render }) => renderKey(variant, render) === selectedRenderKey) || confirmedRender || null
   const selectedCandidate = candidateGroups.flatMap((group) => group.cards).find((card) => card.key === selectedRenderKey) || null
+  const actualPromptSnapshot = useGenerationPromptSnapshot({
+    isOpen: actualPromptOpen,
+    projectId,
+    artifactId: selectedRender?.render.promptSnapshot?.artifactId || null,
+    source: 'asset',
+  })
 
   useEffect(() => setSelectedRenderKey(confirmedRenderKey), [confirmedRenderKey])
 
@@ -268,7 +272,7 @@ export default function StudioVisualAssetInspector({
 
   const generate = async (count: number) => {
     if (!item.asset || !actions) return
-    await onRun(`generate:${item.id}`, `生成 ${item.name} 候选图`, () => actions.generate(buildGeneratePayload(item.asset!, count)))
+    await onRun(`generate:${item.id}`, `生成 ${item.name} 候选图`, () => actions.generate(buildVisualAssetGeneratePayload(item.asset!, count)))
   }
 
   const select = async (variant: AssetVariantSummary, render: AssetRenderSummary) => {
@@ -345,6 +349,15 @@ export default function StudioVisualAssetInspector({
             <StudioButton size="sm" icon="check" loading={selectedRender && item.asset ? pendingKey === `select:${item.id}:${visualAssetSelectionIndex(item.asset, selectedRender.variant, selectedRender.render)}` : false} onClick={() => { if (selectedRender) void select(selectedRender.variant, selectedRender.render) }} disabled={!selectedRender || selectedRenderKey === confirmedRenderKey || disabled}>
               {selectedRenderKey === confirmedRenderKey ? '当前已定稿' : '设为定稿'}
             </StudioButton>
+            <StudioButton
+              size="sm"
+              variant="secondary"
+              icon="info"
+              onClick={() => setActualPromptOpen(true)}
+              disabled={!selectedRender?.render.promptSnapshot}
+            >
+              查看实际提示词
+            </StudioButton>
           </div>
           {workflowPresentation.blocksConfirmation ? (
             <div className="mb-3 rounded-md border border-cyan-400/25 bg-cyan-400/10 px-3 py-2 text-xs text-cyan-100">
@@ -398,6 +411,16 @@ export default function StudioVisualAssetInspector({
       ) : null}
 
       {!item.asset ? <div className="mx-5 mb-5 rounded-md border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-100">资产记录缺失，请在项目资产库中补全后再生成候选图。</div> : null}
+      {actualPromptOpen ? (
+        <GenerationPromptSnapshotModal
+          title="资产图实际生成提示词"
+          contextLabel={`${item.name}${selectedCandidate ? ` · ${selectedCandidate.displayName}` : ''}`}
+          snapshot={actualPromptSnapshot.snapshot}
+          loading={actualPromptSnapshot.loading}
+          errorMessage={actualPromptSnapshot.errorMessage}
+          onClose={() => setActualPromptOpen(false)}
+        />
+      ) : null}
     </StudioPanel>
   )
 }

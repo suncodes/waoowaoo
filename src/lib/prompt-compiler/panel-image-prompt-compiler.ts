@@ -1,6 +1,7 @@
 import {
   CREATIVE_QUALITY_SCHEMA_VERSION,
   createCreativeQualityHash,
+  type GenerationPromptOptimization,
   type GenerationSnapshot,
 } from '@/lib/creative-quality/contracts'
 import {
@@ -12,6 +13,10 @@ import {
   buildPanelVisualContract,
   type PanelVisualContract,
 } from './panel-visual-contract'
+import type {
+  PanelVisualFactInput,
+  PanelVisualFactPreparationInput,
+} from './panel-visual-fact-extractor'
 
 export interface PanelPromptAssetRef {
   id: string | null
@@ -81,6 +86,7 @@ export interface PanelImagePromptSpec {
     reason: string
     riskFlags: string[]
   }
+  promptOptimization?: GenerationPromptOptimization
 }
 
 interface CharacterContext {
@@ -323,6 +329,35 @@ function resolveContinuity(context: PanelImagePromptCompilerContext): PanelImage
   }
 }
 
+export function buildPanelVisualFactPreparationInput(params: {
+  context: PanelImagePromptCompilerContext
+  locale: 'zh' | 'en'
+  model: string | null | undefined
+  styleText: string
+}): PanelVisualFactPreparationInput {
+  const primarySubject = resolvePrimarySubject(params.context)
+  const assetRefs = buildAssetRefs(params.context, primarySubject)
+  const continuity = resolveContinuity(params.context)
+  return {
+    locale: params.locale,
+    model: params.model,
+    description: params.context.panel.description,
+    imagePrompt: params.context.panel.image_prompt,
+    sourceText: params.context.panel.source_text,
+    shotType: params.context.panel.shot_type,
+    cameraMove: params.context.panel.camera_move,
+    location: params.context.panel.location,
+    assetRefs: assetRefs.map((asset) => ({ name: asset.name, role: asset.role })),
+    continuity: [
+      continuity.fromPrevious,
+      continuity.toNext,
+      continuity.screenDirection,
+      continuity.lightingContinuity,
+    ],
+    styleText: params.styleText,
+  }
+}
+
 function resolveSingleImageFeasibility(
   context: PanelImagePromptCompilerContext,
 ): PanelImagePromptSpec['singleImageFeasibility'] {
@@ -342,6 +377,7 @@ function resolvePromptBlueprint(
   context: PanelImagePromptCompilerContext,
   primarySubject: string,
   styleText: string,
+  optimizedFacts: PanelVisualFactInput | null | undefined,
 ): PanelImagePromptSpec['promptBlueprint'] {
   const shotSpec = readShotSpec(context)
   const raw = asRecord(shotSpec.promptBlueprint)
@@ -361,14 +397,20 @@ function resolvePromptBlueprint(
       ...fallbackArray(subject, primarySubject),
       ...referenceGuidance.filter((item) => item.includes('primary identity') || item.includes('prop detail') || item.includes('cover motif')),
     ])),
-    environment: fallbackArray(environment, firstNonEmpty(context.context.location_reference?.description, context.context.location_reference?.name, context.panel.location)),
-    action: fallbackArray(action, resolveActionState(context)),
-    camera: fallbackArray(camera, resolveCameraAngle(context)),
-    lighting: fallbackArray(lighting, resolveLightingAndColor(context)),
+    environment: fallbackArray(environment, firstNonEmpty(
+      optimizedFacts?.environment,
+      context.context.location_reference?.description,
+      context.context.location_reference?.name,
+      context.panel.location,
+    )),
+    action: fallbackArray(action, firstNonEmpty(optimizedFacts?.actionState, resolveActionState(context))),
+    camera: fallbackArray(camera, firstNonEmpty(optimizedFacts?.composition?.[0], resolveCameraAngle(context))),
+    lighting: fallbackArray(lighting, firstNonEmpty(optimizedFacts?.lightingAndColor, resolveLightingAndColor(context))),
     style: fallbackArray(style, styleText),
     negative: negative.length > 0
       ? negative
       : [
+          ...(optimizedFacts?.negativeConstraints || []),
           '无文字',
           '无水印',
           '无标志',
@@ -592,11 +634,15 @@ export function buildPanelImagePromptSpec(params: {
   generationRoute?: PanelGenerationRoute
   noReferenceReason?: string | null
   referencePlan?: unknown
+  optimizedFacts?: PanelVisualFactInput | null
+  promptOptimization?: GenerationPromptOptimization | null
 }): PanelImagePromptSpec {
   const primarySubject = resolvePrimarySubject(params.context)
   const generationRoute = params.generationRoute || 'generate'
   const shotSpec = readShotSpec(params.context)
+  const optimizedFacts = params.optimizedFacts || null
   const narrativeIntent = firstNonEmpty(
+    optimizedFacts?.narrativeIntent,
     readNestedString(shotSpec, ['narrativeIntent']),
     params.context.panel.image_prompt,
     params.context.panel.description,
@@ -611,27 +657,31 @@ export function buildPanelImagePromptSpec(params: {
     generationRoute,
   })
   const promptBlueprint = applyCleanPlateBlueprint(
-    resolvePromptBlueprint(params.context, primarySubject, params.styleText),
+    resolvePromptBlueprint(params.context, primarySubject, params.styleText, optimizedFacts),
     cleanPlate,
   )
   const referenceInstructions = bindingPlan ? bindingPlanPromptGuidance(bindingPlan) : []
   const assetRefs = buildAssetRefs(params.context, primarySubject)
-  const actionState = resolveActionState(params.context)
+  const actionState = firstNonEmpty(optimizedFacts?.actionState, resolveActionState(params.context))
   const environment = firstNonEmpty(
+    optimizedFacts?.environment,
     location?.description,
     location?.name,
     params.context.panel.location,
     '与镜头内容一致的具体物理空间',
   )
-  const spatialLayout = resolveSpatialLayout(params.context)
+  const spatialLayout = firstNonEmpty(
+    optimizedFacts?.composition?.join('；'),
+    resolveSpatialLayout(params.context),
+  )
   const composition = {
     shotType: firstNonEmpty(params.context.panel.shot_type, '中景'),
-    cameraAngle: resolveCameraAngle(params.context),
+    cameraAngle: firstNonEmpty(optimizedFacts?.composition?.[0], resolveCameraAngle(params.context)),
     foreground: '必要时使用轻量前景建立临场感，但不得遮挡主体',
     midground: `${primarySubject} 承担画面主视觉焦点${propNames.length ? `，关键道具：${propNames.join('、')}` : ''}`,
     background: firstNonEmpty(location?.name, params.context.panel.location, '背景服务于主体和叙事，不添加无关角色或标志物'),
   }
-  const lightingAndColor = resolveLightingAndColor(params.context)
+  const lightingAndColor = firstNonEmpty(optimizedFacts?.lightingAndColor, resolveLightingAndColor(params.context))
   const textPolicy = params.context.panel.on_screen_text_for_downstream_composition ? 'safe_area_only' : 'no_text'
   const negativeConstraints = Array.from(new Set([
     '无文字',
@@ -641,22 +691,25 @@ export function buildPanelImagePromptSpec(params: {
     '无混剪画面',
     '无未指定角色',
     '无风格关联 IP 角色',
+    ...(optimizedFacts?.negativeConstraints || []),
     ...(cleanPlate ? ['无可读文字', '无书名', '无作者名', '无标题', '无字幕', '无伪文字', '无字母', '无数字', '无素材墙'] : []),
     ...promptBlueprint.negative,
   ]))
   const continuity = resolveContinuity(params.context)
+  const continuityTerms = [
+    ...(optimizedFacts?.continuity || []),
+    continuity.fromPrevious,
+    continuity.toNext,
+    continuity.screenDirection,
+    continuity.lightingContinuity,
+  ]
   const visualContract = buildPanelVisualContract({
     primarySubject,
     assetLocks: assetRefs.map((item) => item.name),
     actionState,
     composition: [composition.shotType, composition.cameraAngle, spatialLayout],
     settingAndLight: [environment, lightingAndColor],
-    continuity: [
-      continuity.fromPrevious,
-      continuity.toNext,
-      continuity.screenDirection,
-      continuity.lightingContinuity,
-    ],
+    continuity: continuityTerms,
     textPolicy,
     negativeConstraints,
   })
@@ -698,6 +751,7 @@ export function buildPanelImagePromptSpec(params: {
     promptBlueprint,
     continuity,
     singleImageFeasibility: resolveSingleImageFeasibility(params.context),
+    ...(params.promptOptimization ? { promptOptimization: params.promptOptimization } : {}),
   }
 }
 
@@ -733,6 +787,10 @@ export function buildPanelImageGenerationSnapshot(params: {
     specHash,
     inputHash,
     assetVersionHash: params.assetVersionHash || null,
+    ...(params.promptSpec.promptOptimization ? {
+      preparationHash: params.promptSpec.promptOptimization.preparationHash,
+      optimization: params.promptSpec.promptOptimization,
+    } : {}),
     referenceImages: params.referenceImages,
     ...(params.structuredReferences !== undefined ? { structuredReferences: params.structuredReferences } : {}),
     ...(params.bindingPlan !== undefined ? { bindingPlan: params.bindingPlan } : {}),

@@ -80,6 +80,7 @@ const ROUTE_FILES = [
   'src/app/api/novel-promotion/[projectId]/analyze-global/route.ts',
   'src/app/api/novel-promotion/[projectId]/analyze-shot-variants/route.ts',
   'src/app/api/novel-promotion/[projectId]/analyze/route.ts',
+  'src/app/api/novel-promotion/[projectId]/asset-prompt-snapshot/route.ts',
   'src/app/api/novel-promotion/[projectId]/assets/route.ts',
   'src/app/api/novel-promotion/[projectId]/audio-mix/route.ts',
   'src/app/api/novel-promotion/[projectId]/character-profile/batch-confirm/route.ts',

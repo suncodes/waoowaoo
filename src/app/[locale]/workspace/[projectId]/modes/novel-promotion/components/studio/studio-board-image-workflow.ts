@@ -21,6 +21,7 @@ export type PanelCandidateCard = {
   displayName: string
   sourceCandidateUrl: string | null
   action: VisualCandidateGroup['action']
+  promptSnapshot: VisualCandidateGroup['promptSnapshot']
   sourceLabel: string
 }
 
@@ -155,6 +156,7 @@ function fallbackInitialGroup(candidateUrls: string[]): VisualCandidateGroup {
     candidateUrls,
     sourceCandidateUrl: null,
     action: null,
+    promptSnapshot: null,
     versionHash: '',
     createdAt: '',
   }
@@ -197,6 +199,7 @@ export function buildPanelCandidateDisplayGroups(params: {
         displayName: candidateDisplayName(group, display.cards.length + 1),
         sourceCandidateUrl: group.sourceCandidateUrl,
         action: group.action,
+        promptSnapshot: group.promptSnapshot,
         sourceLabel: '',
       }
       display.cards.push(card)
@@ -215,6 +218,7 @@ export function buildPanelCandidateDisplayGroups(params: {
       displayName: candidateDisplayName(fallbackGroup, fallbackDisplay.cards.length + 1),
       sourceCandidateUrl: null,
       action: null,
+      promptSnapshot: null,
       sourceLabel: '',
     }
     fallbackDisplay.cards.push(card)
