@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getProjectModelConfig } from '@/lib/config-service'
+import { resolveArtStyleForGeneration } from '@/lib/art-style-generation'
 import { executeAiTextStep } from '@/lib/ai-runtime'
 import { safeParseJsonObject } from '@/lib/json-repair'
 import { estimateNarrationDurationMs } from '@/lib/novel-promotion/narration-timeline'
@@ -16,9 +17,11 @@ import {
 import {
   resolvePanelVisualReferenceSelection,
   serializePanelVisualReferenceSelection,
+  visualReferencesForGenerationRoute,
   visualReferencesForPrompt,
   type PanelReferenceProjectData,
   type PanelVisualReferenceSelection,
+  type ResolvePanelVisualReferencesOptions,
 } from '@/lib/visual-production/references'
 import { decidePanelGenerationRoute } from '@/lib/visual-production/panel-generation-router'
 import {
@@ -118,6 +121,11 @@ async function loadEpisode(episodeId: string) {
       novelPromotionProject: {
         select: {
           projectId: true,
+          artStyle: true,
+          artStyleMode: true,
+          artStylePrompt: true,
+          customArtStyleReferenceImage: true,
+          artStyleReferenceEnabled: true,
           characters: {
             include: {
               appearances: {
@@ -149,6 +157,29 @@ async function loadEpisode(episodeId: string) {
       },
     },
   })
+}
+
+function resolveStyleReferenceOptions(params: {
+  artStyle?: string | null
+  artStyleMode?: string | null
+  artStylePrompt?: string | null
+  customArtStyleReferenceImage?: string | null
+  artStyleReferenceEnabled?: boolean | null
+  locale: Locale
+}): Pick<ResolvePanelVisualReferencesOptions, 'styleReferenceImage' | 'styleReferenceEnabled' | 'styleReferenceName'> {
+  const style = resolveArtStyleForGeneration({
+    artStyleMode: params.artStyleMode,
+    artStyle: params.artStyle,
+    artStylePrompt: params.artStylePrompt,
+    customArtStyleReferenceImage: params.customArtStyleReferenceImage,
+    artStyleReferenceEnabled: params.artStyleReferenceEnabled,
+    locale: params.locale,
+  })
+  return {
+    styleReferenceImage: style.referenceImage,
+    styleReferenceEnabled: style.referenceEnabled,
+    styleReferenceName: params.locale === 'en' ? 'visual style reference' : '视觉风格参考图',
+  }
 }
 
 function flattenPanels(episode: EpisodeForReadiness): PanelForReadiness[] {
@@ -326,6 +357,7 @@ function buildPanelReferencePlan(params: {
 function buildVisualIssuesAndActions(params: {
   panel: PanelForReadiness
   projectData: PanelReferenceProjectData
+  referenceOptions?: ResolvePanelVisualReferencesOptions
 }): {
   issues: StoryboardReadinessIssue[]
   actions: StoryboardAutoFixAction[]
@@ -335,8 +367,16 @@ function buildVisualIssuesAndActions(params: {
   const issues: StoryboardReadinessIssue[] = []
   const actions: StoryboardAutoFixAction[] = []
   const bindingPlan = resolvePanelAssetBindingPlan(panel)
-  const referenceSelection = resolvePanelVisualReferenceSelection({ projectData, panel })
-  const decision = decidePanelGenerationRoute({ panel, bindingPlan, references: referenceSelection.candidates })
+  const referenceSelection = resolvePanelVisualReferenceSelection({
+    projectData,
+    panel,
+    options: params.referenceOptions,
+  })
+  const decision = decidePanelGenerationRoute({
+    panel,
+    bindingPlan,
+    references: visualReferencesForGenerationRoute(referenceSelection.candidates),
+  })
 
   if (decision.route === 'asset_backfill') {
     issues.push({
@@ -467,6 +507,10 @@ function analyzeEpisodeReadiness(episode: EpisodeForReadiness): {
   summary: StoryboardReadinessSummary
 } {
   const projectData: PanelReferenceProjectData = episode.novelPromotionProject
+  const referenceOptions = resolveStyleReferenceOptions({
+    ...episode.novelPromotionProject,
+    locale: 'zh',
+  })
   const panels = flattenPanels(episode)
   const issues: StoryboardReadinessIssue[] = []
   const actions: StoryboardAutoFixAction[] = []
@@ -479,7 +523,7 @@ function analyzeEpisodeReadiness(episode: EpisodeForReadiness): {
       actions.push(...speech.actions)
     }
 
-    const visual = buildVisualIssuesAndActions({ panel, projectData })
+    const visual = buildVisualIssuesAndActions({ panel, projectData, referenceOptions })
     issues.push(...visual.issues)
     actions.push(...visual.actions)
   }
@@ -777,9 +821,26 @@ async function refreshPanelBindingAndRoute(params: {
   projectData: PanelReferenceProjectData
   runBackfill: boolean
 }) {
+  const modelConfig = await getProjectModelConfig(params.projectId, params.userId)
+  const referenceOptions = resolveStyleReferenceOptions({
+    artStyleMode: modelConfig.artStyleMode,
+    artStyle: modelConfig.artStyle,
+    artStylePrompt: modelConfig.artStylePrompt,
+    customArtStyleReferenceImage: modelConfig.customArtStyleReferenceImage,
+    artStyleReferenceEnabled: modelConfig.artStyleReferenceEnabled,
+    locale: params.locale,
+  })
   let bindingPlan = resolvePanelAssetBindingPlan(params.panel)
-  let referenceSelection = resolvePanelVisualReferenceSelection({ projectData: params.projectData, panel: params.panel })
-  let decision = decidePanelGenerationRoute({ panel: params.panel, bindingPlan, references: referenceSelection.candidates })
+  let referenceSelection = resolvePanelVisualReferenceSelection({
+    projectData: params.projectData,
+    panel: params.panel,
+    options: referenceOptions,
+  })
+  let decision = decidePanelGenerationRoute({
+    panel: params.panel,
+    bindingPlan,
+    references: visualReferencesForGenerationRoute(referenceSelection.candidates),
+  })
   let backfill: unknown = null
 
   if (params.runBackfill && (decision.route === 'asset_backfill' || decision.route === 'human_required')) {
@@ -810,8 +871,13 @@ async function refreshPanelBindingAndRoute(params: {
           bindingPlan,
         }),
       },
+      options: referenceOptions,
     })
-    decision = decidePanelGenerationRoute({ panel: params.panel, bindingPlan, references: referenceSelection.candidates })
+    decision = decidePanelGenerationRoute({
+      panel: params.panel,
+      bindingPlan,
+      references: visualReferencesForGenerationRoute(referenceSelection.candidates),
+    })
   }
 
   await prisma.novelPromotionPanel.update({

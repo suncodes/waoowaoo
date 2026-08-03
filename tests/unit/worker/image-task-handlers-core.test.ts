@@ -211,4 +211,37 @@ describe('worker image-task-handlers-core', () => {
     expect(updateData.imageUrl).toBe('cos/new-image.png')
     expect(updateData.candidateImages).toBeNull()
   })
+
+  it('silently trims storyboard modify references while keeping the current panel image first', async () => {
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValue({
+      id: 'panel-1',
+      storyboardId: 'storyboard-1',
+      panelIndex: 0,
+      imageUrl: 'cos/panel-old.png',
+      previousImageUrl: null,
+      visualType: 'illustration',
+      renderMode: 'generated_image',
+    })
+
+    await handleModifyAssetImageTask(buildJob({
+      type: 'storyboard',
+      panelId: 'panel-1',
+      modifyPrompt: 'cinematic backlight',
+      extraImageUrls: Array.from({ length: 5 }, (_, index) => `https://example.com/ref-${index + 1}.png`),
+    }))
+
+    expect(utilsMock.resolveImageSourceFromGeneration).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        options: expect.objectContaining({
+          referenceImages: [
+            'https://signed/current-image.png',
+            'https://example.com/ref-1.png',
+            'https://example.com/ref-2.png',
+            'https://example.com/ref-3.png',
+          ],
+        }),
+      }),
+    )
+  })
 })

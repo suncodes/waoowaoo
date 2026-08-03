@@ -1,6 +1,8 @@
 import type { Job } from 'bullmq'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
+import type { ProjectModelConfig } from '@/lib/config-service'
+import type { VisualReference } from '@/lib/visual-production/references'
 
 const prismaMock = vi.hoisted(() => ({
   novelPromotionPanel: {
@@ -11,14 +13,24 @@ const prismaMock = vi.hoisted(() => ({
 
 const utilsMock = vi.hoisted(() => ({
   assertTaskActive: vi.fn(async () => undefined),
-  getProjectModels: vi.fn(async () => ({ storyboardModel: 'storyboard-model-1', artStyle: 'realistic' })),
-  resolveImageSourceFromGeneration: vi.fn(async () => 'generated-variant-source'),
+  getProjectModels: vi.fn<() => Promise<Partial<ProjectModelConfig>>>(async () => ({ storyboardModel: 'storyboard-model-1', artStyle: 'realistic' })),
+  resolveImageSourceFromGeneration: vi.fn<(...args: unknown[]) => Promise<string>>(),
   toSignedUrlIfCos: vi.fn((url: string | null | undefined) => (url ? `https://signed.example/${url}` : null)),
   uploadImageSourceToCos: vi.fn(async () => 'cos/panel-variant-new.png'),
 }))
 
 const sharedMock = vi.hoisted(() => ({
-  collectPanelReferenceImages: vi.fn(async () => ['https://signed.example/ref-character.png']),
+  collectPanelVisualReferenceCandidates: vi.fn<() => Promise<VisualReference[]>>(async () => [{
+    assetId: 'character-hero',
+    renderId: 'render-hero',
+    assetKind: 'character' as const,
+    assetName: 'Hero',
+    url: 'https://signed.example/ref-character.png',
+    role: 'primary_identity' as const,
+    usage: 'must_match' as const,
+    weight: 1,
+    source: 'requirement_plan' as const,
+  }]),
   resolveNovelData: vi.fn(async () => ({
     videoRatio: '16:9',
     characters: [{
@@ -56,7 +68,7 @@ vi.mock('@/lib/workers/handlers/image-task-handler-shared', async () => {
   )
   return {
     ...actual,
-    collectPanelReferenceImages: sharedMock.collectPanelReferenceImages,
+    collectPanelVisualReferenceCandidates: sharedMock.collectPanelVisualReferenceCandidates,
     resolveNovelData: sharedMock.resolveNovelData,
   }
 })
@@ -89,6 +101,19 @@ function buildJob(
 describe('worker panel-variant-task-handler behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    utilsMock.getProjectModels.mockResolvedValue({ storyboardModel: 'storyboard-model-1', artStyle: 'realistic' })
+    utilsMock.resolveImageSourceFromGeneration.mockResolvedValue('generated-variant-source')
+    sharedMock.collectPanelVisualReferenceCandidates.mockResolvedValue([{
+      assetId: 'character-hero',
+      renderId: 'render-hero',
+      assetKind: 'character',
+      assetName: 'Hero',
+      url: 'https://signed.example/ref-character.png',
+      role: 'primary_identity',
+      usage: 'must_match',
+      weight: 1,
+      source: 'requirement_plan',
+    }])
 
     prismaMock.novelPromotionPanel.findUnique.mockImplementation(async (args: { where: { id: string } }) => {
       if (args.where.id === 'panel-new') {
@@ -179,10 +204,10 @@ describe('worker panel-variant-task-handler behavior', () => {
       },
     }
 
-    sharedMock.collectPanelReferenceImages.mockResolvedValueOnce([])
+    sharedMock.collectPanelVisualReferenceCandidates.mockResolvedValueOnce([])
     await handlePanelVariantTask(buildJob(payload))
 
-    expect(sharedMock.collectPanelReferenceImages).toHaveBeenCalledWith(
+    expect(sharedMock.collectPanelVisualReferenceCandidates).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
       expect.objectContaining({
@@ -205,6 +230,41 @@ describe('worker panel-variant-task-handler behavior', () => {
         location_asset: '未使用场景参考图',
       }),
     }))
+  })
+
+  it('caps source, asset, and style references as one selection', async () => {
+    utilsMock.getProjectModels.mockResolvedValueOnce({
+      storyboardModel: 'storyboard-model-1',
+      artStyle: 'realistic',
+      artStyleMode: 'custom',
+      artStylePrompt: '电影感',
+      customArtStyleReferenceImage: 'https://signed.example/style.png',
+      artStyleReferenceEnabled: true,
+    })
+    sharedMock.collectPanelVisualReferenceCandidates.mockResolvedValueOnce([
+      ...Array.from({ length: 4 }, (_, index) => ({
+        assetId: `character-${index}`,
+        renderId: `render-${index}`,
+        assetKind: 'character' as const,
+        assetName: `角色${index + 1}`,
+        url: `https://signed.example/character-${index + 1}.png`,
+        role: index === 0 ? 'primary_identity' as const : 'supporting_identity' as const,
+        usage: 'must_match' as const,
+        weight: index === 0 ? 1 : 0.75,
+        source: 'requirement_plan' as const,
+      })),
+    ])
+
+    await handlePanelVariantTask(buildJob({
+      newPanelId: 'panel-new',
+      sourcePanelId: 'panel-source',
+      variant: { title: '超限版本', description: '测试参考图上限' },
+    }))
+
+    const generationCall = utilsMock.resolveImageSourceFromGeneration.mock.calls.at(-1)
+    const options = generationCall?.[1] as { options: { referenceImages: string[] } } | undefined
+    expect(options?.options.referenceImages).toHaveLength(4)
+    expect(options?.options.referenceImages).toContain('https://signed.example/cos/panel-source.png')
   })
 
   it('uses localized slot labels in english variant prompts', async () => {

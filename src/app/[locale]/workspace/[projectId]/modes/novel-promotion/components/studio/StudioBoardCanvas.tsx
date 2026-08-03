@@ -483,7 +483,10 @@ function BoardDetailPanel({
               添加道具
             </StudioButton>
           </div>
-          <PanelBindingPlanSummary photographyRules={panelData.photographyRules} />
+          <PanelBindingPlanSummary
+            photographyRules={panelData.photographyRules}
+            referencePlan={item.sourcePanel.referencePlan}
+          />
           {saveState?.status === 'error' ? (
             <div className="flex items-center justify-between gap-3 rounded-md border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs text-rose-100">
               <span>{saveState.errorMessage || '保存失败'}</span>

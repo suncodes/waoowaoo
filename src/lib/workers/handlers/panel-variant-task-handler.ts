@@ -1,6 +1,6 @@
 import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
-import { joinPromptSegments, prependStyleReferenceImage } from '@/lib/constants'
+import { getStyleReferenceInstruction, joinPromptSegments } from '@/lib/constants'
 import { resolveArtStyleForGeneration } from '@/lib/art-style-generation'
 import { logInfo as _ulogInfo } from '@/lib/logging/core'
 import { type TaskJobData } from '@/lib/task/types'
@@ -17,13 +17,18 @@ import {
 } from '@/lib/location-available-slots'
 import {
   AnyObj,
-  collectPanelReferenceImages,
+  collectPanelVisualReferenceCandidates,
   findCharacterByName,
   parsePanelCharacterReferences,
   pickFirstString,
   resolveNovelData,
 } from './image-task-handler-shared'
 import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
+import {
+  resolvePanelVisualReferenceSelection,
+  type PanelVisualReferenceSelection,
+  type VisualReference,
+} from '@/lib/visual-production/references'
 
 // ── 构建变体提示词 ──────────────────────────────────────
 interface VariantPromptParams {
@@ -142,16 +147,53 @@ async function buildVariantReferenceImages(params: {
   }
   sourcePanelImageUrl: string | null
   projectData: Awaited<ReturnType<typeof resolveNovelData>>
-}): Promise<string[]> {
-  const semanticRefs = await collectPanelReferenceImages(params.projectData, params.newPanel, {
+  styleReferenceImage: string | null
+  styleReferenceEnabled: boolean
+  locale: TaskJobData['locale']
+}): Promise<PanelVisualReferenceSelection> {
+  const semanticReferences = await collectPanelVisualReferenceCandidates(params.projectData, params.newPanel, {
     includeCharacterAssets: params.includeCharacterAssets,
     includeLocationAssets: params.includeLocationAsset,
     includePropAssets: true,
   })
-  return [...new Set([
-    ...(params.sourcePanelImageUrl ? [params.sourcePanelImageUrl] : []),
-    ...semanticRefs,
-  ])]
+  const sourceReference: VisualReference[] = params.sourcePanelImageUrl
+    ? [{
+      assetId: null,
+      renderId: null,
+      assetKind: 'panel',
+      assetName: params.locale === 'en' ? 'source panel image' : '原镜头图片',
+      url: params.sourcePanelImageUrl,
+      role: 'previous_frame',
+      usage: 'adapt',
+      weight: 1.1,
+      source: 'previous_frame',
+    }]
+    : []
+  const styleReference: VisualReference[] = params.styleReferenceEnabled && params.styleReferenceImage
+    ? [{
+      assetId: null,
+      renderId: null,
+      assetKind: 'style',
+      assetName: params.locale === 'en' ? 'visual style reference' : '视觉风格参考图',
+      url: params.styleReferenceImage,
+      role: 'style_only',
+      usage: 'avoid_copy',
+      weight: 0.35,
+      source: 'style',
+    }]
+    : []
+  const selection = resolvePanelVisualReferenceSelection({
+    projectData: {},
+    panel: params.newPanel,
+    options: {
+      includeCharacterAssets: false,
+      includeLocationAssets: false,
+      includePropAssets: false,
+      includeSourceAnchorAssets: false,
+    },
+    additionalReferences: [...sourceReference, ...semanticReferences, ...styleReference],
+  })
+  return selection
 }
 
 interface PanelVariantPayload {
@@ -193,16 +235,6 @@ export async function handlePanelVariantTask(job: Job<TaskJobData>) {
   const storyboardModel = modelConfig.storyboardModel
   if (!storyboardModel) throw new Error('Storyboard model not configured')
 
-  // 收集参考图（与 panel-image-task-handler 共用同一链路）
-  const sourcePanelImageUrl = toSignedUrlIfCos(sourcePanel.imageUrl, 3600)
-  const refs = await buildVariantReferenceImages({
-    includeCharacterAssets,
-    includeLocationAsset,
-    newPanel,
-    sourcePanelImageUrl,
-    projectData,
-  })
-
   // 使用 agent_shot_variant_generate.txt 提示词模板
   const resolvedArtStyle = resolveArtStyleForGeneration({
     artStyleMode: modelConfig.artStyleMode,
@@ -212,18 +244,28 @@ export async function handlePanelVariantTask(job: Job<TaskJobData>) {
     artStyleReferenceEnabled: modelConfig.artStyleReferenceEnabled,
     locale: job.data.locale,
   })
-  const styleText = joinPromptSegments([
-    resolvedArtStyle.prompt,
-    resolvedArtStyle.referenceInstruction,
-  ], job.data.locale)
   const fallbackStyleText = job.data.locale === 'en'
     ? 'consistent with the provided reference images'
     : '与参考图风格一致'
-  const referenceImages = prependStyleReferenceImage(
-    refs,
-    resolvedArtStyle.referenceImage,
-    resolvedArtStyle.referenceEnabled,
-  )
+  const referenceSelection = await buildVariantReferenceImages({
+    includeCharacterAssets,
+    includeLocationAsset,
+    newPanel,
+    sourcePanelImageUrl: toSignedUrlIfCos(sourcePanel.imageUrl, 3600),
+    projectData,
+    styleReferenceImage: resolvedArtStyle.referenceImage,
+    styleReferenceEnabled: resolvedArtStyle.referenceEnabled,
+    locale: job.data.locale,
+  })
+  const referenceImages = referenceSelection.selected.map((reference) => reference.url)
+  const styleText = joinPromptSegments([
+    resolvedArtStyle.prompt,
+    getStyleReferenceInstruction(
+      resolvedArtStyle.referenceImage,
+      resolvedArtStyle.referenceEnabled && referenceSelection.selected.some((reference) => reference.assetKind === 'style'),
+      job.data.locale,
+    ),
+  ], job.data.locale)
   const charactersInfo = buildCharactersInfo(newPanel, projectData)
   const characterAssetsDesc = includeCharacterAssets
     ? buildCharacterAssetsDescription(newPanel, projectData)

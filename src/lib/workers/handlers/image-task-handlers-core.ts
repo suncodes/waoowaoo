@@ -23,6 +23,10 @@ import {
   pickFirstString,
   resolveNovelData,
 } from './image-task-handler-shared'
+import {
+  selectPanelVisualReferences,
+  type VisualReference,
+} from '@/lib/visual-production/references'
 import { createScopedLogger } from '@/lib/logging/core'
 import {
   buildCharacterDescriptionFields,
@@ -42,6 +46,44 @@ interface LocationImageRecord {
   location: {
     name: string
   } | null
+}
+
+function selectStoryboardModifyReferences(params: {
+  panel: {
+    visualType?: string | null
+    renderMode?: string | null
+  }
+  currentImageUrl: string
+  extraReferenceUrls: string[]
+}): string[] {
+  const candidates: VisualReference[] = [
+    {
+      assetId: null,
+      renderId: null,
+      assetKind: 'panel',
+      assetName: '当前镜头图片',
+      url: params.currentImageUrl,
+      role: 'previous_frame',
+      usage: 'adapt',
+      weight: 1.1,
+      source: 'previous_frame',
+    },
+    ...params.extraReferenceUrls.map((url, index) => ({
+      assetId: null,
+      renderId: null,
+      assetKind: 'style' as const,
+      assetName: `附加参考图 ${index + 1}`,
+      url,
+      role: 'style_only' as const,
+      usage: 'avoid_copy' as const,
+      weight: 0.35,
+      source: 'style' as const,
+    })),
+  ]
+  return selectPanelVisualReferences({
+    panel: params.panel,
+    candidates,
+  }).selected.map((reference) => reference.url)
 }
 
 export async function handleModifyAssetImageTask(job: Job<TaskJobData>) {
@@ -274,6 +316,8 @@ export async function handleModifyAssetImageTask(job: Job<TaskJobData>) {
           panelIndex: true,
           imageUrl: true,
           previousImageUrl: true,
+          visualType: true,
+          renderMode: true,
         },
       })
       : null
@@ -291,6 +335,8 @@ export async function handleModifyAssetImageTask(job: Job<TaskJobData>) {
           panelIndex: true,
           imageUrl: true,
           previousImageUrl: true,
+          visualType: true,
+          renderMode: true,
         },
       })
     }
@@ -327,7 +373,11 @@ export async function handleModifyAssetImageTask(job: Job<TaskJobData>) {
       }
     }
 
-    const uniqueReferences = Array.from(new Set([requiredReference, ...extraReferenceInputs]))
+    const uniqueReferences = selectStoryboardModifyReferences({
+      panel,
+      currentImageUrl: requiredReference,
+      extraReferenceUrls: extraReferenceInputs,
+    })
     const prompt = `请根据以下指令修改分镜图片，保持镜头语言和主体一致：\n${modifyPrompt}`
     const source = await resolveImageSourceFromGeneration(job, {
       userId: job.data.userId,

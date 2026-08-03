@@ -130,6 +130,7 @@
         "visualBindingLabel": "Visual bindings ({count})",
         "visualBindingNone": "No reference asset is bound to this shot",
         "visualBindingSuppressed": "Suppressed",
+        "visualReferenceTrimmed": "Reference images omitted due to the limit",
         "bindingKindCharacter": "Character",
         "bindingKindLocation": "Location",
         "bindingKindProp": "Prop",

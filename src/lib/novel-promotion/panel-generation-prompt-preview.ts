@@ -42,8 +42,8 @@ import {
 import {
   resolvePanelVisualReferenceSelection,
   serializePanelVisualReferenceSelection,
-  selectPanelVisualReferences,
   visualReferencesForPrompt,
+  visualReferencesForGenerationRoute,
   type PanelVisualReferenceSelection,
   type VisualReference,
 } from '@/lib/visual-production/references'
@@ -172,13 +172,10 @@ interface PanelForVideoPrompt {
 }
 
 interface NovelProjectCharacterAppearance {
-  id?: string
   changeReason: string | null
   description?: string | null
   descriptions?: string | null
   selectedIndex?: number | null
-  imageUrls?: string | null
-  imageUrl?: string | null
 }
 
 interface NovelProjectCharacter {
@@ -188,12 +185,9 @@ interface NovelProjectCharacter {
 }
 
 interface NovelProjectLocationImage {
-  id?: string
-  imageIndex?: number
   description?: string | null
   availableSlots?: string | null
   isSelected: boolean
-  imageUrl?: string | null
 }
 
 interface NovelProjectLocation {
@@ -301,103 +295,6 @@ function findCharacterByName<T extends { name: string }>(characters: T[], refere
 
 function normalizeReferenceImage(value: string | null | undefined) {
   return typeof value === 'string' && value.trim() ? value.trim() : null
-}
-
-function parseReferenceImageUrls(value: string | null | undefined): string[] {
-  if (!value) return []
-  try {
-    const parsed = JSON.parse(value) as unknown
-    return Array.isArray(parsed)
-      ? parsed.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
-      : []
-  } catch {
-    return []
-  }
-}
-
-function selectedCharacterReferenceImage(character: NovelProjectCharacter): string | null {
-  const appearance = character.appearances?.find((item) => (
-    typeof item.selectedIndex === 'number' && item.selectedIndex >= 0
-  )) || character.appearances?.[0]
-  if (!appearance) return null
-  const urls = parseReferenceImageUrls(appearance.imageUrls)
-  const selectedIndex = typeof appearance.selectedIndex === 'number' ? appearance.selectedIndex : 0
-  return normalizeReferenceImage(urls[selectedIndex] || urls[0] || appearance.imageUrl || null)
-}
-
-function selectedLocationReferenceImage(location: NovelProjectLocation): string | null {
-  const image = location.images?.find((item) => item.isSelected) || location.images?.[0]
-  return normalizeReferenceImage(image?.imageUrl || null)
-}
-
-function normalizeReferenceName(value: string): string {
-  return value.trim().toLowerCase()
-}
-
-function findProjectCharacterByReference(
-  characters: NovelProjectCharacter[] | undefined,
-  reference: VisualReference,
-): NovelProjectCharacter | null {
-  const name = normalizeReferenceName(reference.assetName)
-  return characters?.find((character) => character.id === reference.assetId)
-    || characters?.find((character) => normalizeReferenceName(character.name) === name)
-    || null
-}
-
-function findProjectLocationByReference(
-  locations: NovelProjectLocation[] | undefined,
-  reference: VisualReference,
-): NovelProjectLocation | null {
-  const name = normalizeReferenceName(reference.assetName)
-  return locations?.find((location) => location.id === reference.assetId)
-    || locations?.find((location) => normalizeReferenceName(location.name) === name)
-    || null
-}
-
-function referenceUrlFromPromptProjectData(
-  reference: VisualReference,
-  projectData: NovelProjectData,
-): string | null {
-  if (reference.assetKind === 'character') {
-    const character = findProjectCharacterByReference(projectData.characters, reference)
-    return character ? selectedCharacterReferenceImage(character) : null
-  }
-  if (reference.assetKind === 'location' || reference.assetKind === 'prop') {
-    const location = findProjectLocationByReference(projectData.locations, reference)
-    return location ? selectedLocationReferenceImage(location) : null
-  }
-  return normalizeReferenceImage(reference.url)
-}
-
-function createStyleReference(locale: PromptPreviewLocale, referenceImage: string): VisualReference {
-  return {
-    assetId: null,
-    renderId: null,
-    assetKind: 'style',
-    assetName: locale === 'en' ? 'visual style reference' : '视觉风格参考图',
-    url: referenceImage,
-    role: 'style_only',
-    usage: 'avoid_copy',
-    weight: 0.35,
-    source: 'style',
-  }
-}
-
-function resolvePanelImageReferenceSelection(params: {
-  panel: PanelForImagePrompt
-  selection: PanelVisualReferenceSelection
-  styleReferenceImage: string | null
-  styleReferenceEnabled: boolean
-  locale: PromptPreviewLocale
-}): PanelVisualReferenceSelection {
-  const candidates = params.styleReferenceEnabled && params.styleReferenceImage
-    ? [createStyleReference(params.locale, params.styleReferenceImage), ...params.selection.candidates]
-    : params.selection.candidates
-  return selectPanelVisualReferences({
-    panel: params.panel,
-    candidates,
-    maxReferences: params.selection.maxReferences,
-  })
 }
 
 function normalizeStringOverride(current: string | null, value: string | null | undefined): string | null {
@@ -868,13 +765,6 @@ export async function buildPanelImageGenerationPromptPreview(params: {
   const panelForPreview = applyPanelOverrides(panel as PanelForImagePrompt, params.overrides?.panel)
   const visualBindingPlan = resolvePanelAssetBindingPlan(panelForPreview)
   const visualBindings = panelVisualBindingsFromPlan(visualBindingPlan)
-  const assetReferenceSelection = resolvePanelVisualReferenceSelection({
-    projectData,
-    panel: panelForPreview,
-    options: {
-      signImageUrl: normalizeReferenceImage,
-    },
-  })
   const resolvedArtStyle = resolveArtStyleForGeneration({
     artStyleMode: modelConfig.artStyleMode,
     artStyle: modelConfig.artStyle,
@@ -883,24 +773,24 @@ export async function buildPanelImageGenerationPromptPreview(params: {
     artStyleReferenceEnabled: modelConfig.artStyleReferenceEnabled,
     locale,
   })
-  const referenceSelection = resolvePanelImageReferenceSelection({
+  const referenceSelection = resolvePanelVisualReferenceSelection({
+    projectData,
     panel: panelForPreview,
-    selection: assetReferenceSelection,
-    styleReferenceImage: normalizeReferenceImage(resolvedArtStyle.referenceImage),
-    styleReferenceEnabled: resolvedArtStyle.referenceEnabled,
-    locale,
+    options: {
+      signImageUrl: normalizeReferenceImage,
+      styleReferenceImage: resolvedArtStyle.referenceImage,
+      styleReferenceEnabled: resolvedArtStyle.referenceEnabled,
+      styleReferenceName: locale === 'en' ? 'visual style reference' : '视觉风格参考图',
+    },
   })
   const visualReferences = referenceSelection.selected
   const generationRouteDecision = decidePanelGenerationRoute({
     panel: panelForPreview,
     bindingPlan: visualBindingPlan,
-    references: referenceSelection.candidates,
+    references: visualReferencesForGenerationRoute(referenceSelection.candidates),
     forceNoReference: params.forceNoReference === true,
   })
-  const referenceImages = visualReferences.flatMap((reference) => {
-    const url = referenceUrlFromPromptProjectData(reference, projectData)
-    return url ? [url] : []
-  })
+  const referenceImages = visualReferences.map((reference) => reference.url)
   const resolvedArtStyleForPrompt = {
     ...resolvedArtStyle,
     referenceInstruction: getStyleReferenceInstruction(

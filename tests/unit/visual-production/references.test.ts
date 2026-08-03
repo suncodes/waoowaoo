@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   resolvePanelVisualReferenceSelection,
   selectPanelVisualReferences,
+  visualReferencesForGenerationRoute,
   type VisualReference,
 } from '@/lib/visual-production/references'
 
@@ -89,5 +90,39 @@ describe('panel visual reference selection', () => {
     expect(selection.maxReferences).toBe(2)
     expect(selection.selected.map((item) => item.assetName)).toEqual(['主角', '道具'])
     expect(selection.dropped.map((item) => item.assetName)).toEqual(['场景'])
+  })
+
+  it('includes a style reference in the same capped selection as asset references', () => {
+    const selection = resolvePanelVisualReferenceSelection({
+      panel: { visualType: 'illustration', renderMode: 'generated_image' },
+      projectData: {},
+      options: {
+        maxReferences: 2,
+        styleReferenceEnabled: true,
+        styleReferenceImage: 'style.png',
+        styleReferenceName: '视觉风格参考图',
+      },
+      additionalReferences: [
+        reference({ assetName: '主角', url: 'hero.png', weight: 1 }),
+        reference({ assetName: '场景', url: 'scene.png', assetKind: 'location', role: 'environment', usage: 'adapt', weight: 0.6 }),
+      ],
+    })
+
+    expect(selection.selected.map((item) => item.assetName)).toEqual(['主角', '场景'])
+    expect(selection.dropped.map((item) => item.assetName)).toEqual(['视觉风格参考图'])
+  })
+
+  it('does not let a style reference satisfy generation-route asset coverage', () => {
+    const styleReference = reference({
+      assetName: '视觉风格参考图',
+      url: 'style.png',
+      assetKind: 'style',
+      role: 'style_only',
+      usage: 'avoid_copy',
+      source: 'style',
+      weight: 0.35,
+    })
+
+    expect(visualReferencesForGenerationRoute([styleReference])).toEqual([])
   })
 })

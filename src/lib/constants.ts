@@ -310,8 +310,8 @@ export function getStyleReferenceInstruction(
 ): string {
   if (!enabled || !styleReferenceImage || !styleReferenceImage.trim()) return ''
   return locale === 'en'
-    ? 'Reference image 1 is used only for visual style, linework, color palette, material texture, lighting, and rendering mood. Do not copy its subject, objects, composition, text, logo, or watermark. Use later reference images only for character identity, scene, or object consistency.'
-    : '参考图 1 仅用于画面风格、线条、色彩、材质、光影和渲染气质参考；不要复制其中的主体、物品、构图、文字、Logo 或水印。后续参考图仅用于角色、场景或物品一致性。'
+    ? 'The visual style reference is used only for linework, color palette, material texture, lighting, and rendering mood. Do not copy its subject, objects, composition, text, logo, or watermark. Other reference images are used only for character identity, scene, or object consistency.'
+    : '视觉风格参考图仅用于线条、色彩、材质、光影和渲染气质参考；不要复制其中的主体、物品、构图、文字、Logo 或水印。其他参考图仅用于角色、场景或物品一致性。'
 }
 
 export function getArtStyleReferenceInstruction(

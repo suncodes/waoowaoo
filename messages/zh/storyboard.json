@@ -130,6 +130,7 @@
         "visualBindingLabel": "视觉绑定 ({count})",
         "visualBindingNone": "当前镜头没有绑定参考资产",
         "visualBindingSuppressed": "已排除",
+        "visualReferenceTrimmed": "参考图超出上限，未提交",
         "bindingKindCharacter": "角色",
         "bindingKindLocation": "场景",
         "bindingKindProp": "道具",

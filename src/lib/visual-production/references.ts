@@ -70,6 +70,9 @@ export interface ResolvePanelVisualReferencesOptions {
   includePropAssets?: boolean
   includeSourceAnchorAssets?: boolean
   maxReferences?: number
+  styleReferenceImage?: string | null
+  styleReferenceEnabled?: boolean
+  styleReferenceName?: string
   signImageUrl?: (value: string | null | undefined) => string | null
 }
 
@@ -300,6 +303,31 @@ function appendSourceAnchorFallbackReferences(params: {
   }
 }
 
+function appendStyleReference(params: {
+  refs: VisualReference[]
+  seen: Set<string>
+  signImageUrl: (value: string | null | undefined) => string | null
+  options: ResolvePanelVisualReferencesOptions
+}) {
+  const image = typeof params.options.styleReferenceImage === 'string'
+    ? params.options.styleReferenceImage.trim()
+    : ''
+  if (!params.options.styleReferenceEnabled || !image) return
+  pushReference({
+    refs: params.refs,
+    seen: params.seen,
+    signImageUrl: params.signImageUrl,
+    url: image,
+    assetId: null,
+    renderId: null,
+    assetKind: 'style',
+    assetName: params.options.styleReferenceName?.trim() || 'visual style reference',
+    role: 'style_only',
+    weight: 0.35,
+    source: 'style',
+  })
+}
+
 export function resolvePanelVisualReferenceCandidates(params: {
   projectData: PanelReferenceProjectData
   panel: PanelForVisualBindings & { sketchImageUrl?: string | null }
@@ -349,6 +377,13 @@ export function resolvePanelVisualReferenceCandidates(params: {
     })
   }
 
+  appendStyleReference({
+    refs,
+    seen,
+    signImageUrl,
+    options,
+  })
+
   return refs
     .sort((left, right) => right.weight - left.weight)
 }
@@ -379,9 +414,13 @@ export function resolvePanelVisualReferenceSelection(params: {
   projectData: PanelReferenceProjectData
   panel: PanelForVisualBindings & { sketchImageUrl?: string | null }
   options?: ResolvePanelVisualReferencesOptions
+  additionalReferences?: readonly VisualReference[]
 }): PanelVisualReferenceSelection {
   const options = params.options || {}
-  const candidates = resolvePanelVisualReferenceCandidates(params)
+  const candidates = [
+    ...(params.additionalReferences || []),
+    ...resolvePanelVisualReferenceCandidates(params),
+  ]
   return selectPanelVisualReferences({
     panel: params.panel,
     candidates,
@@ -393,12 +432,18 @@ export function resolvePanelVisualReferences(params: {
   projectData: PanelReferenceProjectData
   panel: PanelForVisualBindings & { sketchImageUrl?: string | null }
   options?: ResolvePanelVisualReferencesOptions
+  additionalReferences?: readonly VisualReference[]
 }): VisualReference[] {
   return resolvePanelVisualReferenceSelection(params).selected
 }
 
 export function visualReferencesToImageUrls(references: VisualReference[]): string[] {
   return references.map((item) => item.url)
+}
+
+// Style images affect rendering but must not satisfy a stable asset requirement.
+export function visualReferencesForGenerationRoute(references: VisualReference[]): VisualReference[] {
+  return references.filter((reference) => reference.assetKind !== 'style')
 }
 
 export function visualReferencesForPrompt(references: VisualReference[]) {

@@ -19,11 +19,18 @@ import {
 } from './panel-generation-prompt-preview'
 import { assertPanelGenerationRouteAllowed } from '@/lib/visual-production/panel-generation-router'
 import { resolveBuiltinCapabilitiesByModelKey } from '@/lib/model-capabilities/lookup'
+import { Prisma } from '@prisma/client'
+import { prisma } from '@/lib/prisma'
 
 type PanelLocator = {
   panelId?: string | null
   storyboardId?: string | null
   panelIndex?: number | string | null
+}
+
+function asInputJson(value: unknown): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput {
+  if (value === null || value === undefined) return Prisma.JsonNull
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue
 }
 
 export class PanelPromptPreparationError extends Error {
@@ -112,6 +119,14 @@ export async function preparePanelGenerationPrompt(params: {
         referencePlan: preview.referencePlan || null,
         referenceSelection: preview.referenceSelection || null,
         generationRouteDecision: preview.generationRouteDecision || null,
+      },
+    })
+    await prisma.novelPromotionPanel.update({
+      where: { id: preview.panelId },
+      data: {
+        referencePlan: asInputJson(preview.referencePlan),
+        generationRoute: (preview.generationRouteDecision as { route?: string } | undefined)?.route || null,
+        noReferenceReason: (preview.generationRouteDecision as { noReferenceReason?: string | null } | undefined)?.noReferenceReason || null,
       },
     })
     return { preview, prepared }

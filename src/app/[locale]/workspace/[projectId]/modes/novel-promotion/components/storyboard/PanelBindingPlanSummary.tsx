@@ -9,6 +9,7 @@ import type { PanelAssetBindingRole, VisualAssetKind } from '@/lib/visual-produc
 
 interface PanelBindingPlanSummaryProps {
   photographyRules?: unknown
+  referencePlan?: unknown
   className?: string
 }
 
@@ -38,46 +39,71 @@ function resolvePlan(photographyRules: unknown): PanelAssetBindingPlan | null {
   return readPanelAssetBindingPlanFromRules(photographyRules)
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function readDroppedReferenceNames(referencePlan: unknown): string[] {
+  const selection = asRecord(asRecord(referencePlan).referenceSelection)
+  const dropped = Array.isArray(selection.dropped) ? selection.dropped : []
+  return Array.from(new Set(dropped.flatMap((item) => {
+    const name = asRecord(item).assetName
+    return typeof name === 'string' && name.trim() ? [name.trim()] : []
+  })))
+}
+
 export default function PanelBindingPlanSummary({
   photographyRules,
+  referencePlan,
   className = '',
 }: PanelBindingPlanSummaryProps) {
   const t = useTranslations('storyboard')
   const plan = resolvePlan(photographyRules)
-  if (!plan) return null
+  const droppedReferenceNames = readDroppedReferenceNames(referencePlan)
+  if (!plan && droppedReferenceNames.length === 0) return null
 
   return (
     <div className={`rounded-md border border-white/10 bg-white/[0.03] p-3 ${className}`}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-xs font-semibold text-stone-300">
-          {t('panel.visualBindingLabel', { count: plan.bindings.length })}
-        </span>
-        <span className="text-[11px] text-stone-500">
-          {plan.primarySubject}
-        </span>
-      </div>
-
-      {plan.bindings.length > 0 ? (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {plan.bindings.map((binding) => (
-            <span
-              key={`${binding.kind}:${binding.id}:${binding.role}`}
-              className="inline-flex items-center gap-1 rounded-md bg-black/20 px-2 py-1 text-[11px] text-stone-200 ring-1 ring-white/10"
-              title={`${kindLabel(binding.kind, t)} · ${roleLabel(binding.role, t)} · ${sourceLabel(binding.source, t)}`}
-            >
-              <span className="text-stone-500">{kindLabel(binding.kind, t)}</span>
-              <span>{binding.name}</span>
-              <span className="text-[#c8a85f]">{roleLabel(binding.role, t)}</span>
-            </span>
-          ))}
+      {plan ? <>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs font-semibold text-stone-300">
+            {t('panel.visualBindingLabel', { count: plan.bindings.length })}
+          </span>
+          <span className="text-[11px] text-stone-500">
+            {plan.primarySubject}
+          </span>
         </div>
-      ) : (
-        <p className="mt-2 text-xs text-stone-500">{t('panel.visualBindingNone')}</p>
-      )}
 
-      {plan.suppressed.length > 0 ? (
-        <p className="mt-2 text-[11px] leading-5 text-stone-500">
-          {t('panel.visualBindingSuppressed')}: {plan.suppressed.map((item) => item.name).join('、')}
+        {plan.bindings.length > 0 ? (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {plan.bindings.map((binding) => (
+              <span
+                key={`${binding.kind}:${binding.id}:${binding.role}`}
+                className="inline-flex items-center gap-1 rounded-md bg-black/20 px-2 py-1 text-[11px] text-stone-200 ring-1 ring-white/10"
+                title={`${kindLabel(binding.kind, t)} · ${roleLabel(binding.role, t)} · ${sourceLabel(binding.source, t)}`}
+              >
+                <span className="text-stone-500">{kindLabel(binding.kind, t)}</span>
+                <span>{binding.name}</span>
+                <span className="text-[#c8a85f]">{roleLabel(binding.role, t)}</span>
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-stone-500">{t('panel.visualBindingNone')}</p>
+        )}
+
+        {plan.suppressed.length > 0 ? (
+          <p className="mt-2 text-[11px] leading-5 text-stone-500">
+            {t('panel.visualBindingSuppressed')}: {plan.suppressed.map((item) => item.name).join('、')}
+          </p>
+        ) : null}
+      </> : null}
+
+      {droppedReferenceNames.length > 0 ? (
+        <p className="mt-2 text-[11px] leading-5 text-cyan-200">
+          {t('panel.visualReferenceTrimmed')}: {droppedReferenceNames.join('、')}
         </p>
       ) : null}
     </div>

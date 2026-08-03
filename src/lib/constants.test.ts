@@ -51,8 +51,8 @@ describe('ART_STYLES registry', () => {
   })
 
   it('returns style reference instruction only when a valid style image is enabled', () => {
-    expect(getArtStyleReferenceInstruction('paper-cut-3d', true, 'zh')).toContain('参考图 1')
-    expect(getArtStyleReferenceInstruction('paper-cut-3d', true, 'en')).toContain('Reference image 1')
+    expect(getArtStyleReferenceInstruction('paper-cut-3d', true, 'zh')).toContain('视觉风格参考图')
+    expect(getArtStyleReferenceInstruction('paper-cut-3d', true, 'en')).toContain('visual style reference')
     expect(getArtStyleReferenceInstruction('paper-cut-3d', false, 'zh')).toBe('')
     expect(getArtStyleReferenceInstruction('unknown-style', true, 'zh')).toBe('')
   })

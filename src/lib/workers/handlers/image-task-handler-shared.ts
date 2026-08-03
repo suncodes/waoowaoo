@@ -9,6 +9,7 @@ import {
   withLabelBar,
 } from '../utils'
 import {
+  resolvePanelVisualReferenceCandidates,
   resolvePanelVisualReferences,
   visualReferencesToImageUrls,
   type VisualReference,
@@ -248,6 +249,21 @@ export async function collectPanelReferenceImages(
   options: PanelReferenceImageOptions = {},
 ) {
   return visualReferencesToImageUrls(await collectPanelVisualReferences(projectData, panel, options))
+}
+
+export async function collectPanelVisualReferenceCandidates(
+  projectData: NovelProjectData,
+  panel: PanelLike,
+  options: PanelReferenceImageOptions = {},
+): Promise<VisualReference[]> {
+  return resolvePanelVisualReferenceCandidates({
+    projectData,
+    panel,
+    options: {
+      ...options,
+      signImageUrl: (value) => toSignedUrlIfCos(value, 3600),
+    },
+  })
 }
 
 export async function collectPanelVisualReferences(

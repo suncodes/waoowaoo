@@ -14,7 +14,7 @@ const utilsMock = vi.hoisted(() => ({
 }))
 const sharedMock = vi.hoisted(() => ({
   collectPanelReferenceImages: vi.fn(async () => ['asset-reference.png']),
-  collectPanelVisualReferences: vi.fn(async () => [{
+  collectPanelVisualReferenceCandidates: vi.fn(async () => [{
     assetId: 'asset-1',
     renderId: 'render-1',
     assetKind: 'character',

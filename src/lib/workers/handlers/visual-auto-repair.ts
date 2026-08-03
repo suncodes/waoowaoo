@@ -31,7 +31,7 @@ import {
   uploadImageSourceToCos,
 } from '@/lib/workers/utils'
 import {
-  collectPanelVisualReferences,
+  collectPanelVisualReferenceCandidates,
   resolveNovelData,
 } from './image-task-handler-shared'
 import { readTaskRunId, toJsonRecord } from './planning-task-shared'
@@ -41,6 +41,7 @@ import {
   resolvePanelAssetBindingPlan,
 } from '@/lib/visual-production/binding-plan'
 import {
+  resolvePanelVisualReferenceSelection,
   visualReferencesForPrompt,
   visualReferencesToImageUrls,
 } from '@/lib/visual-production/references'
@@ -296,7 +297,7 @@ export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
   const modelConfig = await getProjectModels(job.data.projectId, job.data.userId)
   const basePrompt = panel.imagePrompt || panel.description || targetSpec.intent
   const bindingPlan = resolvePanelAssetBindingPlan(panel)
-  const visualReferences = await collectPanelVisualReferences(projectData, panel)
+  const visualReferences = await collectPanelVisualReferenceCandidates(projectData, panel)
   const referenceInstructions = bindingPlanPromptGuidance(bindingPlan)
   const enhancedTargetSpec: ImageTargetSpec = {
     ...targetSpec,
@@ -331,10 +332,30 @@ export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
       prompt_patch_json: JSON.stringify(enhancedPromptPatch, null, 2),
     },
   })
-  const assetReferences = visualReferencesToImageUrls(visualReferences)
-  const referenceImages = action === 'edit' && sourceCandidateUrl
-    ? uniqueStrings([sourceCandidateUrl, ...assetReferences])
-    : assetReferences
+  const repairReferenceSelection = resolvePanelVisualReferenceSelection({
+    projectData: {},
+    panel,
+    options: {
+      includeCharacterAssets: false,
+      includeLocationAssets: false,
+      includePropAssets: false,
+      includeSourceAnchorAssets: false,
+    },
+    additionalReferences: action === 'edit' && sourceCandidateUrl
+      ? [{
+        assetId: null,
+        renderId: null,
+        assetKind: 'panel',
+        assetName: job.data.locale === 'en' ? 'source candidate image' : '待修复候选图',
+        url: sourceCandidateUrl,
+        role: 'previous_frame',
+        usage: 'adapt',
+        weight: 1.1,
+        source: 'previous_frame',
+      }, ...visualReferences]
+      : visualReferences,
+  })
+  const referenceImages = visualReferencesToImageUrls(repairReferenceSelection.selected)
 
   const candidateUrls: string[] = []
   for (let candidateIndex = 0; candidateIndex < candidateCount; candidateIndex += 1) {

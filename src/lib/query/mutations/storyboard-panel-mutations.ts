@@ -85,6 +85,7 @@ export interface PanelGenerationPromptPreparation {
 }
 
 export function usePanelGenerationPromptPreview(projectId: string) {
+    const queryClient = useQueryClient()
     return useMutation({
         mutationFn: async (payload: PanelGenerationPromptPreviewPayload) => {
             const response = await requestJsonWithError<{
@@ -104,6 +105,9 @@ export function usePanelGenerationPromptPreview(projectId: string) {
                 preview: response.preview,
                 prepared: response.prepared,
             }
+        },
+        onSuccess: async () => {
+            await queryClient.invalidateQueries({ queryKey: ['episode-data', projectId] })
         },
     })
 }
