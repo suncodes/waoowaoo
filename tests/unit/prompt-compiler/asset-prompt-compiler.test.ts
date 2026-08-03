@@ -27,6 +27,25 @@ describe('asset image prompt compiler', () => {
     expect(prompt.indexOf('真人电影感')).toBeLessThan(prompt.indexOf(CHARACTER_PROMPT_SUFFIX))
   })
 
+  it('emits repeated source fragments once as visual features', () => {
+    const spec = buildAssetPromptSpec({
+      assetId: 'appearance-2',
+      assetKind: 'character',
+      assetName: '尼摩船长',
+      description: '中年男性，深色船长制服，银灰鬓角，神情冷峻',
+      styleText: '真人电影感，35mm 镜头，低调硬光',
+      locale: 'zh',
+    })
+    const prompt = compileAssetImagePrompt({ spec, locale: 'zh' })
+
+    expect(prompt).toContain('视觉特征：中年男性；深色船长制服；银灰鬓角；神情冷峻')
+    expect(prompt).not.toContain('形体轮廓：')
+    expect(prompt).not.toContain('材质纹理：')
+    expect(prompt).not.toContain('颜色与关键部件：')
+    expect(prompt.match(/中年男性/g)).toHaveLength(1)
+    expect(spec.sourceEvidence).toEqual(['中年男性，深色船长制服，银灰鬓角，神情冷峻'])
+  })
+
   it('compiles generic prop prompts as isolated reference sheets', () => {
     const spec = buildAssetPromptSpec({
       assetId: 'prop-1',

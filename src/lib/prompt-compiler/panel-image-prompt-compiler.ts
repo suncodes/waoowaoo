@@ -420,6 +420,163 @@ function applyCleanPlateBlueprint(
   }
 }
 
+type RenderBriefLocale = 'zh' | 'en'
+
+function uniquePromptTerms(values: Array<string | null | undefined>): string[] {
+  return Array.from(new Set(values.flatMap((value) => (
+    typeof value === 'string' && value.trim() ? [value.trim()] : []
+  ))))
+}
+
+function joinPromptTerms(
+  values: Array<string | null | undefined>,
+  locale: RenderBriefLocale = 'zh',
+): string {
+  return uniquePromptTerms(values).join(locale === 'en' ? '; ' : '；')
+}
+
+function renderAssetReference(asset: PanelPromptAssetRef, locale: RenderBriefLocale): string {
+  const name = asset.name.trim()
+  if (!name) return ''
+
+  if (locale === 'en') {
+    if (asset.role === 'primary' || asset.role === 'primary_identity') {
+      return `${name}: primary identity lock; preserve the reference silhouette, key colors, material, and clothing.`
+    }
+    if (asset.role === 'supporting' || asset.role === 'supporting_identity') {
+      return `${name}: supporting identity; preserve the reference appearance without competing with the main subject.`
+    }
+    if (asset.role === 'environment') {
+      return `${name}: environment reference; use its space, lighting, material, and atmosphere without copying it as a flat backdrop.`
+    }
+    if (asset.role === 'prop' || asset.role === 'prop_detail') {
+      return `${name}: prop lock; preserve its silhouette, proportions, material, key parts, and color accents.`
+    }
+    if (asset.role === 'cover_motif') {
+      return `${name}: use only blank-cover geometry, material, and motif silhouette; never render readable titles, letters, or logos.`
+    }
+    if (asset.role === 'comparison_prop') {
+      return `${name}: use only as a secondary shape and color reference.`
+    }
+    return `${name}: style-only reference; do not copy its subject identity.`
+  }
+
+  if (asset.role === 'primary' || asset.role === 'primary_identity') {
+    return `${name}：主身份锁定，保持参考图中的轮廓、关键配色、材质和服装。`
+  }
+  if (asset.role === 'supporting' || asset.role === 'supporting_identity') {
+    return `${name}：次要身份，保持参考外观但不得抢主视觉。`
+  }
+  if (asset.role === 'environment') {
+    return `${name}：环境参考，只借用空间、光色、材质和氛围，不得平铺复制背景。`
+  }
+  if (asset.role === 'prop' || asset.role === 'prop_detail') {
+    return `${name}：道具锁定，保持轮廓、比例、材质、关键部件和配色。`
+  }
+  if (asset.role === 'cover_motif') {
+    return `${name}：仅使用无字封面形体、材质和核心图案轮廓，不得生成题字、字母或徽标。`
+  }
+  if (asset.role === 'comparison_prop') {
+    return `${name}：仅作为次要形体和配色参考。`
+  }
+  return `${name}：仅作为风格参考，不得复制其主体身份。`
+}
+
+function renderSpecialHandling(spec: PanelImagePromptSpec, locale: RenderBriefLocale): string {
+  const instructions: string[] = []
+  const needsCleanPlate = spec.textPolicy === 'safe_area_only'
+    || spec.renderMode === 'text_card'
+    || spec.renderMode === 'composite'
+  if (needsCleanPlate) {
+    instructions.push(locale === 'en'
+      ? 'Create a text-free clean plate or single foreground element and reserve negative space for downstream typography.'
+      : '生成无文字的干净底图或单个前景素材，并为后期文字保留留白。')
+  }
+  if (spec.generationRoute === 'split' || spec.singleImageFeasibility.status !== 'feasible') {
+    instructions.push(locale === 'en'
+      ? `Render only one feasible key moment: ${spec.singleImageFeasibility.reason}.`
+      : `只表现一个可执行的关键瞬间：${spec.singleImageFeasibility.reason}。`)
+  }
+  return joinPromptTerms(instructions, locale)
+}
+
+export function compilePanelImageRenderBrief(
+  spec: PanelImagePromptSpec,
+  locale: RenderBriefLocale = 'zh',
+): string {
+  const blueprint = spec.promptBlueprint
+  const anchors = new Set(uniquePromptTerms([
+    spec.narrativeIntent,
+    spec.primarySubject,
+    spec.actionState,
+    spec.environment,
+    spec.composition.shotType,
+    spec.composition.cameraAngle,
+    spec.spatialLayout,
+    spec.lightingAndColor,
+    spec.styleAndTexture,
+  ]))
+  const visualDetails = uniquePromptTerms([
+    ...blueprint.subject,
+    ...blueprint.environment,
+    ...blueprint.action,
+    ...blueprint.camera,
+    ...blueprint.lighting,
+  ]).filter((value) => !anchors.has(value))
+  const composition = joinPromptTerms([
+    spec.composition.shotType,
+    spec.composition.cameraAngle,
+    spec.spatialLayout,
+    spec.composition.foreground,
+    spec.composition.midground,
+    spec.composition.background,
+  ], locale)
+  const references = uniquePromptTerms(spec.assetRefs.map((asset) => renderAssetReference(asset, locale)))
+  const continuity = joinPromptTerms([
+    spec.continuity.fromPrevious,
+    spec.continuity.toNext,
+    spec.continuity.screenDirection,
+    spec.continuity.lightingContinuity,
+  ], locale)
+  const style = joinPromptTerms([spec.styleAndTexture, ...blueprint.style], locale)
+  const negativeConstraints = joinPromptTerms([
+    ...spec.negativeConstraints,
+    ...blueprint.negative,
+  ], locale)
+  const specialHandling = renderSpecialHandling(spec, locale)
+  const visualDetailText = visualDetails.join(locale === 'en' ? '; ' : '；')
+
+  if (locale === 'en') {
+    return [
+      `Shot goal: ${spec.narrativeIntent}.`,
+      `Main subject and action: ${joinPromptTerms([spec.primarySubject, spec.actionState], locale)}.`,
+      `Environment: ${spec.environment}.`,
+      `Composition: ${composition}.`,
+      `Lighting and color: ${spec.lightingAndColor}.`,
+      references.length ? `Reference locks: ${references.join(' ')}` : '',
+      visualDetails.length ? `Visual details: ${visualDetailText}.` : '',
+      continuity ? `Continuity: ${continuity}.` : '',
+      specialHandling ? `Special handling: ${specialHandling}` : '',
+      `Style: ${style}.`,
+      `Negative constraints: ${negativeConstraints}.`,
+    ].filter(Boolean).join('\n')
+  }
+
+  return [
+    `镜头目的：${spec.narrativeIntent}。`,
+    `主体与关键动作：${joinPromptTerms([spec.primarySubject, spec.actionState], locale)}。`,
+    `场景：${spec.environment}。`,
+    `构图：${composition}。`,
+    `光色：${spec.lightingAndColor}。`,
+    references.length ? `参考资产锁定：${references.join('')}` : '',
+    visualDetails.length ? `画面细节：${visualDetailText}。` : '',
+    continuity ? `连续性：${continuity}。` : '',
+    specialHandling ? `特殊处理：${specialHandling}` : '',
+    `风格：${style}。`,
+    `禁止项：${negativeConstraints}。`,
+  ].filter(Boolean).join('\n')
+}
+
 export function buildPanelImagePromptSpec(params: {
   context: PanelImagePromptCompilerContext
   aspectRatio: string

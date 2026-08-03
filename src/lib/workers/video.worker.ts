@@ -184,6 +184,7 @@ async function generateVideoForPanel(
     customPrompt: firstLastCustomPrompt || persistedFirstLastPrompt || customPrompt || null,
     lastFrameProvided: Boolean(lastFrameImageUrl),
     generationOptions,
+    includeNativeAudio: requestedGenerateAudio === true,
     panelSpeech,
   })
   const promptSpec = videoPromptCompilation.promptSpec

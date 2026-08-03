@@ -262,10 +262,25 @@ function listLine(label: string, values: string[], fallback: string): string {
   return `${label}${values.length > 0 ? values.join('；') : fallback}`
 }
 
+function inlineIdentityLocks(spec: AssetPromptSpec): string[] {
+  return uniqueStrings(spec.identityLocks.filter((value) => !spec.sourceEvidence.includes(value)))
+}
+
+function visualFeatureTerms(spec: AssetPromptSpec): string[] {
+  return uniqueStrings([
+    ...spec.shapeAndSilhouette,
+    ...spec.materialAndTexture,
+    ...spec.colorPalette,
+    ...spec.keyParts,
+  ])
+}
+
 function compileSpecBody(spec: AssetPromptSpec, locale: Locale): string {
   const slotText = spec.availableSlots.length > 0
     ? formatLocationAvailableSlotsText(spec.availableSlots, locale)
     : ''
+  const identityLocks = inlineIdentityLocks(spec)
+  const visualFeatures = visualFeatureTerms(spec)
   if (locale === 'en') {
     return [
       `${spec.assetKind} asset image, purpose: ${spec.renderPurpose}.`,
@@ -273,15 +288,12 @@ function compileSpecBody(spec: AssetPromptSpec, locale: Locale): string {
       spec.semanticType === 'book'
         ? `Asset name is an internal label only, not image text: ${spec.assetName}.`
         : `Asset name: ${spec.assetName}.`,
-      listLine('Identity locks: ', spec.identityLocks, spec.assetName),
-      listLine('Shape and silhouette: ', spec.shapeAndSilhouette, spec.assetName),
-      listLine('Material and texture: ', spec.materialAndTexture, 'use the source description only'),
-      listLine('Color and key parts: ', uniqueStrings([...spec.colorPalette, ...spec.keyParts]), 'use the source description only'),
+      identityLocks.length ? listLine('Identity locks: ', identityLocks, spec.assetName) : '',
+      listLine('Visual features: ', visualFeatures, 'use the source description only'),
       `View and composition: ${spec.viewAndComposition}.`,
       slotText ? `Fixed usable positions:\n${slotText}` : '',
       `Background rule: ${spec.backgroundRule}.`,
       `Style application: ${spec.styleApplication}.`,
-      listLine('Source evidence and design boundary: ', spec.sourceEvidence, 'use only the supplied asset description'),
       listLine('Quality terms: ', spec.qualityTerms, 'clean readable asset image'),
       `Negative constraints: ${spec.negativeConstraints.join('; ')}.`,
     ].filter(Boolean).join('\n')
@@ -292,15 +304,12 @@ function compileSpecBody(spec: AssetPromptSpec, locale: Locale): string {
     spec.semanticType === 'book'
       ? `资产名称只是内部标签，不得画入图像：${spec.assetName}。`
       : `资产名称：${spec.assetName}。`,
-    listLine('身份不变量：', spec.identityLocks, spec.assetName),
-    listLine('形体轮廓：', spec.shapeAndSilhouette, spec.assetName),
-    listLine('材质纹理：', spec.materialAndTexture, '只使用来源描述中的材质信息'),
-    listLine('颜色与关键部件：', uniqueStrings([...spec.colorPalette, ...spec.keyParts]), '只使用来源描述中的颜色和部件信息'),
+    identityLocks.length ? listLine('身份不变量：', identityLocks, spec.assetName) : '',
+    listLine('视觉特征：', visualFeatures, '只使用来源描述中的视觉特征'),
     `视角与构图：${spec.viewAndComposition}。`,
     slotText ? `固定可用位置：\n${slotText}` : '',
     `背景规则：${spec.backgroundRule}。`,
     `项目风格作用范围：${spec.styleApplication}。`,
-    listLine('来源依据与设计边界：', spec.sourceEvidence, '只使用当前资产描述'),
     listLine('质量要求：', spec.qualityTerms, '干净清晰的资产图'),
     `禁止项：${spec.negativeConstraints.join('；')}。`,
   ].filter(Boolean).join('\n')

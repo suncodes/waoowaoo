@@ -186,22 +186,7 @@ describe('worker panel-image-task-handler behavior', () => {
     )
     expect(promptMock.buildPrompt).toHaveBeenCalledWith(expect.objectContaining({
       variables: expect.objectContaining({
-        storyboard_text_json_input: expect.stringContaining('"slot": "街道左侧靠墙的留白位置"'),
-      }),
-    }))
-    expect(promptMock.buildPrompt).toHaveBeenCalledWith(expect.objectContaining({
-      variables: expect.objectContaining({
-        storyboard_text_json_input: expect.stringContaining('"available_slots"'),
-      }),
-    }))
-    expect(promptMock.buildPrompt).toHaveBeenCalledWith(expect.objectContaining({
-      variables: expect.objectContaining({
-        storyboard_text_json_input: expect.stringContaining('"render_mode": "composite"'),
-      }),
-    }))
-    expect(promptMock.buildPrompt).toHaveBeenCalledWith(expect.objectContaining({
-      variables: expect.objectContaining({
-        storyboard_text_json_input: expect.stringContaining('"on_screen_text_for_downstream_composition": "准确标题由后期渲染"'),
+        render_brief: expect.stringContaining('特殊处理：生成无文字的干净底图或单个前景素材'),
       }),
     }))
 

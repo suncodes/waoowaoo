@@ -1,44 +1,14 @@
-You are a professional storyboard image artist.
-Generate exactly one high-quality image for one panel.
+You are a professional storyboard image artist. Generate exactly one high-quality panel image.
 
-Absolute constraints:
-1. No text in the image.
-2. No subtitles, labels, numbers, watermarks, or symbols.
-3. Do not create collage or multi-frame output.
-4. Output exactly one frame.
+Global constraints:
+1. The aspect ratio must be exactly {aspect_ratio}.
+2. Do not render text, subtitles, numbers, watermarks, logos, annotations, or fake glyphs. Input text is for understanding only.
+3. Render one time, one place, one shot, and one primary visual event. Never create a collage, grid, split screen, montage, or extra frame.
+4. Follow the render brief as the final specification. Use source text only to fill an explicitly missing narrative relationship; it must not override the brief's subject, composition, reference locks, or negative constraints.
+5. Use reference images only as specified by the brief: identity references lock appearance, environment references guide space/light/material, and style references must not introduce their subject, text, or logo.
 
-Aspect ratio (must be exact):
-{aspect_ratio}
-
-Storyboard panel data:
-{storyboard_text_json_input}
+Render brief:
+{render_brief}
 
 Source text:
 {source_text}
-
-Style requirement:
-{style}
-
-Execution rules:
-1. `prompt_spec` inside the storyboard data is the final image specification. Follow it first, then use panel/context/source_text only to fill gaps.
-2. prompt_spec.narrativeIntent defines the shot purpose, shotFunction defines the shot role, and primarySubject is the single main visual subject.
-3. prompt_spec.assetRefs are identity constraints and must stay consistent with references and asset names.
-4. context.visual_references records each reference image role, usage, and weight: primary_identity must match the main subject; supporting_identity stays consistent only when that asset is visible and must not dominate; environment guides space, lighting, and material only; prop_detail locks prop form only; style_only transfers visual language only and must not bring the reference subject into this panel.
-5. cover_motif references may provide only blank cover geometry, material, and core motif silhouette. Never render the asset label, book title, author name, letters, numbers, fake glyphs, logo, or barcode.
-6. primary_identity / prop_detail are hard reference locks: preserve silhouette, key colors, material, clothing, or parts instead of redesigning the subject after borrowing only the style.
-7. prompt_spec.promptBlueprint is the final prompt skeleton. Execute subject, environment, action, camera, lighting, style, and negative fields item by item; if loose fields conflict with it, keep the blueprint and source-supported content.
-8. prompt_spec.continuity preserves spatial, lighting, eye-line, and action handoff across shots.
-9. If prompt_spec.singleImageFeasibility reports a risk, render only the one frame that can work as a still image instead of packing impossible content into the image.
-10. Respect panel composition, character placement, and action logic.
-11. If storyboard data contains `slot`, treat it as a preferred placement anchor for consistency, not as an absolute restriction.
-12. If location data contains `available_slots`, treat them as typical anchor references rather than a complete map of all valid positions.
-13. When the panel description, source text, action flow, or scene nature implies movement, entry/exit, path traversal, transition space, temporary space, empty space, or abstract/non-literal space, do not force the character to remain inside an existing slot.
-14. Use reference images for style/identity consistency only.
-15. Repaint the background according to shot type and angle.
-16. If storyboard conflicts with source text, keep narrative logic from source text.
-17. Keep final visual style consistent with provided references.
-18. One image may contain only one time, one place, one shot, and one primary visual event. If the input says montage, collage, rapid switching, or sequential display, render only the single most informative frame and never create a grid or multi-frame image.
-19. For renderMode=generated_image, create one complete shot. For text_card, create only a text-free background, decoration, and negative space. For composite, create one clean plate or one foreground element; never fake a news montage, multiple locations, multiple book covers, or an asset wall.
-20. assetRefs and character/location/prop references are identity constraints, not optional decoration. Show only explicitly requested subjects. Do not introduce any character, face, body, building, logo, or motif associated with the style source.
-21. Style applies only to line, shape language, material, palette, and lighting. It must never change subject identity or turn a prop into a character.
-22. If image_prompt conflicts with these rules, preserve its narrative subject and composition intent while removing exact-text generation, multi-scene, and extra-subject requests.

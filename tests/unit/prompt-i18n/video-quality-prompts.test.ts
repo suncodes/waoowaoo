@@ -40,6 +40,10 @@ const CASES = [
     promptId: PROMPT_IDS.NP_VISUAL_AUTO_REPAIR,
     variables: { base_prompt: 'base', target_spec_json: '{}', prompt_patch_json: '{}' },
   },
+  {
+    promptId: PROMPT_IDS.NP_SINGLE_PANEL_IMAGE,
+    variables: { aspect_ratio: '16:9', render_brief: 'subject and action', source_text: 'source' },
+  },
 ] as const
 
 describe('video quality prompt catalog', () => {

@@ -377,6 +377,7 @@ describe('worker video processor behavior', () => {
       voiceLineCount: 1,
     })
     panelSpeechMock.panelSpeechHasContent.mockReturnValueOnce(true)
+    panelSpeechMock.compilePanelSpeechPromptSection.mockReturnValueOnce('原生音频与台词计划：\n口播版台词：旁白：海底的阴影逼近。')
     panelVideoReferenceAudioMock.resolvePanelVideoReferenceAudios.mockResolvedValueOnce({
       referenceAudios: [referenceAudio],
       referenceAudioSummary: [{
@@ -412,6 +413,7 @@ describe('worker video processor behavior', () => {
       generateAudio: true,
       referenceAudios: [referenceAudio],
     })
+    expect(generationCall.options?.prompt).toEqual(expect.stringContaining('原生音频与台词计划'))
 
     const artifactPayload = artifactMock.createArtifact.mock.calls[0]?.[0]?.payload as {
       structuredReferences?: { referenceAudioSummary?: unknown }

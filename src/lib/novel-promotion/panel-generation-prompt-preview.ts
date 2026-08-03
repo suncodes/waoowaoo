@@ -9,6 +9,7 @@ import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
 import type { PromptLocale } from '@/lib/prompt-i18n/types'
 import {
   buildPanelImagePromptSpec,
+  compilePanelImageRenderBrief,
   type PanelImagePromptSpec,
 } from '@/lib/prompt-compiler/panel-image-prompt-compiler'
 import {
@@ -538,18 +539,16 @@ export function buildPanelImagePromptContext(params: {
 export function buildPanelImagePrompt(params: {
   locale: PromptPreviewLocale
   aspectRatio: string
-  styleText: string
   sourceText: string
-  contextJson: string
+  renderBrief: string
 }) {
   return buildPrompt({
     promptId: PROMPT_IDS.NP_SINGLE_PANEL_IMAGE,
     locale: params.locale,
     variables: {
       aspect_ratio: params.aspectRatio,
-      storyboard_text_json_input: params.contextJson,
+      render_brief: params.renderBrief,
       source_text: params.sourceText || '无',
-      style: params.styleText,
     },
   })
 }
@@ -596,16 +595,12 @@ export function buildPanelImagePromptFromResolvedInputs(params: {
     noReferenceReason: params.generationRouteDecision.noReferenceReason,
     referencePlan,
   })
-  const contextJson = JSON.stringify({
-    ...promptContext,
-    prompt_spec: promptSpec,
-  }, null, 2)
+  const renderBrief = compilePanelImageRenderBrief(promptSpec, locale)
   const compiledPrompt = buildPanelImagePrompt({
     locale,
     aspectRatio,
-    styleText: resolvedStyleText,
     sourceText: params.panel.srtSegment || params.panel.description || '',
-    contextJson,
+    renderBrief,
   })
   const assetVersionHash = createCreativeQualityHash({
     characters: promptContext.context.character_appearances.map((item) => ({
@@ -659,6 +654,7 @@ export function buildPanelVideoPromptFromResolvedInputs(params: {
   customPrompt?: string | null
   lastFrameProvided?: boolean
   generationOptions?: VideoOptionMap
+  includeNativeAudio?: boolean
   panelSpeech?: {
     speaker: string
     originalContent: string
@@ -691,7 +687,7 @@ export function buildPanelVideoPromptFromResolvedInputs(params: {
     },
     locale,
   })
-  const speechPromptSection = params.panelSpeech
+  const speechPromptSection = params.includeNativeAudio === true && params.panelSpeech
     ? compilePanelSpeechPromptSection({
       speech: params.panelSpeech,
       locale,
@@ -883,6 +879,7 @@ export async function buildPanelVideoGenerationPromptPreview(params: {
     customPrompt,
     lastFrameProvided,
     generationOptions,
+    includeNativeAudio: requestedGenerateAudio === true,
     panelSpeech,
   })
 

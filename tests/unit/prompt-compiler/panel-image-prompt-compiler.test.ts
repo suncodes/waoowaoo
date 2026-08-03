@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildPanelImageGenerationSnapshot,
   buildPanelImagePromptSpec,
+  compilePanelImageRenderBrief,
   type PanelImagePromptCompilerContext,
 } from '@/lib/prompt-compiler/panel-image-prompt-compiler'
 
@@ -164,6 +165,23 @@ describe('panel image prompt compiler', () => {
     expect(second.promptHash).toBe(first.promptHash)
     expect(second.specHash).toBe(first.specHash)
     expect(second.inputHash).toBe(first.inputHash)
+  })
+
+  it('renders a compact image brief without internal planning metadata', () => {
+    const spec = buildPanelImagePromptSpec({
+      context: buildContext(),
+      aspectRatio: '16:9',
+      styleText: 'cinematic ink illustration',
+    })
+
+    const brief = compilePanelImageRenderBrief(spec, 'en')
+
+    expect(brief).toContain('Main subject and action: brass key; The key is held still at the lock.')
+    expect(brief).toContain('Reference locks: brass key: prop lock')
+    expect(brief).toContain('Style: cinematic ink illustration.')
+    expect(brief).not.toContain('schemaVersion')
+    expect(brief).not.toContain('bindingPlan')
+    expect(brief).not.toContain('prop-1')
   })
 
   it('turns book cover panels into text-free clean-plate prompt specs', () => {

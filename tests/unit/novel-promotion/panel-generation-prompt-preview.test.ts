@@ -121,4 +121,45 @@ describe('panel generation prompt preview compiler', () => {
     expect(result.compiledPrompt).toContain('时长：约 8 秒')
     expect(result.promptSpec.durationSec).toBe(8)
   })
+
+  it('only includes dialogue instructions when native audio is requested', () => {
+    const baseParams = {
+      panel: {
+        id: 'panel-1',
+        storyboardId: 'storyboard-1',
+        panelIndex: 0,
+        description: '主角站在门口',
+        imagePrompt: '主角门口定格',
+        videoPrompt: '主角回头',
+        cameraMove: '固定机位',
+        duration: 4,
+        photographyRules: null,
+        promptSpec: null,
+        referencePlan: null,
+      },
+      locale: 'zh' as const,
+      generationMode: 'normal' as const,
+      generationOptions: { generateAudio: false },
+      panelSpeech: {
+        speaker: '旁白',
+        originalContent: '海底的阴影逼近。',
+        deliveryContent: null,
+        status: 'ready',
+        voiceConfigJson: { provider: 'fal', voice: 'narrator' },
+      },
+    }
+
+    const withoutNativeAudio = buildPanelVideoPromptFromResolvedInputs({
+      ...baseParams,
+      includeNativeAudio: false,
+    })
+    const withNativeAudio = buildPanelVideoPromptFromResolvedInputs({
+      ...baseParams,
+      includeNativeAudio: true,
+    })
+
+    expect(withoutNativeAudio.compiledPrompt).not.toContain('原生音频与台词计划')
+    expect(withNativeAudio.compiledPrompt).toContain('原生音频与台词计划')
+    expect(withNativeAudio.compiledPrompt).toContain('海底的阴影逼近。')
+  })
 })
