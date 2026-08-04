@@ -4,8 +4,7 @@ import Image from 'next/image'
 import { useEffect, useMemo, useState } from 'react'
 import { AppIcon } from '@/components/ui/icons'
 import type { VisualAssetSummary } from '@/lib/assets/contracts'
-import { readContentArtifactMeta, readVisualArtifactMeta, type VisualAnchor } from '@/lib/creation-workspace/artifact-state'
-import { resolveVisualAnchorReadiness, selectedVisualAssetImage } from '@/lib/creation-workspace/visual-readiness'
+import { readContentArtifactMeta, readVisualArtifactMeta } from '@/lib/creation-workspace/artifact-state'
 import { useAssetActions, useAssets } from '@/lib/query/hooks'
 import { useWorkspaceProvider } from '../../WorkspaceProvider'
 import { useWorkspaceStageRuntime } from '../../WorkspaceStageRuntimeContext'
@@ -29,6 +28,7 @@ import StudioVisualAssetInspector, {
   type PreparedAssetPrompt,
   type VisualKitItem,
 } from './StudioVisualAssetInspector'
+import { buildVisualKitItems } from './studio-visual-kit-items'
 
 interface StudioVisualKitCanvasProps {
   model: StudioWorkspaceModel
@@ -59,14 +59,6 @@ type BatchGenerationSummary = {
 
 const BATCH_SUBMISSION_CONCURRENCY = 3
 
-function assetDescription(asset: VisualAssetSummary) {
-  if (asset.kind === 'character') return asset.introduction || asset.variants[0]?.description || ''
-  return asset.summary || asset.variants[0]?.description || ''
-}
-
-function semanticKind(asset: VisualAssetSummary): VisualAnchor['semanticKind'] {
-  return asset.kind
-}
 function assetKindLabel(kind: VisualKitItem['kind']) {
   if (kind === 'character') return '角色'
   if (kind === 'location') return '场景'
@@ -91,51 +83,6 @@ function useVisualKitActions(projectId: string) {
   }
 }
 
-function buildItems(
-  anchors: VisualAnchor[],
-  assets: VisualAssetSummary[],
-  requiredAssetIds: ReadonlySet<string>,
-): VisualKitItem[] {
-  const readiness = resolveVisualAnchorReadiness(anchors, assets)
-  if (readiness.items.length > 0) {
-    return readiness.items.map((item) => {
-      const presentation = resolveVisualAssetWorkflowPresentation(item.asset)
-      return {
-        id: item.anchor.id,
-        name: item.anchor.name,
-        kind: item.anchor.semanticKind,
-        importance: item.anchor.importance,
-        description: item.anchor.description,
-        status: presentation.status,
-        statusLabel: presentation.label,
-        imageUrl: item.imageUrl,
-        sourceCount: item.anchor.sourceUnitIds.length,
-        backfill: item.asset?.backfill || null,
-        asset: item.asset,
-      }
-    })
-  }
-  const scopedAssets = requiredAssetIds.size > 0
-    ? assets.filter((asset) => requiredAssetIds.has(asset.id))
-    : assets
-  return scopedAssets.map((asset) => {
-    const presentation = resolveVisualAssetWorkflowPresentation(asset)
-    return {
-      id: asset.id,
-      name: asset.name,
-      kind: semanticKind(asset),
-      importance: requiredAssetIds.has(asset.id) ? 'core' : 'supporting',
-      description: assetDescription(asset),
-      status: presentation.status,
-      statusLabel: presentation.label,
-      imageUrl: selectedVisualAssetImage(asset),
-      sourceCount: 0,
-      backfill: asset.backfill || null,
-      asset,
-    }
-  })
-}
-
 export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasProps) {
   const runtime = useWorkspaceStageRuntime()
   const { projectId } = useWorkspaceProvider()
@@ -155,7 +102,7 @@ export default function StudioVisualKitCanvas({ model }: StudioVisualKitCanvasPr
     [contentMeta?.assetRequirements.assetIds],
   )
   const items = useMemo(
-    () => buildItems(visualMeta?.anchors || [], visualAssets, requiredAssetIds),
+    () => buildVisualKitItems(visualMeta?.anchors || [], visualAssets, requiredAssetIds),
     [requiredAssetIds, visualAssets, visualMeta?.anchors],
   )
   const backfillItems = items.filter((item) => !!item.backfill)
@@ -535,7 +482,7 @@ function AssetRailItem({
           </div>
           <StudioStatusBadge status={item.status} label={item.statusLabel} />
         </div>
-        <p className="mt-2 line-clamp-2 text-xs leading-5 text-stone-500">{item.asset ? assetDescription(item.asset) : item.description || '待补充标准描述'}</p>
+        <p className="mt-2 line-clamp-2 text-xs leading-5 text-stone-500">{item.description || '待补充标准描述'}</p>
       </div>
     </button>
   )

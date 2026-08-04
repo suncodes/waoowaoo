@@ -7,7 +7,6 @@ import { useTaskList, type TaskItem } from '@/lib/query/hooks/useTaskStatus'
 import { TASK_TYPE } from '@/lib/task/types'
 import { readContentArtifactMeta, readVisualArtifactMeta } from '@/lib/creation-workspace/artifact-state'
 import type { CreationWorkflowState } from '@/lib/creation-workspace/workflow-state'
-import { resolveVisualAnchorReadiness, resolveVisualAssetStatus, selectedVisualAssetImage } from '@/lib/creation-workspace/visual-readiness'
 import { useAssets } from '@/lib/query/hooks'
 import { resolveVoiceLinePanelBindings } from '@/lib/novel-promotion/voice-line-binding'
 import type { NovelPromotionPanel } from '@/types/project'
@@ -32,6 +31,7 @@ import {
   type StudioWorkspaceModel,
 } from './studio-types'
 import { resolvePanelImageWorkflowPresentation } from './studio-board-image-workflow'
+import { buildVisualKitItems } from './studio-visual-kit-items'
 
 interface UseStudioWorkspaceModelInput {
   currentStage: string
@@ -105,32 +105,6 @@ function panelStatus(panel: NovelPromotionPanel): StudioProductStatus {
     panel,
     hasCandidates: false,
   }).status
-}
-
-function visualAssetStatus(status: ReturnType<typeof resolveVisualAssetStatus>): StudioProductStatus {
-  if (status === 'running') return 'generating'
-  if (status === 'failed') return 'failed'
-  if (status === 'confirmed') return 'locked'
-  if (status === 'candidate') return 'needs_review'
-  return 'empty'
-}
-
-function assetDescription(asset: VisualAssetSummary) {
-  if (asset.kind === 'character') return asset.introduction || asset.profileData || ''
-  return asset.summary || ''
-}
-
-function fallbackVisualAsset(asset: VisualAssetSummary): StudioVisualAsset {
-  return {
-    id: asset.id,
-    name: asset.name,
-    kind: asset.kind,
-    importance: 'supporting',
-    description: assetDescription(asset),
-    status: visualAssetStatus(resolveVisualAssetStatus(asset)),
-    imageUrl: selectedVisualAssetImage(asset),
-    sourceCount: 0,
-  }
 }
 
 function buildDraftSegments(contentPlan: unknown, contentMeta: ReturnType<typeof readContentArtifactMeta>): StudioDraftSegment[] {
@@ -311,19 +285,20 @@ export function useStudioWorkspaceModel({
     const contentMeta = readContentArtifactMeta(episodeData.contentPlan)
     const visualMeta = readVisualArtifactMeta(episodeData.productionBible)
     const visualAssets = assetsQuery.data.filter((asset): asset is VisualAssetSummary => asset.family === 'visual')
-    const readiness = resolveVisualAnchorReadiness(visualMeta?.anchors || [], visualAssets)
-    const visualKitAssets = readiness.items.length > 0
-      ? readiness.items.map((item): StudioVisualAsset => ({
-          id: item.anchor.id,
-          name: item.anchor.name,
-          kind: item.anchor.semanticKind,
-          importance: item.anchor.importance,
-          description: item.anchor.description,
-          status: visualAssetStatus(item.status),
-          imageUrl: item.imageUrl,
-          sourceCount: item.anchor.sourceUnitIds.length,
-        }))
-      : visualAssets.map(fallbackVisualAsset)
+    const visualKitAssets = buildVisualKitItems(
+      visualMeta?.anchors || [],
+      visualAssets,
+      new Set(contentMeta?.assetRequirements.assetIds || []),
+    ).map((item): StudioVisualAsset => ({
+      id: item.id,
+      name: item.name,
+      kind: item.kind,
+      importance: item.importance,
+      description: item.description,
+      status: item.status,
+      imageUrl: item.imageUrl,
+      sourceCount: item.sourceCount,
+    }))
     const draftSegments = buildDraftSegments(episodeData.contentPlan, contentMeta)
     const shots = buildShots(episodeData.storyboards)
     const voiceLines = episodeData.voiceLines
