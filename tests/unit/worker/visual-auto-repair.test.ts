@@ -42,7 +42,11 @@ vi.mock('@/lib/prompt-i18n', () => ({
   buildPrompt: vi.fn(() => 'repair-prompt'),
 }))
 vi.mock('@/lib/workers/handlers/planning-task-shared', () => ({
-  readTaskRunId: vi.fn(() => 'run-repair-1'),
+  readTaskRunId: vi.fn((job: { data: { payload?: Record<string, unknown> } }) => {
+    const runId = job.data.payload?.runId
+    if (typeof runId !== 'string' || !runId.trim()) throw new Error('runId is required')
+    return runId
+  }),
   toJsonRecord: (value: unknown) => value,
 }))
 
@@ -99,6 +103,14 @@ describe('worker visual-auto-repair behavior', () => {
     expect(utilsMock.resolveImageSourceFromGeneration).not.toHaveBeenCalled()
   })
 
+  it('rejects a repair task without a run ID before generating images', async () => {
+    const job = buildJob()
+    delete (job.data.payload as Record<string, unknown>).runId
+
+    await expect(handleVisualAutoRepairTask(job)).rejects.toThrow('runId is required')
+    expect(utilsMock.resolveImageSourceFromGeneration).not.toHaveBeenCalled()
+  })
+
   it('persists an isolated repair candidate and schedules a fresh review', async () => {
     const result = await handleVisualAutoRepairTask(buildJob())
 
@@ -141,6 +153,7 @@ describe('worker visual-auto-repair behavior', () => {
     expect(taskMock.submitTask).toHaveBeenCalledWith(expect.objectContaining({
       type: TASK_TYPE.VISUAL_QUALITY_REVIEW,
       payload: expect.objectContaining({
+        runId: 'run-repair-1',
         candidateUrls: ['panel-1-1-0.png', 'panel-1-1-1.png'],
         versionHash: 'version-2',
         repairLineage: [expect.objectContaining({ repairVersionHash: 'version-2' })],

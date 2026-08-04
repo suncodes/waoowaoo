@@ -207,6 +207,7 @@ describe('worker visual-quality-review behavior', () => {
       type: TASK_TYPE.VISUAL_AUTO_REPAIR,
       targetId: 'panel-1',
       payload: expect.objectContaining({
+        runId: 'run-quality-1',
         action: 'regenerate',
         attempt: 1,
         versionHash: 'version-1',

@@ -118,6 +118,7 @@ async function persistAssetRepairCandidates(params: {
 }
 
 async function handleAssetVisualAutoRepairTask(job: Job<TaskJobData>) {
+  const runId = readTaskRunId(job)
   const payload = (job.data.payload || {}) as Record<string, unknown>
   const targetSpec = asRecord(payload.targetSpec) as unknown as ImageTargetSpec
   const promptPatch = asRecord(payload.promptPatch) as unknown as PromptPatch
@@ -212,7 +213,7 @@ async function handleAssetVisualAutoRepairTask(job: Job<TaskJobData>) {
   ]
 
   await createArtifact({
-    runId: readTaskRunId(job),
+    runId,
     stepKey: 'visual_auto_repair',
     artifactType: 'visual.asset.repair.candidate',
     refId: job.data.targetId,
@@ -241,6 +242,7 @@ async function handleAssetVisualAutoRepairTask(job: Job<TaskJobData>) {
     targetType: job.data.targetType,
     targetId: job.data.targetId,
     payload: {
+      runId,
       assetKind,
       candidateUrls,
       versionHash,
@@ -260,6 +262,7 @@ export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
     return handleAssetVisualAutoRepairTask(job)
   }
 
+  const runId = readTaskRunId(job)
   const payload = (job.data.payload || {}) as Record<string, unknown>
   const panelId = typeof payload.panelId === 'string' && payload.panelId.trim()
     ? payload.panelId.trim()
@@ -457,7 +460,7 @@ export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
     throw new Error('VISUAL_VERSION_STALE')
   }
   await createArtifact({
-    runId: readTaskRunId(job),
+    runId,
     stepKey: 'visual_auto_repair',
     artifactType: 'visual.repair.candidate',
     refId: panel.id,
@@ -488,6 +491,7 @@ export async function handleVisualAutoRepairTask(job: Job<TaskJobData>) {
     targetType: 'NovelPromotionPanel',
     targetId: panel.id,
     payload: {
+      runId,
       panelId: panel.id,
       candidateUrls,
       versionHash,

@@ -150,6 +150,7 @@ async function resolveAssetReviewTarget(params: {
 }
 
 async function handleAssetVisualQualityReviewTask(job: Job<TaskJobData>) {
+  const runId = readTaskRunId(job)
   const payload = (job.data.payload || {}) as Record<string, unknown>
   const novelData = await prisma.novelPromotionProject.findUnique({
     where: { projectId: job.data.projectId },
@@ -262,7 +263,7 @@ async function handleAssetVisualQualityReviewTask(job: Job<TaskJobData>) {
   )
 
   await createArtifact({
-    runId: readTaskRunId(job),
+    runId,
     stepKey: 'visual_quality_review',
     artifactType: 'visual.asset.quality.review',
     refId: job.data.targetId,
@@ -284,6 +285,7 @@ async function handleAssetVisualQualityReviewTask(job: Job<TaskJobData>) {
       targetType: job.data.targetType,
       targetId: job.data.targetId,
       payload: {
+        runId,
         assetKind,
         versionHash,
         action: decision.action,
@@ -321,6 +323,7 @@ export async function handleVisualQualityReviewTask(job: Job<TaskJobData>) {
     return handleAssetVisualQualityReviewTask(job)
   }
 
+  const runId = readTaskRunId(job)
   const payload = (job.data.payload || {}) as Record<string, unknown>
   const panelId = typeof payload.panelId === 'string' && payload.panelId.trim()
     ? payload.panelId.trim()
@@ -535,7 +538,7 @@ export async function handleVisualQualityReviewTask(job: Job<TaskJobData>) {
     repairLineage: completedRepairLineage,
   })
   await createArtifact({
-    runId: readTaskRunId(job),
+    runId,
     stepKey: 'visual_quality_review',
     artifactType: 'visual.quality.review',
     refId: panel.id,
@@ -586,6 +589,7 @@ export async function handleVisualQualityReviewTask(job: Job<TaskJobData>) {
       targetType: 'NovelPromotionPanel',
       targetId: panel.id,
       payload: {
+        runId,
         panelId: panel.id,
         versionHash,
         action: decision.action,
