@@ -229,6 +229,7 @@ async function handleAssetVisualQualityReviewTask(job: Job<TaskJobData>) {
     autoApproveThreshold: profile.qualityPolicy.autoApproveThreshold,
     minConfidence: profile.qualityPolicy.minConfidence,
     editModelAvailable: Boolean(novelData.editModel),
+    targetSpec,
   })
   const selectedUrl = decision.candidateIndex === null ? null : candidateUrls[decision.candidateIndex] || null
   const repairCandidateCount = resolveVisualRepairCandidateCount({
@@ -472,6 +473,7 @@ export async function handleVisualQualityReviewTask(job: Job<TaskJobData>) {
     autoApproveThreshold: profile.qualityPolicy.autoApproveThreshold,
     minConfidence: profile.qualityPolicy.minConfidence,
     editModelAvailable: Boolean(novelData.editModel),
+    targetSpec,
   })
 
   await reportTaskProgress(job, 82, {

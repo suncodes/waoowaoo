@@ -19,6 +19,7 @@
 - prop_detail / cover_motif 必须和参考图保持物体轮廓、比例、材质、关键部件一致；明显不像时标记 PROP_INCONSISTENT。
 - cover_motif、book_cover、composite、text_card 必须是无字底图；出现书名、作者名、字母、数字、伪文字、徽标或条形码时标记 TEXT_ERROR。
 - 如果目标规格要求单一关键帧，候选图出现多阶段动作、多时空、分屏、拼贴或混剪时标记 COMPOSITION_ERROR。
+- 如果 target_spec.assetRenderContract 存在，候选图必须满足其中的主体策略、物理形态、方向性和模板版式；不符合时标记 TEMPLATE_MISMATCH。对资产图，角色转面、多视图分格或拟人化内容出现在不允许的对象模板中，属于模板不匹配而非普通审美问题。
 - 主体错误、关键身份错、文本错误或无法判断参考图遵循时，不得返回 passed。
 
 只输出 JSON，candidateIndex 从 0 开始：
@@ -34,7 +35,7 @@
     "passed": false,
     "strengths": ["符合项"],
     "issues": [{
-      "code": "EMPTY_IMAGE|UNREADABLE_IMAGE|ASPECT_RATIO_MISMATCH|DUPLICATE_CANDIDATE|SUBJECT_MISMATCH|CHARACTER_INCONSISTENT|PROP_INCONSISTENT|SCENE_INCONSISTENT|COMPOSITION_ERROR|TEXT_ERROR|ANATOMY_ERROR|STYLE_MISMATCH|CONTINUITY_ERROR|LOW_TECHNICAL_QUALITY",
+      "code": "EMPTY_IMAGE|UNREADABLE_IMAGE|ASPECT_RATIO_MISMATCH|DUPLICATE_CANDIDATE|SUBJECT_MISMATCH|CHARACTER_INCONSISTENT|PROP_INCONSISTENT|SCENE_INCONSISTENT|COMPOSITION_ERROR|TEXT_ERROR|ANATOMY_ERROR|STYLE_MISMATCH|CONTINUITY_ERROR|TEMPLATE_MISMATCH|LOW_TECHNICAL_QUALITY",
       "severity": "minor|major|critical",
       "message": "问题",
       "evidence": "画面证据",

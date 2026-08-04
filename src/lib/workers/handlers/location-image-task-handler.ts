@@ -19,7 +19,10 @@ import {
   generateProjectLabeledImageToStorage,
   pickFirstString,
 } from './image-task-handler-shared'
-import { buildLocationAssetTargetSpec } from './visual-quality-review-helpers'
+import {
+  buildAssetPromptTargetSpec,
+  buildLocationAssetTargetSpec,
+} from './visual-quality-review-helpers'
 import {
   markStoryboardPanelsAwaitingAssetConfirmation,
   reconcileStoryboardPanelsForAssetChanges,
@@ -239,6 +242,8 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
     item: LocationImageRecord
     imageKey: string
     promptBody: string
+    promptSpec: unknown
+    aspectRatio: string
   }>>()
   const selectedLocationIdsReplaced = new Set<string>()
   const promptSnapshots: GenerationSnapshot[] = []
@@ -254,6 +259,9 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
     }
     const promptSnapshot = attachPreparedPromptToSnapshot(prepared.snapshot, prepared.artifactId)
     const prompt = promptSnapshot.compiledPrompt
+    const aspectRatio = typeof prepared.generationOptions.aspectRatio === 'string'
+      ? prepared.generationOptions.aspectRatio
+      : (assetType === 'prop' ? PROP_IMAGE_RATIO : LOCATION_IMAGE_RATIO)
     const promptReferenceImages = promptSnapshot.referenceImages.flatMap((referenceImage) => {
       const signed = toSignedUrlIfCos(referenceImage, 3600)
       return signed ? [signed] : []
@@ -282,9 +290,7 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
       keyPrefix: 'location',
       options: {
         referenceImages: promptReferenceImages.length > 0 ? promptReferenceImages : undefined,
-        aspectRatio: typeof prepared.generationOptions.aspectRatio === 'string'
-          ? prepared.generationOptions.aspectRatio
-          : (assetType === 'prop' ? PROP_IMAGE_RATIO : LOCATION_IMAGE_RATIO),
+        aspectRatio,
         generationOptions: prepared.generationOptions,
       },
     })
@@ -304,6 +310,8 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
       item,
       imageKey,
       promptBody,
+      promptSpec: promptSnapshot.promptSpec,
+      aspectRatio,
     })
     generatedByLocationId.set(item.locationId, generatedItems)
   }
@@ -318,7 +326,11 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
         name: locationNameMap[locationId] || '场景',
         assetKind: assetType,
       }
-      const targetSpec = buildLocationAssetTargetSpec({
+      const targetSpec = buildAssetPromptTargetSpec({
+        targetId: firstItem.item.id,
+        promptSpec: firstItem.promptSpec,
+        aspectRatio: firstItem.aspectRatio,
+      }) || buildLocationAssetTargetSpec({
         image: {
           ...firstItem.item,
           description: firstItem.promptBody,

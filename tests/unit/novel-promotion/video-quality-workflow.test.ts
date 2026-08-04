@@ -229,9 +229,44 @@ describe('video quality workflow contracts', () => {
       editModelAvailable: true,
     }).action).toBe('edit')
 
-    const structural: typeof localized = { ...localized, issueCodes: ['SUBJECT_MISMATCH'] }
+    const structural: typeof localized = {
+      ...localized,
+      candidates: [{
+        ...localized.candidates[0],
+        issues: [{
+          code: 'SUBJECT_MISMATCH',
+          severity: 'critical',
+          message: '主体错误',
+          evidence: '候选主体不匹配',
+          repairHint: '重新生成主体',
+        }],
+      }],
+      issueCodes: ['SUBJECT_MISMATCH'],
+    }
     expect(decideVisualRepair({
       review: structural,
+      attempt: 0,
+      maxAttempts: 2,
+      autoApproveThreshold: 90,
+      minConfidence: 0.9,
+      editModelAvailable: true,
+    }).action).toBe('regenerate')
+    const propMismatch: typeof localized = {
+      ...localized,
+      candidates: [{
+        ...localized.candidates[0],
+        issues: [{
+          code: 'PROP_INCONSISTENT',
+          severity: 'critical',
+          message: '道具身份错误',
+          evidence: '道具外观不匹配',
+          repairHint: '重新生成道具',
+        }],
+      }],
+      issueCodes: ['PROP_INCONSISTENT'],
+    }
+    expect(decideVisualRepair({
+      review: propMismatch,
       attempt: 0,
       maxAttempts: 2,
       autoApproveThreshold: 90,

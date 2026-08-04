@@ -24,6 +24,7 @@ const ISSUE_CODES = new Set<VisualQualityIssueCode>([
   'ANATOMY_ERROR',
   'STYLE_MISMATCH',
   'CONTINUITY_ERROR',
+  'TEMPLATE_MISMATCH',
   'LOW_TECHNICAL_QUALITY',
 ])
 
@@ -129,6 +130,7 @@ export function decideVisualRepair(params: {
   autoApproveThreshold: number
   minConfidence: number
   editModelAvailable: boolean
+  targetSpec?: ImageTargetSpec
 }): RepairDecision {
   const { review } = params
   const selected = review.selectedCandidateIndex === null
@@ -158,18 +160,32 @@ export function decideVisualRepair(params: {
     }
   }
 
-  const requiresRegeneration = review.issueCodes.some((code) => (
-    code === 'EMPTY_IMAGE'
-    || code === 'UNREADABLE_IMAGE'
-    || code === 'SUBJECT_MISMATCH'
-    || code === 'CONTINUITY_ERROR'
-  ))
+  const repairIssues = selected?.issues || review.candidates.flatMap((candidate) => candidate.issues)
+  const requiresRegeneration = repairIssues.some((issue) => isStructuralRepairIssue(issue, params.targetSpec))
   return {
     action: params.editModelAvailable && !requiresRegeneration ? 'edit' : 'regenerate',
     candidateIndex: review.selectedCandidateIndex,
     reason: requiresRegeneration ? 'structural mismatch requires regeneration' : 'localized defects can be edited',
     promptPatch: review.promptPatch,
   }
+}
+
+function isStructuralRepairIssue(issue: VisualQualityIssue, targetSpec?: ImageTargetSpec): boolean {
+  if (
+    issue.code === 'EMPTY_IMAGE'
+    || issue.code === 'UNREADABLE_IMAGE'
+    || issue.code === 'SUBJECT_MISMATCH'
+    || issue.code === 'CHARACTER_INCONSISTENT'
+    || issue.code === 'PROP_INCONSISTENT'
+    || issue.code === 'SCENE_INCONSISTENT'
+    || issue.code === 'CONTINUITY_ERROR'
+    || issue.code === 'TEMPLATE_MISMATCH'
+  ) {
+    return true
+  }
+  return issue.code === 'COMPOSITION_ERROR'
+    && issue.severity !== 'minor'
+    && !!targetSpec?.assetRenderContract
 }
 
 function targetHasLockedCharacter(targetSpec: ImageTargetSpec): boolean {
@@ -204,12 +220,14 @@ function isHardGateIssue(issue: VisualQualityIssue, targetSpec: ImageTargetSpec)
     || issue.code === 'UNREADABLE_IMAGE'
     || issue.code === 'ASPECT_RATIO_MISMATCH'
     || issue.code === 'SUBJECT_MISMATCH'
+    || issue.code === 'TEMPLATE_MISMATCH'
   ) {
     return true
   }
   if (issue.code === 'TEXT_ERROR') return targetForbidsText(targetSpec)
   if (issue.code === 'CHARACTER_INCONSISTENT') return targetHasLockedCharacter(targetSpec)
   if (issue.code === 'PROP_INCONSISTENT') return targetHasLockedProp(targetSpec)
+  if (issue.code === 'COMPOSITION_ERROR' && targetSpec.assetRenderContract) return true
   if (issue.code === 'STYLE_MISMATCH' || issue.code === 'CONTINUITY_ERROR') {
     return targetSpec.riskLevel === 'high' || issue.severity === 'critical'
   }

@@ -70,4 +70,58 @@ describe('visual quality review parser', () => {
     expect(gated.candidates[0].passed).toBe(false)
     expect(gated.status).toBe('repairable')
   })
+
+  it('enforces template mismatches for assets with a render contract', () => {
+    const review = parseImageQualityReviewResult({
+      status: 'passed',
+      selectedCandidateIndex: 0,
+      score: 92,
+      confidence: 0.93,
+      candidates: [{
+        candidateIndex: 0,
+        score: 92,
+        confidence: 0.93,
+        passed: true,
+        issues: [{
+          code: 'TEMPLATE_MISMATCH',
+          severity: 'major',
+          message: '对象图被生成成角色转面',
+          evidence: '存在人物正侧背分格',
+          repairHint: '改为单对象参考图',
+        }],
+      }],
+      promptPatch: {},
+    }, 'version-3')
+    const gated = enforceVisualQualityHardGates(review, {
+      schemaVersion: 1,
+      targetType: 'prop',
+      targetId: 'prop-1',
+      intent: '抽象道具',
+      aspectRatio: '3:2',
+      visualType: 'amorphous',
+      renderMode: 'generated_image',
+      templateKind: 'prop_single_reference',
+      shotType: '',
+      cameraMove: '',
+      location: '',
+      characters: [],
+      props: ['抽象道具'],
+      requiredText: '',
+      styleBaseline: 'animated',
+      continuityRules: [],
+      forbiddenPatterns: ['禁止人物'],
+      riskLevel: 'low',
+      assetRenderContract: {
+        schemaVersion: 1,
+        subjectPolicy: 'object_only',
+        physicalForm: 'amorphous',
+        orientation: 'non_directional',
+        templateKind: 'prop_single_reference',
+        requiresTurnaround: false,
+      },
+    })
+
+    expect(gated.candidates[0].passed).toBe(false)
+    expect(gated.status).toBe('repairable')
+  })
 })

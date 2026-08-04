@@ -19,6 +19,7 @@ Hard gates:
 - prop_detail / cover_motif must preserve object silhouette, proportions, material, key parts, and colors. Mark clear mismatch as PROP_INCONSISTENT.
 - cover_motif, book_cover, composite, and text_card must be text-free base images. Mark book titles, author names, letters, numbers, fake glyphs, logos, or barcodes as TEXT_ERROR.
 - If the target asks for a single key frame, mark multi-stage action, multiple times/places, split screen, collage, or montage as COMPOSITION_ERROR.
+- When target_spec.assetRenderContract is present, enforce its subject policy, physical form, orientation, and template layout. Mark violations as TEMPLATE_MISMATCH. For asset images, a character turnaround, multi-view grid, or humanized content in an object-only template is a template mismatch, not merely an aesthetic issue.
 - Do not return passed when the main subject, locked identity, text policy, or reference adherence is wrong or uncertain.
 
 Return JSON only. candidateIndex is zero-based:
@@ -34,7 +35,7 @@ Return JSON only. candidateIndex is zero-based:
     "passed": false,
     "strengths": ["matching element"],
     "issues": [{
-      "code": "EMPTY_IMAGE|UNREADABLE_IMAGE|ASPECT_RATIO_MISMATCH|DUPLICATE_CANDIDATE|SUBJECT_MISMATCH|CHARACTER_INCONSISTENT|PROP_INCONSISTENT|SCENE_INCONSISTENT|COMPOSITION_ERROR|TEXT_ERROR|ANATOMY_ERROR|STYLE_MISMATCH|CONTINUITY_ERROR|LOW_TECHNICAL_QUALITY",
+      "code": "EMPTY_IMAGE|UNREADABLE_IMAGE|ASPECT_RATIO_MISMATCH|DUPLICATE_CANDIDATE|SUBJECT_MISMATCH|CHARACTER_INCONSISTENT|PROP_INCONSISTENT|SCENE_INCONSISTENT|COMPOSITION_ERROR|TEXT_ERROR|ANATOMY_ERROR|STYLE_MISMATCH|CONTINUITY_ERROR|TEMPLATE_MISMATCH|LOW_TECHNICAL_QUALITY",
       "severity": "minor|major|critical",
       "message": "problem",
       "evidence": "visible evidence",

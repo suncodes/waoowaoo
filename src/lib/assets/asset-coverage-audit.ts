@@ -107,6 +107,7 @@ function isAssetSemanticType(value: unknown): value is AssetSemanticType {
     || value === 'weapon'
     || value === 'tool'
     || value === 'symbol'
+    || value === 'magic_item'
     || value === 'creature'
     || value === 'device'
     || value === 'generic_object'

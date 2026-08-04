@@ -72,6 +72,36 @@ describe('asset image prompt compiler', () => {
     expect(prompt.indexOf('十九世纪幻想工业风')).toBeLessThan(prompt.indexOf(PROP_PROMPT_SUFFIX))
   })
 
+  it('uses a single-object contract for non-directional props without a character turnaround', () => {
+    const spec = buildAssetPromptSpec({
+      assetId: 'prop-amorphous-1',
+      assetKind: 'prop',
+      assetName: '抽象飞行道具',
+      description: '蓬松流动的云雾形飞行道具，是核心标志性道具',
+      semanticType: 'symbol',
+      extractedFacts: {
+        silhouetteLocks: ['蓬松流动的云雾轮廓'],
+        costumeOrMaterialLocks: ['轻盈云雾材质'],
+        physicalForm: 'amorphous',
+        orientation: 'non_directional',
+      },
+      styleText: '传统二维手绘动画',
+      locale: 'zh',
+    })
+    const prompt = compileAssetImagePrompt({ spec, locale: 'zh' })
+
+    expect(spec.templateKind).toBe('prop_single_reference')
+    expect(spec.renderContract).toMatchObject({
+      subjectPolicy: 'object_only',
+      physicalForm: 'amorphous',
+      requiresTurnaround: false,
+    })
+    expect(prompt).toContain('单一道具完整居中展示')
+    expect(prompt).toContain('不使用角色转面、正侧背多视图')
+    expect(prompt).not.toContain(PROP_PROMPT_SUFFIX)
+    expect(prompt).not.toContain('语义类型：symbol')
+  })
+
   it('prioritizes profile visual locks and excludes narrative relations from the final prompt', () => {
     const spec = buildAssetPromptSpec({
       assetId: 'appearance-tang-seng',
@@ -156,7 +186,8 @@ describe('asset image prompt compiler', () => {
     expect(spec.identityLocks).not.toContain('《示例小说》书封')
     expect(prompt).toContain('资产名称只是内部标签，不得画入图像')
     expect(prompt).toContain('禁止书名、作者名、可读字母')
-    expect(prompt.endsWith(PROP_PROMPT_SUFFIX)).toBe(true)
+    expect(prompt).toContain('书本干净底图，只展示一本实体书或空白封面表面')
+    expect(prompt).not.toContain(PROP_PROMPT_SUFFIX)
   })
 
   it('keeps location spatial slots and negative constraints in the compiled prompt', () => {

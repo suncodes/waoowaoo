@@ -48,4 +48,13 @@ describe('asset semantics', () => {
       explicitUsageScope: 'prop_detail',
     })).toBe('prop_detail')
   })
+
+  it('preserves an explicit magic-item semantic type instead of matching narrative wording', () => {
+    expect(inferAssetSemanticType({
+      assetKind: 'prop',
+      name: '飞行道具',
+      description: '核心标志性道具，需要跨镜保持稳定外观',
+      explicitSemanticType: 'magic_item',
+    })).toBe('magic_item')
+  })
 })

@@ -21,7 +21,10 @@ import {
   parseImageUrls,
   pickFirstString,
 } from './image-task-handler-shared'
-import { buildCharacterAssetTargetSpec } from './visual-quality-review-helpers'
+import {
+  buildAssetPromptTargetSpec,
+  buildCharacterAssetTargetSpec,
+} from './visual-quality-review-helpers'
 import {
   markStoryboardPanelsAwaitingAssetConfirmation,
   reconcileStoryboardPanelsForAssetChanges,
@@ -183,6 +186,8 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
   const nextImageUrls = [...imageUrls]
   const label = `${characterName} - ${appearance.changeReason || '形象'}`
   const promptSnapshots: GenerationSnapshot[] = []
+  let qualityPromptSpec: unknown = null
+  let qualityAspectRatio = CHARACTER_ASSET_IMAGE_RATIO
 
   for (let i = 0; i < indexes.length; i++) {
     const index = indexes[i]
@@ -192,11 +197,18 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
     }
     const promptSnapshot = attachPreparedPromptToSnapshot(prepared.snapshot, prepared.artifactId)
     const prompt = promptSnapshot.compiledPrompt
+    const aspectRatio = typeof prepared.generationOptions.aspectRatio === 'string'
+      ? prepared.generationOptions.aspectRatio
+      : CHARACTER_ASSET_IMAGE_RATIO
     const promptReferenceImages = promptSnapshot.referenceImages.flatMap((referenceImage) => {
       const signed = toSignedUrlIfCos(referenceImage, 3600)
       return signed ? [signed] : []
     })
     promptSnapshots.push(promptSnapshot)
+    if (!qualityPromptSpec) {
+      qualityPromptSpec = promptSnapshot.promptSpec
+      qualityAspectRatio = aspectRatio
+    }
     await createOptionalGenerationSnapshotArtifact({
       job,
       stepKey: 'asset_image_prompt',
@@ -221,9 +233,7 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
       keyPrefix: 'character',
       options: {
         referenceImages: promptReferenceImages.length > 0 ? promptReferenceImages : undefined,
-        aspectRatio: typeof prepared.generationOptions.aspectRatio === 'string'
-          ? prepared.generationOptions.aspectRatio
-          : CHARACTER_ASSET_IMAGE_RATIO,
+        aspectRatio,
         generationOptions: prepared.generationOptions,
       },
     })
@@ -257,7 +267,13 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
     try {
       if (!models.analysisModel) throw new Error('ANALYSIS_MODEL_NOT_CONFIGURED')
       assertVisionInputSupported(models.analysisModel)
-      const targetSpec = buildCharacterAssetTargetSpec({
+      const targetSpec = (qualityPromptSpec
+        ? buildAssetPromptTargetSpec({
+          targetId: appearance.id,
+          promptSpec: qualityPromptSpec,
+          aspectRatio: qualityAspectRatio,
+        })
+        : null) || buildCharacterAssetTargetSpec({
         appearance: appearanceForQuality,
         artStyle: resolvedArtStyle.prompt || models.artStylePrompt || models.artStyle || '',
       })

@@ -32,6 +32,8 @@ export interface AssetVisualFactInput {
   colorLocks?: unknown
   keyPartLocks?: unknown
   exclusions?: unknown
+  physicalForm?: unknown
+  orientation?: unknown
 }
 
 export interface AssetVisualContract {
@@ -228,6 +230,11 @@ function mergeFactInput(
 
 export function parseAssetVisualFactInput(value: unknown): AssetVisualFactInput {
   const record = asRecord(value)
+  const physicalForm = record.physical_form
+    ?? record.physicalForm
+    ?? record.render_form
+    ?? record.renderForm
+  const orientation = record.orientation
   return {
     identityLocks: record.identity_locks ?? record.identityLocks,
     silhouetteLocks: record.silhouette_locks ?? record.silhouetteLocks,
@@ -239,6 +246,8 @@ export function parseAssetVisualFactInput(value: unknown): AssetVisualFactInput 
       ?? record.primary_identifier
       ?? record.keyPartLocks,
     exclusions: record.forbidden_variants ?? record.exclusions,
+    ...(physicalForm !== undefined ? { physicalForm } : {}),
+    ...(orientation !== undefined ? { orientation } : {}),
   }
 }
 
@@ -250,6 +259,8 @@ export function hasStructuredAssetVisualFacts(value: unknown): boolean {
     facts.costumeOrMaterialLocks,
     facts.colorLocks,
     facts.keyPartLocks,
+    facts.physicalForm,
+    facts.orientation,
   ].some((item) => stringArray(item).length > 0)
 }
 

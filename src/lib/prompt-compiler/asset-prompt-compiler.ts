@@ -4,7 +4,6 @@ import {
   PROP_PROMPT_SUFFIX,
   addCharacterPromptSuffix,
   addLocationPromptSuffix,
-  addPropPromptSuffix,
 } from '@/lib/constants'
 import {
   formatLocationAvailableSlotsText,
@@ -23,6 +22,11 @@ import {
   type AssetUsageScope,
 } from '@/lib/assets/asset-semantics'
 import {
+  resolveAssetRenderContract,
+  type AssetImageTemplateKind as AssetRenderTemplateKind,
+  type AssetRenderContract,
+} from '@/lib/assets/asset-render-contract'
+import {
   buildAssetVisualContract,
   promptFactValues,
   type AssetVisualContract,
@@ -30,13 +34,8 @@ import {
 } from './asset-visual-contract'
 
 type Locale = 'zh' | 'en'
-export type AssetImageTemplateKind =
-  | 'character_reference_sheet'
-  | 'vehicle_turnaround'
-  | 'prop_turnaround'
-  | 'environment_plate'
-  | 'book_clean_plate'
-  | 'symbol_sheet'
+
+export type AssetImageTemplateKind = AssetRenderTemplateKind
 
 export interface AssetPromptSpec {
   schemaVersion: typeof CREATIVE_QUALITY_SCHEMA_VERSION
@@ -46,6 +45,7 @@ export interface AssetPromptSpec {
   assetTier?: AssetTier
   usageScope?: AssetUsageScope
   templateKind: AssetImageTemplateKind
+  renderContract: AssetRenderContract
   assetName: string
   renderPurpose: 'reference_sheet' | 'single_reference' | 'variant' | 'repair'
   identityLocks: string[]
@@ -128,68 +128,59 @@ function buildDefaultNegativeConstraints(kind: AssetPromptSpec['assetKind'], loc
   ]
 }
 
-function resolveTemplateKind(
-  kind: AssetPromptSpec['assetKind'],
-  semanticType: AssetSemanticType,
-): AssetImageTemplateKind {
-  if (kind === 'character') return 'character_reference_sheet'
-  if (kind === 'location') return 'environment_plate'
-  if (semanticType === 'vehicle') return 'vehicle_turnaround'
-  if (semanticType === 'book') return 'book_clean_plate'
-  if (semanticType === 'symbol') return 'symbol_sheet'
-  return 'prop_turnaround'
-}
-
 function resolveViewAndComposition(
-  kind: AssetPromptSpec['assetKind'],
-  semanticType: AssetSemanticType,
+  templateKind: AssetImageTemplateKind,
   locale: Locale,
 ): string {
   if (locale === 'en') {
-    if (kind === 'location') return 'wide complete environment establishing shot, clear foreground, midground, background and spatial boundaries'
-    if (semanticType === 'vehicle') return 'vehicle turnaround reference, clear 3/4 hero view plus front, side and rear views, consistent nose-tail direction and silhouette'
-    if (semanticType === 'book') return 'clean book or cover plate, one physical book object or blank cover surface, clear readable shape but no readable text'
-    if (semanticType === 'symbol') return 'symbol reference sheet, clean isolated motif silhouette and two small material variants, no readable letters'
-    if (kind === 'prop') return 'single object reference sheet, main view plus front, side and rear views, all views share the same design'
+    if (templateKind === 'environment_plate') return 'wide complete environment establishing shot, clear foreground, midground, background and spatial boundaries'
+    if (templateKind === 'vehicle_turnaround') return 'vehicle turnaround reference, clear 3/4 hero view plus front, side and rear views, consistent nose-tail direction and silhouette'
+    if (templateKind === 'book_clean_plate') return 'clean book or cover plate, one physical book object or blank cover surface, clear readable shape but no readable text'
+    if (templateKind === 'symbol_sheet') return 'symbol reference sheet, clean isolated motif silhouette and two small material variants, no readable letters'
+    if (templateKind === 'prop_turnaround') return 'single rigid object reference sheet, main view plus front, side and rear views, all views share the same design'
+    if (templateKind === 'prop_single_reference') return 'one complete isolated object, centered and fully visible, without a turnaround layout or multiple views'
     return 'character reference sheet, front portrait plus front, side and rear full-body views, same identity in every view'
   }
-  if (kind === 'location') return '宽广完整的场景全景构图，清楚展示前景、中景、背景和空间边界'
-  if (semanticType === 'vehicle') return '载具设定图，清晰 3/4 主视图加正面、侧面、背面三视图，头尾方向、轮廓、比例和关键部件严格一致'
-  if (semanticType === 'book') return '干净书本或封面底图，单一本体或空白封面表面，形体清楚但不生成任何可读文字'
-  if (semanticType === 'symbol') return '符号设定图，干净孤立的核心图案剪影，可带少量材质变体，禁止可读字母和真实徽标'
-  if (kind === 'prop') return '单一道具设定图，主体主视图特写加正面、侧面、背面三视图，同一设计严格一致'
+  if (templateKind === 'environment_plate') return '宽广完整的场景全景构图，清楚展示前景、中景、背景和空间边界'
+  if (templateKind === 'vehicle_turnaround') return '载具设定图，清晰 3/4 主视图加正面、侧面、背面三视图，头尾方向、轮廓、比例和关键部件严格一致'
+  if (templateKind === 'book_clean_plate') return '干净书本或封面底图，单一本体或空白封面表面，形体清楚但不生成任何可读文字'
+  if (templateKind === 'symbol_sheet') return '符号设定图，干净孤立的核心图案剪影，可带少量材质变体，禁止可读字母和真实徽标'
+  if (templateKind === 'prop_turnaround') return '刚性单一道具设定图，主体主视图特写加正面、侧面、背面三视图，同一设计严格一致'
+  if (templateKind === 'prop_single_reference') return '单一道具完整居中展示，不使用正面、侧面、背面转面图或多视图版式'
   return '角色设定图，正面特写加正面、侧面、背面全身三视图，同一角色身份严格一致'
 }
 
 function resolveBackgroundRule(
   kind: AssetPromptSpec['assetKind'],
-  semanticType: AssetSemanticType,
+  templateKind: AssetImageTemplateKind,
   locale: Locale,
 ): string {
   if (locale === 'en') {
     if (kind === 'location') return 'complete usable environment, no decorative frame, keep clear placement space for later character compositing'
-    if (semanticType === 'book') return 'plain neutral studio background, blank cover surface reserved for downstream title overlay'
+    if (templateKind === 'book_clean_plate') return 'plain neutral studio background, blank cover surface reserved for downstream title overlay'
     return 'plain white or light neutral background, complete centered subject, no environment context'
   }
   if (kind === 'location') return '完整可用的场景空间，不加装饰边框，为后续角色落位保留清晰空间'
-  if (semanticType === 'book') return '纯净中性棚拍背景，封面区域为空白或抽象纹理，准确书名留给后期合成'
+  if (templateKind === 'book_clean_plate') return '纯净中性棚拍背景，封面区域为空白或抽象纹理，准确书名留给后期合成'
   return '纯白或浅中性背景，主体完整居中展示，不生成环境叙事背景'
 }
 
 function resolveQualityTerms(
   kind: AssetPromptSpec['assetKind'],
-  semanticType: AssetSemanticType,
+  templateKind: AssetImageTemplateKind,
   locale: Locale,
 ): string[] {
   if (locale === 'en') {
-    if (semanticType === 'vehicle') return ['single vehicle identity', 'stable silhouette', 'clear nose-tail direction', 'readable key parts']
-    if (semanticType === 'book') return ['clean plate', 'no readable text', 'clear book geometry', 'overlay-safe cover area']
+    if (templateKind === 'vehicle_turnaround') return ['single vehicle identity', 'stable silhouette', 'clear nose-tail direction', 'readable key parts']
+    if (templateKind === 'book_clean_plate') return ['clean plate', 'no readable text', 'clear book geometry', 'overlay-safe cover area']
+    if (templateKind === 'prop_single_reference') return ['one isolated object', 'complete silhouette', 'readable material detail', 'no humanized features']
     return kind === 'location'
       ? ['clear structure', 'usable spatial layout', 'readable anchor areas', 'consistent project style']
       : ['single subject', 'consistent identity across views', 'readable silhouette', 'clean material detail']
   }
-  if (semanticType === 'vehicle') return ['单一载具身份', '轮廓稳定', '头尾方向明确', '关键部件可读']
-  if (semanticType === 'book') return ['干净底图', '无可读文字', '书本几何清楚', '封面区域便于后期叠字']
+  if (templateKind === 'vehicle_turnaround') return ['单一载具身份', '轮廓稳定', '头尾方向明确', '关键部件可读']
+  if (templateKind === 'book_clean_plate') return ['干净底图', '无可读文字', '书本几何清楚', '封面区域便于后期叠字']
+  if (templateKind === 'prop_single_reference') return ['唯一道具主体', '完整轮廓可读', '材质细节干净', '禁止拟人化特征']
   return kind === 'location'
     ? ['结构清晰', '空间可用', '锚点可读', '项目风格一致']
     : ['单一主体', '多视图身份一致', '轮廓可读', '材质细节干净']
@@ -230,13 +221,19 @@ export function buildAssetPromptSpec(params: {
     description,
     explicitSemanticType: typeof params.semanticType === 'string' ? params.semanticType : null,
   })
-  const templateKind = resolveTemplateKind(params.assetKind, semanticType)
   const visualContract = buildAssetVisualContract({
     assetKind: params.assetKind,
     description,
     profileData: params.profileData,
     extractedFacts: params.extractedFacts,
   })
+  const renderContract = resolveAssetRenderContract({
+    assetKind: params.assetKind,
+    semanticType,
+    profileData: params.profileData,
+    extractedFacts: params.extractedFacts,
+  })
+  const templateKind = renderContract.templateKind
   const identityLocks = uniqueStrings([
     semanticType === 'book' ? null : params.assetName,
     params.variantLabel || null,
@@ -253,6 +250,7 @@ export function buildAssetPromptSpec(params: {
     assetTier: typeof params.assetTier === 'string' ? params.assetTier as AssetTier : undefined,
     usageScope: typeof params.usageScope === 'string' ? params.usageScope as AssetUsageScope : undefined,
     templateKind,
+    renderContract,
     assetName: params.assetName,
     renderPurpose: params.renderPurpose || (params.assetKind === 'location' ? 'single_reference' : 'reference_sheet'),
     identityLocks,
@@ -261,10 +259,10 @@ export function buildAssetPromptSpec(params: {
     colorPalette: promptFactValues(visualContract.colorLocks),
     keyParts: promptFactValues(visualContract.keyPartLocks),
     visualContract,
-    viewAndComposition: resolveViewAndComposition(params.assetKind, semanticType, params.locale),
-    backgroundRule: resolveBackgroundRule(params.assetKind, semanticType, params.locale),
+    viewAndComposition: resolveViewAndComposition(templateKind, params.locale),
+    backgroundRule: resolveBackgroundRule(params.assetKind, templateKind, params.locale),
     styleApplication: resolveStyleApplication(params.styleText, params.styleReferenceInstruction || '', params.locale),
-    qualityTerms: resolveQualityTerms(params.assetKind, semanticType, params.locale),
+    qualityTerms: resolveQualityTerms(params.assetKind, templateKind, params.locale),
     negativeConstraints: uniqueStrings([
       ...promptFactValues(visualContract.exclusions),
       ...buildDefaultNegativeConstraints(params.assetKind, params.locale),
@@ -301,7 +299,7 @@ function compileSpecBody(spec: AssetPromptSpec, locale: Locale): string {
   if (locale === 'en') {
     return [
       `${spec.assetKind} asset image, purpose: ${spec.renderPurpose}.`,
-      `Semantic type: ${spec.semanticType}; template: ${spec.templateKind}.`,
+      `Render contract: subject policy=${spec.renderContract.subjectPolicy}; physical form=${spec.renderContract.physicalForm}; orientation=${spec.renderContract.orientation}; template=${spec.templateKind}.`,
       spec.semanticType === 'book'
         ? `Asset name is an internal label only, not image text: ${spec.assetName}.`
         : `Asset name: ${spec.assetName}.`,
@@ -317,7 +315,7 @@ function compileSpecBody(spec: AssetPromptSpec, locale: Locale): string {
   }
   return [
     `${spec.assetKind === 'character' ? '角色' : spec.assetKind === 'prop' ? '道具' : '场景'}资产图，用途：${spec.renderPurpose}。`,
-    `语义类型：${spec.semanticType}；图型模板：${spec.templateKind}。`,
+    `资产渲染契约：主体策略=${spec.renderContract.subjectPolicy}；物理形态=${spec.renderContract.physicalForm}；方向性=${spec.renderContract.orientation}；图型模板=${spec.templateKind}。`,
     spec.semanticType === 'book'
       ? `资产名称只是内部标签，不得画入图像：${spec.assetName}。`
       : `资产名称：${spec.assetName}。`,
@@ -332,13 +330,47 @@ function compileSpecBody(spec: AssetPromptSpec, locale: Locale): string {
   ].filter(Boolean).join('\n')
 }
 
+function templateTerminalConstraint(templateKind: AssetImageTemplateKind, locale: Locale): string {
+  if (templateKind === 'prop_turnaround' || templateKind === 'vehicle_turnaround') {
+    return PROP_PROMPT_SUFFIX
+  }
+  if (locale === 'en') {
+    if (templateKind === 'prop_single_reference') {
+      return 'Single-object reference image. Show exactly one complete, centered object without a character turnaround, multi-view grid, split screen, or humanized features. No people, faces, bodies, hands, clothing, text, watermark, logo, or environment.'
+    }
+    if (templateKind === 'symbol_sheet') {
+      return 'Graphic-symbol reference image. Show only the same isolated motif and optional material variations; do not turn it into a person, character sheet, physical prop set, scene, or readable text.'
+    }
+    if (templateKind === 'book_clean_plate') {
+      return 'Clean single-book reference plate. Show one physical book or blank cover surface only; no readable title, author name, letters, numbers, logo, barcode, people, or scene.'
+    }
+    return ''
+  }
+  if (templateKind === 'prop_single_reference') {
+    return '道具单主体参考图，唯一主体只能是前述同一个道具。只展示一个完整、居中的对象，不使用角色转面、正侧背多视图、分格或拼贴版式。绝对禁止人物、角色、脸、五官、手部、身体、服饰、文字、水印、徽标和环境背景。'
+  }
+  if (templateKind === 'symbol_sheet') {
+    return '图形符号参考图，只展示同一核心图案及可选的少量材质变化；不得将其拟人化为人物、角色设定图、实体道具套装、场景或可读文字。'
+  }
+  if (templateKind === 'book_clean_plate') {
+    return '书本干净底图，只展示一本实体书或空白封面表面；禁止书名、作者名、可读文字、数字、徽标、条形码、人物和场景。'
+  }
+  return ''
+}
+
+function appendTerminalConstraint(body: string, constraint: string): string {
+  return constraint ? `${body}\n${constraint}` : body.trim()
+}
+
 export function compileAssetImagePrompt(params: {
   spec: AssetPromptSpec
   locale: Locale
 }): string {
   const body = compileSpecBody(params.spec, params.locale)
   if (params.spec.assetKind === 'character') return addCharacterPromptSuffix(body)
-  if (params.spec.assetKind === 'prop') return addPropPromptSuffix(body)
+  if (params.spec.assetKind === 'prop') {
+    return appendTerminalConstraint(body, templateTerminalConstraint(params.spec.templateKind, params.locale))
+  }
   return addLocationPromptSuffix(body.trim())
 }
 

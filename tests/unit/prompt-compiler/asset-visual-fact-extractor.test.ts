@@ -9,6 +9,8 @@ const aiRuntimeMock = vi.hoisted(() => ({
       color_locks: ['暗铜色'],
       key_part_locks: ['圆形舷窗', '船首撞角'],
       forbidden_variants: ['禁止出现人物'],
+      physical_form: 'rigid',
+      orientation: 'directional',
     }),
   })),
 }))
@@ -40,6 +42,8 @@ describe('asset visual fact extractor', () => {
       colorLocks: ['暗铜色'],
       keyPartLocks: ['圆形舷窗', '船首撞角'],
       exclusions: ['禁止出现人物'],
+      physicalForm: 'rigid',
+      orientation: 'directional',
     })
     expect(aiRuntimeMock.executeAiTextStep).toHaveBeenCalledWith(expect.objectContaining({
       action: 'extract_asset_visual_facts',

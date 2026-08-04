@@ -1,3 +1,5 @@
+import type { AssetRenderContract } from '@/lib/assets/asset-render-contract'
+
 export type VisualQualityIssueCode =
   | 'EMPTY_IMAGE'
   | 'UNREADABLE_IMAGE'
@@ -12,6 +14,7 @@ export type VisualQualityIssueCode =
   | 'ANATOMY_ERROR'
   | 'STYLE_MISMATCH'
   | 'CONTINUITY_ERROR'
+  | 'TEMPLATE_MISMATCH'
   | 'LOW_TECHNICAL_QUALITY'
 
 export interface ImageTargetSpec {
@@ -36,6 +39,7 @@ export interface ImageTargetSpec {
   riskLevel: 'low' | 'medium' | 'high'
   referenceInstructions?: string[]
   bindingPlan?: unknown
+  assetRenderContract?: AssetRenderContract
 }
 
 export interface VisualQualityIssue {

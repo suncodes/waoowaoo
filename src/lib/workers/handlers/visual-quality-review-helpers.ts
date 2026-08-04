@@ -18,6 +18,10 @@ import {
   bindingPlanPromptGuidance,
   resolvePanelAssetBindingPlan,
 } from '@/lib/visual-production/binding-plan'
+import {
+  isAssetRenderContract,
+  type AssetRenderContract,
+} from '@/lib/assets/asset-render-contract'
 
 type PanelForQuality = {
   id: string
@@ -97,6 +101,94 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {}
+}
+
+function readString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function readAssetPromptKind(value: unknown): 'character' | 'location' | 'prop' | null {
+  return value === 'character' || value === 'location' || value === 'prop' ? value : null
+}
+
+function readRenderPurpose(value: unknown, assetKind: 'character' | 'location' | 'prop'): NonNullable<ImageTargetSpec['renderPurpose']> {
+  if (value === 'reference_sheet' || value === 'single_reference' || value === 'variant' || value === 'repair') {
+    return value
+  }
+  return assetKind === 'location' ? 'single_reference' : 'reference_sheet'
+}
+
+function readPromptSourceEvidence(value: unknown): string[] {
+  const directEvidence = readStringArray(asRecord(value).sourceEvidence)
+  if (directEvidence.length > 0) return directEvidence
+  const visualContract = asRecord(asRecord(value).visualContract)
+  const sourceEvidence = Array.isArray(visualContract.sourceEvidence) ? visualContract.sourceEvidence : []
+  return sourceEvidence.flatMap((item) => readString(asRecord(item).text) ? [readString(asRecord(item).text)] : [])
+}
+
+function buildAssetContractRules(params: {
+  assetName: string
+  contract: AssetRenderContract
+}): string[] {
+  const layoutRule = params.contract.requiresTurnaround
+    ? '必须使用同一对象的一致转面参考，不得把不同对象放入不同视图区。'
+    : '必须只展示一个完整对象，不得使用角色转面、多视图分格或拼贴版式。'
+  const subjectRule = params.contract.subjectPolicy === 'graphic_only'
+    ? '只允许图形图案，不得生成实体道具、人物或场景。'
+    : params.contract.subjectPolicy === 'object_only'
+      ? '只允许目标对象，不得生成任何人物、角色、脸、五官、服饰或环境叙事背景。'
+      : params.contract.subjectPolicy === 'character_only'
+        ? '只允许目标角色，不得混入其他角色或环境主体。'
+        : '只允许目标场景，不得生成未指定角色或无关道具。'
+  return [
+    `${params.assetName} 必须与资产说明和已锁定视觉事实一致。`,
+    `资产渲染契约：主体策略=${params.contract.subjectPolicy}；物理形态=${params.contract.physicalForm}；方向性=${params.contract.orientation}；模板=${params.contract.templateKind}。`,
+    layoutRule,
+    subjectRule,
+  ]
+}
+
+export function buildAssetPromptTargetSpec(params: {
+  targetId: string
+  promptSpec: unknown
+  aspectRatio: string
+}): ImageTargetSpec | null {
+  const promptSpec = asRecord(params.promptSpec)
+  const assetKind = readAssetPromptKind(promptSpec.assetKind)
+  const assetName = readString(promptSpec.assetName)
+  const renderContract = isAssetRenderContract(promptSpec.renderContract)
+    ? promptSpec.renderContract
+    : null
+  if (!assetKind || !assetName || !renderContract) return null
+
+  const sourceEvidence = readPromptSourceEvidence(promptSpec)
+  const identityLocks = readStringArray(promptSpec.identityLocks)
+  const negativeConstraints = readStringArray(promptSpec.negativeConstraints)
+  return {
+    schemaVersion: 1,
+    targetType: assetKind === 'character' ? 'character' : assetKind === 'prop' ? 'prop' : 'location',
+    targetId: params.targetId,
+    intent: sourceEvidence[0] || assetName,
+    aspectRatio: params.aspectRatio,
+    visualType: renderContract.physicalForm,
+    renderMode: 'generated_image',
+    renderPurpose: readRenderPurpose(promptSpec.renderPurpose, assetKind),
+    templateKind: renderContract.templateKind,
+    shotType: '',
+    cameraMove: '',
+    location: assetKind === 'location' ? assetName : '',
+    characters: assetKind === 'character' ? [assetName] : [],
+    props: assetKind === 'prop' ? [assetName] : [],
+    requiredText: '',
+    styleBaseline: readString(promptSpec.styleApplication),
+    continuityRules: [
+      ...buildAssetContractRules({ assetName, contract: renderContract }),
+      ...identityLocks.map((item) => `身份锁定：${item}。`),
+    ],
+    forbiddenPatterns: negativeConstraints,
+    riskLevel: renderContract.requiresTurnaround || assetKind === 'character' ? 'medium' : 'low',
+    assetRenderContract: renderContract,
+  }
 }
 
 function buildBindingQualityRules(bindingPlan: ReturnType<typeof resolvePanelAssetBindingPlan>): {
