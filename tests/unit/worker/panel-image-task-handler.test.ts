@@ -25,7 +25,7 @@ const runRuntimeMock = vi.hoisted(() => ({
 }))
 
 const preparedPromptMock = vi.hoisted(() => ({
-  requirePreparedPrompt: vi.fn(),
+  requireCurrentPanelImagePreparedPrompt: vi.fn(),
   attachPreparedPromptToSnapshot: vi.fn((snapshot: Record<string, unknown>, artifactId: string) => ({
     ...snapshot,
     preparedPromptArtifactId: artifactId,
@@ -101,7 +101,7 @@ describe('worker panel-image-task-handler behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     runRuntimeMock.createArtifact.mockResolvedValue({ id: 'artifact-prompt-snapshot' })
-    preparedPromptMock.requirePreparedPrompt.mockImplementation(async ({ artifactId }: { artifactId: string }) => {
+    preparedPromptMock.requireCurrentPanelImagePreparedPrompt.mockImplementation(async ({ artifactId }: { artifactId: string }) => {
       return buildPreparedPrompt({ artifactId })
     })
 
@@ -130,7 +130,7 @@ describe('worker panel-image-task-handler behavior', () => {
     await expect(handlePanelImageTask(buildJob({ candidateCount: 1 }))).rejects.toThrow(
       'PREPARED_PROMPT_REQUIRED: panel image generation requires a prepared prompt',
     )
-    expect(preparedPromptMock.requirePreparedPrompt).not.toHaveBeenCalled()
+    expect(preparedPromptMock.requireCurrentPanelImagePreparedPrompt).not.toHaveBeenCalled()
   })
 
   it('严格使用固定快照提交所有分镜候选图', async () => {
@@ -141,19 +141,17 @@ describe('worker panel-image-task-handler behavior', () => {
       referenceImages: ['cos/frozen-panel-reference.png'],
       generationOptions: { aspectRatio: '9:16', seed: 88 },
     })
-    preparedPromptMock.requirePreparedPrompt.mockResolvedValueOnce(prepared)
+    preparedPromptMock.requireCurrentPanelImagePreparedPrompt.mockResolvedValueOnce(prepared)
 
     const result = await handlePanelImageTask(buildJob({
       candidateCount: 2,
       preparedPromptArtifactId: prepared.artifactId,
     }))
 
-    expect(preparedPromptMock.requirePreparedPrompt).toHaveBeenCalledWith({
+    expect(preparedPromptMock.requireCurrentPanelImagePreparedPrompt).toHaveBeenCalledWith({
       artifactId: prepared.artifactId,
       projectId: 'project-1',
       targetId: 'panel-1',
-      refId: 'panel-1',
-      kind: 'panel_image',
       userId: 'user-1',
     })
     expect(utilsMock.resolveImageSourceFromGeneration).toHaveBeenCalledWith(

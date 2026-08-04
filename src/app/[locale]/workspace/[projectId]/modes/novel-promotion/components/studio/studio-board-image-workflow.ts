@@ -85,6 +85,10 @@ export function readPanelBackfillMessages(panel: NovelPromotionPanel): string[] 
   })))
 }
 
+export function panelBackfillAwaitsConfirmation(panel: NovelPromotionPanel): boolean {
+  return readBackfillRequests(panel).some((request) => request.status === 'existing_asset_pending_confirmation')
+}
+
 function buildReferenceBlockedPresentation(panel: NovelPromotionPanel): PanelImageWorkflowPresentation | null {
   if (panel.imageUrl) return null
   const route = panel.generationRoute
@@ -109,6 +113,16 @@ function buildReferenceBlockedPresentation(panel: NovelPromotionPanel): PanelIma
         phase: 'generating',
         status: 'generating',
         label: `正在补齐资产${suffix}`,
+        blocksConfirmation: true,
+        progress: null,
+        activeTaskType: 'image_panel',
+      }
+    }
+    if (panelBackfillAwaitsConfirmation(panel)) {
+      return {
+        phase: 'human_required',
+        status: 'needs_review',
+        label: `等待确认资产定稿${suffix}`,
         blocksConfirmation: true,
         progress: null,
         activeTaskType: 'image_panel',

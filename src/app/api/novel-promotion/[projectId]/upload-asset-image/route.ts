@@ -6,9 +6,14 @@ import { initializeFonts, createLabelSVG } from '@/lib/fonts'
 import { decodeImageUrlsFromDb, encodeImageUrls } from '@/lib/contracts/image-urls-contract'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
+import {
+  markStoryboardPanelsAwaitingAssetConfirmation,
+  reconcileStoryboardPanelsForAssetChanges,
+} from '@/lib/novel-promotion/storyboard-readiness'
 
 interface CharacterAppearanceRecord {
   id: string
+  characterId: string
   imageUrls: string | null
   selectedIndex: number | null
 }
@@ -16,6 +21,7 @@ interface CharacterAppearanceRecord {
 interface LocationImageRecord {
   id: string
   imageIndex: number
+  isSelected: boolean
 }
 
 interface LocationRecord {
@@ -144,10 +150,24 @@ export const POST = apiHandler(async (
       data: updateData
     })
 
+    const assetIds = [appearance.characterId]
+    const assetReconciliation = selectedIndex === targetIndex
+      ? await reconcileStoryboardPanelsForAssetChanges({
+        projectId,
+        userId: authResult.session.user.id,
+        assetIds,
+      })
+      : null
+    const awaitingAssetConfirmationPanelIds = selectedIndex === null
+      ? await markStoryboardPanelsAwaitingAssetConfirmation({ projectId, assetIds })
+      : []
+
     return NextResponse.json({
       success: true,
       imageKey: key,
-      imageIndex: targetIndex
+      imageIndex: targetIndex,
+      assetReconciliation,
+      awaitingAssetConfirmationPanelIds,
     })
 
   } else if (type === 'location') {
@@ -167,62 +187,69 @@ export const POST = apiHandler(async (
       const existingImage = location.images?.find((img) => img.imageIndex === targetImageIndex)
 
       if (existingImage) {
-        const updated = await db.locationImage.update({
+        await db.locationImage.update({
           where: { id: existingImage.id },
           data: { imageUrl: key }
         })
-        if (!location.selectedImageId) {
-          await prisma.novelPromotionLocation.update({
-            where: { id },
-            data: { selectedImageId: updated.id }
+        const selectedImageWasReplaced = location.selectedImageId === existingImage.id || existingImage.isSelected
+        const assetReconciliation = selectedImageWasReplaced
+          ? await reconcileStoryboardPanelsForAssetChanges({
+            projectId,
+            userId: authResult.session.user.id,
+            assetIds: [id],
           })
-        }
-      } else {
-        const created = await db.locationImage.create({
-          data: {
-            locationId: id,
-            imageIndex: targetImageIndex,
-            imageUrl: key,
-            description: labelText,
-            isSelected: targetImageIndex === 0
-          }
+          : null
+        const awaitingAssetConfirmationPanelIds = !location.selectedImageId && !existingImage.isSelected
+          ? await markStoryboardPanelsAwaitingAssetConfirmation({ projectId, assetIds: [id] })
+          : []
+        return NextResponse.json({
+          success: true,
+          imageKey: key,
+          imageIndex: targetImageIndex,
+          assetReconciliation,
+          awaitingAssetConfirmationPanelIds,
         })
-        if (!location.selectedImageId) {
-          await prisma.novelPromotionLocation.update({
-            where: { id },
-            data: { selectedImageId: created.id }
-          })
-        }
       }
 
+      await db.locationImage.create({
+        data: {
+          locationId: id,
+          imageIndex: targetImageIndex,
+          imageUrl: key,
+          description: labelText,
+          isSelected: false,
+        }
+      })
+      const awaitingAssetConfirmationPanelIds = !location.selectedImageId
+        ? await markStoryboardPanelsAwaitingAssetConfirmation({ projectId, assetIds: [id] })
+        : []
       return NextResponse.json({
         success: true,
         imageKey: key,
-        imageIndex: targetImageIndex
+        imageIndex: targetImageIndex,
+        awaitingAssetConfirmationPanelIds,
       })
     } else {
       // 创建新的图片记录
       const maxIndex = location.images?.length || 0
-      const created = await db.locationImage.create({
+      await db.locationImage.create({
         data: {
           locationId: id,
           imageIndex: maxIndex,
           imageUrl: key,
           description: labelText,
-          isSelected: maxIndex === 0
+          isSelected: false,
         }
       })
-      if (!location.selectedImageId) {
-        await prisma.novelPromotionLocation.update({
-          where: { id },
-          data: { selectedImageId: created.id }
-        })
-      }
+      const awaitingAssetConfirmationPanelIds = !location.selectedImageId
+        ? await markStoryboardPanelsAwaitingAssetConfirmation({ projectId, assetIds: [id] })
+        : []
 
       return NextResponse.json({
         success: true,
         imageKey: key,
-        imageIndex: maxIndex
+        imageIndex: maxIndex,
+        awaitingAssetConfirmationPanelIds,
       })
     }
   }

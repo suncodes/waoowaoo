@@ -125,4 +125,56 @@ describe('panel visual reference selection', () => {
 
     expect(visualReferencesForGenerationRoute([styleReference])).toEqual([])
   })
+
+  it('excludes unconfirmed candidate images from storyboard references', () => {
+    const selection = resolvePanelVisualReferenceSelection({
+      panel: {
+        visualType: 'illustration',
+        renderMode: 'generated_image',
+        photographyRules: JSON.stringify({
+          assetBindingPlan: {
+            schemaVersion: 1,
+            primarySubject: '主角',
+            visualType: 'illustration',
+            renderMode: 'generated_image',
+            bindings: [
+              { id: 'character-1', kind: 'character', name: '主角', role: 'primary_identity', source: 'requirement_plan', weight: 1 },
+              { id: 'location-1', kind: 'location', name: '候选场景', role: 'environment', source: 'requirement_plan', weight: 0.6 },
+            ],
+            suppressed: [],
+            warnings: [],
+            complexity: { score: 0, level: 'low', recommendedAction: 'generate', riskFlags: [] },
+            usedShotSpec: true,
+            requirementPlan: null,
+          },
+        }),
+      },
+      projectData: {
+        characters: [{
+          id: 'character-1',
+          name: '主角',
+          appearances: [{
+            id: 'character-render-1',
+            changeReason: null,
+            imageUrls: '["character-candidate.png"]',
+            imageUrl: 'character-candidate.png',
+            selectedIndex: null,
+          }],
+        }],
+        locations: [{
+          id: 'location-1',
+          name: '候选场景',
+          images: [{
+            id: 'location-render-1',
+            imageIndex: 0,
+            isSelected: false,
+            imageUrl: 'location-candidate.png',
+          }],
+        }],
+      },
+    })
+
+    expect(selection.candidates).toEqual([])
+    expect(selection.selected).toEqual([])
+  })
 })

@@ -96,7 +96,9 @@ export interface StoryboardAutoFixApplyResult {
 export interface StoryboardAssetBackfillResult {
   episodeId: string
   requestedPanelIds: string[]
+  syncedPanelIds: string[]
   promptFixedPanelIds: string[]
+  waitingConfirmationPanelIds: string[]
   manualPanelIds: string[]
   failedPanels: Array<{
     panelId: string

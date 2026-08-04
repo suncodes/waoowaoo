@@ -30,6 +30,7 @@ import {
   type MissingAssetBackfillPlan,
 } from '@/lib/visual-production/missing-asset-backfill'
 import { preparePanelGenerationPrompt } from '@/lib/novel-promotion/panel-prompt-preparation'
+import { markPanelImagePromptStale } from '@/lib/visual-production/panel-prepared-prompt-state'
 import type { Locale } from '@/i18n/routing'
 import type {
   StoryboardAutoFixAction,
@@ -355,6 +356,14 @@ function buildPanelReferencePlan(params: {
     } : {}),
     ...(params.backfill ? { backfill: params.backfill } : {}),
   }
+}
+
+function readStoredBackfillPlan(referencePlan: unknown): MissingAssetBackfillPlan | null {
+  const backfill = asRecord(asRecord(referencePlan).backfill)
+  if (backfill.schemaVersion !== 1 || typeof backfill.panelId !== 'string' || !Array.isArray(backfill.requests)) {
+    return null
+  }
+  return backfill as unknown as MissingAssetBackfillPlan
 }
 
 function buildVisualIssuesAndActions(params: {
@@ -799,14 +808,23 @@ export async function startStoryboardAssetBackfill(params: {
       .filter((action) => action.type === 'backfill_assets')
       .flatMap((action) => action.panelId ? [action.panelId] : []),
   )
+  const refreshPanelIds = new Set(
+    analysis.actions
+      .filter((action) => action.type === 'refresh_binding_plan')
+      .flatMap((action) => action.panelId ? [action.panelId] : []),
+  )
   const requestedPanelIds: string[] = []
+  const syncedPanelIds: string[] = []
   const promptFixedPanelIds: string[] = []
+  const waitingConfirmationPanelIds: string[] = []
   const manualPanelIds: string[] = []
   const failedPanels: StoryboardAssetBackfillResult['failedPanels'] = []
   const projectData: PanelReferenceProjectData = episode.novelPromotionProject
 
   for (const panel of flattenPanels(episode)) {
-    if (!backfillPanelIds.has(panel.id)) continue
+    const shouldBackfill = backfillPanelIds.has(panel.id)
+    const shouldRefresh = shouldBackfill || refreshPanelIds.has(panel.id)
+    if (!shouldRefresh) continue
     try {
       const refreshed = await refreshPanelBindingAndRoute({
         projectId: params.projectId,
@@ -814,14 +832,20 @@ export async function startStoryboardAssetBackfill(params: {
         locale,
         panel,
         projectData,
-        runBackfill: true,
+        runBackfill: shouldBackfill,
       })
+      syncedPanelIds.push(panel.id)
+      if (refreshed.backfill?.status === 'waiting_confirmation') {
+        waitingConfirmationPanelIds.push(panel.id)
+      }
       if (refreshed.backfill?.status === 'human_required' || refreshed.backfill?.status === 'not_needed') {
         manualPanelIds.push(panel.id)
         continue
       }
-      requestedPanelIds.push(panel.id)
-      if (refreshed.backfill?.status === 'ready' && refreshed.decision.route !== 'asset_backfill' && refreshed.decision.route !== 'human_required') {
+      if (refreshed.backfill?.requests.some((request) => !!request.taskId)) {
+        requestedPanelIds.push(panel.id)
+      }
+      if (refreshed.decision.route !== 'asset_backfill' && refreshed.decision.route !== 'human_required') {
         await preparePanelGenerationPrompt({
           projectId: params.projectId,
           userId: params.userId,
@@ -846,11 +870,248 @@ export async function startStoryboardAssetBackfill(params: {
   return {
     episodeId: params.episodeId,
     requestedPanelIds,
+    syncedPanelIds,
     promptFixedPanelIds,
+    waitingConfirmationPanelIds,
     manualPanelIds,
     failedPanels,
     readiness,
   }
+}
+
+export type StoryboardAssetReconciliationResult = {
+  reconciledPanelIds: string[]
+  promptFixedPanelIds: string[]
+  waitingPanelIds: string[]
+  failedPanels: Array<{
+    panelId: string
+    message: string
+  }>
+}
+
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item) => typeof item === 'string' && item.trim() ? [item.trim()] : [])
+}
+
+function sourcePanelIdsFromAsset(value: unknown): string[] {
+  const record = asRecord(parseJson(value))
+  return readStringArray(record.sourcePanelIds)
+}
+
+function referencePlanAssetIds(referencePlan: unknown): Set<string> {
+  const plan = asRecord(referencePlan)
+  const bindingPlan = asRecord(plan.bindingPlan)
+  const requirementPlans = [
+    asRecord(plan.shotAssetRequirementPlan),
+    asRecord(bindingPlan.requirementPlan),
+  ]
+  const ids = new Set<string>()
+  const addAssetId = (value: unknown) => {
+    const assetId = asRecord(value).assetId
+    if (typeof assetId === 'string' && assetId.trim()) ids.add(assetId.trim())
+  }
+
+  for (const binding of Array.isArray(bindingPlan.bindings) ? bindingPlan.bindings : []) {
+    const id = asRecord(binding).id
+    if (typeof id === 'string' && id.trim()) ids.add(id.trim())
+  }
+  for (const requirementPlan of requirementPlans) {
+    for (const requirement of Array.isArray(requirementPlan.requirements) ? requirementPlan.requirements : []) {
+      addAssetId(requirement)
+    }
+  }
+  const backfill = asRecord(plan.backfill)
+  for (const request of Array.isArray(backfill.requests) ? backfill.requests : []) {
+    addAssetId(request)
+  }
+  const referenceSelection = asRecord(plan.referenceSelection)
+  for (const references of [
+    plan.references,
+    referenceSelection.candidates,
+    referenceSelection.selected,
+    referenceSelection.dropped,
+  ]) {
+    for (const reference of Array.isArray(references) ? references : []) {
+      addAssetId(reference)
+    }
+  }
+  return ids
+}
+
+async function sourcePanelIdsForAssets(params: {
+  projectId: string
+  assetIds: string[]
+}): Promise<Set<string>> {
+  if (params.assetIds.length === 0) return new Set<string>()
+  const project = await prisma.novelPromotionProject.findUnique({
+    where: { projectId: params.projectId },
+    select: {
+      characters: {
+        where: { id: { in: params.assetIds } },
+        select: { assetMeta: true, profileData: true },
+      },
+      locations: {
+        where: { id: { in: params.assetIds } },
+        select: { assetMeta: true },
+      },
+    },
+  })
+  const panelIds = new Set<string>()
+  for (const character of project?.characters || []) {
+    for (const panelId of [
+      ...sourcePanelIdsFromAsset(character.assetMeta),
+      ...sourcePanelIdsFromAsset(character.profileData),
+    ]) {
+      panelIds.add(panelId)
+    }
+  }
+  for (const location of project?.locations || []) {
+    for (const panelId of sourcePanelIdsFromAsset(location.assetMeta)) {
+      panelIds.add(panelId)
+    }
+  }
+  return panelIds
+}
+
+async function loadProjectEpisodes(projectId: string): Promise<EpisodeForReadiness[]> {
+  const episodeRows = await prisma.novelPromotionEpisode.findMany({
+    where: { novelPromotionProject: { projectId } },
+    select: { id: true },
+  })
+  const episodes = await Promise.all(episodeRows.map((episode) => loadEpisode(episode.id)))
+  return episodes.flatMap((episode) => episode ? [episode] : [])
+}
+
+function panelReferencesChangedAssets(params: {
+  panel: PanelForReadiness
+  assetIds: Set<string>
+  sourcePanelIds: Set<string>
+}): boolean {
+  if (params.sourcePanelIds.has(params.panel.id)) return true
+  for (const assetId of referencePlanAssetIds(params.panel.referencePlan)) {
+    if (params.assetIds.has(assetId)) return true
+  }
+  return false
+}
+
+function isReferenceBlockedRoute(route: string): boolean {
+  return route === 'asset_backfill' || route === 'human_required'
+}
+
+export async function reconcileStoryboardPanelsForAssetChanges(params: {
+  projectId: string
+  userId: string
+  assetIds: string[]
+  locale?: string | null
+}): Promise<StoryboardAssetReconciliationResult> {
+  const assetIds = Array.from(new Set(params.assetIds.filter(Boolean)))
+  const result: StoryboardAssetReconciliationResult = {
+    reconciledPanelIds: [],
+    promptFixedPanelIds: [],
+    waitingPanelIds: [],
+    failedPanels: [],
+  }
+  if (assetIds.length === 0) return result
+
+  const [episodes, sourcePanelIds] = await Promise.all([
+    loadProjectEpisodes(params.projectId),
+    sourcePanelIdsForAssets({ projectId: params.projectId, assetIds }),
+  ])
+  const assetIdSet = new Set(assetIds)
+  const locale = normalizeLocale(params.locale)
+
+  for (const episode of episodes) {
+    const projectData: PanelReferenceProjectData = episode.novelPromotionProject
+    for (const panel of flattenPanels(episode)) {
+      if (!panelReferencesChangedAssets({ panel, assetIds: assetIdSet, sourcePanelIds })) continue
+      try {
+        const refreshed = await refreshPanelBindingAndRoute({
+          projectId: params.projectId,
+          userId: params.userId,
+          locale,
+          panel,
+          projectData,
+          runBackfill: false,
+        })
+        result.reconciledPanelIds.push(panel.id)
+        if (isReferenceBlockedRoute(refreshed.decision.route)) {
+          result.waitingPanelIds.push(panel.id)
+          continue
+        }
+        await preparePanelGenerationPrompt({
+          projectId: params.projectId,
+          userId: params.userId,
+          locale,
+          mode: 'image',
+          locator: { panelId: panel.id },
+        })
+        result.promptFixedPanelIds.push(panel.id)
+      } catch (error) {
+        result.failedPanels.push({
+          panelId: panel.id,
+          message: error instanceof Error ? error.message : '分镜提示词同步失败',
+        })
+      }
+    }
+  }
+  result.reconciledPanelIds = Array.from(new Set(result.reconciledPanelIds))
+  result.promptFixedPanelIds = Array.from(new Set(result.promptFixedPanelIds))
+  result.waitingPanelIds = Array.from(new Set(result.waitingPanelIds))
+  return result
+}
+
+function markBackfillWaitingForConfirmation(referencePlan: unknown, assetIds: Set<string>): Record<string, unknown> | null {
+  const plan = asRecord(referencePlan)
+  const backfill = asRecord(plan.backfill)
+  const requests = Array.isArray(backfill.requests) ? backfill.requests : []
+  let changed = false
+  const nextRequests = requests.map((item) => {
+    const request = asRecord(item)
+    const assetId = typeof request.assetId === 'string' ? request.assetId.trim() : ''
+    if (!assetId || !assetIds.has(assetId)) return item
+    changed = true
+    return {
+      ...request,
+      status: 'existing_asset_pending_confirmation',
+    }
+  })
+  if (!changed) return null
+  return markPanelImagePromptStale({
+    ...plan,
+    backfill: {
+      ...backfill,
+      status: 'waiting_confirmation',
+      requests: nextRequests,
+    },
+  }, 'asset_candidate_waiting_confirmation')
+}
+
+export async function markStoryboardPanelsAwaitingAssetConfirmation(params: {
+  projectId: string
+  assetIds: string[]
+}): Promise<string[]> {
+  const assetIds = Array.from(new Set(params.assetIds.filter(Boolean)))
+  if (assetIds.length === 0) return []
+  const [episodes, sourcePanelIds] = await Promise.all([
+    loadProjectEpisodes(params.projectId),
+    sourcePanelIdsForAssets({ projectId: params.projectId, assetIds }),
+  ])
+  const affectedPanelIds: string[] = []
+  const assetIdSet = new Set(assetIds)
+  for (const episode of episodes) {
+    for (const panel of flattenPanels(episode)) {
+      if (!panelReferencesChangedAssets({ panel, assetIds: assetIdSet, sourcePanelIds })) continue
+      const referencePlan = markBackfillWaitingForConfirmation(panel.referencePlan, assetIdSet)
+      if (!referencePlan) continue
+      await prisma.novelPromotionPanel.update({
+        where: { id: panel.id },
+        data: { referencePlan: asInputJson(referencePlan) },
+      })
+      affectedPanelIds.push(panel.id)
+    }
+  }
+  return Array.from(new Set(affectedPanelIds))
 }
 
 export async function prepareStoryboardAutoFix(params: {
@@ -917,6 +1178,7 @@ async function refreshPanelBindingAndRoute(params: {
     references: visualReferencesForGenerationRoute(referenceSelection.candidates),
   })
   let backfill: MissingAssetBackfillPlan | null = null
+  const storedBackfill = readStoredBackfillPlan(params.panel.referencePlan)
 
   if (params.runBackfill && (decision.route === 'asset_backfill' || decision.route === 'human_required')) {
     const backfillPlan = await ensureMissingAssetBackfill({
@@ -968,6 +1230,16 @@ async function refreshPanelBindingAndRoute(params: {
     }
   }
 
+  const referencePlan = buildPanelReferencePlan({
+    bindingPlan,
+    references: visualReferencesForPrompt(referenceSelection.selected),
+    decision,
+    referenceSelection,
+    ...(backfill || ((decision.route === 'asset_backfill' || decision.route === 'human_required') && storedBackfill)
+      ? { backfill: backfill || storedBackfill }
+      : {}),
+  })
+
   await prisma.novelPromotionPanel.update({
     where: { id: params.panel.id },
     data: {
@@ -978,13 +1250,10 @@ async function refreshPanelBindingAndRoute(params: {
         requirementPlan: bindingPlan.requirementPlan || null,
         bindingPlan,
       }),
-      referencePlan: asInputJson(buildPanelReferencePlan({
-        bindingPlan,
-        references: visualReferencesForPrompt(referenceSelection.selected),
-        decision,
-        referenceSelection,
-        ...(backfill ? { backfill } : {}),
-      })),
+      referencePlan: asInputJson(markPanelImagePromptStale(
+        referencePlan,
+        'asset_binding_or_reference_changed',
+      )),
     },
   })
   return { decision, backfill }

@@ -40,8 +40,14 @@ const runtimeArtifactMock = vi.hoisted(() => ({
   createOptionalGenerationSnapshotArtifact: vi.fn(async () => false),
 }))
 
-const panelBackfillMock = vi.hoisted(() => ({
-  prepareReadyBackfilledPanelPrompts: vi.fn(async () => ({ prepared: [], failed: [] })),
+const storyboardReadinessMock = vi.hoisted(() => ({
+  markStoryboardPanelsAwaitingAssetConfirmation: vi.fn(async () => []),
+  reconcileStoryboardPanelsForAssetChanges: vi.fn(async () => ({
+    reconciledPanelIds: [],
+    promptFixedPanelIds: [],
+    waitingPanelIds: [],
+    failedPanels: [],
+  })),
 }))
 
 const taskSubmitterMock = vi.hoisted(() => ({
@@ -53,7 +59,7 @@ vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
 vi.mock('@/lib/workers/shared', () => ({ reportTaskProgress: vi.fn(async () => undefined) }))
 vi.mock('@/lib/creative-quality/prepared-prompts', () => preparedPromptMock)
 vi.mock('@/lib/creative-quality/runtime-artifacts', () => runtimeArtifactMock)
-vi.mock('@/lib/visual-production/panel-backfill-resume', () => panelBackfillMock)
+vi.mock('@/lib/novel-promotion/storyboard-readiness', () => storyboardReadinessMock)
 vi.mock('@/lib/task/submitter', () => taskSubmitterMock)
 vi.mock('@/lib/workers/handlers/image-task-handler-shared', async () => {
   const actual = await vi.importActual<typeof import('@/lib/workers/handlers/image-task-handler-shared')>(

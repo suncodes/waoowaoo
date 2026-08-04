@@ -22,7 +22,10 @@ import {
   pickFirstString,
 } from './image-task-handler-shared'
 import { buildCharacterAssetTargetSpec } from './visual-quality-review-helpers'
-import { prepareReadyBackfilledPanelPrompts } from '@/lib/visual-production/panel-backfill-resume'
+import {
+  markStoryboardPanelsAwaitingAssetConfirmation,
+  reconcileStoryboardPanelsForAssetChanges,
+} from '@/lib/novel-promotion/storyboard-readiness'
 import {
   attachPreparedPromptToSnapshot,
   requirePreparedPrompt,
@@ -232,9 +235,11 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
   }
 
   const selectedIndex = appearance.selectedIndex
+  const selectedImageWasReplaced = selectedIndex !== null && selectedIndex !== undefined && indexes.includes(selectedIndex)
+  const nextSelectedIndex = selectedImageWasReplaced ? null : selectedIndex
   const fallbackMain = nextImageUrls.find((url) => typeof url === 'string' && url) || appearance.imageUrl
-  const mainImage = selectedIndex !== null && selectedIndex !== undefined && nextImageUrls[selectedIndex]
-    ? nextImageUrls[selectedIndex]
+  const mainImage = nextSelectedIndex !== null && nextSelectedIndex !== undefined && nextImageUrls[nextSelectedIndex]
+    ? nextImageUrls[nextSelectedIndex]
     : fallbackMain
 
   await assertTaskActive(job, 'persist_character_image')
@@ -243,6 +248,7 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
     data: {
       imageUrls: encodeImageUrls(nextImageUrls),
       imageUrl: mainImage || null,
+      ...(selectedImageWasReplaced ? { selectedIndex: null } : {}),
     },
   })
 
@@ -279,19 +285,25 @@ export async function handleCharacterImageTask(job: Job<TaskJobData>) {
     }
   }
 
-  const backfilledPanelPrompts = await prepareReadyBackfilledPanelPrompts({
-    projectId,
-    userId,
-    locale: job.data.locale,
-    assetIds: [appearance.characterId],
-    storyboardModel: models.storyboardModel,
-  })
+  const assetIds = [appearance.characterId]
+  const assetReconciliation = selectedImageWasReplaced
+    ? await reconcileStoryboardPanelsForAssetChanges({
+      projectId,
+      userId,
+      assetIds,
+      locale: job.data.locale,
+    })
+    : null
+  const awaitingAssetConfirmationPanelIds = payload.source === 'asset_backfill'
+    ? await markStoryboardPanelsAwaitingAssetConfirmation({ projectId, assetIds })
+    : []
 
   return {
     appearanceId: appearance.id,
     imageCount: nextImageUrls.filter(Boolean).length,
     imageUrl: mainImage || null,
-    backfilledPanelPrompts,
+    assetReconciliation,
+    awaitingAssetConfirmationPanelIds,
     promptSnapshots,
   }
 }

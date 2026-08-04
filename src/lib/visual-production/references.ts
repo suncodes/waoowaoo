@@ -139,17 +139,19 @@ function selectedCharacterImage(character: CharacterLike): { url: string | null;
   const appearance = character.appearances?.[0]
   if (!appearance) return { url: null, renderId: null }
   const imageUrls = parseImageUrls(appearance.imageUrls)
-  const selectedUrl = appearance.selectedIndex !== null && appearance.selectedIndex !== undefined
-    ? imageUrls[appearance.selectedIndex]
-    : null
+  if (appearance.selectedIndex === null || appearance.selectedIndex === undefined) {
+    return { url: null, renderId: null }
+  }
+  const selectedUrl = imageUrls[appearance.selectedIndex]
+    || (appearance.selectedIndex === 0 ? appearance.imageUrl : null)
   return {
-    url: selectedUrl || imageUrls[0] || appearance.imageUrl || null,
+    url: selectedUrl || null,
     renderId: appearance.id || null,
   }
 }
 
 function selectedLocationImage(location: LocationLike): { url: string | null; renderId: string | null } {
-  const image = (location.images || []).find((item) => item.isSelected) || location.images?.[0] || null
+  const image = (location.images || []).find((item) => item.isSelected) || null
   return {
     url: image?.imageUrl || null,
     renderId: image?.id || null,

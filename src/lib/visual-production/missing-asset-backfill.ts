@@ -22,6 +22,7 @@ export type MissingAssetBackfillPriority = 'blocking' | 'warning'
 export type MissingAssetBackfillStatus =
   | 'planned'
   | 'existing_asset_ready'
+  | 'existing_asset_pending_confirmation'
   | 'existing_asset_queued'
   | 'created_asset_queued'
   | 'human_required'
@@ -45,7 +46,7 @@ export interface MissingAssetBackfillRequest {
 export interface MissingAssetBackfillPlan {
   schemaVersion: 1
   panelId: string
-  status: 'not_needed' | 'queued' | 'ready' | 'human_required'
+  status: 'not_needed' | 'queued' | 'waiting_confirmation' | 'ready' | 'human_required'
   requests: MissingAssetBackfillRequest[]
 }
 
@@ -186,8 +187,12 @@ async function findExistingLocationBackedAsset(params: {
   })
 }
 
-function hasUsableImage(asset: Awaited<ReturnType<typeof findExistingLocationBackedAsset>>): boolean {
+function hasCandidateImage(asset: Awaited<ReturnType<typeof findExistingLocationBackedAsset>>): boolean {
   return !!asset?.images?.some((image) => typeof image.imageUrl === 'string' && image.imageUrl.trim())
+}
+
+function hasConfirmedImage(asset: Awaited<ReturnType<typeof findExistingLocationBackedAsset>>): boolean {
+  return !!asset?.images?.some((image) => image.isSelected && typeof image.imageUrl === 'string' && image.imageUrl.trim())
 }
 
 async function findExistingCharacterAsset(params: {
@@ -215,7 +220,7 @@ async function findExistingCharacterAsset(params: {
   })
 }
 
-function characterAppearanceHasUsableImage(
+function characterAppearanceHasCandidateImage(
   appearance: NonNullable<Awaited<ReturnType<typeof findExistingCharacterAsset>>>['appearances'][number],
 ): boolean {
   if (typeof appearance.imageUrl === 'string' && appearance.imageUrl.trim()) return true
@@ -223,8 +228,22 @@ function characterAppearanceHasUsableImage(
     .some((url) => typeof url === 'string' && url.trim().length > 0)
 }
 
-function hasUsableCharacterImage(asset: Awaited<ReturnType<typeof findExistingCharacterAsset>>): boolean {
-  return !!asset?.appearances?.some(characterAppearanceHasUsableImage)
+function characterAppearanceHasConfirmedImage(
+  appearance: NonNullable<Awaited<ReturnType<typeof findExistingCharacterAsset>>>['appearances'][number],
+): boolean {
+  if (appearance.selectedIndex === null || appearance.selectedIndex === undefined) return false
+  const imageUrls = decodeImageUrlsFromDb(appearance.imageUrls, 'characterAppearance.imageUrls')
+  const selectedUrl = imageUrls[appearance.selectedIndex]
+    || (appearance.selectedIndex === 0 ? appearance.imageUrl : null)
+  return typeof selectedUrl === 'string' && selectedUrl.trim().length > 0
+}
+
+function hasCandidateCharacterImage(asset: Awaited<ReturnType<typeof findExistingCharacterAsset>>): boolean {
+  return !!asset?.appearances?.some(characterAppearanceHasCandidateImage)
+}
+
+function hasConfirmedCharacterImage(asset: Awaited<ReturnType<typeof findExistingCharacterAsset>>): boolean {
+  return !!asset?.appearances?.some(characterAppearanceHasConfirmedImage)
 }
 
 async function ensurePrimaryCharacterAppearance(params: {
@@ -362,8 +381,10 @@ export async function ensureMissingAssetBackfill(params: {
         assetId: request.assetId,
         name: request.name,
       })
-      let status: MissingAssetBackfillStatus = hasUsableCharacterImage(asset)
+      let status: MissingAssetBackfillStatus = hasConfirmedCharacterImage(asset)
         ? 'existing_asset_ready'
+        : hasCandidateCharacterImage(asset)
+          ? 'existing_asset_pending_confirmation'
         : 'existing_asset_queued'
 
       if (!asset) {
@@ -380,7 +401,7 @@ export async function ensureMissingAssetBackfill(params: {
       })
 
       let taskId: string | null = null
-      if (!hasUsableCharacterImage(asset) && modelConfig.characterModel) {
+      if (!hasCandidateCharacterImage(asset) && modelConfig.characterModel) {
         const payloadBase = {
           type: 'character',
           id: asset.id,
@@ -435,9 +456,11 @@ export async function ensureMissingAssetBackfill(params: {
         ...request,
         assetId: asset.id,
         taskId,
-        status: hasUsableCharacterImage(asset)
+        status: hasConfirmedCharacterImage(asset)
           ? 'existing_asset_ready'
-          : modelConfig.characterModel ? status : 'human_required',
+          : hasCandidateCharacterImage(asset)
+            ? 'existing_asset_pending_confirmation'
+            : modelConfig.characterModel ? status : 'human_required',
         reason: modelConfig.characterModel
           ? request.reason
           : `${request.reason}; character model not configured`,
@@ -451,8 +474,10 @@ export async function ensureMissingAssetBackfill(params: {
       assetId: request.assetId,
       name: request.name,
     })
-    let status: MissingAssetBackfillStatus = hasUsableImage(asset)
+    let status: MissingAssetBackfillStatus = hasConfirmedImage(asset)
       ? 'existing_asset_ready'
+      : hasCandidateImage(asset)
+        ? 'existing_asset_pending_confirmation'
       : 'existing_asset_queued'
 
     if (!asset) {
@@ -493,7 +518,7 @@ export async function ensureMissingAssetBackfill(params: {
       continue
     }
 
-    if (!hasUsableImage(asset) && (!asset.images || asset.images.length === 0)) {
+    if (!hasCandidateImage(asset) && (!asset.images || asset.images.length === 0)) {
       await ensureProjectLocationImageSlots({
         locationId: asset.id,
         count: 1,
@@ -518,7 +543,7 @@ export async function ensureMissingAssetBackfill(params: {
     const targetImageId = asset?.images?.[0]?.id || asset?.id || request.assetId
 
     let taskId: string | null = null
-    if (!hasUsableImage(asset) && !modelConfig.locationModel) {
+    if (!hasCandidateImage(asset) && !modelConfig.locationModel) {
       nextRequests.push({
         ...request,
         assetId: asset.id,
@@ -528,7 +553,7 @@ export async function ensureMissingAssetBackfill(params: {
       continue
     }
 
-    if (!hasUsableImage(asset) && targetImageId) {
+    if (!hasCandidateImage(asset) && targetImageId) {
       const payloadBase = {
         type: request.kind,
         id: asset.id,
@@ -585,15 +610,20 @@ export async function ensureMissingAssetBackfill(params: {
       ...request,
       assetId: asset.id,
       taskId,
-      status,
+      status: hasConfirmedImage(asset)
+        ? 'existing_asset_ready'
+        : hasCandidateImage(asset)
+          ? 'existing_asset_pending_confirmation'
+          : status,
     })
   }
 
   const hasQueued = nextRequests.some((request) => request.status === 'existing_asset_queued' || request.status === 'created_asset_queued')
+  const hasPendingConfirmation = nextRequests.some((request) => request.status === 'existing_asset_pending_confirmation')
   const hasHuman = nextRequests.some((request) => request.status === 'human_required')
   return {
     ...plan,
-    status: hasHuman ? 'human_required' : hasQueued ? 'queued' : 'ready',
+    status: hasHuman ? 'human_required' : hasQueued ? 'queued' : hasPendingConfirmation ? 'waiting_confirmation' : 'ready',
     requests: nextRequests,
   }
 }

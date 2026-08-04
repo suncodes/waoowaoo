@@ -18,6 +18,7 @@ export function useModifyProjectCharacterImage(projectId: string) {
         invalidateQueryTemplates(queryClient, [
             queryKeys.projectAssets.all(projectId),
             queryKeys.projectData(projectId),
+            ['episode-data', projectId],
         ])
 
     return useMutation({

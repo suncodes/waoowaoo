@@ -47,19 +47,22 @@ export function readBackfillRequests(referencePlan: unknown): PanelBackfillReque
   })
 }
 
-function locationHasUsableImage(location: {
-  images: Array<{ imageUrl: string | null }>
+function locationHasConfirmedImage(location: {
+  images: Array<{ imageUrl: string | null; isSelected: boolean }>
 }): boolean {
-  return location.images.some((image) => typeof image.imageUrl === 'string' && image.imageUrl.trim().length > 0)
+  return location.images.some((image) => image.isSelected && typeof image.imageUrl === 'string' && image.imageUrl.trim().length > 0)
 }
 
-function characterHasUsableImage(character: {
-  appearances: Array<{ imageUrl: string | null; imageUrls: string | null }>
+function characterHasConfirmedImage(character: {
+  appearances: Array<{ imageUrl: string | null; imageUrls: string | null; selectedIndex: number | null }>
 }): boolean {
   return character.appearances.some((appearance) => {
-    if (typeof appearance.imageUrl === 'string' && appearance.imageUrl.trim().length > 0) return true
-    return decodeImageUrlsFromDb(appearance.imageUrls, 'characterAppearance.imageUrls')
-      .some((url) => typeof url === 'string' && url.trim().length > 0)
+    const selectedIndex = appearance.selectedIndex
+    if (selectedIndex === null || selectedIndex === undefined) return false
+    const imageUrls = decodeImageUrlsFromDb(appearance.imageUrls, 'characterAppearance.imageUrls')
+    const selectedUrl = imageUrls[selectedIndex]
+      || (selectedIndex === 0 ? appearance.imageUrl : null)
+    return typeof selectedUrl === 'string' && selectedUrl.trim().length > 0
   })
 }
 
@@ -75,24 +78,24 @@ export async function resolvePanelBackfillReadiness(referencePlan: unknown): Pro
       where: { id: { in: assetIds } },
       select: {
         id: true,
-        images: { select: { imageUrl: true } },
+        images: { select: { imageUrl: true, isSelected: true } },
       },
     }),
     prisma.novelPromotionCharacter.findMany({
       where: { id: { in: assetIds } },
       select: {
         id: true,
-        appearances: { select: { imageUrl: true, imageUrls: true } },
+        appearances: { select: { imageUrl: true, imageUrls: true, selectedIndex: true } },
       },
     }),
   ])
 
   const readyAssetIds = new Set<string>()
   for (const location of locations) {
-    if (locationHasUsableImage(location)) readyAssetIds.add(location.id)
+    if (locationHasConfirmedImage(location)) readyAssetIds.add(location.id)
   }
   for (const character of characters) {
-    if (characterHasUsableImage(character)) readyAssetIds.add(character.id)
+    if (characterHasConfirmedImage(character)) readyAssetIds.add(character.id)
   }
 
   const blockingRequests = requests.filter((request) => {

@@ -39,6 +39,7 @@ import {
   requirePreparedPrompt,
   type PreparedGenerationPrompt,
 } from '@/lib/creative-quality/prepared-prompts'
+import { reconcileStoryboardPanelsForAssetChanges } from '@/lib/novel-promotion/storyboard-readiness'
 import { prepareProjectAssetImagePrompts } from './project-asset-prompt-preparation'
 
 type AssetWriteAccess = {
@@ -879,7 +880,12 @@ async function selectProjectAssetRender(input: AssetSelectInput) {
       where: { id: appearance.id },
       data: { selectedIndex, imageUrl: selectedImageKey },
     })
-    return { success: true }
+    const reconciliation = await reconcileStoryboardPanelsForAssetChanges({
+      projectId: requireProjectId(input.access),
+      userId: input.access.userId,
+      assetIds: [appearance.characterId],
+    })
+    return { success: true, reconciliation }
   }
   const confirm = input.body.confirm === true
   if (confirm) {
@@ -894,7 +900,13 @@ async function selectProjectAssetRender(input: AssetSelectInput) {
       targetType: 'LocationImage',
       targetIds: location.images.map((image) => image.id),
     })
-    return confirmProjectLocationBackedSelection(input.assetId)
+    const confirmed = await confirmProjectLocationBackedSelection(input.assetId)
+    const reconciliation = await reconcileStoryboardPanelsForAssetChanges({
+      projectId: requireProjectId(input.access),
+      userId: input.access.userId,
+      assetIds: [input.assetId],
+    })
+    return { ...confirmed, reconciliation }
   }
   const selectedIndex = toNumber(input.body.selectedIndex ?? input.body.imageIndex)
   const location = await prisma.novelPromotionLocation.findUnique({
@@ -934,7 +946,12 @@ async function selectProjectAssetRender(input: AssetSelectInput) {
       data: { selectedImageId: null },
     })
   }
-  return { success: true }
+  const reconciliation = await reconcileStoryboardPanelsForAssetChanges({
+    projectId: requireProjectId(input.access),
+    userId: input.access.userId,
+    assetIds: [input.assetId],
+  })
+  return { success: true, reconciliation }
 }
 
 export async function revertAssetRender(input: AssetRevertInput) {
@@ -1026,7 +1043,12 @@ async function revertProjectAssetRender(input: AssetRevertInput) {
         previousDescriptions: null,
       },
     })
-    return { success: true }
+    const reconciliation = await reconcileStoryboardPanelsForAssetChanges({
+      projectId: requireProjectId(input.access),
+      userId: input.access.userId,
+      assetIds: [appearance.characterId],
+    })
+    return { success: true, reconciliation }
   }
   const location = await prisma.novelPromotionLocation.findUnique({
     where: { id: input.assetId },
@@ -1052,7 +1074,12 @@ async function revertProjectAssetRender(input: AssetRevertInput) {
       })
     }
   }
-  return { success: true }
+  const reconciliation = await reconcileStoryboardPanelsForAssetChanges({
+    projectId: requireProjectId(input.access),
+    userId: input.access.userId,
+    assetIds: [input.assetId],
+  })
+  return { success: true, reconciliation }
 }
 
 export async function copyAssetFromGlobal(input: AssetCopyInput) {

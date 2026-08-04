@@ -6,6 +6,7 @@ import {
 } from '@/lib/run-runtime/service'
 import { RUN_EVENT_TYPE } from '@/lib/run-runtime/types'
 import type { GenerationSnapshot } from './contracts'
+import { isPanelImagePromptCurrent } from '@/lib/visual-production/panel-prepared-prompt-state'
 
 export const PREPARED_PROMPT_ARTIFACT_TYPES = {
   asset_image: 'prompt.asset_image.prepared',
@@ -426,6 +427,43 @@ export async function requirePreparedPrompt(params: {
   })
   if (!prepared) {
     throw new PreparedPromptError('PREPARED_PROMPT_NOT_FOUND', '已固定的提示词不存在、无权访问或不属于当前目标。')
+  }
+  return prepared
+}
+
+export async function requireCurrentPanelImagePreparedPrompt(params: {
+  artifactId: unknown
+  projectId: string
+  targetId: string
+  userId?: string | null
+}): Promise<PreparedGenerationPrompt> {
+  const prepared = await requirePreparedPrompt({
+    artifactId: params.artifactId,
+    projectId: params.projectId,
+    targetId: params.targetId,
+    kind: 'panel_image',
+    userId: params.userId || null,
+  })
+  const panel = await prisma.novelPromotionPanel.findFirst({
+    where: {
+      id: params.targetId,
+      storyboard: {
+        episode: {
+          novelPromotionProject: { projectId: params.projectId },
+        },
+      },
+    },
+    select: { referencePlan: true },
+  })
+  if (!panel || !isPanelImagePromptCurrent({
+    referencePlan: panel.referencePlan,
+    artifactId: prepared.artifactId,
+    assetVersionHash: prepared.snapshot.assetVersionHash,
+  })) {
+    throw new PreparedPromptError(
+      'PREPARED_PROMPT_INVALID',
+      '分镜引用的资产定稿已变更，请重新固定图片提示词。',
+    )
   }
   return prepared
 }

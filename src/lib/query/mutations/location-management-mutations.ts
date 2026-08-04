@@ -51,7 +51,10 @@ function removeLocationFromProject(
 export function useDeleteProjectLocation(projectId: string) {
     const queryClient = useQueryClient()
     const invalidateProjectAssets = () =>
-        invalidateQueryTemplates(queryClient, [queryKeys.projectAssets.all(projectId)])
+        invalidateQueryTemplates(queryClient, [
+            queryKeys.projectAssets.all(projectId),
+            ['episode-data', projectId],
+        ])
 
     return useMutation({
         mutationFn: async (locationId: string) => {
@@ -301,7 +304,10 @@ export function useConfirmProjectLocationSelection(
 ) {
     const queryClient = useQueryClient()
     const invalidateProjectAssets = () =>
-        invalidateQueryTemplates(queryClient, [queryKeys.projectAssets.all(projectId)])
+        invalidateQueryTemplates(queryClient, [
+            queryKeys.projectAssets.all(projectId),
+            ['episode-data', projectId],
+        ])
     return useMutation({
         mutationFn: async ({ locationId }: { locationId: string }) =>
             await requestJsonWithError(

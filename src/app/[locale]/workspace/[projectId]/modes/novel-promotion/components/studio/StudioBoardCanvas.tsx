@@ -23,6 +23,7 @@ import { StudioButton, StudioEmptyState, StudioMetric, StudioSectionHeader, Stud
 import type { StudioWorkspaceModel } from './studio-types'
 import {
   buildPanelCandidateDisplayGroups,
+  panelBackfillAwaitsConfirmation,
   readPanelBackfillMessages,
   resolvePanelImageWorkflowPresentation,
 } from './studio-board-image-workflow'
@@ -341,9 +342,9 @@ function BoardDetailPanel({
           <div className="rounded-md border border-cyan-400/25 bg-cyan-400/10 p-3 text-sm text-cyan-100" role="status">
             <div className="flex items-center gap-2 font-semibold">
               <AppIcon name="sparkles" className="h-4 w-4" />
-              等待补齐参考资产
+              等待确认参考资产
             </div>
-            <p className="mt-1 text-xs leading-5 text-cyan-100/75">{backfillMessages.length > 0 ? backfillMessages.join('；') : '系统会先固定并生成缺失资产图；资产可引用后自动固定本镜头提示词，但不会自动提交分镜图片。'}</p>
+            <p className="mt-1 text-xs leading-5 text-cyan-100/75">{backfillMessages.length > 0 ? backfillMessages.join('；') : '系统会先固定并生成缺失资产候选图。请在视觉资产中确认定稿；确认后系统会自动固定本镜头提示词，但不会自动提交分镜图片。'}</p>
           </div>
         ) : null}
 
@@ -665,6 +666,8 @@ function StudioBoardRuntime({
       && !controller.modifyingPanels.has(item.panel.id)
   })
   const assetBackfillItems = missingImageItems.filter((item) => item.sourcePanel.generationRoute === 'asset_backfill')
+  const awaitingAssetConfirmationItems = assetBackfillItems.filter((item) => panelBackfillAwaitsConfirmation(item.sourcePanel))
+  const actionableAssetBackfillItems = assetBackfillItems.filter((item) => !panelBackfillAwaitsConfirmation(item.sourcePanel))
   const manualReferenceItems = missingImageItems.filter((item) => item.sourcePanel.generationRoute === 'human_required')
   const promptPreparationItems = missingImageItems.filter((item) => (
     item.sourcePanel.generationRoute !== 'asset_backfill'
@@ -712,10 +715,10 @@ function StudioBoardRuntime({
   }
 
   const backfillMissingAssets = async () => {
-    if (assetBackfillItems.length === 0 || assetBackfillMutation.isPending) return
-    const panelNumbers = assetBackfillItems.map((item) => item.globalNumber).join('、')
+    if (actionableAssetBackfillItems.length === 0 || assetBackfillMutation.isPending) return
+    const panelNumbers = actionableAssetBackfillItems.map((item) => item.globalNumber).join('、')
     const confirmed = window.confirm(
-      `将为镜头 ${panelNumbers} 自动创建或复用缺失资产，固定资产提示词并提交资产候选图生成。资产图完成后会自动固定受影响镜头的提示词，但不会自动生成分镜图片。是否继续？`,
+      `将为镜头 ${panelNumbers} 自动创建或复用缺失资产，固定资产提示词并提交资产候选图生成。候选图完成后需要在视觉资产中确认定稿；确认后系统会自动固定受影响镜头的提示词，但不会自动生成分镜图片。是否继续？`,
     )
     if (!confirmed) return
 
@@ -728,13 +731,18 @@ function StudioBoardRuntime({
       const manualNumbers = result.manualPanelIds
         .map((panelId) => items.find((item) => item.panel.id === panelId)?.globalNumber)
         .filter((number): number is number => number !== undefined)
+      const waitingNumbers = result.waitingConfirmationPanelIds
+        .map((panelId) => items.find((item) => item.panel.id === panelId)?.globalNumber)
+        .filter((number): number is number => number !== undefined)
       setBackfillNotice({
-        tone: result.failedPanels.length > 0 ? 'error' : result.manualPanelIds.length > 0 ? 'info' : 'success',
+        tone: result.failedPanels.length > 0 ? 'error' : result.manualPanelIds.length > 0 || result.waitingConfirmationPanelIds.length > 0 ? 'info' : 'success',
         message: result.failedPanels.length > 0
-          ? `已启动 ${result.requestedPanelIds.length} 个镜头的资产回填；镜头 ${failedNumbers.join('、') || '未知'} 启动失败，请检查资产描述或模型配置。`
+          ? `已启动 ${result.requestedPanelIds.length} 个镜头的资产任务，并同步 ${result.syncedPanelIds.length} 个镜头；镜头 ${failedNumbers.join('、') || '未知'} 启动失败，请检查资产描述或模型配置。`
           : result.manualPanelIds.length > 0
-            ? `已启动 ${result.requestedPanelIds.length} 个镜头的资产回填；镜头 ${manualNumbers.join('、') || '未知'} 需要人工补充稳定参考。`
-            : `已启动 ${result.requestedPanelIds.length} 个镜头的资产回填。${result.promptFixedPanelIds.length > 0 ? `其中 ${result.promptFixedPanelIds.length} 个镜头已直接固定提示词。` : '资产图完成后将自动固定对应分镜提示词。'}`,
+            ? `已启动 ${result.requestedPanelIds.length} 个镜头的资产任务，并同步 ${result.syncedPanelIds.length} 个镜头；镜头 ${manualNumbers.join('、') || '未知'} 需要人工补充稳定参考。`
+            : result.waitingConfirmationPanelIds.length > 0
+              ? `已同步 ${result.syncedPanelIds.length} 个镜头；镜头 ${waitingNumbers.join('、') || '未知'} 的资产候选图已就绪，请在视觉资产中确认定稿。`
+              : `已启动 ${result.requestedPanelIds.length} 个镜头的资产任务，并同步 ${result.syncedPanelIds.length} 个镜头。${result.promptFixedPanelIds.length > 0 ? `其中 ${result.promptFixedPanelIds.length} 个镜头已直接固定提示词。` : '资产图完成后需要确认定稿，确认后将自动固定对应分镜提示词。'}`,
       })
     } catch (error) {
       setBackfillNotice({
@@ -775,7 +783,7 @@ function StudioBoardRuntime({
       if (skippedCount > 0) {
         setBackfillNotice({
           tone: 'info',
-          message: `${skippedCount} 个镜头仍在等待参考资产；资产就绪后系统会自动固定其分镜提示词。`,
+          message: `${skippedCount} 个镜头仍在等待参考资产定稿；请在视觉资产中确认候选图，系统随后会自动固定其分镜提示词。`,
         })
       }
       if (failures.length > 0) {
@@ -855,10 +863,13 @@ function StudioBoardRuntime({
                 icon="sparkles"
                 loading={assetBackfillMutation.isPending}
                 onClick={() => { void backfillMissingAssets() }}
-                disabled={assetBackfillItems.length === 0 || isBatchPreparingPrompts || isBatchGeneratingImages}
+                disabled={actionableAssetBackfillItems.length === 0 || isBatchPreparingPrompts || isBatchGeneratingImages}
               >
-                补齐缺失资产（{assetBackfillItems.length}）
+                补齐缺失资产（{actionableAssetBackfillItems.length}）
               </StudioButton>
+              {awaitingAssetConfirmationItems.length > 0 ? (
+                <span className="text-xs text-amber-200">等待资产定稿（{awaitingAssetConfirmationItems.length}）</span>
+              ) : null}
               <StudioButton
                 size="sm"
                 variant="secondary"

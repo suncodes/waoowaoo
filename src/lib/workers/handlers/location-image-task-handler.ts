@@ -20,7 +20,10 @@ import {
   pickFirstString,
 } from './image-task-handler-shared'
 import { buildLocationAssetTargetSpec } from './visual-quality-review-helpers'
-import { prepareReadyBackfilledPanelPrompts } from '@/lib/visual-production/panel-backfill-resume'
+import {
+  markStoryboardPanelsAwaitingAssetConfirmation,
+  reconcileStoryboardPanelsForAssetChanges,
+} from '@/lib/novel-promotion/storyboard-readiness'
 import {
   attachPreparedPromptToSnapshot,
   requirePreparedPrompt,
@@ -42,6 +45,7 @@ interface LocationImageRecord {
   description: string | null
   availableSlots?: string | null
   imageIndex: number
+  isSelected?: boolean
   location?: {
     name: string
     summary?: string | null
@@ -71,6 +75,7 @@ interface LocationImageTaskDb {
   novelPromotionLocation: {
     findUnique(args: Record<string, unknown>): Promise<LocationWithImages | null>
     findMany(args: Record<string, unknown>): Promise<LocationWithImages[]>
+    update(args: Record<string, unknown>): Promise<unknown>
   }
 }
 
@@ -235,6 +240,7 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
     imageKey: string
     promptBody: string
   }>>()
+  const selectedLocationIdsReplaced = new Set<string>()
   const promptSnapshots: GenerationSnapshot[] = []
 
   for (let i = 0; i < locationImages.length; i++) {
@@ -286,8 +292,12 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
     await assertTaskActive(job, 'persist_location_image')
     await db.locationImage.update({
       where: { id: item.id },
-      data: { imageUrl: imageKey },
+      data: {
+        imageUrl: imageKey,
+        ...(item.isSelected ? { isSelected: false } : {}),
+      },
     })
+    if (item.isSelected) selectedLocationIdsReplaced.add(item.locationId)
 
     const generatedItems = generatedByLocationId.get(item.locationId) || []
     generatedItems.push({
@@ -342,18 +352,29 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
     }
   }
 
-  const backfilledPanelPrompts = await prepareReadyBackfilledPanelPrompts({
-    projectId,
-    userId,
-    locale: job.data.locale,
-    assetIds: locationIds,
-    storyboardModel: models.storyboardModel,
-  })
+  for (const locationId of selectedLocationIdsReplaced) {
+    await db.novelPromotionLocation.update({
+      where: { id: locationId },
+      data: { selectedImageId: null },
+    })
+  }
+  const assetReconciliation = selectedLocationIdsReplaced.size > 0
+    ? await reconcileStoryboardPanelsForAssetChanges({
+      projectId,
+      userId,
+      assetIds: Array.from(selectedLocationIdsReplaced),
+      locale: job.data.locale,
+    })
+    : null
+  const awaitingAssetConfirmationPanelIds = payload.source === 'asset_backfill'
+    ? await markStoryboardPanelsAwaitingAssetConfirmation({ projectId, assetIds: locationIds })
+    : []
 
   return {
     updated: locationImages.length,
     locationIds,
-    backfilledPanelPrompts,
+    assetReconciliation,
+    awaitingAssetConfirmationPanelIds,
     promptSnapshots,
   }
 }

@@ -9,7 +9,7 @@ import { hasPanelImageOutput } from '@/lib/task/has-output'
 import { withTaskUiPayload } from '@/lib/task/ui-payload'
 import { resolveModelSelection } from '@/lib/api-config'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
-import { PreparedPromptError, requirePreparedPrompt } from '@/lib/creative-quality/prepared-prompts'
+import { PreparedPromptError, requireCurrentPanelImagePreparedPrompt } from '@/lib/creative-quality/prepared-prompts'
 
 export const POST = apiHandler(async (
   request: NextRequest,
@@ -34,11 +34,10 @@ export const POST = apiHandler(async (
 
   let preparedPrompt
   try {
-    preparedPrompt = await requirePreparedPrompt({
+    preparedPrompt = await requireCurrentPanelImagePreparedPrompt({
       artifactId: body?.preparedPromptArtifactId,
       projectId,
       targetId: panelId,
-      kind: 'panel_image',
       userId: session.user.id,
     })
   } catch (error) {

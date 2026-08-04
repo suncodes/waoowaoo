@@ -33,6 +33,7 @@ import {
   generateModifiedAssetDescription,
   readIndexedDescription,
 } from './modify-description-sync'
+import { reconcileStoryboardPanelsForAssetChanges } from '@/lib/novel-promotion/storyboard-readiness'
 
 const logger = createScopedLogger({ module: 'worker.modify-asset-image' })
 
@@ -42,9 +43,11 @@ interface LocationImageRecord {
   description: string | null
   availableSlots?: string | null
   imageUrl: string | null
+  isSelected?: boolean
   previousDescription: string | null
   location: {
     name: string
+    selectedImageId?: string | null
   } | null
 }
 
@@ -203,7 +206,15 @@ export async function handleModifyAssetImageTask(job: Job<TaskJobData>) {
       },
     })
 
-    return { type, appearanceId: appearance.id, imageIndex, imageUrl: cosKey }
+    const assetReconciliation = selectedIndex !== null && selectedIndex === imageIndex
+      ? await reconcileStoryboardPanelsForAssetChanges({
+        projectId: job.data.projectId,
+        userId: job.data.userId,
+        assetIds: [appearance.characterId],
+        locale: job.data.locale,
+      })
+      : null
+    return { type, appearanceId: appearance.id, imageIndex, imageUrl: cosKey, assetReconciliation }
   }
 
   if (type === 'location' || type === 'prop') {
@@ -302,7 +313,17 @@ export async function handleModifyAssetImageTask(job: Job<TaskJobData>) {
       },
     })
 
-    return { type, locationImageId: locationImage.id, imageUrl: cosKey }
+    const selectedImageWasModified = locationImage.isSelected === true
+      || locationImage.location?.selectedImageId === locationImage.id
+    const assetReconciliation = selectedImageWasModified
+      ? await reconcileStoryboardPanelsForAssetChanges({
+        projectId: job.data.projectId,
+        userId: job.data.userId,
+        assetIds: [locationImage.locationId],
+        locale: job.data.locale,
+      })
+      : null
+    return { type, locationImageId: locationImage.id, imageUrl: cosKey, assetReconciliation }
   }
 
   if (type === 'storyboard') {

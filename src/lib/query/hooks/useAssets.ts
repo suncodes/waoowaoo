@@ -280,6 +280,7 @@ function invalidateScopeQueries(queryClient: ReturnType<typeof useQueryClient>, 
   } else if (input.projectId) {
     queryClient.invalidateQueries({ queryKey: queryKeys.projectAssets.all(input.projectId) })
     queryClient.invalidateQueries({ queryKey: queryKeys.projectData(input.projectId) })
+    queryClient.invalidateQueries({ queryKey: ['episode-data', input.projectId] })
   }
 }
 
@@ -294,6 +295,7 @@ export function useRefreshAssets(input: { scope: 'global' | 'project'; projectId
     } else if (input.projectId) {
       queryClient.invalidateQueries({ queryKey: queryKeys.projectAssets.all(input.projectId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.projectData(input.projectId) })
+      queryClient.invalidateQueries({ queryKey: ['episode-data', input.projectId] })
     }
   }
 }

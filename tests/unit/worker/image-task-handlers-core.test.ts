@@ -23,6 +23,15 @@ const sharedMock = vi.hoisted(() => ({
   resolveNovelData: vi.fn(async () => ({ videoRatio: '16:9' })),
 }))
 
+const storyboardReadinessMock = vi.hoisted(() => ({
+  reconcileStoryboardPanelsForAssetChanges: vi.fn(async () => ({
+    reconciledPanelIds: [] as string[],
+    promptFixedPanelIds: [] as string[],
+    waitingPanelIds: [] as string[],
+    failedPanels: [] as Array<{ panelId: string; message: string }>,
+  })),
+}))
+
 const prismaMock = vi.hoisted(() => ({
   characterAppearance: {
     findUnique: vi.fn(),
@@ -48,6 +57,7 @@ vi.mock('@/lib/media/outbound-image', () => outboundImageMock)
 vi.mock('@/lib/prisma', () => ({
   prisma: prismaMock,
 }))
+vi.mock('@/lib/novel-promotion/storyboard-readiness', () => storyboardReadinessMock)
 vi.mock('@/lib/workers/handlers/image-task-handler-shared', async () => {
   const actual = await vi.importActual<typeof import('@/lib/workers/handlers/image-task-handler-shared')>(
     '@/lib/workers/handlers/image-task-handler-shared',
@@ -109,7 +119,7 @@ describe('worker image-task-handlers-core', () => {
     })
 
     const result = await handleModifyAssetImageTask(job)
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       type: 'location',
       locationImageId: 'location-image-1',
       imageUrl: 'cos/new-image.png',
@@ -134,6 +144,72 @@ describe('worker image-task-handlers-core', () => {
     const updateData = readUpdateData(updateArg)
     expect(updateData.previousImageUrl).toBe('cos/location-old.png')
     expect(updateData.imageUrl).toBe('cos/new-image.png')
+  })
+
+  it('编辑已定稿的场景图后重新固定受影响分镜提示词', async () => {
+    const reconciliation = {
+      reconciledPanelIds: ['panel-1'],
+      promptFixedPanelIds: ['panel-1'],
+      waitingPanelIds: [],
+      failedPanels: [],
+    }
+    storyboardReadinessMock.reconcileStoryboardPanelsForAssetChanges.mockResolvedValueOnce(reconciliation)
+    prismaMock.locationImage.findUnique.mockResolvedValueOnce({
+      id: 'location-image-1',
+      locationId: 'location-1',
+      imageUrl: 'cos/location-old.png',
+      isSelected: true,
+      location: { name: 'Old Town', selectedImageId: 'location-image-1' },
+    })
+
+    const result = await handleModifyAssetImageTask(buildJob({
+      type: 'location',
+      locationImageId: 'location-image-1',
+      modifyPrompt: '把雨景改为晴天',
+    }))
+
+    expect(storyboardReadinessMock.reconcileStoryboardPanelsForAssetChanges).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      userId: 'user-1',
+      assetIds: ['location-1'],
+      locale: 'zh',
+    })
+    expect(result).toMatchObject({ assetReconciliation: reconciliation })
+  })
+
+  it('编辑已定稿的角色图后重新固定受影响分镜提示词', async () => {
+    const reconciliation = {
+      reconciledPanelIds: ['panel-2'],
+      promptFixedPanelIds: ['panel-2'],
+      waitingPanelIds: [],
+      failedPanels: [],
+    }
+    storyboardReadinessMock.reconcileStoryboardPanelsForAssetChanges.mockResolvedValueOnce(reconciliation)
+    prismaMock.characterAppearance.findUnique.mockResolvedValueOnce({
+      id: 'appearance-1',
+      characterId: 'character-1',
+      imageUrls: JSON.stringify(['cos/character-old.png']),
+      imageUrl: 'cos/character-old.png',
+      selectedIndex: 0,
+      description: null,
+      descriptions: null,
+      character: { name: 'Hero' },
+    })
+
+    const result = await handleModifyAssetImageTask(buildJob({
+      type: 'character',
+      appearanceId: 'appearance-1',
+      imageIndex: 0,
+      modifyPrompt: '将服装改为深色风衣',
+    }))
+
+    expect(storyboardReadinessMock.reconcileStoryboardPanelsForAssetChanges).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      userId: 'user-1',
+      assetIds: ['character-1'],
+      locale: 'zh',
+    })
+    expect(result).toMatchObject({ assetReconciliation: reconciliation })
   })
 
   it('uses the character-matching aspect ratio when modifying project prop images', async () => {

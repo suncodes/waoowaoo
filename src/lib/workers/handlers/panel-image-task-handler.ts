@@ -6,7 +6,7 @@ import { createArtifact } from '@/lib/run-runtime/service'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
 import {
   attachPreparedPromptToSnapshot,
-  requirePreparedPrompt,
+  requireCurrentPanelImagePreparedPrompt,
 } from '@/lib/creative-quality/prepared-prompts'
 import { reportTaskProgress } from '../shared'
 import {
@@ -52,12 +52,10 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
   if (!preparedPromptArtifactId) {
     throw new Error('PREPARED_PROMPT_REQUIRED: panel image generation requires a prepared prompt')
   }
-  const prepared = await requirePreparedPrompt({
+  const prepared = await requireCurrentPanelImagePreparedPrompt({
     artifactId: preparedPromptArtifactId,
     projectId: job.data.projectId,
     targetId: panel.id,
-    refId: panel.id,
-    kind: 'panel_image',
     userId: job.data.userId,
   })
 

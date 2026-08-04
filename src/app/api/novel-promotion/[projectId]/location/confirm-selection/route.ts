@@ -5,6 +5,7 @@ import { deleteObject } from '@/lib/storage'
 import { resolveStorageKeyFromMediaValue } from '@/lib/media/service'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
+import { reconcileStoryboardPanelsForAssetChanges } from '@/lib/novel-promotion/storyboard-readiness'
 
 /**
  * POST - 确认场景选择并删除未选中的候选图片
@@ -46,10 +47,16 @@ export const POST = apiHandler(async (
 
   if (images.length <= 1) {
     // 已经只有一张图片，无需操作
+    const reconciliation = await reconcileStoryboardPanelsForAssetChanges({
+      projectId,
+      userId: authResult.session.user.id,
+      assetIds: [locationId],
+    })
     return NextResponse.json({
       success: true,
       message: '已确认选择',
-      deletedCount: 0
+      deletedCount: 0,
+      reconciliation,
     })
   }
 
@@ -104,9 +111,16 @@ export const POST = apiHandler(async (
   _ulogInfo(`✓ 场景确认选择: ${location.name}`)
   _ulogInfo(`✓ 删除了 ${deletedImages.length} 张未选中的图片`)
 
+  const reconciliation = await reconcileStoryboardPanelsForAssetChanges({
+    projectId,
+    userId: authResult.session.user.id,
+    assetIds: [locationId],
+  })
+
   return NextResponse.json({
     success: true,
     message: '已确认选择，其他候选图片已删除',
-    deletedCount: deletedImages.length
+    deletedCount: deletedImages.length,
+    reconciliation,
   })
 })

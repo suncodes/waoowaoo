@@ -21,6 +21,7 @@ import { assertPanelGenerationRouteAllowed } from '@/lib/visual-production/panel
 import { resolveBuiltinCapabilitiesByModelKey } from '@/lib/model-capabilities/lookup'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { markPanelImagePromptCurrent } from '@/lib/visual-production/panel-prepared-prompt-state'
 
 type PanelLocator = {
   panelId?: string | null
@@ -124,7 +125,11 @@ export async function preparePanelGenerationPrompt(params: {
     await prisma.novelPromotionPanel.update({
       where: { id: preview.panelId },
       data: {
-        referencePlan: asInputJson(preview.referencePlan),
+        referencePlan: asInputJson(markPanelImagePromptCurrent({
+          referencePlan: preview.referencePlan,
+          artifactId: prepared.artifactId,
+          assetVersionHash: snapshot.assetVersionHash,
+        })),
         generationRoute: (preview.generationRouteDecision as { route?: string } | undefined)?.route || null,
         noReferenceReason: (preview.generationRouteDecision as { noReferenceReason?: string | null } | undefined)?.noReferenceReason || null,
       },
