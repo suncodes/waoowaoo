@@ -393,7 +393,7 @@ export default function HomePage() {
                   )}
                   <div className="flex items-center gap-1 text-[10px] text-[var(--glass-text-tertiary)]">
                     <AppIcon name="clock" className="w-3 h-3" />
-                    {formatTimeAgo(project.updatedAt)}
+                    {formatTimeAgo(project.createdAt)}
                   </div>
                 </div>
               </Link>

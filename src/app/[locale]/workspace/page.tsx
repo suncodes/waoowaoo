@@ -567,7 +567,7 @@ export default function WorkspacePage() {
                     <div className="mt-4 flex items-center justify-between gap-3 text-[11px] text-stone-600">
                       <span className="inline-flex items-center gap-1">
                         <AppIcon name="clock" className="h-3 w-3" />
-                        {formatDate(project.updatedAt)}
+                        {formatDate(project.createdAt)}
                       </span>
                       {project.totalCost !== undefined && project.totalCost > 0 ? (
                         <span className="font-mono text-stone-400">{formatProjectCost(project.totalCost)}</span>
