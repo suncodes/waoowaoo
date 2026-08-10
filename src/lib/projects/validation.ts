@@ -7,6 +7,8 @@ export interface ProjectDraftInput {
   name: string
   description?: string | null
   videoProfile?: unknown
+  videoRatio?: string
+  artStyle?: string
 }
 
 export interface NormalizedProjectDraft {

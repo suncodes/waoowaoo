@@ -24,6 +24,8 @@ function readProjectDraftBody(body: unknown): ProjectDraftInput {
     name: typeof payload.name === 'string' ? payload.name : '',
     description: typeof payload.description === 'string' ? payload.description : null,
     videoProfile: payload.videoProfile,
+    videoRatio: typeof payload.videoRatio === 'string' ? payload.videoRatio : undefined,
+    artStyle: typeof payload.artStyle === 'string' ? payload.artStyle : undefined,
   }
 }
 
@@ -228,6 +230,16 @@ export const POST = apiHandler(async (request: NextRequest) => {
     where: { userId: session.user.id }
   })
 
+  // 创建请求中的显式配置优先，未提交时才沿用用户历史偏好。
+  const requestedVideoRatio = draft.videoRatio?.trim()
+  const requestedArtStyle = draft.artStyle?.trim()
+  const projectVideoRatio = requestedVideoRatio || userPreference?.videoRatio || DEFAULT_VIDEO_RATIO
+  const projectArtStyle = isArtStyleValue(requestedArtStyle)
+    ? requestedArtStyle
+    : isArtStyleValue(userPreference?.artStyle)
+      ? userPreference.artStyle
+      : DEFAULT_ART_STYLE
+
   // 创建基础项目
   const project = await prisma.project.create({
     data: {
@@ -237,7 +249,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
     }
   })
 
-  // 创建 novel-promotion 数据表，使用用户偏好作为默认值
+  // 创建 novel-promotion 数据表，模型字段沿用用户偏好，外观配置使用请求值或兼容回退
   // 注意：不再自动创建默认剧集，由用户在选择界面决定：
   // - 手动创作 → 创建第一个空白剧集
   // - 智能导入 → AI 分析后批量创建剧集
@@ -253,10 +265,10 @@ export const POST = apiHandler(async (request: NextRequest) => {
         editModel: userPreference.editModel,
         videoModel: userPreference.videoModel,
         audioModel: userPreference.audioModel,
-        videoRatio: userPreference.videoRatio || DEFAULT_VIDEO_RATIO,
-        artStyle: isArtStyleValue(userPreference.artStyle) ? userPreference.artStyle : DEFAULT_ART_STYLE,
         ttsRate: userPreference.ttsRate,
       }),
+      videoRatio: projectVideoRatio,
+      artStyle: projectArtStyle,
       videoProfile: resolveVideoProfile(
         draft.videoProfile ?? { preset: DEFAULT_VIDEO_PROFILE_PRESET },
       ) as unknown as Prisma.InputJsonValue,

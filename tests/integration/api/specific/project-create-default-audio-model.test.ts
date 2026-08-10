@@ -70,6 +70,8 @@ describe('api specific - project create default audio model', () => {
       data: expect.objectContaining({
         projectId: 'project-1',
         audioModel: 'audio::tts',
+        videoRatio: '9:16',
+        artStyle: 'realistic',
         videoProfile: expect.objectContaining({
           preset: 'book_guide',
           qualityPolicy: expect.objectContaining({ mode: 'auto' }),
@@ -110,5 +112,29 @@ describe('api specific - project create default audio model', () => {
     expect(body.error?.details?.field).toBe('description')
     expect(body.error?.details?.limit).toBe(500)
     expect(prismaMock.project.create).not.toHaveBeenCalled()
+  })
+
+  it('prefers explicit creation defaults over legacy user appearance preferences', async () => {
+    const mod = await import('@/app/api/projects/route')
+    const req = buildMockRequest({
+      path: '/api/projects',
+      method: 'POST',
+      body: {
+        name: '默认配置项目',
+        videoRatio: '16:9',
+        artStyle: 'classic-shanghai-animation',
+        videoProfile: { preset: 'book_guide' },
+      },
+    })
+
+    const res = await mod.POST(req, routeContext)
+
+    expect(res.status).toBe(201)
+    expect(prismaMock.novelPromotionProject.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        videoRatio: '16:9',
+        artStyle: 'classic-shanghai-animation',
+      }),
+    })
   })
 })

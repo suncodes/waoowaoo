@@ -13,6 +13,7 @@ import { Link, useRouter } from '@/i18n/navigation'
 import { apiFetch } from '@/lib/api-fetch'
 import { readApiErrorMessage } from '@/lib/api/read-error-message'
 import { validateProjectDraft } from '@/lib/projects/validation'
+import { DEFAULT_ART_STYLE, DEFAULT_VIDEO_RATIO } from '@/lib/constants'
 import {
   DEFAULT_VIDEO_PROFILE_PRESET,
   resolveVideoProfile,
@@ -239,6 +240,8 @@ export default function WorkspacePage() {
         body: JSON.stringify({
           name: formData.name,
           description: formData.description,
+          videoRatio: DEFAULT_VIDEO_RATIO,
+          artStyle: DEFAULT_ART_STYLE,
           videoProfile: resolveVideoProfile({ preset: formData.videoProfilePreset }),
         })
       })
