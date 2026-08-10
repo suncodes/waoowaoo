@@ -9,6 +9,7 @@ import { useAssetActions } from '@/lib/query/hooks'
 import { useImageGenerationCount } from '@/lib/image-generation/use-image-generation-count'
 import ImageGenerationInlineCountButton from '@/components/image-generation/ImageGenerationInlineCountButton'
 import { getImageGenerationCountOptions } from '@/lib/image-generation/count'
+import { DEFAULT_ART_STYLE } from '@/lib/constants'
 
 export interface PropCreationModalProps {
   mode: 'asset-hub' | 'project'
@@ -35,7 +36,7 @@ export function PropCreationModal({
   const [name, setName] = useState('')
   const [summary, setSummary] = useState('')
   const [description, setDescription] = useState('')
-  const [artStyle, setArtStyle] = useState('american-comic')
+  const artStyle = DEFAULT_ART_STYLE
   const [isSubmitting, setIsSubmitting] = useState(false)
   const submittingState = isSubmitting
     ? resolveTaskPresentationState({

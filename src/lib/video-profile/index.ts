@@ -9,6 +9,8 @@ import {
 } from './types'
 import { VISUAL_REPAIR_MAX_ATTEMPTS } from '@/lib/visual-quality/repair-policy'
 
+export const DEFAULT_VIDEO_PROFILE_PRESET = VIDEO_PROFILE_PRESET.BOOK_GUIDE
+
 const DEFAULT_PROFILE_BY_PRESET: Record<VideoProfilePreset, VideoProfile> = {
   [VIDEO_PROFILE_PRESET.AI_COMIC]: {
     schemaVersion: VIDEO_PROFILE_SCHEMA_VERSION,
@@ -24,7 +26,7 @@ const DEFAULT_PROFILE_BY_PRESET: Record<VideoProfilePreset, VideoProfile> = {
       spoilerLevel: 'full',
     },
     qualityPolicy: {
-      mode: 'shadow',
+      mode: 'auto',
       maxRepairAttempts: VISUAL_REPAIR_MAX_ATTEMPTS,
       autoApproveThreshold: 85,
       minConfidence: 0.82,
@@ -44,7 +46,7 @@ const DEFAULT_PROFILE_BY_PRESET: Record<VideoProfilePreset, VideoProfile> = {
       spoilerLevel: 'light',
     },
     qualityPolicy: {
-      mode: 'shadow',
+      mode: 'auto',
       maxRepairAttempts: VISUAL_REPAIR_MAX_ATTEMPTS,
       autoApproveThreshold: 88,
       minConfidence: 0.86,

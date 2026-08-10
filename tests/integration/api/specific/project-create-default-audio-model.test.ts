@@ -70,6 +70,10 @@ describe('api specific - project create default audio model', () => {
       data: expect.objectContaining({
         projectId: 'project-1',
         audioModel: 'audio::tts',
+        videoProfile: expect.objectContaining({
+          preset: 'book_guide',
+          qualityPolicy: expect.objectContaining({ mode: 'auto' }),
+        }),
       }),
     })
   })

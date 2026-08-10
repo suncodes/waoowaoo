@@ -293,10 +293,10 @@ model NovelPromotionProject {
   imageModel      String? // 用户配置的图片模型
   videoModel      String? // 用户配置的视频模型
   audioModel      String? // 用户配置的语音模型
-  videoRatio      String                    @default("9:16")
+  videoRatio      String                    @default("16:9")
   ttsRate         String                    @default("+50%")
   globalAssetText String?                   @db.Text
-  artStyle        String                    @default("american-comic")
+  artStyle        String                    @default("classic-shanghai-animation")
   artStylePrompt  String?                   @db.Text
   artStyleMode    String                    @default("preset")
   artStyleReferenceEnabled Boolean          @default(false)
@@ -511,9 +511,9 @@ model UserPreference {
   analysisConcurrency Int? // 分析流程并发上限
   imageConcurrency Int? // 图像流程并发上限
   videoConcurrency Int? // 视频流程并发上限
-  videoRatio      String   @default("9:16")
+  videoRatio      String   @default("16:9")
   videoResolution String   @default("720p")
-  artStyle        String   @default("american-comic")
+  artStyle        String   @default("classic-shanghai-animation")
   ttsRate         String   @default("+50%")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @default(now()) @updatedAt

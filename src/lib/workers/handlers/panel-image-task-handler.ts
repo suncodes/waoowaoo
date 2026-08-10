@@ -17,6 +17,7 @@ import {
 } from '../utils'
 import { type AnyObj, pickFirstString } from './image-task-handler-shared'
 import { persistPanelCandidatesAndScheduleReview } from './panel-visual-quality-trigger'
+import { DEFAULT_VIDEO_RATIO } from '@/lib/constants'
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -67,7 +68,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
   })
   const aspectRatio = typeof prepared.generationOptions.aspectRatio === 'string'
     ? prepared.generationOptions.aspectRatio
-    : '9:16'
+    : DEFAULT_VIDEO_RATIO
   const runId = readOptionalTaskRunId(job)
   let promptSnapshotArtifactId: string | null = null
   if (runId) {

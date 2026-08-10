@@ -7,6 +7,7 @@
  */
 
 import { prisma } from '@/lib/prisma'
+import { DEFAULT_ART_STYLE, DEFAULT_VIDEO_RATIO } from '@/lib/constants'
 import {
   type CapabilitySelections,
   type CapabilityValue,
@@ -165,8 +166,8 @@ export async function getProjectModelConfig(
     editModel: extractModelKey(projectData?.editModel) || null,
     videoModel: extractModelKey(projectData?.videoModel) || null,
     audioModel: extractModelKey(projectData?.audioModel) || extractModelKey(userPref?.audioModel) || null,
-    videoRatio: projectData?.videoRatio || '16:9',
-    artStyle: projectData?.artStyle || null,
+    videoRatio: projectData?.videoRatio || DEFAULT_VIDEO_RATIO,
+    artStyle: projectData?.artStyle || DEFAULT_ART_STYLE,
     artStyleMode: projectData?.artStyleMode === 'custom' ? 'custom' : 'preset',
     artStylePrompt: projectData?.artStylePrompt || null,
     artStyleReferenceEnabled: projectData?.artStyleReferenceEnabled === true,

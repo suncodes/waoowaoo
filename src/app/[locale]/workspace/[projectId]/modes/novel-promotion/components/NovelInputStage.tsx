@@ -11,7 +11,7 @@ import '@/styles/animations.css'
 import AiWriteModal from '@/components/home/AiWriteModal'
 import LongTextDetectionPrompt from '@/components/story-input/LongTextDetectionPrompt'
 import StoryInputComposer from '@/components/story-input/StoryInputComposer'
-import { ART_STYLES, VIDEO_RATIOS } from '@/lib/constants'
+import { ART_STYLES, DEFAULT_ART_STYLE, DEFAULT_VIDEO_RATIO, VIDEO_RATIOS } from '@/lib/constants'
 import TaskStatusInline from '@/components/task/TaskStatusInline'
 import { resolveTaskPresentationState } from '@/lib/task/presentation'
 import { AppIcon } from '@/components/ui/icons'
@@ -24,7 +24,6 @@ import {
   resolveVideoProfile,
   type VideoProfile,
   type VideoProfilePreset,
-  type VisualQualityMode,
 } from '@/lib/video-profile'
 
 /** 触发智能分集建议的字数阈值 */
@@ -55,7 +54,6 @@ interface NovelInputStageProps {
   artStyleReferenceEnabled?: boolean
   onVideoRatioChange?: (value: string) => MaybePromise
   onVideoProfileChange?: (value: VideoProfilePreset) => MaybePromise
-  onVisualQualityModeChange?: (value: VisualQualityMode) => MaybePromise
   onArtStyleChange?: (value: string) => MaybePromise
   onArtStyleReferenceEnabledChange?: (value: boolean) => MaybePromise
   workspaceLayout?: boolean
@@ -71,13 +69,12 @@ export default function NovelInputStage({
   isSwitchingStage = false,
   enableNarration = false,
   onEnableNarrationChange,
-  videoRatio = '9:16',
+  videoRatio = DEFAULT_VIDEO_RATIO,
   videoProfile = resolveVideoProfile(undefined),
-  artStyle = 'american-comic',
+  artStyle = DEFAULT_ART_STYLE,
   artStyleReferenceEnabled = false,
   onVideoRatioChange,
   onVideoProfileChange,
-  onVisualQualityModeChange,
   onArtStyleChange,
   onArtStyleReferenceEnabledChange,
   workspaceLayout = false,
@@ -199,25 +196,6 @@ export default function NovelInputStage({
       icon: 'bookOpen',
     },
   ]
-  const qualityModeOptions: Array<{
-    value: VisualQualityMode
-    label: string
-    description: string
-    icon: 'eye' | 'sparklesAlt'
-  }> = [
-    {
-      value: 'shadow',
-      label: t('storyInput.videoProfile.qualityCheckOnly'),
-      description: t('storyInput.videoProfile.qualityCheckOnlyDescription'),
-      icon: 'eye',
-    },
-    {
-      value: 'auto',
-      label: t('storyInput.videoProfile.qualityAutoOptimize'),
-      description: t('storyInput.videoProfile.qualityAutoOptimizeDescription'),
-      icon: 'sparklesAlt',
-    },
-  ]
 
   return (
     <div className={`${workspaceLayout ? 'w-full space-y-4' : 'mx-auto max-w-5xl space-y-5'}`}>
@@ -271,48 +249,6 @@ export default function NovelInputStage({
           </div>
         </div>
 
-        <div className="grid gap-3 border-t border-[var(--glass-stroke-soft)] pt-4 md:grid-cols-[minmax(0,1fr)_360px] md:items-center">
-          <div className="min-w-0">
-            <div className="text-sm font-semibold text-[var(--glass-text-primary)]">
-              {t('storyInput.videoProfile.qualityAssistLabel')}
-            </div>
-            <p className="mt-1 text-xs leading-relaxed text-[var(--glass-text-tertiary)]">
-              {t('storyInput.videoProfile.qualityAssistDescription')}
-            </p>
-          </div>
-          <div className="min-w-0">
-            <div
-              className="grid grid-cols-2 gap-1 rounded-lg border border-[var(--glass-stroke-base)] bg-[var(--glass-bg-muted)] p-1"
-              role="radiogroup"
-              aria-label={t('storyInput.videoProfile.qualityAssistLabel')}
-            >
-              {qualityModeOptions.map((option) => {
-                const selected = videoProfile.qualityPolicy.mode === option.value
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    disabled={configDisabled}
-                    onClick={() => onVisualQualityModeChange?.(option.value)}
-                    className={`flex h-10 items-center justify-center gap-2 rounded-md border px-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                      selected
-                        ? 'border-[var(--glass-stroke-focus)] bg-[var(--glass-bg-surface)] text-[var(--glass-text-primary)] shadow-[var(--glass-shadow-sm)]'
-                        : 'border-transparent text-[var(--glass-text-secondary)] hover:bg-[var(--glass-bg-surface-strong)] hover:text-[var(--glass-text-primary)]'
-                    }`}
-                  >
-                    <AppIcon name={selected ? 'check' : option.icon} className="h-4 w-4 shrink-0" />
-                    <span>{option.label}</span>
-                  </button>
-                )
-              })}
-            </div>
-            <p className="mt-2 text-xs leading-5 text-[var(--glass-text-tertiary)]">
-              {qualityModeOptions.find((option) => option.value === videoProfile.qualityPolicy.mode)?.description}
-            </p>
-          </div>
-        </div>
       </div>
 
       {isBookGuide ? (
@@ -351,7 +287,7 @@ export default function NovelInputStage({
           onVideoRatioChange={(value) => onVideoRatioChange?.(value)}
           ratioOptions={VIDEO_RATIOS.map((option) => ({
             ...option,
-            recommended: option.value === '9:16'
+            recommended: option.value === DEFAULT_VIDEO_RATIO
           }))}
           getRatioUsage={getRatioUsageTag}
           artStyle={artStyle}
@@ -361,7 +297,7 @@ export default function NovelInputStage({
           artStyleReferenceLabel={t('storyInput.artStyleReferenceImage')}
           styleOptions={ART_STYLES.map((option) => ({
             ...option,
-            recommended: option.value === 'realistic'
+            recommended: option.value === DEFAULT_ART_STYLE
           }))}
           stylePresetValue={stylePresetValue}
           onStylePresetChange={setStylePresetValue}

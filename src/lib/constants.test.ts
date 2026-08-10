@@ -1,7 +1,24 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { ART_STYLES, appendArtStyleReferenceImage, getArtStylePrompt, getArtStyleReferenceInstruction, isArtStyleValue, prependStyleReferenceImage } from './constants'
+import {
+  ART_STYLES,
+  DEFAULT_ART_STYLE,
+  DEFAULT_VIDEO_RATIO,
+  appendArtStyleReferenceImage,
+  getArtStylePrompt,
+  getArtStyleReferenceInstruction,
+  isArtStyleValue,
+  prependStyleReferenceImage,
+} from './constants'
+
+describe('creation defaults', () => {
+  it('uses landscape 16:9 and Shanghai Animation Film Studio style', () => {
+    expect(DEFAULT_VIDEO_RATIO).toBe('16:9')
+    expect(DEFAULT_ART_STYLE).toBe('classic-shanghai-animation')
+    expect(isArtStyleValue(DEFAULT_ART_STYLE)).toBe(true)
+  })
+})
 
 describe('ART_STYLES registry', () => {
   it('has unique values and non-empty prompts', () => {

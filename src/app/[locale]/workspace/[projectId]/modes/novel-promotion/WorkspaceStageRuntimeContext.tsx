@@ -4,7 +4,7 @@ import { createContext, useContext, type ReactNode } from 'react'
 import type { CapabilitySelections, ModelCapabilities } from '@/lib/model-config-contract'
 import type { VideoPricingTier } from '@/lib/model-pricing/video-tier'
 import type { BatchVideoGenerationParams, VideoGenerationOptions } from './components/video'
-import type { VideoProfile, VideoProfilePreset, VisualQualityMode } from '@/lib/video-profile'
+import type { VideoProfile, VideoProfilePreset } from '@/lib/video-profile'
 import type { ContentPlan } from '@/lib/content-planning'
 import type { VisualPlanResult, VisualUnit } from '@/lib/visual-planning'
 import type { WorkspaceArtifactCommandResult } from '@/lib/creation-workspace/commands'
@@ -59,7 +59,6 @@ export interface WorkspaceStageRuntimeValue {
   onMaterializeGuideStoryboard: () => Promise<WorkspaceArtifactCommandResult>
   onVideoRatioChange: (value: string) => Promise<void>
   onVideoProfileChange: (value: VideoProfilePreset) => Promise<void>
-  onVisualQualityModeChange: (value: VisualQualityMode) => Promise<void>
   onArtStyleChange: (value: string) => Promise<void>
   onArtStyleReferenceEnabledChange: (value: boolean) => Promise<void>
   onRunStoryToScript: () => Promise<void>

@@ -3,7 +3,7 @@ import { logError as _ulogError } from '@/lib/logging/core'
 
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { ART_STYLES } from '@/lib/constants'
+import { ART_STYLES, DEFAULT_ART_STYLE } from '@/lib/constants'
 import { shouldShowError } from '@/lib/error-utils'
 import { useImageGenerationCount } from '@/lib/image-generation/use-image-generation-count'
 import { useAiCreateProjectLocation, useCreateProjectLocation } from '@/lib/query/hooks'
@@ -59,7 +59,7 @@ export default function AddLocationModal({
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [aiInstruction, setAiInstruction] = useState('')
-  const [artStyle, setArtStyle] = useState('american-comic')
+  const [artStyle, setArtStyle] = useState(DEFAULT_ART_STYLE)
   const [availableSlots, setAvailableSlots] = useState<LocationAvailableSlot[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isAiDesigning, setIsAiDesigning] = useState(false)

@@ -4,6 +4,8 @@ import { type ChangeEvent, useEffect, useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import {
     ART_STYLES,
+    DEFAULT_ART_STYLE,
+    DEFAULT_VIDEO_RATIO,
     VIDEO_RATIOS,
 } from '@/lib/constants'
 import type {
@@ -137,7 +139,7 @@ export function SettingsModal({
     onClose,
     availableModels,
     modelsLoaded = false,
-    artStyle = 'american-comic',
+    artStyle = DEFAULT_ART_STYLE,
     artStyleMode = 'preset',
     artStylePrompt = '',
     artStyleReferenceEnabled = false,
@@ -150,7 +152,7 @@ export function SettingsModal({
     editModel,
     videoModel,
     audioModel,
-    videoRatio = '9:16',
+    videoRatio = DEFAULT_VIDEO_RATIO,
     capabilityOverrides,
     ttsRate,
     onArtStyleChange,

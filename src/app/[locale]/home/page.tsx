@@ -11,7 +11,7 @@ import Navbar from '@/components/Navbar'
 import { AppIcon, IconGradientDefs } from '@/components/ui/icons'
 import StoryInputComposer from '@/components/story-input/StoryInputComposer'
 import TypewriterHero from '@/components/home/TypewriterHero'
-import { ART_STYLES, VIDEO_RATIOS } from '@/lib/constants'
+import { ART_STYLES, DEFAULT_ART_STYLE, DEFAULT_VIDEO_RATIO, VIDEO_RATIOS } from '@/lib/constants'
 import { DEFAULT_STYLE_PRESET_VALUE, STYLE_PRESETS } from '@/lib/style-presets'
 import { Link, useRouter } from '@/i18n/navigation'
 import { apiFetch } from '@/lib/api-fetch'
@@ -49,8 +49,8 @@ export default function HomePage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [inputValue, setInputValue] = useState('')
-  const [videoRatio, setVideoRatio] = useState('9:16')
-  const [artStyle, setArtStyle] = useState('american-comic')
+  const [videoRatio, setVideoRatio] = useState(DEFAULT_VIDEO_RATIO)
+  const [artStyle, setArtStyle] = useState(DEFAULT_ART_STYLE)
   const [stylePresetValue, setStylePresetValue] = useState<string>(DEFAULT_STYLE_PRESET_VALUE)
   const [createLoading, setCreateLoading] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
@@ -140,13 +140,13 @@ export default function HomePage() {
 
   // 比例选项（带推荐标签）
   const ratioOptions = useMemo(
-    () => VIDEO_RATIOS.map((r) => ({ ...r, recommended: r.value === '9:16' })),
+    () => VIDEO_RATIOS.map((r) => ({ ...r, recommended: r.value === DEFAULT_VIDEO_RATIO })),
     []
   )
 
   // 风格选项（带推荐标签）
   const styleOptions = useMemo(
-    () => ART_STYLES.map((s) => ({ ...s, recommended: s.value === 'realistic' })),
+    () => ART_STYLES.map((s) => ({ ...s, recommended: s.value === DEFAULT_ART_STYLE })),
     []
   )
   // 时间格式化

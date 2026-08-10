@@ -19,6 +19,8 @@ export const ASPECT_RATIO_CONFIGS: Record<string, { label: string; isVertical: b
   '21:9': { label: '21:9', isVertical: false },
 }
 
+export const DEFAULT_VIDEO_RATIO = '16:9'
+
 // 配置页面使用的选项列表（从 ASPECT_RATIO_CONFIGS 派生）
 export const VIDEO_RATIOS = Object.entries(ASPECT_RATIO_CONFIGS).map(([value, config]) => ({
   value,
@@ -143,6 +145,8 @@ export interface ArtStyleDefinition {
   previewImage?: string
   referenceImage?: string
 }
+
+export const DEFAULT_ART_STYLE = 'classic-shanghai-animation'
 
 export const ART_STYLES = [
   {

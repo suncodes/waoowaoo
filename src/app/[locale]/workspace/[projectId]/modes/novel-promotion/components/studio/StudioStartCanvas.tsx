@@ -6,12 +6,11 @@ import AiWriteModal from '@/components/home/AiWriteModal'
 import { ArtStyleGallerySelector } from '@/components/selectors/ArtStyleGallerySelector'
 import { AppIcon } from '@/components/ui/icons'
 import { apiFetch } from '@/lib/api-fetch'
-import { ART_STYLES, VIDEO_RATIOS } from '@/lib/constants'
+import { ART_STYLES, DEFAULT_ART_STYLE, DEFAULT_VIDEO_RATIO, VIDEO_RATIOS } from '@/lib/constants'
 import { expandHomeStory } from '@/lib/home/ai-story-expand'
 import {
   VIDEO_PROFILE_PRESET,
   type VideoProfilePreset,
-  type VisualQualityMode,
 } from '@/lib/video-profile'
 import { useWorkspaceStageRuntime } from '../../WorkspaceStageRuntimeContext'
 import {
@@ -47,26 +46,6 @@ const PROFILE_OPTIONS: Array<{
     label: '书籍导读',
     description: '观点提炼、章节脉络、解说文稿和资料型画面优先。',
     icon: 'bookOpen',
-  },
-]
-
-const QUALITY_OPTIONS: Array<{
-  value: VisualQualityMode
-  label: string
-  description: string
-  icon: 'eye' | 'sparklesAlt'
-}> = [
-  {
-    value: 'shadow',
-    label: '仅提醒',
-    description: '记录画面问题，不阻断后续镜头生产。',
-    icon: 'eye',
-  },
-  {
-    value: 'auto',
-    label: '自动修复',
-    description: '发现明显画面问题时自动调整提示词并重试。',
-    icon: 'sparklesAlt',
   },
 ]
 
@@ -242,11 +221,11 @@ export default function StudioStartCanvas({ model, onNavigate }: StudioStartCanv
           </StudioPanel>
 
           <StudioPanel className="space-y-4">
-            <StudioSectionHeader title="制作规格" description="约束画幅、视觉风格和画面检查策略。" />
+            <StudioSectionHeader title="制作规格" description="约束画幅与视觉风格。" />
             <label className="block">
               <span className="mb-2 block text-xs font-semibold text-stone-500">画幅</span>
               <select
-                value={runtime.videoRatio || '9:16'}
+                value={runtime.videoRatio || DEFAULT_VIDEO_RATIO}
                 onChange={(event) => { void updateConfig('ratio', () => runtime.onVideoRatioChange(event.target.value)) }}
                 disabled={!!configSaving}
                 className="h-10 w-full rounded-md border border-white/10 bg-[#0f100e] px-3 text-sm text-stone-100 outline-none focus:border-[#e8d18a]"
@@ -268,7 +247,7 @@ export default function StudioStartCanvas({ model, onNavigate }: StudioStartCanv
               </div>
               <div className={`max-h-[360px] overflow-y-auto pr-1 ${configSaving ? 'pointer-events-none opacity-60' : ''}`}>
                 <ArtStyleGallerySelector
-                  value={runtime.artStyle || 'american-comic'}
+                  value={runtime.artStyle || DEFAULT_ART_STYLE}
                   options={ART_STYLES}
                   onChange={(value) => { void updateConfig('style', () => runtime.onArtStyleChange(value)) }}
                   columnsClassName="grid-cols-2"
@@ -288,32 +267,6 @@ export default function StudioStartCanvas({ model, onNavigate }: StudioStartCanv
                   <span className="mt-0.5 block text-xs leading-5 text-stone-500">开启后，当前风格示例图会作为视觉参考参与图片生成。</span>
                 </span>
               </label>
-            </div>
-            <div>
-              <div className="mb-2 text-xs font-semibold text-stone-500">画面检查</div>
-              <div className="grid grid-cols-2 gap-2">
-                {QUALITY_OPTIONS.map((option) => {
-                  const selected = runtime.videoProfile.qualityPolicy.mode === option.value
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => { void updateConfig(`quality:${option.value}`, () => runtime.onVisualQualityModeChange(option.value)) }}
-                      disabled={!!configSaving}
-                      className={`rounded-md border px-3 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${selected
-                        ? 'border-[#e8d18a]/70 bg-[#e8d18a]/10'
-                        : 'border-white/10 bg-white/[0.03] hover:bg-white/[0.06]'
-                      }`}
-                    >
-                      <span className="flex items-center gap-2 text-sm font-semibold text-stone-100">
-                        <AppIcon name={configSaving === `quality:${option.value}` ? 'loader' : option.icon} className={`h-4 w-4 text-[#e8d18a] ${configSaving === `quality:${option.value}` ? 'animate-spin' : ''}`} />
-                        {option.label}
-                      </span>
-                      <span className="mt-1 block text-xs leading-5 text-stone-500">{option.description}</span>
-                    </button>
-                  )
-                })}
-              </div>
             </div>
           </StudioPanel>
 

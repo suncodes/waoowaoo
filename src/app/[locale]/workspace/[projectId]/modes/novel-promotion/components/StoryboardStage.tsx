@@ -1,6 +1,7 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
+import { DEFAULT_VIDEO_RATIO } from '@/lib/constants'
 import type { CreationWorkflowState } from '@/lib/creation-workspace/workflow-state'
 import { isBookGuideProfile } from '@/lib/video-profile'
 import StoryboardStageView from './storyboard'
@@ -96,7 +97,7 @@ export default function StoryboardStage({
         episodeId={episodeId}
         storyboards={storyboards}
         clips={clips}
-        videoRatio={runtime.videoRatio || '9:16'}
+        videoRatio={runtime.videoRatio || DEFAULT_VIDEO_RATIO}
         onBack={() => runtime.onStageChange(workspaceLayout ? 'visual-plan' : 'script')}
         onNext={async () => runtime.onStageChange('videos')}
         isTransitioning={runtime.isTransitioning}

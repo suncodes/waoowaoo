@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { DEFAULT_VIDEO_RATIO } from '@/lib/constants'
 import { MediaImageWithLoading } from '@/components/media/MediaImageWithLoading'
 import VisualQualityBadge from '@/components/visual-quality/VisualQualityBadge'
 import ImagePreviewModal from '@/components/ui/ImagePreviewModal'
@@ -631,7 +632,7 @@ function StudioBoardRuntime({
     clips,
     isTransitioning: runtime.isTransitioning,
   })
-  const videoRatio = runtime.videoRatio || '9:16'
+  const videoRatio = runtime.videoRatio || DEFAULT_VIDEO_RATIO
   const items = useMemo(
     () => flattenBoardItems(controller.sortedStoryboards, controller.getTextPanels),
     [controller.getTextPanels, controller.sortedStoryboards],

@@ -51,10 +51,10 @@ function buildReviewPayload() {
 }
 
 describe('video quality workflow contracts', () => {
-  it('keeps legacy projects on the AI comic shadow-review default', () => {
+  it('uses automatic repair by default while preserving the profile preset', () => {
     const profile = resolveVideoProfile(undefined)
     expect(profile.preset).toBe('ai_comic')
-    expect(profile.qualityPolicy).toMatchObject({ mode: 'shadow', maxRepairAttempts: 1 })
+    expect(profile.qualityPolicy).toMatchObject({ mode: 'auto', maxRepairAttempts: 1 })
 
     const autoGuide = resolveVideoProfile({
       preset: 'book_guide',

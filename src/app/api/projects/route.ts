@@ -4,9 +4,9 @@ import { prisma } from '@/lib/prisma'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { toMoneyNumber } from '@/lib/billing/money'
-import { isArtStyleValue } from '@/lib/constants'
+import { DEFAULT_ART_STYLE, DEFAULT_VIDEO_RATIO, isArtStyleValue } from '@/lib/constants'
 import { resolveTaskLocale } from '@/lib/task/resolve-locale'
-import { resolveVideoProfile } from '@/lib/video-profile'
+import { DEFAULT_VIDEO_PROFILE_PRESET, resolveVideoProfile } from '@/lib/video-profile'
 import {
   formatProjectValidationIssue,
   normalizeProjectDraft,
@@ -253,11 +253,13 @@ export const POST = apiHandler(async (request: NextRequest) => {
         editModel: userPreference.editModel,
         videoModel: userPreference.videoModel,
         audioModel: userPreference.audioModel,
-        videoRatio: userPreference.videoRatio,
-        artStyle: isArtStyleValue(userPreference.artStyle) ? userPreference.artStyle : 'american-comic',
+        videoRatio: userPreference.videoRatio || DEFAULT_VIDEO_RATIO,
+        artStyle: isArtStyleValue(userPreference.artStyle) ? userPreference.artStyle : DEFAULT_ART_STYLE,
         ttsRate: userPreference.ttsRate,
       }),
-      videoProfile: resolveVideoProfile(draft.videoProfile) as unknown as Prisma.InputJsonValue,
+      videoProfile: resolveVideoProfile(
+        draft.videoProfile ?? { preset: DEFAULT_VIDEO_PROFILE_PRESET },
+      ) as unknown as Prisma.InputJsonValue,
     }
   })
 

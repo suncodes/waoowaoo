@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { getStyleReferenceInstruction, joinPromptSegments } from '@/lib/constants'
+import { DEFAULT_VIDEO_RATIO, getStyleReferenceInstruction, joinPromptSegments } from '@/lib/constants'
 import { resolveArtStyleForGeneration, type ArtStyleGenerationResult } from '@/lib/art-style-generation'
 import { createCreativeQualityHash } from '@/lib/creative-quality/contracts'
 import { getProjectModelConfig } from '@/lib/config-service'
@@ -600,7 +600,7 @@ export function buildPanelImagePromptFromResolvedInputs(params: {
   const fallbackStyleText = locale === 'en'
     ? 'consistent with the provided reference images'
     : '与参考图风格一致'
-  const aspectRatio = params.projectData.videoRatio || '9:16'
+  const aspectRatio = params.projectData.videoRatio || DEFAULT_VIDEO_RATIO
   const promptContext = buildPanelImagePromptContext({
     panel: params.panel,
     projectData: params.projectData,

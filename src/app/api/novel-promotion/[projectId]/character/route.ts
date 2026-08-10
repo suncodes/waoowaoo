@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireProjectAuth, requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { encodeImageUrls } from '@/lib/contracts/image-urls-contract'
 import { apiHandler, ApiError } from '@/lib/api-errors'
-import { PRIMARY_APPEARANCE_INDEX, isArtStyleValue, type ArtStyleValue } from '@/lib/constants'
+import { DEFAULT_ART_STYLE, PRIMARY_APPEARANCE_INDEX, isArtStyleValue, type ArtStyleValue } from '@/lib/constants'
 import { resolveTaskLocale } from '@/lib/task/resolve-locale'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
 import {
@@ -149,7 +149,7 @@ export const POST = apiHandler(async (
     }
     artStyle = parsedArtStyle
   }
-  const resolvedArtStyle: ArtStyleValue = artStyle ?? 'american-comic'
+  const resolvedArtStyle: ArtStyleValue = artStyle ?? DEFAULT_ART_STYLE
   const referenceImageUrls = Array.isArray(body.referenceImageUrls)
     ? body.referenceImageUrls.map((item) => normalizeString(item)).filter(Boolean)
     : []

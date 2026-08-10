@@ -161,19 +161,7 @@ export function useWorkspaceStageRuntime({
     onApproveAssetRequirements: approveAssetRequirements,
     onMaterializeGuideStoryboard: materializeGuideStoryboard,
     onVideoRatioChange: (value) => handleUpdateConfig('videoRatio', value),
-    onVideoProfileChange: (preset) => handleUpdateConfig('videoProfile', resolveVideoProfile({
-      preset,
-      qualityPolicy: {
-        mode: videoProfile.qualityPolicy.mode,
-      },
-    })),
-    onVisualQualityModeChange: (mode) => handleUpdateConfig('videoProfile', {
-      ...videoProfile,
-      qualityPolicy: {
-        ...videoProfile.qualityPolicy,
-        mode,
-      },
-    }),
+    onVideoProfileChange: (preset) => handleUpdateConfig('videoProfile', resolveVideoProfile({ preset })),
     onArtStyleChange: async (value) => {
       await handleUpdateConfig('artStyleMode', 'preset')
       await handleUpdateConfig('artStyle', value)

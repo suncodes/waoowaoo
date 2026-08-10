@@ -9,6 +9,7 @@ import { useCharacterCreationSubmit } from './character-creation/hooks/useCharac
 import { AppIcon } from '@/components/ui/icons'
 import ImageGenerationInlineCountButton from '@/components/image-generation/ImageGenerationInlineCountButton'
 import { getImageGenerationCountOptions } from '@/lib/image-generation/count'
+import { DEFAULT_ART_STYLE } from '@/lib/constants'
 
 export interface CharacterCreationModalProps {
   mode: 'asset-hub' | 'project'
@@ -35,7 +36,7 @@ export function CharacterCreationModal({
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [aiInstruction, setAiInstruction] = useState('')
-  const [artStyle, setArtStyle] = useState('american-comic')
+  const [artStyle, setArtStyle] = useState(DEFAULT_ART_STYLE)
   const [referenceImagesBase64, setReferenceImagesBase64] = useState<string[]>([])
   const [referenceSubMode, setReferenceSubMode] = useState<'direct' | 'extract'>('direct')
   const [isSubAppearance, setIsSubAppearance] = useState(false)

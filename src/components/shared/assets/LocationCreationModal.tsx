@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react'
 import { useTranslations } from 'next-intl'
 import { AppIcon } from '@/components/ui/icons'
 import { ArtStyleGallerySelector } from '@/components/selectors/ArtStyleGallerySelector'
-import { ART_STYLES } from '@/lib/constants'
+import { ART_STYLES, DEFAULT_ART_STYLE } from '@/lib/constants'
 import { shouldShowError } from '@/lib/error-utils'
 import TaskStatusInline from '@/components/task/TaskStatusInline'
 import { resolveTaskPresentationState } from '@/lib/task/presentation'
@@ -64,7 +64,7 @@ export function LocationCreationModal({
     const [name, setName] = useState('')
     const [description, setDescription] = useState('')
     const [aiInstruction, setAiInstruction] = useState('')
-    const [artStyle, setArtStyle] = useState('american-comic')
+    const [artStyle, setArtStyle] = useState(DEFAULT_ART_STYLE)
     const [availableSlots, setAvailableSlots] = useState<LocationAvailableSlot[]>([])
 
     const [isSubmitting, setIsSubmitting] = useState(false)

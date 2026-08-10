@@ -3,7 +3,7 @@ import { logError as _ulogError } from '@/lib/logging/core'
 
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { ART_STYLES } from '@/lib/constants'
+import { ART_STYLES, DEFAULT_ART_STYLE } from '@/lib/constants'
 import { useAiDesignLocation, useCreateAssetHubLocation } from '@/lib/query/hooks'
 import { useImageGenerationCount } from '@/lib/image-generation/use-image-generation-count'
 import TaskStatusInline from '@/components/task/TaskStatusInline'
@@ -34,7 +34,7 @@ export function AddLocationModal({ folderId, onClose, onSuccess }: AddLocationMo
     const [name, setName] = useState('')
     const [summary, setSummary] = useState('')
     const [aiInstruction, setAiInstruction] = useState('')
-    const [artStyle, setArtStyle] = useState('american-comic')
+    const [artStyle, setArtStyle] = useState(DEFAULT_ART_STYLE)
     const [availableSlots, setAvailableSlots] = useState<LocationAvailableSlot[]>([])
 
     const aiDesignMutation = useAiDesignLocation()

@@ -101,8 +101,9 @@ describe('NovelInputStage', () => {
       }),
     )
 
-    expect(html).toContain('storyInput.videoProfile.qualityAssistLabel')
-    expect(html).toContain('h-10 items-center justify-center')
+    expect(html).toContain('storyInput.videoProfile.label')
+    expect(html).toContain('min-h-12 items-center justify-center')
+    expect(html).not.toContain('storyInput.videoProfile.qualityAssistLabel')
     expect(html).not.toContain('min-h-24')
     expect(html).not.toContain('storyInput.assetLibraryTip.title')
   })

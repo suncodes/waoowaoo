@@ -63,7 +63,6 @@ export default function ConfigStage({ workspaceLayout = false }: { workspaceLayo
       artStyleReferenceEnabled={runtime.artStyleReferenceEnabled}
       onVideoRatioChange={runtime.onVideoRatioChange}
       onVideoProfileChange={runtime.onVideoProfileChange}
-      onVisualQualityModeChange={runtime.onVisualQualityModeChange}
       onArtStyleChange={runtime.onArtStyleChange}
       onArtStyleReferenceEnabledChange={runtime.onArtStyleReferenceEnabledChange}
       onNext={runtime.onRunStoryToScript}

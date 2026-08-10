@@ -13,7 +13,12 @@ import { Link, useRouter } from '@/i18n/navigation'
 import { apiFetch } from '@/lib/api-fetch'
 import { readApiErrorMessage } from '@/lib/api/read-error-message'
 import { validateProjectDraft } from '@/lib/projects/validation'
-import { resolveVideoProfile, VIDEO_PROFILE_PRESET, type VideoProfilePreset } from '@/lib/video-profile'
+import {
+  DEFAULT_VIDEO_PROFILE_PRESET,
+  resolveVideoProfile,
+  VIDEO_PROFILE_PRESET,
+  type VideoProfilePreset,
+} from '@/lib/video-profile'
 
 interface ProjectStats {
   episodes: number
@@ -123,7 +128,7 @@ export default function WorkspacePage() {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    videoProfilePreset: VIDEO_PROFILE_PRESET.AI_COMIC as VideoProfilePreset,
+    videoProfilePreset: DEFAULT_VIDEO_PROFILE_PRESET as VideoProfilePreset,
   })
   const [editingProject, setEditingProject] = useState<Project | null>(null)
   const [showEditModal, setShowEditModal] = useState(false)
@@ -262,7 +267,7 @@ export default function WorkspacePage() {
         setFormData({
           name: '',
           description: '',
-          videoProfilePreset: VIDEO_PROFILE_PRESET.AI_COMIC,
+          videoProfilePreset: DEFAULT_VIDEO_PROFILE_PRESET,
         })
 
         if (shouldOpenModelSetup) {
@@ -762,7 +767,7 @@ export default function WorkspacePage() {
                     setFormData({
                       name: '',
                       description: '',
-                      videoProfilePreset: VIDEO_PROFILE_PRESET.AI_COMIC,
+                      videoProfilePreset: DEFAULT_VIDEO_PROFILE_PRESET,
                     })
                   }}
                   className="inline-flex h-10 items-center rounded-md border border-white/10 bg-white/[0.03] px-4 text-sm font-semibold text-stone-200 hover:bg-white/[0.07]"

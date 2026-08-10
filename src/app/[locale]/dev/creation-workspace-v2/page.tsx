@@ -7,7 +7,6 @@ import {
   resolveVideoProfile,
   VIDEO_PROFILE_PRESET,
   type VideoProfilePreset,
-  type VisualQualityMode,
 } from '@/lib/video-profile'
 import { CREATION_STAGE_REGISTRY, type CreationStageId } from '@/lib/creation-workspace/stages'
 import { buildCreationWorkflowState } from '@/lib/creation-workspace/workflow-state'
@@ -214,10 +213,6 @@ export default function CreationWorkspaceV2PreviewPage() {
                 preset,
                 qualityPolicy: videoProfile.qualityPolicy,
               }))}
-              onVisualQualityModeChange={(mode: VisualQualityMode) => setVideoProfile({
-                ...videoProfile,
-                qualityPolicy: { ...videoProfile.qualityPolicy, mode },
-              })}
               workspaceLayout
             />
           ) : <PreviewStageBody stageId={currentStage} />}
