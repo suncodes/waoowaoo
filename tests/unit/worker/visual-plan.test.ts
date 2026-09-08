@@ -472,6 +472,110 @@ describe('worker visual-plan behavior', () => {
     }))
   })
 
+  it('downgrades unresolved asset mentions to warnings after one repair attempt', async () => {
+    prismaMock.novelPromotionProject.findUnique.mockResolvedValueOnce({
+      id: 'novel-project-1',
+      analysisModel: 'google::gemini-3-flash-preview',
+      videoProfile: { preset: 'book_guide' },
+      videoRatio: '16:9',
+      artStyle: 'editorial',
+      artStylePrompt: null,
+      characters: [{
+        id: 'char-along',
+        name: '阿龙',
+        aliases: null,
+        introduction: null,
+        semanticType: null,
+        assetTier: null,
+        usageScope: null,
+      }],
+      locations: [],
+    })
+    const mentioning = visualPlanPayload()
+    mentioning.visualUnits[0] = {
+      ...mentioning.visualUnits[0],
+      description: '阿龙站在船头远眺',
+      imagePrompt: '阿龙的背影剪影，站在船头远眺，无文字',
+    }
+    planningMock.executePlanningJsonStep
+      .mockResolvedValueOnce(mentioning)
+      .mockResolvedValueOnce(mentioning)
+
+    const result = await handleVisualPlanTask(buildJob())
+
+    expect(planningMock.executePlanningJsonStep).toHaveBeenCalledTimes(3)
+    expect(planningMock.executePlanningJsonStep).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      action: 'visual_plan_repair',
+    }))
+    expect(planningMock.executePlanningJsonStep).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      action: 'shot_asset_requirements',
+    }))
+    expect(persistenceMock.persistVisualPlan).toHaveBeenCalledOnce()
+    expect(persistenceMock.persistVisualPlan).toHaveBeenCalledWith(expect.objectContaining({
+      result: expect.objectContaining({
+        warnings: [expect.objectContaining({
+          unitIndex: 0,
+          assetId: 'char-along',
+          assetKind: 'character',
+          assetName: '阿龙',
+        })],
+      }),
+    }))
+    expect(result.assetMentionWarningCount).toBe(1)
+  })
+
+  it('clears asset mention warnings when the repair attempt backfills asset refs', async () => {
+    prismaMock.novelPromotionProject.findUnique.mockResolvedValueOnce({
+      id: 'novel-project-1',
+      analysisModel: 'google::gemini-3-flash-preview',
+      videoProfile: { preset: 'book_guide' },
+      videoRatio: '16:9',
+      artStyle: 'editorial',
+      artStylePrompt: null,
+      characters: [{
+        id: 'char-along',
+        name: '阿龙',
+        aliases: null,
+        introduction: null,
+        semanticType: null,
+        assetTier: null,
+        usageScope: null,
+      }],
+      locations: [],
+    })
+    const mentioning = visualPlanPayload()
+    mentioning.visualUnits[0] = {
+      ...mentioning.visualUnits[0],
+      description: '阿龙站在船头远眺',
+      imagePrompt: '阿龙的背影剪影，站在船头远眺，无文字',
+    }
+    const repaired = visualPlanPayload()
+    repaired.visualUnits[0] = {
+      ...repaired.visualUnits[0],
+      description: '阿龙站在船头远眺',
+      imagePrompt: '阿龙的背影剪影，站在船头远眺，无文字',
+      assetRefs: [{ id: 'char-along', kind: 'character', name: '阿龙' }],
+    } as typeof repaired.visualUnits[number] & { assetRefs: Array<{ id: string; kind: string; name: string }> }
+    planningMock.executePlanningJsonStep
+      .mockResolvedValueOnce(mentioning)
+      .mockResolvedValueOnce(repaired)
+
+    const result = await handleVisualPlanTask(buildJob())
+
+    expect(planningMock.executePlanningJsonStep).toHaveBeenCalledTimes(3)
+    expect(planningMock.executePlanningJsonStep).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      action: 'visual_plan_repair',
+    }))
+    expect(result.assetMentionWarningCount).toBe(0)
+    expect(persistenceMock.persistVisualPlan).toHaveBeenCalledWith(expect.objectContaining({
+      result: expect.objectContaining({
+        visualUnits: [expect.objectContaining({
+          assetRefs: [expect.objectContaining({ id: 'char-along', name: '阿龙' })],
+        })],
+      }),
+    }))
+  })
+
   it('auto-repairs visual plans that fail storyboard hard-rule review', async () => {
     const invalid = visualPlanPayload()
     invalid.visualUnits[0] = {

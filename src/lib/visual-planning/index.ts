@@ -14,6 +14,7 @@ import type {
   SingleImageFeasibility,
   ShotContinuity,
   VisualLicense,
+  VisualPlanMentionWarning,
   VisualPlanResult,
   VisualAssetRef,
   VisualType,
@@ -300,9 +301,10 @@ function parseVisualUnits(
   value: unknown,
   allowedClipIds: ReadonlySet<string>,
   availableAssets: ReadonlyMap<string, VisualAssetRef>,
-): VisualUnit[] {
-  if (!Array.isArray(value)) return []
-  return value.map((item, index) => {
+): { units: VisualUnit[]; mentionWarnings: VisualPlanMentionWarning[] } {
+  if (!Array.isArray(value)) return { units: [], mentionWarnings: [] }
+  const mentionWarnings: VisualPlanMentionWarning[] = []
+  const units = value.map((item, index) => {
     if (!isRecord(item)) throw new Error(`VISUAL_PLAN_INVALID: visualUnits.${index} must be object`)
     const clipId = requiredString(item.clipId, `visualUnits.${index}.clipId`)
     if (!allowedClipIds.has(clipId)) {
@@ -341,11 +343,18 @@ function parseVisualUnits(
     const referencedAssetIds = new Set(unit.assetRefs?.map((asset) => asset.id) || [])
     for (const asset of availableAssets.values()) {
       if (mentionsAsset(unit, asset) && !referencedAssetIds.has(asset.id)) {
-        throw new Error(`VISUAL_PLAN_INVALID: visualUnits.${index}.assetRefs missing referenced asset ${asset.id}`)
+        mentionWarnings.push({
+          unitIndex: index,
+          unitId: unit.id,
+          assetId: asset.id,
+          assetKind: asset.kind,
+          assetName: asset.name,
+        })
       }
     }
     return unit
   })
+  return { units, mentionWarnings }
 }
 
 function parseShotBudget(value: unknown, visualUnits: VisualUnit[]): ShotBudget {
@@ -448,7 +457,7 @@ export function parseVisualPlanResult(
   if (!isRecord(value)) throw new Error('VISUAL_PLAN_INVALID: response must be object')
   const shotPlan = isRecord(value.shotPlan) ? value.shotPlan : {}
   const assetMap = new Map(assets.map((asset) => [asset.id, asset]))
-  const visualUnits = parseVisualUnits(value.visualUnits, new Set(clipIds), assetMap)
+  const { units: visualUnits, mentionWarnings } = parseVisualUnits(value.visualUnits, new Set(clipIds), assetMap)
   if (profile.contentDomain === 'book' && visualUnits.length === 0) {
     throw new Error('VISUAL_PLAN_INVALID: book guide requires visualUnits')
   }
@@ -462,6 +471,7 @@ export function parseVisualPlanResult(
     productionBible: parseProductionBible(value.productionBible),
     shotPlan: parseShotPlan(shotPlan, profile, visualUnits),
     visualUnits,
+    ...(mentionWarnings.length > 0 ? { warnings: mentionWarnings } : {}),
   }
 }
 

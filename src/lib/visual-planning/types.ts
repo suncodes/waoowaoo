@@ -151,9 +151,18 @@ export interface ShotPlan {
   continuityChecks: string[]
 }
 
+export interface VisualPlanMentionWarning {
+  unitIndex: number
+  unitId: string
+  assetId: string
+  assetKind: VisualAssetRef['kind']
+  assetName: string
+}
+
 export interface VisualPlanResult {
   directorTreatment: DirectorTreatment
   productionBible: ProductionBible
   shotPlan: ShotPlan
   visualUnits: VisualUnit[]
+  warnings?: VisualPlanMentionWarning[]
 }

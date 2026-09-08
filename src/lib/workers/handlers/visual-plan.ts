@@ -9,6 +9,7 @@ import {
   buildVisualBeatPlan,
   parseVisualPlanResult,
   type VisualAssetRef,
+  type VisualPlanMentionWarning,
   type VisualPlanResult,
 } from '@/lib/visual-planning'
 import {
@@ -53,6 +54,20 @@ import {
 } from './planning-task-shared'
 
 const MAX_VISUAL_PLAN_OUTPUT_ATTEMPTS = 3
+
+class VisualPlanMentionIncompleteError extends Error {
+  constructor(public readonly warnings: VisualPlanMentionWarning[]) {
+    super(formatMentionValidationError(warnings))
+    this.name = 'VisualPlanMentionIncompleteError'
+  }
+}
+
+function formatMentionValidationError(warnings: VisualPlanMentionWarning[]): string {
+  const details = warnings
+    .map((warning) => `visualUnits.${warning.unitIndex}.assetRefs missing referenced asset ${warning.assetId} (${warning.assetKind} ${warning.assetName})`)
+    .join('; ')
+  return `VISUAL_PLAN_INVALID: ${details}`
+}
 
 function readText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
@@ -113,6 +128,32 @@ function storyboardReviewFailureMessage(review: StoryboardReviewResult): string 
   return `VISUAL_PLAN_REVIEW_FAILED:${review.score}:${review.evidence.slice(0, 5).join(' | ')}`
 }
 
+function buildVisualPlanRepairPrompt(params: {
+  job: Job<TaskJobData>
+  validationError: string
+  candidateOutput: string
+  profile: ReturnType<typeof resolveVideoProfile>
+  clipsJson: string
+  assetsJson: string
+  visualBeatPlanJson: string
+  visualShotSlotPlanJson: string
+}): string {
+  let prompt = buildPrompt({
+    promptId: PROMPT_IDS.NP_VISUAL_PLAN_REPAIR,
+    locale: params.job.data.locale,
+    variables: {
+      validation_error: params.validationError,
+      candidate_output: params.candidateOutput,
+      profile_json: JSON.stringify(params.profile, null, 2),
+      clips_json: params.clipsJson,
+      assets_json: params.assetsJson,
+    },
+  })
+  prompt += `\n\n【VisualBeatPlan 约束】\n${params.visualBeatPlanJson}`
+  prompt += `\n\n【VisualShotSlotPlan 硬约束】\n${params.visualShotSlotPlanJson}`
+  return prompt
+}
+
 async function generateValidatedVisualPlan(params: {
   job: Job<TaskJobData>
   model: string
@@ -148,6 +189,11 @@ async function generateValidatedVisualPlan(params: {
         temperature: attempt === 1 ? 0.4 : 0.2,
       })
       const parsedResult = parseVisualPlanResult(candidate, params.profile, params.clipIds, params.assets)
+      const mentionWarnings = parsedResult.warnings || []
+      if (mentionWarnings.length > 0 && attempt === 1) {
+        // 资产提及未引用：仅首轮触发一次修复，修复后仍存在则降级为 warning 放行
+        throw new VisualPlanMentionIncompleteError(mentionWarnings)
+      }
       const autoRepair = autoRepairVisualPlanStoryboard(parsedResult)
       const result = autoRepair.result
       if (autoRepair.appliedFixes.length > 0) {
@@ -167,23 +213,34 @@ async function generateValidatedVisualPlan(params: {
         storyboardAutoRepair: autoRepair.appliedFixes.length > 0 ? autoRepair : null,
       }
     } catch (error) {
+      if (error instanceof VisualPlanMentionIncompleteError) {
+        await assertTaskActive(params.job, 'visual_plan_repair')
+        prompt = buildVisualPlanRepairPrompt({
+          job: params.job,
+          validationError: error.message,
+          candidateOutput: readInvalidCandidateOutput(candidate, error),
+          profile: params.profile,
+          clipsJson: params.clipsJson,
+          assetsJson: params.assetsJson,
+          visualBeatPlanJson: params.visualBeatPlanJson,
+          visualShotSlotPlanJson: params.visualShotSlotPlanJson,
+        })
+        continue
+      }
       if (!isRepairableVisualPlanOutputError(error) || attempt === MAX_VISUAL_PLAN_OUTPUT_ATTEMPTS) {
         throw error
       }
       await assertTaskActive(params.job, 'visual_plan_repair')
-      prompt = buildPrompt({
-        promptId: PROMPT_IDS.NP_VISUAL_PLAN_REPAIR,
-        locale: params.job.data.locale,
-        variables: {
-          validation_error: readErrorMessage(error),
-          candidate_output: readInvalidCandidateOutput(candidate, error),
-          profile_json: JSON.stringify(params.profile, null, 2),
-          clips_json: params.clipsJson,
-          assets_json: params.assetsJson,
-        },
+      prompt = buildVisualPlanRepairPrompt({
+        job: params.job,
+        validationError: readErrorMessage(error),
+        candidateOutput: readInvalidCandidateOutput(candidate, error),
+        profile: params.profile,
+        clipsJson: params.clipsJson,
+        assetsJson: params.assetsJson,
+        visualBeatPlanJson: params.visualBeatPlanJson,
+        visualShotSlotPlanJson: params.visualShotSlotPlanJson,
       })
-      prompt += `\n\n【VisualBeatPlan 约束】\n${params.visualBeatPlanJson}`
-      prompt += `\n\n【VisualShotSlotPlan 硬约束】\n${params.visualShotSlotPlanJson}`
     }
   }
 
@@ -436,6 +493,7 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
         approvedUpdatedAt: reusableVisualPlanState.updatedAt,
         visualUnitCount: reusedResult.visualUnits.length,
         anchorCount: reusableVisualPlanState.anchorCount,
+        mentionWarningCount: reusedResult.warnings?.length || 0,
         storyboardReviewScore: storyboardReview.score,
         storyboardReviewStatus: storyboardReview.status,
         storyboardMaterialized: shouldMaterializeStoryboard,
@@ -460,6 +518,7 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
       profilePreset: profile.preset,
       visualUnitCount: reusedResult.visualUnits.length,
       reused: true,
+      assetMentionWarningCount: reusedResult.warnings?.length || 0,
       reuseReason: 'approved_visual_plan_reused',
       visualPlanRevision: reusableVisualPlanState.revision,
       approvedRevision: reusableVisualPlanState.approvedRevision,
@@ -651,6 +710,7 @@ export async function handleVisualPlanTask(job: Job<TaskJobData>) {
     episodeId,
     profilePreset: profile.preset,
     visualUnitCount: result.visualUnits.length,
+    assetMentionWarningCount: result.warnings?.length || 0,
     storyboardReviewScore: storyboardReview.score,
     storyboardReviewStatus: storyboardReview.status,
     storyboardAutoRepairApplied: !!storyboardAutoRepair,
