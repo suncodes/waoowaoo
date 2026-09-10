@@ -4,7 +4,10 @@ import {
   type ModelCapabilities,
   type UnifiedModelType,
 } from '@/lib/model-config-contract'
-import { resolveGenerationOptionsForModel } from '@/lib/model-capabilities/lookup'
+import {
+  resolveBuiltinCapabilitiesByModelKey,
+  resolveGenerationOptionsForModel,
+} from '@/lib/model-capabilities/lookup'
 
 describe('model-capabilities/lookup - image resolution defaulting', () => {
   const modelType: UnifiedModelType = 'image'
@@ -62,13 +65,14 @@ describe('model-capabilities/lookup - video duration defaulting', () => {
 
   const capabilities: ModelCapabilities = {
     video: {
-      generationModeOptions: ['normal'],
+      generationModeOptions: ['normal', 'firstlastframe'],
       generateAudioOptions: [true, false],
       durationOptions: [4, 5, 6, 7, 8],
+      resolutionOptions: ['480p', '720p'],
     },
   }
 
-  it('auto-fills duration with the shortest option when missing and required', () => {
+  it('auto-fills every missing required capability field with its first option', () => {
     const result = resolveGenerationOptionsForModel({
       modelType,
       modelKey,
@@ -79,7 +83,22 @@ describe('model-capabilities/lookup - video duration defaulting', () => {
 
     expect(result.issues).toEqual([])
     expect(result.options.duration).toBe(4)
+    expect(result.options.resolution).toBe('480p')
     expect(result.options.generateAudio).toBe(true)
+  })
+
+  it('does not override a provided resolution', () => {
+    const result = resolveGenerationOptionsForModel({
+      modelType,
+      modelKey,
+      capabilities,
+      runtimeSelections: { generationMode: 'normal', generateAudio: true, resolution: '720p' },
+      requireAllFields: true,
+    })
+
+    expect(result.issues).toEqual([])
+    expect(result.options.resolution).toBe('720p')
+    expect(result.options.duration).toBe(4)
   })
 
   it('does not override a provided duration', () => {
@@ -105,5 +124,31 @@ describe('model-capabilities/lookup - video duration defaulting', () => {
     })
 
     expect(result.issues.some((issue) => issue.code === 'CAPABILITY_VALUE_NOT_ALLOWED')).toBe(true)
+  })
+})
+
+describe('model-capabilities/lookup - builtin Seedance 2.0 batch regression', () => {
+  // 复现批量单图视频的真实报错场景：prepared prompt 只带了
+  // { generateAudio, generationMode }，duration / resolution 均缺失。
+  it('auto-fills all missing required fields for builtin doubao-seedance-2-0-260128', () => {
+    const modelKey = 'ark::doubao-seedance-2-0-260128'
+    const capabilities = resolveBuiltinCapabilitiesByModelKey('video', modelKey)
+    expect(capabilities).toBeDefined()
+
+    const result = resolveGenerationOptionsForModel({
+      modelType: 'video',
+      modelKey,
+      capabilities,
+      runtimeSelections: { generateAudio: true, generationMode: 'normal' },
+      requireAllFields: true,
+    })
+
+    expect(result.issues).toEqual([])
+    expect(result.options).toMatchObject({
+      generationMode: 'normal',
+      generateAudio: true,
+      duration: 4,
+      resolution: '480p',
+    })
   })
 })

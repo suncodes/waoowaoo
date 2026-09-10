@@ -4,6 +4,7 @@ import {
   buildPanelReferencePlan,
   buildPanelVideoPromptFromResolvedInputs,
   resolveVideoDurationSelection,
+  resolveVideoResolutionSelection,
 } from '@/lib/novel-promotion/panel-generation-prompt-preview'
 import type { PanelAssetBindingPlan } from '@/lib/visual-production/binding-plan'
 import type { PanelVisualBindings } from '@/lib/visual-production/bindings'
@@ -257,5 +258,21 @@ describe('resolveVideoDurationSelection', () => {
       panel: { targetDurationMs: 5000, duration: 5 },
       generationOptions: {},
     })).toBeUndefined()
+  })
+})
+
+describe('resolveVideoResolutionSelection', () => {
+  const seedance2 = 'ark::doubao-seedance-2-0-260128'
+
+  it('keeps the explicitly provided resolution selection', () => {
+    expect(resolveVideoResolutionSelection(seedance2, { resolution: '720p' })).toBe('720p')
+  })
+
+  it('defaults to the first supported resolution when missing', () => {
+    expect(resolveVideoResolutionSelection(seedance2, {})).toBe('480p')
+  })
+
+  it('returns undefined for models without resolution options in the catalog', () => {
+    expect(resolveVideoResolutionSelection('ark::not-a-catalog-video-model', {})).toBeUndefined()
   })
 })

@@ -695,6 +695,22 @@ export function resolveVideoDurationSelection(input: {
   }) ?? supportedDurations[0]
 }
 
+export function resolveVideoResolutionSelection(
+  modelKey: string,
+  generationOptions: VideoOptionMap,
+): string | undefined {
+  const optionResolution = generationOptions.resolution
+  if (typeof optionResolution === 'string' && optionResolution.trim()) return optionResolution
+
+  const capabilities = resolveBuiltinCapabilitiesByModelKey('video', modelKey)
+  const resolutionOptions = capabilities?.video?.resolutionOptions
+  if (!Array.isArray(resolutionOptions) || resolutionOptions.length === 0) return undefined
+
+  // 与前端 normalizeVideoGenerationSelections 的约定一致：
+  // 缺省时使用第一个可选值作为默认分辨率。
+  return resolutionOptions.find((value): value is string => typeof value === 'string' && !!value.trim())
+}
+
 export function resolveNativeAudioRequest(
   modelKey: string,
   generationOptions: VideoOptionMap,
@@ -995,8 +1011,12 @@ export async function buildPanelVideoGenerationPromptPreview(params: {
       generationOptions,
     })
     : undefined
+  const requestedResolution = modelKey
+    ? resolveVideoResolutionSelection(modelKey, generationOptions)
+    : undefined
   const effectiveGenerationOptions: VideoOptionMap = {
     ...generationOptions,
+    ...(typeof requestedResolution === 'string' ? { resolution: requestedResolution } : {}),
     ...(typeof requestedDuration === 'number' ? { duration: requestedDuration } : {}),
   }
   const compiled = buildPanelVideoPromptFromResolvedInputs({

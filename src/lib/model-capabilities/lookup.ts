@@ -305,29 +305,29 @@ export function resolveGenerationOptionsForModel(input: {
     }
   }
 
-  // V8: 针对 video 模型缺少 duration 的情况，如果 catalog 中声明了 durationOptions，
-  // 且各层配置均未提供该字段，则自动使用第一个可选时长作为兜底，
-  // 避免声明了 durationOptions 的模型（如 Seedance 2.0）因 duration 缺失而校验失败。
+  // V8: 针对 video 模型缺失必填能力字段的情况（如 Seedance 2.0 的 duration、resolution），
+  // 如果 catalog 中声明了对应 *Options，且各层配置均未提供该字段，
+  // 则自动使用第一个可选值作为兜底（与前端 normalizeVideoGenerationSelections 的
+  // 「第一个兼容选项作默认」约定一致），避免旧固定提示词因字段缺失而校验失败。
+  // 注意：仅补全「必填但缺失」的字段，不掩盖 CAPABILITY_VALUE_NOT_ALLOWED 等非法值问题。
   if (input.modelType === 'video') {
     const optionFields = getCapabilityOptionFields(input.modelType, input.capabilities)
-    const durationOptions = Array.isArray(optionFields.duration) ? optionFields.duration : []
-    const supportedDurations = durationOptions.filter(
-      (value): value is number => typeof value === 'number' && value > 0,
+    const fieldPrefix = `capabilities.${input.modelKey}.`
+    const missingRequiredFields = new Set(
+      precheckIssues
+        .filter((issue) => issue.code === 'CAPABILITY_REQUIRED' && issue.field.startsWith(fieldPrefix))
+        .map((issue) => issue.field.slice(fieldPrefix.length))
+        .filter((field) => Array.isArray(optionFields[field]) && optionFields[field].length > 0),
     )
-    const hasDurationInSelection = Object.prototype.hasOwnProperty.call(normalizedSelection, 'duration')
 
-    if (supportedDurations.length > 0 && !hasDurationInSelection) {
-      const missingDurationIssue = precheckIssues.find(
-        (issue) =>
-          issue.code === 'CAPABILITY_REQUIRED'
-          && issue.field === `capabilities.${input.modelKey}.duration`,
-      )
-
-      if (missingDurationIssue) {
-        normalizedSelection = {
-          ...normalizedSelection,
-          duration: supportedDurations[0],
-        }
+    if (missingRequiredFields.size > 0) {
+      const autofilled: Record<string, CapabilityValue> = {}
+      for (const field of missingRequiredFields) {
+        autofilled[field] = optionFields[field]![0]
+      }
+      normalizedSelection = {
+        ...normalizedSelection,
+        ...autofilled,
       }
     }
   }
