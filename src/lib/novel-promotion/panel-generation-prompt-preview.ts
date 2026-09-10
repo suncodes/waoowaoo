@@ -29,6 +29,10 @@ import {
   validatePanelSpeechReadyForVideo,
 } from '@/lib/novel-promotion/panel-speech'
 import {
+  pickVideoDurationSeconds,
+  readPanelTargetDurationMs,
+} from '@/lib/video-generation-duration'
+import {
   type PanelVisualBindings,
 } from '@/lib/visual-production/bindings'
 import {
@@ -668,6 +672,29 @@ export function buildPanelImagePromptFromResolvedInputs(params: {
   }
 }
 
+export function resolveVideoDurationSelection(input: {
+  modelKey: string
+  panel: { targetDurationMs?: number | null; duration?: number | null }
+  generationOptions: VideoOptionMap
+}): number | undefined {
+  const optionDuration = input.generationOptions.duration
+  if (typeof optionDuration === 'number' && Number.isFinite(optionDuration)) return optionDuration
+
+  const capabilities = resolveBuiltinCapabilitiesByModelKey('video', input.modelKey)
+  const durationOptions = capabilities?.video?.durationOptions
+  if (!Array.isArray(durationOptions) || durationOptions.length === 0) return undefined
+
+  const supportedDurations = durationOptions.filter((value): value is number => typeof value === 'number' && value > 0)
+  if (supportedDurations.length === 0) return undefined
+
+  // 按镜头目标时长就近选择；没有目标时长时回退到最短可选时长，
+  // 避免声明了 durationOptions 的模型（如 Seedance 2.0）因 duration 缺失而校验失败。
+  return pickVideoDurationSeconds({
+    targetDurationMs: readPanelTargetDurationMs(input.panel),
+    supportedDurations,
+  }) ?? supportedDurations[0]
+}
+
 export function resolveNativeAudioRequest(
   modelKey: string,
   generationOptions: VideoOptionMap,
@@ -958,13 +985,27 @@ export async function buildPanelVideoGenerationPromptPreview(params: {
   const requestedGenerateAudio = modelKey
     ? resolveNativeAudioRequest(modelKey, generationOptions, panelSpeech)
     : undefined
+  const requestedDuration = modelKey
+    ? resolveVideoDurationSelection({
+      modelKey,
+      panel: {
+        targetDurationMs: panel.targetDurationMs,
+        duration: panelForPreview.duration,
+      },
+      generationOptions,
+    })
+    : undefined
+  const effectiveGenerationOptions: VideoOptionMap = {
+    ...generationOptions,
+    ...(typeof requestedDuration === 'number' ? { duration: requestedDuration } : {}),
+  }
   const compiled = buildPanelVideoPromptFromResolvedInputs({
     panel: panelForPreview,
     locale,
     generationMode,
     customPrompt,
     lastFrameProvided,
-    generationOptions,
+    generationOptions: effectiveGenerationOptions,
     includeNativeAudio: requestedGenerateAudio === true,
     panelSpeech,
   })
@@ -980,7 +1021,7 @@ export async function buildPanelVideoGenerationPromptPreview(params: {
     promptSpec: compiled.promptSpec,
     generationOptions: {
       ...(modelConfig.videoRatio ? { aspectRatio: modelConfig.videoRatio } : {}),
-      ...generationOptions,
+      ...effectiveGenerationOptions,
       generationMode,
       ...(typeof requestedGenerateAudio === 'boolean' ? { generateAudio: requestedGenerateAudio } : {}),
     },

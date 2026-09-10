@@ -3,6 +3,7 @@ import {
   buildPanelImagePromptFromResolvedInputs,
   buildPanelReferencePlan,
   buildPanelVideoPromptFromResolvedInputs,
+  resolveVideoDurationSelection,
 } from '@/lib/novel-promotion/panel-generation-prompt-preview'
 import type { PanelAssetBindingPlan } from '@/lib/visual-production/binding-plan'
 import type { PanelVisualBindings } from '@/lib/visual-production/bindings'
@@ -204,5 +205,57 @@ describe('panel generation prompt preview compiler', () => {
     expect(withoutNativeAudio.compiledPrompt).not.toContain('原生音频与台词计划')
     expect(withNativeAudio.compiledPrompt).toContain('原生音频与台词计划')
     expect(withNativeAudio.compiledPrompt).toContain('海底的阴影逼近。')
+  })
+})
+
+describe('resolveVideoDurationSelection', () => {
+  const seedance2 = 'ark::doubao-seedance-2-0-260128'
+
+  it('keeps the explicitly provided duration selection', () => {
+    expect(resolveVideoDurationSelection({
+      modelKey: seedance2,
+      panel: { targetDurationMs: 9000, duration: 9 },
+      generationOptions: { duration: 7 },
+    })).toBe(7)
+  })
+
+  it('picks the nearest supported duration from the panel target duration', () => {
+    expect(resolveVideoDurationSelection({
+      modelKey: seedance2,
+      panel: { targetDurationMs: 6400, duration: 6.4 },
+      generationOptions: {},
+    })).toBe(7)
+  })
+
+  it('falls back to the panel duration in seconds when target duration is missing', () => {
+    expect(resolveVideoDurationSelection({
+      modelKey: seedance2,
+      panel: { targetDurationMs: null, duration: 5 },
+      generationOptions: {},
+    })).toBe(5)
+  })
+
+  it('falls back to the shortest supported duration when the panel has no duration at all', () => {
+    expect(resolveVideoDurationSelection({
+      modelKey: seedance2,
+      panel: { targetDurationMs: null, duration: null },
+      generationOptions: {},
+    })).toBe(4)
+  })
+
+  it('caps at the longest supported duration when the target exceeds the range', () => {
+    expect(resolveVideoDurationSelection({
+      modelKey: seedance2,
+      panel: { targetDurationMs: 30000, duration: 30 },
+      generationOptions: {},
+    })).toBe(15)
+  })
+
+  it('returns undefined for models without duration options in the catalog', () => {
+    expect(resolveVideoDurationSelection({
+      modelKey: 'ark::not-a-catalog-video-model',
+      panel: { targetDurationMs: 5000, duration: 5 },
+      generationOptions: {},
+    })).toBeUndefined()
   })
 })

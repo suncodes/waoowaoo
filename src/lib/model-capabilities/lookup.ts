@@ -305,6 +305,33 @@ export function resolveGenerationOptionsForModel(input: {
     }
   }
 
+  // V8: 针对 video 模型缺少 duration 的情况，如果 catalog 中声明了 durationOptions，
+  // 且各层配置均未提供该字段，则自动使用第一个可选时长作为兜底，
+  // 避免声明了 durationOptions 的模型（如 Seedance 2.0）因 duration 缺失而校验失败。
+  if (input.modelType === 'video') {
+    const optionFields = getCapabilityOptionFields(input.modelType, input.capabilities)
+    const durationOptions = Array.isArray(optionFields.duration) ? optionFields.duration : []
+    const supportedDurations = durationOptions.filter(
+      (value): value is number => typeof value === 'number' && value > 0,
+    )
+    const hasDurationInSelection = Object.prototype.hasOwnProperty.call(normalizedSelection, 'duration')
+
+    if (supportedDurations.length > 0 && !hasDurationInSelection) {
+      const missingDurationIssue = precheckIssues.find(
+        (issue) =>
+          issue.code === 'CAPABILITY_REQUIRED'
+          && issue.field === `capabilities.${input.modelKey}.duration`,
+      )
+
+      if (missingDurationIssue) {
+        normalizedSelection = {
+          ...normalizedSelection,
+          duration: supportedDurations[0],
+        }
+      }
+    }
+  }
+
   // 使用补全后的 selection 再做一次严格校验，确保不会产生非法值
   const issues = validateCapabilitySelectionForModel({
     modelKey: input.modelKey,
