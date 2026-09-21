@@ -97,6 +97,37 @@ function readSavedModelsFromUpsert(): Array<Record<string, unknown>> {
   return parsed as Array<Record<string, unknown>>
 }
 
+function buildComfyUIProfile(mediaType: 'image' | 'video'): Record<string, unknown> {
+  const workflow: Record<string, unknown> = {
+    '1': {
+      class_type: 'CLIPTextEncode',
+      inputs: { text: '' },
+    },
+    '9': {
+      class_type: mediaType === 'video' ? 'SaveAnimatedWEBP' : 'SaveImage',
+      inputs: { images: ['1', 0] },
+    },
+  }
+  const inputMappings: Record<string, unknown> = {
+    prompt: { nodeId: '1', inputName: 'text', required: true },
+  }
+  if (mediaType === 'video') {
+    workflow['3'] = {
+      class_type: 'LoadImage',
+      inputs: { image: '' },
+    }
+    inputMappings.image = { nodeId: '3', inputName: 'image', required: true }
+  }
+
+  return {
+    version: 1,
+    mediaType,
+    workflow,
+    inputMappings,
+    outputNodeId: '9',
+  }
+}
+
 describe('api specific - user api-config PUT provider uniqueness', () => {
   beforeEach(() => {
     vi.resetModules()
@@ -1294,5 +1325,124 @@ describe('api specific - user api-config PUT provider uniqueness', () => {
       },
     })
     expect(savedModel?.compatMediaTemplateSource).toBe('ai')
+  })
+
+  it('persists a ComfyUI image model profile without an API key', async () => {
+    installAuthMocks()
+    mockAuthenticated('user-1')
+    const route = await import('@/app/api/user/api-config/route')
+
+    const req = buildMockRequest({
+      path: '/api/user/api-config',
+      method: 'PUT',
+      body: {
+        providers: [
+          { id: 'comfyui', name: 'ComfyUI', baseUrl: 'http://10.0.0.12:8188/comfy' },
+        ],
+        models: [
+          {
+            type: 'image',
+            provider: 'comfyui',
+            modelId: 'flux-dev',
+            modelKey: 'comfyui::flux-dev',
+            name: 'Flux Dev',
+            comfyuiProfile: buildComfyUIProfile('image'),
+          },
+        ],
+      },
+    })
+
+    const res = await route.PUT(req, routeContext)
+    expect(res.status).toBe(200)
+    expect(readSavedProvidersFromUpsert()).toEqual([
+      expect.objectContaining({
+        id: 'comfyui',
+        baseUrl: 'http://10.0.0.12:8188/comfy',
+        gatewayRoute: 'official',
+      }),
+    ])
+    expect(readSavedModelsFromUpsert()).toEqual([
+      expect.objectContaining({
+        modelKey: 'comfyui::flux-dev',
+        comfyuiProfile: buildComfyUIProfile('image'),
+      }),
+    ])
+  })
+
+  it('rejects a ComfyUI model without its workflow profile', async () => {
+    installAuthMocks()
+    mockAuthenticated('user-1')
+    const route = await import('@/app/api/user/api-config/route')
+
+    const res = await route.PUT(buildMockRequest({
+      path: '/api/user/api-config',
+      method: 'PUT',
+      body: {
+        providers: [{ id: 'comfyui', name: 'ComfyUI', baseUrl: 'http://10.0.0.12:8188' }],
+        models: [{
+          type: 'image',
+          provider: 'comfyui',
+          modelId: 'flux-dev',
+          modelKey: 'comfyui::flux-dev',
+          name: 'Flux Dev',
+        }],
+      },
+    }), routeContext)
+
+    expect(res.status).toBe(400)
+    expect(prismaMock.userPreference.upsert).not.toHaveBeenCalled()
+  })
+
+  it('rejects ComfyUI models for unsupported media types', async () => {
+    installAuthMocks()
+    mockAuthenticated('user-1')
+    const route = await import('@/app/api/user/api-config/route')
+
+    const res = await route.PUT(buildMockRequest({
+      path: '/api/user/api-config',
+      method: 'PUT',
+      body: {
+        providers: [{ id: 'comfyui', name: 'ComfyUI', baseUrl: 'http://10.0.0.12:8188' }],
+        models: [{
+          type: 'llm',
+          provider: 'comfyui',
+          modelId: 'not-supported',
+          modelKey: 'comfyui::not-supported',
+          name: 'Unsupported',
+          comfyuiProfile: buildComfyUIProfile('image'),
+        }],
+      },
+    }), routeContext)
+
+    expect(res.status).toBe(400)
+    expect(prismaMock.userPreference.upsert).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['missing', undefined],
+    ['loopback', 'http://127.0.0.1:8188'],
+  ])('rejects a %s ComfyUI remote base URL', async (_label, baseUrl) => {
+    installAuthMocks()
+    mockAuthenticated('user-1')
+    const route = await import('@/app/api/user/api-config/route')
+
+    const res = await route.PUT(buildMockRequest({
+      path: '/api/user/api-config',
+      method: 'PUT',
+      body: {
+        providers: [{ id: 'comfyui', name: 'ComfyUI', ...(baseUrl ? { baseUrl } : {}) }],
+        models: [{
+          type: 'image',
+          provider: 'comfyui',
+          modelId: 'flux-dev',
+          modelKey: 'comfyui::flux-dev',
+          name: 'Flux Dev',
+          comfyuiProfile: buildComfyUIProfile('image'),
+        }],
+      },
+    }), routeContext)
+
+    expect(res.status).toBe(400)
+    expect(prismaMock.userPreference.upsert).not.toHaveBeenCalled()
   })
 })

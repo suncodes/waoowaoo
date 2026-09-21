@@ -19,6 +19,11 @@ import type {
   OpenAICompatMediaTemplateSource,
 } from './openai-compat-media-template'
 import { validateOpenAICompatMediaTemplate } from './user-api/model-template/validator'
+import { normalizeComfyUIBaseUrl } from './comfyui/client'
+import {
+  validateComfyUIProfile,
+  type ComfyUIProfile,
+} from './comfyui/profile'
 
 export interface CustomModel {
   modelId: string
@@ -31,6 +36,7 @@ export interface CustomModel {
   compatMediaTemplate?: OpenAICompatMediaTemplate
   compatMediaTemplateCheckedAt?: string
   compatMediaTemplateSource?: OpenAICompatMediaTemplateSource
+  comfyuiProfile?: ComfyUIProfile
   // Non-authoritative display field; billing uses unified server pricing catalog.
   price: number
 }
@@ -44,6 +50,7 @@ export interface ModelSelection {
   mediaType: ModelMediaType
   llmProtocol?: 'responses' | 'chat-completions'
   compatMediaTemplate?: OpenAICompatMediaTemplate
+  comfyuiProfile?: ComfyUIProfile
 }
 
 type GatewayRouteType = 'official' | 'openai-compat'
@@ -67,6 +74,9 @@ function normalizeProviderBaseUrl(providerId: string, rawBaseUrl?: string): stri
 
   const baseUrl = readTrimmedString(rawBaseUrl)
   if (!baseUrl) return undefined
+  if (providerKey === 'comfyui') {
+    return normalizeComfyUIBaseUrl(baseUrl)
+  }
   if (providerKey !== 'openai-compatible') return baseUrl
 
   try {
@@ -180,7 +190,7 @@ function parseCustomProviders(rawProviders: string | null | undefined): CustomPr
     providers.push({
       id,
       name,
-      baseUrl: readTrimmedString(raw.baseUrl) || undefined,
+      baseUrl: normalizeProviderBaseUrl(id, readTrimmedString(raw.baseUrl) || undefined),
       apiKey: readTrimmedString(raw.apiKey) || undefined,
       apiMode,
       gatewayRoute,
@@ -241,6 +251,24 @@ function normalizeStoredModel(raw: unknown, index: number): CustomModel {
     ? compatMediaTemplateSourceRaw
     : undefined
 
+  const providerKey = getProviderKey(provider).toLowerCase()
+  const comfyuiProfileRaw = raw.comfyuiProfile
+  let comfyuiProfile: ComfyUIProfile | undefined
+  if (providerKey === 'comfyui') {
+    if (raw.type !== 'image' && raw.type !== 'video') {
+      throw new Error(`COMFYUI_MODEL_TYPE_UNSUPPORTED: models[${index}].type`)
+    }
+    const validated = validateComfyUIProfile(comfyuiProfileRaw, {
+      expectedMediaType: raw.type,
+    })
+    if (!validated.ok) {
+      throw new Error(`MODEL_COMFYUI_PROFILE_INVALID: models[${index}].comfyuiProfile ${validated.message}`)
+    }
+    comfyuiProfile = validated.profile
+  } else if (comfyuiProfileRaw !== undefined && comfyuiProfileRaw !== null) {
+    throw new Error(`MODEL_COMFYUI_PROFILE_NOT_ALLOWED: models[${index}].comfyuiProfile`)
+  }
+
   return {
     modelId,
     modelKey,
@@ -252,6 +280,7 @@ function normalizeStoredModel(raw: unknown, index: number): CustomModel {
     ...(compatMediaTemplate ? { compatMediaTemplate } : {}),
     ...(compatMediaTemplateCheckedAt ? { compatMediaTemplateCheckedAt } : {}),
     ...(compatMediaTemplateSource ? { compatMediaTemplateSource } : {}),
+    ...(comfyuiProfile ? { comfyuiProfile } : {}),
     price: 0,
   }
 }
@@ -317,6 +346,22 @@ export function getProviderKey(providerId?: string): string {
   return colonIndex === -1 ? providerId : providerId.slice(0, colonIndex)
 }
 
+function resolveComfyUIProfileForSelection(
+  model: CustomModel,
+  mediaType: ModelMediaType,
+): ComfyUIProfile {
+  if (mediaType !== 'image' && mediaType !== 'video') {
+    throw new Error(`COMFYUI_MODEL_TYPE_UNSUPPORTED: ${mediaType}`)
+  }
+  const validated = validateComfyUIProfile(model.comfyuiProfile, {
+    expectedMediaType: mediaType,
+  })
+  if (!validated.ok) {
+    throw new Error(`COMFYUI_PROFILE_INVALID: ${validated.message}`)
+  }
+  return validated.profile
+}
+
 /**
  * 统一模型选择解析（严格模式）
  */
@@ -340,6 +385,9 @@ export async function resolveModelSelection(
   const compatMediaTemplate = (mediaType === 'image' || mediaType === 'video') && providerKey === 'openai-compatible'
     ? exact.compatMediaTemplate
     : undefined
+  const comfyuiProfile = providerKey === 'comfyui'
+    ? resolveComfyUIProfileForSelection(exact, mediaType)
+    : undefined
 
   return {
     provider: exact.provider,
@@ -348,6 +396,7 @@ export async function resolveModelSelection(
     mediaType,
     ...(llmProtocol ? { llmProtocol } : {}),
     ...(compatMediaTemplate ? { compatMediaTemplate } : {}),
+    ...(comfyuiProfile ? { comfyuiProfile } : {}),
   }
 }
 
@@ -371,6 +420,9 @@ async function resolveSingleModelSelection(
   const compatMediaTemplate = (mediaType === 'image' || mediaType === 'video') && providerKey === 'openai-compatible'
     ? model.compatMediaTemplate
     : undefined
+  const comfyuiProfile = providerKey === 'comfyui'
+    ? resolveComfyUIProfileForSelection(model, mediaType)
+    : undefined
 
   return {
     provider: model.provider,
@@ -379,6 +431,7 @@ async function resolveSingleModelSelection(
     mediaType,
     ...(llmProtocol ? { llmProtocol } : {}),
     ...(compatMediaTemplate ? { compatMediaTemplate } : {}),
+    ...(comfyuiProfile ? { comfyuiProfile } : {}),
   }
 }
 
@@ -415,6 +468,13 @@ export interface ProviderConfig {
   gatewayRoute?: GatewayRouteType
 }
 
+/** ComfyUI 不使用 API Key；远端服务地址由 provider 配置提供。 */
+export interface ComfyUIProviderConfig {
+  id: string
+  name: string
+  baseUrl: string
+}
+
 export async function getProviderConfig(userId: string, providerId: string): Promise<ProviderConfig> {
   const { providers } = await readUserConfig(userId)
   const provider = pickProviderStrict(providers, providerId)
@@ -430,6 +490,23 @@ export async function getProviderConfig(userId: string, providerId: string): Pro
     baseUrl: normalizeProviderBaseUrl(provider.id, provider.baseUrl),
     apiMode: provider.apiMode,
     gatewayRoute: provider.gatewayRoute,
+  }
+}
+
+export async function getComfyUIProviderConfig(
+  userId: string,
+  providerId: string,
+): Promise<ComfyUIProviderConfig> {
+  const { providers } = await readUserConfig(userId)
+  const provider = pickProviderStrict(providers, providerId)
+  if (getProviderKey(provider.id).toLowerCase() !== 'comfyui') {
+    throw new Error(`COMFYUI_PROVIDER_INVALID: ${provider.id}`)
+  }
+
+  return {
+    id: provider.id,
+    name: provider.name,
+    baseUrl: normalizeComfyUIBaseUrl(provider.baseUrl || ''),
   }
 }
 
@@ -504,5 +581,8 @@ export async function hasApiConfig(userId: string): Promise<boolean> {
   })
 
   const providers = parseCustomProviders(pref?.customProviders)
-  return providers.some((provider) => !!provider.apiKey)
+  return providers.some((provider) => {
+    if (provider.apiKey) return true
+    return getProviderKey(provider.id).toLowerCase() === 'comfyui' && !!provider.baseUrl
+  })
 }

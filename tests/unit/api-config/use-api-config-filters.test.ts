@@ -116,4 +116,43 @@ describe('api config filters', () => {
       'ark',
     ])
   })
+
+  it('treats a remote ComfyUI Base URL as a configured provider connection', () => {
+    const providers: Provider[] = [
+      {
+        id: 'comfyui',
+        name: 'ComfyUI',
+        baseUrl: 'http://10.0.0.12:8188',
+        hasApiKey: false,
+      },
+    ]
+    const models: CustomModel[] = [
+      {
+        modelId: 'flux-dev',
+        modelKey: 'comfyui::flux-dev',
+        name: 'Flux Dev',
+        type: 'image',
+        provider: 'comfyui',
+        price: 0,
+        enabled: true,
+      },
+    ]
+
+    const result = useApiConfigFilters({ providers, models })
+    expect(result.getEnabledModelsByType('image').map((model) => model.modelKey)).toEqual([
+      'comfyui::flux-dev',
+    ])
+
+    const loopbackResult = useApiConfigFilters({
+      providers: [{ ...providers[0], baseUrl: 'http://localhost:8188' }],
+      models,
+    })
+    expect(loopbackResult.getEnabledModelsByType('image')).toEqual([])
+
+    const mappedLoopbackResult = useApiConfigFilters({
+      providers: [{ ...providers[0], baseUrl: 'http://[::ffff:127.0.0.1]:8188' }],
+      models,
+    })
+    expect(mappedLoopbackResult.getEnabledModelsByType('image')).toEqual([])
+  })
 })

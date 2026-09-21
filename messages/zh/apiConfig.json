@@ -4,7 +4,7 @@
   "saved": "已保存",
   "saveFailed": "保存失败",
   "connected": "已连接",
-  "notConfigured": "未配置 Key",
+  "notConfigured": "未配置",
   "configure": "配置",
   "connect": "连接",
   "compatibilityLayerOpenAI": "OpenAI 兼容层",
@@ -99,6 +99,13 @@
   "addGeminiProvider": "新增模型服务商",
   "baseUrl": "Base URL",
   "configureBaseUrl": "配置地址",
+  "configureProviderConnection": "配置连接地址",
+  "comfyuiRemoteUrlHint": "填写应用服务器和 Worker 都能访问的 ComfyUI 内网地址，例如 http://10.0.0.12:8188。不要填写 localhost；保存时会检测 /system_stats 和 /object_info。",
+  "comfyuiProfileLabel": "ComfyUI 模型 Profile（不是原始 API 工作流）",
+  "comfyuiProfilePlaceholder": "填写 Profile JSON；将 Save (API Format) 导出的节点对象放入 workflow 字段",
+  "comfyuiProfileHint": "每个模型独立保存一个 Profile。它必须包含 version、mediaType、workflow、inputMappings、outputNodeId；workflow 是 Save (API Format) 导出的完整节点对象。inputMappings 指定 prompt、seed、尺寸、参考图等写入哪个节点输入；视频 Profile 必须映射 image。",
+  "comfyuiProfileInvalid": "ComfyUI 工作流 Profile 无效。请检查 JSON、媒体类型、输入映射和输出节点。",
+  "comfyuiOnlyImageVideo": "ComfyUI 当前仅支持图像和图生视频模型。",
   "addModel": "添加模型",
   "batchModeHalfPrice": "批量模式（价格减半）",
   "openaiCompatVideoOnlyHint": "仅支持 OpenAI 官方格式的图生视频模型。",
@@ -129,6 +136,8 @@
     "imageGen": "图像生成",
     "credits": "余额检查",
     "audioGen": "音频生成",
+    "systemStats": "服务状态",
+    "objectInfo": "节点注册表",
     "skipped": "已跳过"
   },
   "tabs": {
@@ -177,7 +186,9 @@
       "openai_compatible_step1": "填写任意 OpenAI 协议兼容服务的 Base URL 与 API Key",
       "gemini_compatible_step1": "填写任意 Gemini 协议兼容服务的 Base URL 与 API Key",
       "bailian_step1": "进入阿里云百炼平台，获取 API Key",
-      "siliconflow_step1": "进入硅基流动控制台，创建 API Key"
+      "siliconflow_step1": "进入硅基流动控制台，创建 API Key",
+      "comfyui_step1": "填写应用服务器和 Worker 都可访问的远端 ComfyUI Base URL，例如 http://10.0.0.12:8188；不要填写 localhost。",
+      "comfyui_step2": "在 ComfyUI 中启用开发者模式，使用“Save (API Format)”导出工作流；将导出的完整节点对象放入 Profile 的 workflow 字段，并为图像或视频模型分别配置 inputMappings 和 outputNodeId。"
     }
   },
   "assistantOpen": "AI配置助手",

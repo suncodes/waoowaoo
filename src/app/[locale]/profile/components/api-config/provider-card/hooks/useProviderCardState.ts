@@ -7,6 +7,8 @@ import {
   PRESET_PROVIDERS,
   getProviderKey,
   getProviderTutorial,
+  hasValidComfyUIBaseUrl,
+  isComfyUIProvider,
   matchesModelKey,
 } from '../../types'
 import type {
@@ -19,6 +21,7 @@ import type {
 import { VERIFIABLE_PROVIDER_KEYS } from '../types'
 import type { CustomModel } from '../../types'
 import { apiFetch } from '@/lib/api-fetch'
+import { validateComfyUIProfile, type ComfyUIProfile } from '@/lib/comfyui/profile'
 import {
   useAssistantChat,
   type AssistantDraftModel,
@@ -54,6 +57,7 @@ interface UseProviderCardStateParams {
 const EMPTY_MODEL_FORM: ModelFormState = {
   name: '',
   modelId: '',
+  comfyuiProfileJson: '',
   enableCustomPricing: false,
   priceInput: '',
   priceOutput: '',
@@ -77,7 +81,7 @@ type BuildCustomPricingResult =
 
 interface ProviderConnectionPayload {
   apiType: string
-  apiKey: string
+  apiKey?: string
   baseUrl?: string
   llmModel?: string
 }
@@ -101,6 +105,27 @@ function isLlmProtocol(value: unknown): value is LlmProtocolType {
 
 function readProbeFailureCode(value: unknown): string {
   return typeof value === 'string' ? value : 'PROBE_INCONCLUSIVE'
+}
+
+function getConnectionTestFailureStep(providerKey: string): KeyTestStep['name'] {
+  return providerKey === 'comfyui' ? 'systemStats' : 'models'
+}
+
+export function parseComfyUIProfileForm(
+  rawProfile: string | undefined,
+  mediaType: 'image' | 'video',
+): { ok: true; profile: ComfyUIProfile } | { ok: false } {
+  const source = rawProfile?.trim()
+  if (!source) return { ok: false }
+
+  try {
+    const parsed = JSON.parse(source) as unknown
+    const validated = validateComfyUIProfile(parsed, { expectedMediaType: mediaType })
+    if (!validated.ok) return { ok: false }
+    return { ok: true, profile: validated.profile }
+  } catch {
+    return { ok: false }
+  }
 }
 
 export function shouldProbeModelLlmProtocol(params: {
@@ -173,16 +198,22 @@ export function buildProviderConnectionPayload(params: {
   llmModel?: string
 }): ProviderConnectionPayload {
   const apiKey = params.apiKey.trim()
-  const compatibleBaseUrl = params.baseUrl?.trim()
+  const baseUrl = params.baseUrl?.trim()
   const llmModel = params.llmModel?.trim()
+  if (params.providerKey === 'comfyui') {
+    return {
+      apiType: 'comfyui',
+      ...(baseUrl ? { baseUrl } : {}),
+    }
+  }
   const isCompatibleProvider =
     params.providerKey === 'openai-compatible' || params.providerKey === 'gemini-compatible'
 
-  if (isCompatibleProvider && compatibleBaseUrl) {
+  if (isCompatibleProvider && baseUrl) {
     return {
       apiType: params.providerKey,
       apiKey,
-      baseUrl: compatibleBaseUrl,
+      baseUrl,
       ...(llmModel ? { llmModel } : {}),
     }
   }
@@ -289,6 +320,7 @@ function toProviderCardModelType(type: CustomModel['type']): ProviderCardModelTy
 
 export interface UseProviderCardStateResult {
   providerKey: string
+  isComfyUI: boolean
   isPresetProvider: boolean
   showBaseUrlEdit: boolean
   tutorial: ReturnType<typeof getProviderTutorial>
@@ -380,13 +412,14 @@ export function useProviderCardState({
   const [isAssistantOpen, setIsAssistantOpen] = useState(false)
   const [assistantSavedEvent, setAssistantSavedEvent] = useState<AssistantSavedEvent | null>(null)
 
-  const providerKey = getProviderKey(provider.id)
+  const providerKey = getProviderKey(provider.id).toLowerCase()
+  const isComfyUI = isComfyUIProvider(provider.id)
   const assistantEnabled = providerKey === 'openai-compatible'
   const isPresetProvider = PRESET_PROVIDERS.some(
     (presetProvider) => presetProvider.id === provider.id,
   )
   const showBaseUrlEdit =
-    ['gemini-compatible', 'openai-compatible'].includes(providerKey) &&
+    ['gemini-compatible', 'openai-compatible', 'comfyui'].includes(providerKey) &&
     Boolean(onUpdateBaseUrl)
   const tutorial = getProviderTutorial(provider.id)
 
@@ -486,7 +519,7 @@ export function useProviderCardState({
         setKeyTestStatus('failed')
       }
     } catch {
-      setKeyTestSteps([{ name: 'models', status: 'fail', message: 'Network error' }])
+      setKeyTestSteps([{ name: getConnectionTestFailureStep(providerKey), status: 'fail', message: 'Network error' }])
       setKeyTestStatus('failed')
     }
   }, [defaultModels.analysisModel, doSaveKey, models, provider.baseUrl, providerKey, tempKey])
@@ -519,7 +552,7 @@ export function useProviderCardState({
       setKeyTestSteps(data.steps || [])
       setKeyTestStatus(data.success ? 'passed' : 'failed')
     } catch {
-      setKeyTestSteps([{ name: 'models', status: 'fail', message: 'Network error' }])
+      setKeyTestSteps([{ name: getConnectionTestFailureStep(providerKey), status: 'fail', message: 'Network error' }])
       setKeyTestStatus('failed')
     }
   }, [defaultModels.analysisModel, models, provider.apiKey, provider.baseUrl, providerKey])
@@ -536,14 +569,46 @@ export function useProviderCardState({
     setKeyTestSteps([])
   }
 
-  const handleSaveUrl = () => {
-    onUpdateBaseUrl?.(provider.id, tempUrl)
-    setIsEditingUrl(false)
-  }
+  const handleSaveUrl = useCallback(async () => {
+    if (!isComfyUI) {
+      onUpdateBaseUrl?.(provider.id, tempUrl)
+      setIsEditingUrl(false)
+      return
+    }
+
+    setKeyTestStatus('testing')
+    setKeyTestSteps([])
+    try {
+      const res = await apiFetch('/api/user/api-config/test-provider', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildProviderConnectionPayload({
+          providerKey,
+          apiKey: '',
+          baseUrl: tempUrl,
+        })),
+      })
+      const data = await res.json()
+      setKeyTestSteps(data.steps || [])
+      if (!data.success) {
+        setKeyTestStatus('failed')
+        return
+      }
+
+      onUpdateBaseUrl?.(provider.id, tempUrl)
+      setIsEditingUrl(false)
+      setKeyTestStatus('passed')
+    } catch {
+      setKeyTestSteps([{ name: 'systemStats', status: 'fail', message: 'Network error' }])
+      setKeyTestStatus('failed')
+    }
+  }, [isComfyUI, onUpdateBaseUrl, provider.id, providerKey, tempUrl])
 
   const handleCancelUrlEdit = () => {
     setTempUrl(provider.baseUrl || '')
     setIsEditingUrl(false)
+    setKeyTestStatus('idle')
+    setKeyTestSteps([])
   }
 
   const handleEditModel = (model: CustomModel) => {
@@ -551,6 +616,9 @@ export function useProviderCardState({
     setEditModel({
       name: model.name,
       modelId: model.modelId,
+      comfyuiProfileJson: model.comfyuiProfile
+        ? JSON.stringify(model.comfyuiProfile, null, 2)
+        : '',
     })
   }
 
@@ -587,6 +655,7 @@ export function useProviderCardState({
 
     const nextModelKey = encodeModelKey(provider.id, editModel.modelId)
     const all = allModels || models
+    const originalModel = all.find((model) => model.modelKey === originalModelKey)
     const duplicate = all.some(
       (model) =>
         model.modelKey === nextModelKey &&
@@ -598,9 +667,22 @@ export function useProviderCardState({
       return
     }
 
+    let comfyuiProfile: ComfyUIProfile | undefined
+    if (isComfyUI) {
+      if (originalModel?.type !== 'image' && originalModel?.type !== 'video') {
+        alert(t('comfyuiOnlyImageVideo'))
+        return
+      }
+      const parsedProfile = parseComfyUIProfileForm(editModel.comfyuiProfileJson, originalModel.type)
+      if (!parsedProfile.ok) {
+        alert(t('comfyuiProfileInvalid'))
+        return
+      }
+      comfyuiProfile = parsedProfile.profile
+    }
+
     setIsModelSavePending(true)
     try {
-      const originalModel = all.find((model) => model.modelKey === originalModelKey)
       let protocolUpdates: Pick<CustomModel, 'llmProtocol' | 'llmProtocolCheckedAt'> | null = null
       if (originalModel && shouldReprobeModelLlmProtocol({
         providerId: provider.id,
@@ -624,6 +706,7 @@ export function useProviderCardState({
       onUpdateModel?.(originalModelKey, {
         name: editModel.name,
         modelId: editModel.modelId,
+        ...(comfyuiProfile ? { comfyuiProfile } : {}),
         ...(protocolUpdates ? protocolUpdates : {}),
       })
 
@@ -635,6 +718,10 @@ export function useProviderCardState({
 
   const handleAddModel = async (type: ProviderCardModelType): Promise<void> => {
     if (isModelSavePending) return
+    if (isComfyUI && !hasValidComfyUIBaseUrl(provider.baseUrl)) {
+      alert(t('configureProviderConnection'))
+      return
+    }
     if (!newModel.name || !newModel.modelId) {
       alert(t('fillComplete'))
       return
@@ -656,6 +743,20 @@ export function useProviderCardState({
       type === 'video' && batchMode && provider.id === 'ark'
         ? `${newModel.name} (Batch)`
         : newModel.name
+
+    let comfyuiProfile: ComfyUIProfile | undefined
+    if (isComfyUI) {
+      if (type !== 'image' && type !== 'video') {
+        alert(t('comfyuiOnlyImageVideo'))
+        return
+      }
+      const parsedProfile = parseComfyUIProfileForm(newModel.comfyuiProfileJson, type)
+      if (!parsedProfile.ok) {
+        alert(t('comfyuiProfileInvalid'))
+        return
+      }
+      comfyuiProfile = parsedProfile.profile
+    }
 
     setIsModelSavePending(true)
     try {
@@ -682,6 +783,7 @@ export function useProviderCardState({
         type,
         provider: provider.id,
         price: 0,
+        ...(comfyuiProfile ? { comfyuiProfile } : {}),
         ...(protocolFields ? protocolFields : {}),
       })
 
@@ -776,6 +878,7 @@ export function useProviderCardState({
 
   return {
     providerKey,
+    isComfyUI,
     isPresetProvider,
     showBaseUrlEdit,
     tutorial,

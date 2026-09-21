@@ -68,4 +68,42 @@ describe('api specific - user models audio filter', () => {
       'bailian::qwen3-tts-vd-2026-01-26',
     ])
   })
+
+  it('includes ComfyUI image and video models when only a remote Base URL is configured', async () => {
+    prismaMock.userPreference.findUnique.mockResolvedValueOnce({
+      customModels: JSON.stringify([
+        {
+          modelId: 'flux-dev',
+          modelKey: 'comfyui::flux-dev',
+          name: 'Flux Dev',
+          type: 'image',
+          provider: 'comfyui',
+        },
+        {
+          modelId: 'wan-video',
+          modelKey: 'comfyui::wan-video',
+          name: 'Wan Video',
+          type: 'video',
+          provider: 'comfyui',
+        },
+      ]),
+      customProviders: JSON.stringify([
+        {
+          id: 'comfyui',
+          name: 'ComfyUI',
+          baseUrl: 'http://10.0.0.12:8188/comfy',
+        },
+      ]),
+    })
+    const mod = await import('@/app/api/user/models/route')
+    const res = await mod.GET(buildMockRequest({
+      path: '/api/user/models',
+      method: 'GET',
+    }), routeContext)
+
+    expect(res.status).toBe(200)
+    const body = await res.json() as { image: Array<{ value: string }>; video: Array<{ value: string }> }
+    expect(body.image.map((item) => item.value)).toEqual(['comfyui::flux-dev'])
+    expect(body.video.map((item) => item.value)).toEqual(['comfyui::wan-video'])
+  })
 })

@@ -1,7 +1,8 @@
 import OpenAI from 'openai'
 import { setProxy } from '../../../lib/prompts/proxy'
+import { buildComfyUIEndpoint, normalizeComfyUIBaseUrl } from '@/lib/comfyui/client'
 
-export type TestStepName = 'models' | 'textGen' | 'imageGen' | 'credits' | 'audioGen'
+export type TestStepName = 'models' | 'textGen' | 'imageGen' | 'credits' | 'audioGen' | 'systemStats' | 'objectInfo'
 export type TestStepStatus = 'pass' | 'fail' | 'skip'
 
 export interface TestStep {
@@ -20,12 +21,13 @@ export interface TestProviderResult {
 type PresetProviderType = 'ark' | 'google' | 'openrouter' | 'minimax' | 'fal' | 'vidu'
   | 'bailian'
   | 'siliconflow'
+  | 'comfyui'
 type CompatibleProviderType = 'openai-compatible' | 'gemini-compatible'
 
 type TestProviderPayload = {
   apiType: CompatibleProviderType | PresetProviderType
   baseUrl?: string
-  apiKey: string
+  apiKey?: string
   llmModel?: string
 }
 
@@ -829,11 +831,73 @@ async function testBailianProvider(apiKey: string): Promise<TestProviderResult> 
 }
 
 // ---------------------------------------------------------------------------
+// ComfyUI（内网远端服务，无 API Key）
+// ---------------------------------------------------------------------------
+
+async function testComfyUIProvider(baseUrl: string): Promise<TestProviderResult> {
+  let normalizedBaseUrl: string
+  try {
+    normalizedBaseUrl = normalizeComfyUIBaseUrl(baseUrl)
+  } catch (error) {
+    return {
+      success: false,
+      steps: [{ name: 'systemStats', status: 'fail', message: toErrorMessage(error) }],
+    }
+  }
+
+  const steps: TestStep[] = []
+  const probes: Array<{ name: 'systemStats' | 'objectInfo'; path: string; message: string }> = [
+    { name: 'systemStats', path: '/system_stats', message: 'ComfyUI system stats reachable' },
+    { name: 'objectInfo', path: '/object_info', message: 'ComfyUI node registry reachable' },
+  ]
+
+  for (const probe of probes) {
+    try {
+      const response = await fetch(buildComfyUIEndpoint(normalizedBaseUrl, probe.path), {
+        method: 'GET',
+        signal: AbortSignal.timeout(20_000),
+      })
+      if (!response.ok) {
+        const detail = await response.text().catch(() => '')
+        steps.push({
+          name: probe.name,
+          status: 'fail',
+          message: `HTTP ${response.status}`,
+          detail: detail.slice(0, 500) || undefined,
+        })
+        return { success: false, steps }
+      }
+      steps.push({ name: probe.name, status: 'pass', message: probe.message })
+      await response.body?.cancel().catch(() => undefined)
+    } catch (error) {
+      steps.push({
+        name: probe.name,
+        status: 'fail',
+        message: toNetworkErrorMessage(error),
+      })
+      return { success: false, steps }
+    }
+  }
+
+  return { success: true, steps }
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 export async function testProviderConnection(payload: TestProviderPayload): Promise<TestProviderResult> {
   const { apiType, baseUrl, apiKey, llmModel } = payload
+
+  if (apiType === 'comfyui') {
+    if (!baseUrl?.trim()) {
+      return {
+        success: false,
+        steps: [{ name: 'systemStats', status: 'fail', message: 'Missing baseUrl' }],
+      }
+    }
+    return await testComfyUIProvider(baseUrl)
+  }
 
   if (!apiKey) {
     return {

@@ -17,6 +17,13 @@ const getProviderConfigMock = vi.hoisted(() =>
     gatewayRoute: undefined,
   })),
 )
+const getComfyUIProviderConfigMock = vi.hoisted(() =>
+  vi.fn<typeof import('@/lib/api-config').getComfyUIProviderConfig>(async () => ({
+    id: 'comfyui',
+    name: 'ComfyUI',
+    baseUrl: 'http://10.0.0.12:8188',
+  })),
+)
 
 const generateImageViaOpenAICompatMock = vi.hoisted(() => vi.fn(async () => ({ success: true, imageUrl: 'compat-image' })))
 const generateVideoViaOpenAICompatMock = vi.hoisted(() => vi.fn(async () => ({ success: true, videoUrl: 'compat-video' })))
@@ -37,6 +44,8 @@ const generateBailianAudioMock = vi.hoisted(() => vi.fn(async () => ({ success: 
 const generateSiliconFlowImageMock = vi.hoisted(() => vi.fn(async () => ({ success: true, imageUrl: 'siliconflow-image' })))
 const generateSiliconFlowVideoMock = vi.hoisted(() => vi.fn(async () => ({ success: true, videoUrl: 'siliconflow-video' })))
 const generateSiliconFlowAudioMock = vi.hoisted(() => vi.fn(async () => ({ success: true, audioUrl: 'siliconflow-audio' })))
+const generateComfyUIImageMock = vi.hoisted(() => vi.fn(async () => ({ success: true, async: true, externalId: 'COMFY:IMAGE:token' })))
+const generateComfyUIVideoMock = vi.hoisted(() => vi.fn(async () => ({ success: true, async: true, externalId: 'COMFY:VIDEO:token' })))
 
 vi.mock('@/lib/api-config', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api-config')>()
@@ -44,6 +53,7 @@ vi.mock('@/lib/api-config', async (importOriginal) => {
     ...actual,
     resolveModelSelection: resolveModelSelectionMock,
     getProviderConfig: getProviderConfigMock,
+    getComfyUIProviderConfig: getComfyUIProviderConfigMock,
   }
 })
 
@@ -77,6 +87,11 @@ vi.mock('@/lib/providers/siliconflow', () => ({
   generateSiliconFlowAudio: generateSiliconFlowAudioMock,
 }))
 
+vi.mock('@/lib/comfyui/runtime', () => ({
+  generateComfyUIImage: generateComfyUIImageMock,
+  generateComfyUIVideo: generateComfyUIVideoMock,
+}))
+
 import { generateAudio, generateImage, generateVideo } from '@/lib/generator-api'
 
 describe('generator-api gateway routing', () => {
@@ -90,6 +105,11 @@ describe('generator-api gateway routing', () => {
       apiKey: 'google-key',
       apiMode: undefined,
       gatewayRoute: undefined,
+    })
+    getComfyUIProviderConfigMock.mockResolvedValue({
+      id: 'comfyui',
+      name: 'ComfyUI',
+      baseUrl: 'http://10.0.0.12:8188',
     })
   })
 
@@ -297,5 +317,85 @@ describe('generator-api gateway routing', () => {
     expect(generateBailianAudioMock).toHaveBeenCalledTimes(1)
     expect(createAudioGeneratorMock).not.toHaveBeenCalled()
     expect(result).toEqual({ success: true, audioUrl: 'bailian-audio' })
+  })
+
+  it('routes ComfyUI image generation to the workflow runtime without an API key', async () => {
+    resolveModelSelectionMock.mockResolvedValueOnce({
+      provider: 'comfyui',
+      modelId: 'flux-dev',
+      modelKey: 'comfyui::flux-dev',
+      mediaType: 'image',
+      comfyuiProfile: {
+        version: 1,
+        mediaType: 'image',
+        workflow: {
+          '1': { class_type: 'CLIPTextEncode', inputs: { text: '' } },
+          '9': { class_type: 'SaveImage', inputs: { images: ['1', 0] } },
+        },
+        inputMappings: {
+          prompt: { nodeId: '1', inputName: 'text', required: true },
+        },
+        outputNodeId: '9',
+      },
+    })
+
+    const result = await generateImage('user-1', 'comfyui::flux-dev', 'draw a fox', {
+      referenceImages: ['https://storage.example/reference.png'],
+      size: '1024x1024',
+    })
+
+    expect(getComfyUIProviderConfigMock).toHaveBeenCalledWith('user-1', 'comfyui')
+    expect(getProviderConfigMock).not.toHaveBeenCalled()
+    expect(generateComfyUIImageMock).toHaveBeenCalledWith(expect.objectContaining({
+      baseUrl: 'http://10.0.0.12:8188',
+      prompt: 'draw a fox',
+      referenceImages: ['https://storage.example/reference.png'],
+      options: expect.objectContaining({
+        size: '1024x1024',
+        provider: 'comfyui',
+        modelId: 'flux-dev',
+        modelKey: 'comfyui::flux-dev',
+      }),
+    }))
+    expect(result).toEqual({ success: true, async: true, externalId: 'COMFY:IMAGE:token' })
+  })
+
+  it('routes ComfyUI video generation to the workflow runtime', async () => {
+    resolveModelSelectionMock.mockResolvedValueOnce({
+      provider: 'comfyui',
+      modelId: 'wan-video',
+      modelKey: 'comfyui::wan-video',
+      mediaType: 'video',
+      comfyuiProfile: {
+        version: 1,
+        mediaType: 'video',
+        workflow: {
+          '1': { class_type: 'CLIPTextEncode', inputs: { text: '' } },
+          '3': { class_type: 'LoadImage', inputs: { image: '' } },
+          '9': { class_type: 'SaveAnimatedWEBP', inputs: { images: ['3', 0] } },
+        },
+        inputMappings: {
+          prompt: { nodeId: '1', inputName: 'text', required: true },
+          image: { nodeId: '3', inputName: 'image', required: true },
+        },
+        outputNodeId: '9',
+      },
+    })
+
+    const result = await generateVideo(
+      'user-1',
+      'comfyui::wan-video',
+      'https://storage.example/source.png',
+      { prompt: 'make it move', fps: 24 },
+    )
+
+    expect(getComfyUIProviderConfigMock).toHaveBeenCalledWith('user-1', 'comfyui')
+    expect(getProviderConfigMock).not.toHaveBeenCalled()
+    expect(generateComfyUIVideoMock).toHaveBeenCalledWith(expect.objectContaining({
+      imageUrl: 'https://storage.example/source.png',
+      prompt: 'make it move',
+      options: expect.objectContaining({ fps: 24, modelId: 'wan-video' }),
+    }))
+    expect(result).toEqual({ success: true, async: true, externalId: 'COMFY:VIDEO:token' })
   })
 })

@@ -35,6 +35,7 @@ export interface ProviderCardProps {
 export interface ModelFormState {
   name: string
   modelId: string
+  comfyuiProfileJson?: string
   enableCustomPricing?: boolean
   priceInput?: string
   priceOutput?: string
@@ -58,5 +59,6 @@ export type ProviderCardTranslator = (
 export const VERIFIABLE_PROVIDER_KEYS = new Set([
   'ark', 'google', 'openrouter', 'minimax', 'fal', 'vidu',
   'bailian', 'siliconflow',
+  'comfyui',
   'openai-compatible', 'gemini-compatible',
 ])

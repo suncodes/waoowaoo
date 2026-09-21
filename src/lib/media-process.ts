@@ -26,14 +26,68 @@ function resolveContentType(ext: string): string {
   return MIME_BY_EXT[ext] || 'application/octet-stream'
 }
 
+function defaultExtensionForMediaType(type: ProcessMediaOptions['type']): string {
+  if (type === 'video') return 'mp4'
+  if (type === 'audio') return 'mp3'
+  return 'jpg'
+}
+
+function isExtensionCompatibleWithMediaType(ext: string, type: ProcessMediaOptions['type']): boolean {
+  const mimeType = resolveContentType(ext)
+  if (type === 'image') return mimeType.startsWith('image/')
+  if (type === 'video') return mimeType.startsWith('video/')
+  return mimeType.startsWith('audio/')
+}
+
+function extensionFromMimeType(mimeType: string): string | null {
+  const normalized = mimeType.trim().toLowerCase().split(';', 1)[0]
+  for (const [extension, mappedMimeType] of Object.entries(MIME_BY_EXT)) {
+    if (mappedMimeType === normalized) return extension
+  }
+  return null
+}
+
+function extensionFromUrl(value: string): string | null {
+  try {
+    const parsed = new URL(value)
+    const filename = parsed.searchParams.get('filename') || parsed.pathname.split('/').pop() || ''
+    const match = filename.toLowerCase().match(/\.([a-z0-9]{1,10})$/)
+    return match?.[1] || null
+  } catch {
+    const cleanValue = value.split(/[?#]/, 1)[0] || ''
+    const match = cleanValue.toLowerCase().match(/\.([a-z0-9]{1,10})$/)
+    return match?.[1] || null
+  }
+}
+
+function resolveSourceMediaFormat(source: string | Buffer, type: ProcessMediaOptions['type']): {
+  ext: string
+  contentType: string
+} {
+  let extension: string | null = null
+  if (typeof source === 'string' && source.startsWith('data:')) {
+    const mimeType = source.slice(5).split(/[;,]/, 1)[0] || ''
+    extension = extensionFromMimeType(mimeType)
+  } else if (typeof source === 'string') {
+    extension = extensionFromUrl(source)
+  }
+
+  const ext = extension && isExtensionCompatibleWithMediaType(extension, type)
+    ? extension
+    : defaultExtensionForMediaType(type)
+  return {
+    ext,
+    contentType: resolveContentType(ext),
+  }
+}
+
 /**
  * 处理媒体结果：下载 -> 上传 COS，返回 COS key。
  */
 export async function processMediaResult(options: ProcessMediaOptions): Promise<string> {
   const { source, type, keyPrefix, targetId, downloadHeaders } = options
-  const ext = type === 'video' ? 'mp4' : type === 'audio' ? 'mp3' : 'jpg'
+  const { ext, contentType } = resolveSourceMediaFormat(source, type)
   const key = generateUniqueKey(`${keyPrefix}-${targetId}`, ext)
-  const contentType = resolveContentType(ext)
 
   if (typeof source === 'string') {
     if (source.startsWith('data:')) {
@@ -45,7 +99,7 @@ export async function processMediaResult(options: ProcessMediaOptions): Promise<
     }
 
     if (type === 'video') {
-      return await downloadAndUploadVideo(source, key, 3, downloadHeaders)
+      return await downloadAndUploadVideo(source, key, 3, downloadHeaders, contentType)
     }
 
     const response = await fetch(toFetchableUrl(source))

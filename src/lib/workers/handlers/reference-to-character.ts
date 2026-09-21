@@ -2,9 +2,7 @@ import sharp from 'sharp'
 import type { Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
 import { generateImage } from '@/lib/generator-api'
-import { queryFalStatus } from '@/lib/async-submit'
 import { fetchWithTimeoutAndRetry } from '@/lib/ark-api'
-import { getProviderConfig } from '@/lib/api-config'
 import { executeAiVisionStep } from '@/lib/ai-runtime'
 import { getProjectModelConfig, getUserModelConfig } from '@/lib/config-service'
 import {
@@ -18,7 +16,7 @@ import { encodeImageUrls } from '@/lib/contracts/image-urls-contract'
 import { generateUniqueKey, getSignedUrl, uploadObject } from '@/lib/storage'
 import { initializeFonts, createLabelSVG } from '@/lib/fonts'
 import { reportTaskProgress } from '@/lib/workers/shared'
-import { assertTaskActive } from '@/lib/workers/utils'
+import { assertTaskActive, waitExternalResult } from '@/lib/workers/utils'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
 import { normalizeImageGenerationCount } from '@/lib/image-generation/count'
@@ -27,8 +25,13 @@ import {
   readBoolean,
   readString,
 } from './reference-to-character-helpers'
-const POLL_MAX_ATTEMPTS = 60
-const POLL_INTERVAL_MS = 2000
+
+function isComfyUISubmissionUnknownError(error: unknown): boolean {
+  return !!error
+    && typeof error === 'object'
+    && (error as { code?: unknown }).code === 'COMFYUI_SUBMISSION_UNKNOWN'
+}
+
 async function generateReferenceImage(params: {
   job: Job<TaskJobData>
   imageIndex: number
@@ -36,7 +39,6 @@ async function generateReferenceImage(params: {
   imageModel: string
   prompt: string
   referenceImages?: string[]
-  falApiKey?: string | null
   keyPrefix: string
   labelText?: string
 }): Promise<string | null> {
@@ -47,7 +49,6 @@ async function generateReferenceImage(params: {
     imageModel,
     prompt,
     referenceImages,
-    falApiKey,
     keyPrefix,
     labelText,
   } = params
@@ -64,30 +65,24 @@ async function generateReferenceImage(params: {
       },
     )
 
-    let finalImageUrl = result.imageUrl
-    const requestId = typeof result.requestId === 'string' ? result.requestId : ''
-    const endpoint = typeof result.endpoint === 'string' ? result.endpoint : ''
-    if (result.async && requestId && endpoint) {
-      if (!falApiKey) {
-        throw new Error('reference_to_character async result requires falApiKey')
-      }
-      for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt += 1) {
-        await assertTaskActive(job, `reference_to_character_poll_${imageIndex + 1}_${attempt + 1}`)
-        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
-        const status = await queryFalStatus(endpoint, requestId, falApiKey)
-        if (status.completed && status.resultUrl) {
-          finalImageUrl = status.resultUrl
-          break
-        }
-        if (status.failed) {
-          return null
-        }
-      }
-    }
-
-    if (!result.success || !finalImageUrl) {
+    if (!result.success) {
       return null
     }
+
+    let finalImageUrl = result.imageUrl
+    if (result.async) {
+      const externalId = typeof result.externalId === 'string' ? result.externalId.trim() : ''
+      if (!externalId) {
+        throw new Error('ASYNC_EXTERNAL_ID_MISSING: reference-to-character image task')
+      }
+      const polled = await waitExternalResult(job, externalId, userId, {
+        // 该任务会并行生成多张图，Task.externalId 无法完整表达全部子任务。
+        persistTaskExternalId: false,
+      })
+      finalImageUrl = polled.url
+    }
+
+    if (!finalImageUrl) return null
 
     const imgRes = await fetchWithTimeoutAndRetry(finalImageUrl, {
       logPrefix: `[reference-to-character:${imageIndex + 1}]`,
@@ -120,7 +115,10 @@ async function generateReferenceImage(params: {
 
     const key = generateUniqueKey(`${keyPrefix}-${Date.now()}-${imageIndex}`, 'jpg')
     return await uploadObject(processed, key)
-  } catch {
+  } catch (error) {
+    // ComfyUI 可能已接受提交但响应丢失；必须保留错误码交给 Worker，
+    // 使队列停止重试，避免重新提交而生成重复图片。
+    if (isComfyUISubmissionUnknownError(error)) throw error
     return null
   }
 }
@@ -231,7 +229,6 @@ export async function handleReferenceToCharacterTask(job: Job<TaskJobData>) {
     job.data.locale,
   )
 
-  const { apiKey: falApiKey } = await getProviderConfig(job.data.userId, 'fal')
   const keyPrefix = isAssetHub ? 'ref-char' : `proj-ref-char-${job.data.projectId}`
   const count = normalizeImageGenerationCount('reference-to-character', payload.count)
 
@@ -249,7 +246,6 @@ export async function handleReferenceToCharacterTask(job: Job<TaskJobData>) {
       imageModel,
       prompt,
       referenceImages: useReferenceImages ? generationReferenceImages : undefined,
-      falApiKey,
       keyPrefix,
       ...(isProject ? { labelText: characterName } : {}),
     }),

@@ -37,7 +37,7 @@ const concurrencyGateMock = vi.hoisted(() => ({
   withUserConcurrencyGate: vi.fn(async <T>(input: { run: () => Promise<T> }) => await input.run()),
 }))
 const artifactMock = vi.hoisted(() => ({
-  createArtifact: vi.fn(async () => undefined),
+  createArtifact: vi.fn<(input: { payload?: unknown }) => Promise<void>>(async () => undefined),
 }))
 const audioMixMock = vi.hoisted(() => ({
   mixPanelAudioToStorage: vi.fn(async () => ({

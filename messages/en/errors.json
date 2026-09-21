@@ -9,6 +9,7 @@
     "MODEL_NOT_CONFIGURED": "No model configured. Please go to Settings and add the required model type before generating.",
     "QUOTA_EXCEEDED": "Quota exceeded. Please try again later",
     "GENERATION_FAILED": "Generation failed. Please retry",
+    "COMFYUI_SUBMISSION_UNKNOWN": "The ComfyUI submission result is unknown and the task may already be queued. It will not be retried automatically to avoid duplicate generation.",
     "GENERATION_TIMEOUT": "Generation timed out. Please retry",
     "SENSITIVE_CONTENT": "Content may contain sensitive material",
     "INVALID_PARAMS": "Invalid parameters",

@@ -120,6 +120,7 @@ export async function downloadAndUploadVideo(
   key: string,
   maxRetries: number = UPLOAD_MAX_RETRIES,
   requestHeaders?: Record<string, string>,
+  contentType?: string,
 ): Promise<string> {
   return await withRetry(async () => {
     const response = await fetch(toFetchableUrl(videoUrl), {
@@ -134,7 +135,7 @@ export async function downloadAndUploadVideo(
     }
 
     const buffer = Buffer.from(await response.arrayBuffer())
-    return await uploadObject(buffer, key, 1)
+    return await uploadObject(buffer, key, 1, contentType)
   }, maxRetries, RETRY_DELAY_BASE_MS)
 }
 

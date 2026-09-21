@@ -6,7 +6,7 @@ import type { ProviderCardProps, ProviderCardTranslator } from './types'
 import { VERIFIABLE_PROVIDER_KEYS } from './types'
 import type { UseProviderCardStateResult } from './hooks/useProviderCardState'
 import { AppIcon } from '@/components/ui/icons'
-import { getProviderKey } from '../types'
+import { getProviderKey, hasProviderConnection } from '../types'
 
 interface ProviderCardShellProps {
   provider: ProviderCardProps['provider']
@@ -54,7 +54,8 @@ export function ProviderCardShell({
   const compatibilityLayerLabel = getCompatibilityLayerBadgeLabel(provider.id, t)
   const providerKey = getProviderKey(provider.id)
   const isVerifiable = VERIFIABLE_PROVIDER_KEYS.has(providerKey)
-  const canTest = isVerifiable && !!provider.hasApiKey
+  const connected = hasProviderConnection(provider)
+  const canTest = isVerifiable && connected
   const isHidden = provider.hidden === true
   const hiddenToggleLabel = isHidden
     ? (showProviderLabel || t('showProvider'))
@@ -95,8 +96,8 @@ export function ProviderCardShell({
             </span>
           )}
           {/* 连接状态图标 */}
-          <span title={provider.hasApiKey ? t('connected') : t('notConfigured')}>
-            <StatusIcon connected={!!provider.hasApiKey} />
+          <span title={connected ? t('connected') : t('notConfigured')}>
+            <StatusIcon connected={connected} />
           </span>
         </div>
         <div className="flex items-center gap-1.5">

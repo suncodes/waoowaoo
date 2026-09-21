@@ -9,6 +9,7 @@
     "MODEL_NOT_CONFIGURED": "未配置可用模型，请先前往「设置」页面添加对应类型的模型后再试",
     "QUOTA_EXCEEDED": "配额已用尽，请稍后重试",
     "GENERATION_FAILED": "生成失败，请重试",
+    "COMFYUI_SUBMISSION_UNKNOWN": "ComfyUI 提交结果不确定，任务可能已进入队列。为避免重复生成，系统不会自动重试，请稍后检查任务结果。",
     "GENERATION_TIMEOUT": "生成超时，请重试",
     "SENSITIVE_CONTENT": "内容可能包含敏感信息",
     "INVALID_PARAMS": "参数错误",

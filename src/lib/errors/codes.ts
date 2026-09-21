@@ -157,6 +157,13 @@ export const ERROR_CATALOG = {
     userMessageKey: 'errors.GENERATION_FAILED',
     defaultMessage: 'Generation failed',
   },
+  COMFYUI_SUBMISSION_UNKNOWN: {
+    httpStatus: 502,
+    retryable: false,
+    category: ERROR_CATEGORY.PROVIDER,
+    userMessageKey: 'errors.COMFYUI_SUBMISSION_UNKNOWN',
+    defaultMessage: 'ComfyUI submission result is unknown. The task may already be queued.',
+  },
   WATCHDOG_TIMEOUT: {
     httpStatus: 500,
     retryable: true,

@@ -27,6 +27,7 @@ vi.mock('react-dom', async () => {
 function createState(tutorial: ProviderTutorial): UseProviderCardStateResult {
   return {
     providerKey: 'ark',
+    isComfyUI: false,
     isPresetProvider: true,
     showBaseUrlEdit: false,
     tutorial,

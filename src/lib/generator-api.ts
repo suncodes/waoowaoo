@@ -10,7 +10,12 @@ import { logInfo as _ulogInfo } from '@/lib/logging/core'
 
 import { createAudioGenerator, createImageGenerator, createVideoGenerator } from './generators/factory'
 import type { GenerateResult } from './generators/base'
-import { getProviderConfig, getProviderKey, resolveModelSelection } from './api-config'
+import {
+    getComfyUIProviderConfig,
+    getProviderConfig,
+    getProviderKey,
+    resolveModelSelection,
+} from './api-config'
 import {
     generateImageViaOpenAICompat,
     generateImageViaOpenAICompatTemplate,
@@ -20,6 +25,7 @@ import {
 } from './model-gateway'
 import { generateBailianAudio, generateBailianImage, generateBailianVideo } from './providers/bailian'
 import { generateSiliconFlowAudio, generateSiliconFlowImage, generateSiliconFlowVideo } from './providers/siliconflow'
+import { generateComfyUIImage, generateComfyUIVideo } from './comfyui/runtime'
 
 const OFFICIAL_ONLY_PROVIDER_KEYS = new Set(['bailian', 'siliconflow'])
 
@@ -63,8 +69,28 @@ export async function generateImage(
 ): Promise<GenerateResult> {
     const selection = await resolveModelSelection(userId, modelKey, 'image')
     _ulogInfo(`[generateImage] resolved model selection: ${selection.modelKey}`)
-    const providerConfig = await getProviderConfig(userId, selection.provider)
     const providerKey = getProviderKey(selection.provider).toLowerCase()
+    const { referenceImages, ...generatorOptions } = options || {}
+    if (providerKey === 'comfyui') {
+        if (!selection.comfyuiProfile) {
+            throw new Error(`COMFYUI_PROFILE_INVALID: ${selection.modelKey}`)
+        }
+        const providerConfig = await getComfyUIProviderConfig(userId, selection.provider)
+        return await generateComfyUIImage({
+            baseUrl: providerConfig.baseUrl,
+            providerId: selection.provider,
+            profile: selection.comfyuiProfile,
+            prompt,
+            referenceImages,
+            options: {
+                ...generatorOptions,
+                provider: selection.provider,
+                modelId: selection.modelId,
+                modelKey: selection.modelKey,
+            },
+        })
+    }
+    const providerConfig = await getProviderConfig(userId, selection.provider)
     if (providerKey === 'bailian') {
         return await generateBailianImage({
             userId,
@@ -102,7 +128,6 @@ export async function generateImage(
     }
 
     // 调用生成（提取 referenceImages 单独传递，其余选项合并进 options）
-    const { referenceImages, ...generatorOptions } = options || {}
     if (gatewayRoute === 'openai-compat') {
         const compatTemplate = selection.compatMediaTemplate
         if (providerKey === 'openai-compatible' && !compatTemplate) {
@@ -194,6 +219,26 @@ export async function generateVideo(
     const selection = await resolveModelSelection(userId, modelKey, 'video')
     _ulogInfo(`[generateVideo] resolved model selection: ${selection.modelKey}`)
     const providerKey = getProviderKey(selection.provider).toLowerCase()
+    const { prompt, ...providerOptions } = options || {}
+    if (providerKey === 'comfyui') {
+        if (!selection.comfyuiProfile) {
+            throw new Error(`COMFYUI_PROFILE_INVALID: ${selection.modelKey}`)
+        }
+        const providerConfig = await getComfyUIProviderConfig(userId, selection.provider)
+        return await generateComfyUIVideo({
+            baseUrl: providerConfig.baseUrl,
+            providerId: selection.provider,
+            profile: selection.comfyuiProfile,
+            imageUrl,
+            prompt: prompt || '',
+            options: {
+                ...providerOptions,
+                provider: selection.provider,
+                modelId: selection.modelId,
+                modelKey: selection.modelKey,
+            },
+        })
+    }
     if (providerKey === 'bailian') {
         return await generateBailianVideo({
             userId,
@@ -226,7 +271,6 @@ export async function generateVideo(
         ? 'official'
         : (providerConfig.gatewayRoute || defaultGatewayRoute)
 
-    const { prompt, ...providerOptions } = options || {}
     if (gatewayRoute === 'openai-compat') {
         const compatTemplate = selection.compatMediaTemplate
         if (providerKey === 'openai-compatible' && !compatTemplate) {

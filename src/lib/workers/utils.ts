@@ -87,7 +87,13 @@ export async function waitExternalResult(
   job: Job<TaskJobData>,
   externalId: string,
   userId: string,
-  opts?: { timeoutMs?: number; intervalMs?: number; progressStart?: number; progressEnd?: number },
+  opts?: {
+    timeoutMs?: number
+    intervalMs?: number
+    progressStart?: number
+    progressEnd?: number
+    persistTaskExternalId?: boolean
+  },
 ) {
   const timeoutMs = opts?.timeoutMs ?? DEFAULT_POLL_TIMEOUT_MS
   const intervalMs = opts?.intervalMs ?? DEFAULT_POLL_INTERVAL_MS
@@ -105,7 +111,11 @@ export async function waitExternalResult(
     },
   })
 
-  await trySetTaskExternalId(job.data.taskId, externalId)
+  // Task.externalId 只能保存一个外部任务。多图并行等复合任务可关闭持久化，
+  // 避免重试时把其中一个子任务误当成整个任务的可恢复结果。
+  if (opts?.persistTaskExternalId !== false) {
+    await trySetTaskExternalId(job.data.taskId, externalId)
+  }
 
   while (Date.now() - startAt <= timeoutMs) {
     await assertTaskActive(job, 'polling_external')

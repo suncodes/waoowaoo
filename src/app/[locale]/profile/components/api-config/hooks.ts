@@ -11,6 +11,7 @@ import {
     PRESET_MODELS,
     encodeModelKey,
     getProviderKey,
+    isComfyUIProvider,
     isPresetComingSoonModelKey,
     resolvePresetProviderName,
     type PricingDisplayItem,
@@ -91,7 +92,9 @@ export function mergeProvidersForDisplay(
             merged.push({
                 ...matchedPreset,
                 apiKey,
-                hasApiKey: apiKey.length > 0,
+                hasApiKey: isComfyUIProvider(savedProvider.id)
+                    ? Boolean(providerBaseUrl?.trim())
+                    : apiKey.length > 0,
                 hidden: savedProvider.hidden === true,
                 baseUrl: providerBaseUrl,
                 apiMode: savedProvider.apiMode,
@@ -103,7 +106,9 @@ export function mergeProvidersForDisplay(
 
         merged.push({
             ...savedProvider,
-            hasApiKey: !!savedProvider.apiKey,
+            hasApiKey: isComfyUIProvider(savedProvider.id)
+                ? Boolean(savedProvider.baseUrl?.trim())
+                : !!savedProvider.apiKey,
         })
     }
 
@@ -586,7 +591,12 @@ export function useProviders(): UseProvidersReturn {
                 alert(t('providerIdExists'))
                 return prev
             }
-            const newProvider: Provider = { ...provider, hasApiKey: !!provider.apiKey }
+            const newProvider: Provider = {
+                ...provider,
+                hasApiKey: isComfyUIProvider(provider.id)
+                    ? Boolean(provider.baseUrl?.trim())
+                    : !!provider.apiKey,
+            }
             const next = [...prev, newProvider]
             latestProvidersRef.current = next
 
@@ -649,7 +659,13 @@ export function useProviders(): UseProvidersReturn {
     const updateProviderBaseUrl = useCallback((providerId: string, baseUrl: string) => {
         setProviders(prev => {
             const next = prev.map(p =>
-                p.id === providerId ? { ...p, baseUrl } : p
+                p.id === providerId
+                    ? {
+                        ...p,
+                        baseUrl,
+                        ...(isComfyUIProvider(p.id) ? { hasApiKey: Boolean(baseUrl.trim()) } : {}),
+                    }
+                    : p
             )
             latestProvidersRef.current = next
             void performSave(undefined, true)

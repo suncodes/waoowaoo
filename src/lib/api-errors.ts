@@ -379,6 +379,7 @@ export const API_ERROR_CODES = {
   MODEL_NOT_OPEN: { status: getErrorSpec('MODEL_NOT_OPEN').httpStatus },
   QUOTA_EXCEEDED: { status: getErrorSpec('QUOTA_EXCEEDED').httpStatus },
   GENERATION_FAILED: { status: getErrorSpec('GENERATION_FAILED').httpStatus },
+  COMFYUI_SUBMISSION_UNKNOWN: { status: getErrorSpec('COMFYUI_SUBMISSION_UNKNOWN').httpStatus },
   GENERATION_TIMEOUT: { status: getErrorSpec('GENERATION_TIMEOUT').httpStatus },
   SENSITIVE_CONTENT: { status: getErrorSpec('SENSITIVE_CONTENT').httpStatus },
   INVALID_PARAMS: { status: getErrorSpec('INVALID_PARAMS').httpStatus },

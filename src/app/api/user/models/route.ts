@@ -18,6 +18,7 @@ import {
 } from '@/lib/model-config-contract'
 import { findBuiltinCapabilities } from '@/lib/model-capabilities/catalog'
 import { findBuiltinPricingCatalogEntry } from '@/lib/model-pricing/catalog'
+import { normalizeComfyUIBaseUrl } from '@/lib/comfyui/client'
 import type { VideoPricingTier } from '@/lib/model-pricing/video-tier'
 
 type StoredModelType = UnifiedModelType | string
@@ -33,6 +34,7 @@ interface StoredModel {
 interface StoredProvider {
   id?: string
   name?: string
+  baseUrl?: string
   apiKey?: string
 }
 
@@ -157,6 +159,26 @@ function hasStoredProviderApiKey(provider: StoredProvider): boolean {
   return typeof provider.apiKey === 'string' && provider.apiKey.trim().length > 0
 }
 
+function getProviderKey(providerId: string): string {
+  const colonIndex = providerId.indexOf(':')
+  return (colonIndex === -1 ? providerId : providerId.slice(0, colonIndex)).toLowerCase()
+}
+
+function hasStoredProviderConnection(provider: StoredProvider): boolean {
+  if (hasStoredProviderApiKey(provider)) return true
+
+  const providerId = typeof provider.id === 'string' ? provider.id.trim() : ''
+  const baseUrl = typeof provider.baseUrl === 'string' ? provider.baseUrl.trim() : ''
+  if (getProviderKey(providerId) !== 'comfyui' || !baseUrl) return false
+
+  try {
+    normalizeComfyUIBaseUrl(baseUrl)
+    return true
+  } catch {
+    return false
+  }
+}
+
 function isUserSelectableModel(model: StoredModel): boolean {
   if (model.type !== 'audio') return true
   const modelId = toModelId(model)
@@ -178,7 +200,7 @@ export const GET = apiHandler(async () => {
   const providers: StoredProvider[] = parseStoredProviders(pref?.customProviders)
 
   const providerNameMap = new Map<string, string>()
-  const providerIdsWithApiKey = new Set<string>()
+  const providerIdsWithConnection = new Set<string>()
   providers.forEach((provider) => {
     const providerId = typeof provider?.id === 'string' ? provider.id.trim() : ''
     if (!providerId) return
@@ -186,7 +208,7 @@ export const GET = apiHandler(async () => {
     if (provider?.name && typeof provider.name === 'string') {
       providerNameMap.set(providerId, provider.name)
     }
-    if (hasStoredProviderApiKey(provider)) providerIdsWithApiKey.add(providerId)
+    if (hasStoredProviderConnection(provider)) providerIdsWithConnection.add(providerId)
   })
 
   const grouped: UserModelsPayload = {
@@ -206,7 +228,7 @@ export const GET = apiHandler(async () => {
     if (!modelKey) continue
 
     const provider = toProvider(model)
-    if (!provider || !providerIdsWithApiKey.has(provider)) continue
+    if (!provider || !providerIdsWithConnection.has(provider)) continue
     const modelId = toModelId(model)
     const option: UserModelOption = {
       value: modelKey,

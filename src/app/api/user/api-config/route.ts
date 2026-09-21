@@ -41,6 +41,11 @@ import type {
   OpenAICompatMediaTemplateSource,
 } from '@/lib/openai-compat-media-template'
 import { validateOpenAICompatMediaTemplate } from '@/lib/user-api/model-template/validator'
+import { normalizeComfyUIBaseUrl } from '@/lib/comfyui/client'
+import {
+  validateComfyUIProfile,
+  type ComfyUIProfile,
+} from '@/lib/comfyui/profile'
 
 type ApiModeType = 'gemini-sdk' | 'openai-official'
 type GatewayRouteType = 'official' | 'openai-compat'
@@ -93,6 +98,7 @@ interface StoredModel {
   compatMediaTemplate?: OpenAICompatMediaTemplate
   compatMediaTemplateCheckedAt?: string
   compatMediaTemplateSource?: OpenAICompatMediaTemplateSource
+  comfyuiProfile?: ComfyUIProfile
   // Non-authoritative display field; billing always uses server pricing catalog.
   price: number
   priceMin?: number
@@ -190,8 +196,9 @@ const OPTIONAL_PRICING_PROVIDER_KEYS = new Set([
   'gemini-compatible',
   'bailian',
   'siliconflow',
+  'comfyui',
 ])
-const OFFICIAL_ONLY_PROVIDER_KEYS = new Set(['bailian', 'siliconflow'])
+const OFFICIAL_ONLY_PROVIDER_KEYS = new Set(['bailian', 'siliconflow', 'comfyui'])
 const RETIRED_PROVIDER_KEYS = new Set(['qwen'])
 const MINIMAX_OFFICIAL_BASE_URL = 'https://api.minimaxi.com/v1'
 
@@ -203,22 +210,32 @@ function readTrimmedString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
-function normalizeMinimaxProviderBaseUrl(input: {
+function normalizeSpecialProviderBaseUrl(input: {
   providerId: string
   baseUrl?: string
   strict: boolean
   field: string
 }): string | undefined {
-  if (getProviderKey(input.providerId) !== 'minimax') return input.baseUrl
-  if (!input.baseUrl) return MINIMAX_OFFICIAL_BASE_URL
-  if (input.baseUrl === MINIMAX_OFFICIAL_BASE_URL) return MINIMAX_OFFICIAL_BASE_URL
-  if (input.strict) {
+  const providerKey = getProviderKey(input.providerId)
+  if (providerKey === 'minimax') {
+    if (!input.baseUrl) return MINIMAX_OFFICIAL_BASE_URL
+    if (input.baseUrl === MINIMAX_OFFICIAL_BASE_URL) return MINIMAX_OFFICIAL_BASE_URL
+    if (!input.strict) return MINIMAX_OFFICIAL_BASE_URL
     throw new ApiError('INVALID_PARAMS', {
       code: 'PROVIDER_BASEURL_INVALID',
       field: input.field,
     })
   }
-  return MINIMAX_OFFICIAL_BASE_URL
+
+  if (providerKey !== 'comfyui' || !input.baseUrl) return input.baseUrl
+  try {
+    return normalizeComfyUIBaseUrl(input.baseUrl)
+  } catch {
+    throw new ApiError('INVALID_PARAMS', {
+      code: 'PROVIDER_BASEURL_INVALID',
+      field: input.field,
+    })
+  }
 }
 
 function formatPriceAmount(amount: number): string {
@@ -436,7 +453,7 @@ function withDisplayPricing(model: StoredModel, map: PricingDisplayMap): StoredM
 
 function getProviderKey(providerId: string): string {
   const index = providerId.indexOf(':')
-  return index === -1 ? providerId : providerId.slice(0, index)
+  return (index === -1 ? providerId : providerId.slice(0, index)).toLowerCase()
 }
 
 function isUnifiedModelType(value: unknown): value is UnifiedModelType {
@@ -815,6 +832,19 @@ function normalizeStoredModel(raw: unknown, index: number, options?: { strictCus
     compatMediaTemplateSource = compatMediaTemplateSourceRaw
   }
 
+  const comfyuiProfileRaw = raw.comfyuiProfile
+  let comfyuiProfile: ComfyUIProfile | undefined
+  if (comfyuiProfileRaw !== undefined && comfyuiProfileRaw !== null) {
+    const validated = validateComfyUIProfile(comfyuiProfileRaw)
+    if (!validated.ok) {
+      throw new ApiError('INVALID_PARAMS', {
+        code: 'MODEL_COMFYUI_PROFILE_INVALID',
+        field: `models[${index}].comfyuiProfile`,
+      })
+    }
+    comfyuiProfile = validated.profile
+  }
+
   return {
     modelId,
     modelKey,
@@ -826,6 +856,7 @@ function normalizeStoredModel(raw: unknown, index: number, options?: { strictCus
     ...(compatMediaTemplate ? { compatMediaTemplate } : {}),
     ...(compatMediaTemplateCheckedAt ? { compatMediaTemplateCheckedAt } : {}),
     ...(compatMediaTemplateSource ? { compatMediaTemplateSource } : {}),
+    ...(comfyuiProfile ? { comfyuiProfile } : {}),
     price: 0,
     ...(customPricing ? { customPricing } : {}),
   }
@@ -904,7 +935,7 @@ function normalizeProvidersInput(rawProviders: unknown): StoredProvider[] {
       })
     }
 
-    const baseUrl = normalizeMinimaxProviderBaseUrl({
+    const baseUrl = normalizeSpecialProviderBaseUrl({
       providerId: id,
       baseUrl: readTrimmedString(item.baseUrl) || undefined,
       strict: true,
@@ -957,10 +988,85 @@ function validateModelProviderTypeSupport(models: StoredModel[], providers: Stor
     if (!matchedProvider) continue
 
     const providerKey = getProviderKey(matchedProvider.id)
+    if (providerKey === 'comfyui' && model.type !== 'image' && model.type !== 'video') {
+      throw new ApiError('INVALID_PARAMS', {
+        code: 'MODEL_PROVIDER_TYPE_UNSUPPORTED',
+        field: `models[${index}].type`,
+      })
+    }
     if (model.type === 'lipsync' && providerKey !== 'fal' && providerKey !== 'vidu' && providerKey !== 'bailian') {
       throw new ApiError('INVALID_PARAMS', {
         code: 'MODEL_PROVIDER_TYPE_UNSUPPORTED',
         field: `models[${index}].provider`,
+      })
+    }
+  }
+}
+
+function resolveStoredComfyUIProfiles(
+  models: StoredModel[],
+  existingModels: StoredModel[],
+): StoredModel[] {
+  const existingByModelKey = new Map(existingModels.map((model) => [model.modelKey, model] as const))
+
+  return models.map((model, index) => {
+    const isComfyUI = getProviderKey(model.provider) === 'comfyui'
+    if (!isComfyUI) {
+      if (model.comfyuiProfile !== undefined) {
+        throw new ApiError('INVALID_PARAMS', {
+          code: 'MODEL_COMFYUI_PROFILE_NOT_ALLOWED',
+          field: `models[${index}].comfyuiProfile`,
+        })
+      }
+      return model
+    }
+
+    if (model.type !== 'image' && model.type !== 'video') {
+      throw new ApiError('INVALID_PARAMS', {
+        code: 'MODEL_PROVIDER_TYPE_UNSUPPORTED',
+        field: `models[${index}].type`,
+      })
+    }
+
+    const existingProfile = existingByModelKey.get(model.modelKey)?.comfyuiProfile
+    const rawProfile = model.comfyuiProfile ?? existingProfile
+    const validated = validateComfyUIProfile(rawProfile, {
+      expectedMediaType: model.type,
+    })
+    if (!validated.ok) {
+      throw new ApiError('INVALID_PARAMS', {
+        code: rawProfile ? 'MODEL_COMFYUI_PROFILE_INVALID' : 'MODEL_COMFYUI_PROFILE_REQUIRED',
+        field: `models[${index}].comfyuiProfile`,
+      })
+    }
+
+    return {
+      ...model,
+      comfyuiProfile: validated.profile,
+    }
+  })
+}
+
+function validateComfyUIProviderConfiguration(models: StoredModel[], providers: StoredProvider[]) {
+  for (let index = 0; index < models.length; index += 1) {
+    const model = models[index]
+    if (getProviderKey(model.provider) !== 'comfyui') continue
+
+    const provider = resolveProviderByIdOrKey(providers, model.provider)
+    const providerIndex = provider ? providers.indexOf(provider) : -1
+    const providerField = providerIndex >= 0 ? `providers[${providerIndex}].baseUrl` : 'providers'
+    if (!provider?.baseUrl) {
+      throw new ApiError('INVALID_PARAMS', {
+        code: 'COMFYUI_PROVIDER_BASEURL_REQUIRED',
+        field: providerField,
+      })
+    }
+    try {
+      normalizeComfyUIBaseUrl(provider.baseUrl)
+    } catch {
+      throw new ApiError('INVALID_PARAMS', {
+        code: 'PROVIDER_BASEURL_INVALID',
+        field: providerField,
       })
     }
   }
@@ -1461,7 +1567,7 @@ function parseStoredProviders(rawProviders: string | null | undefined): StoredPr
       })
     }
 
-    const baseUrl = normalizeMinimaxProviderBaseUrl({
+    const baseUrl = normalizeSpecialProviderBaseUrl({
       providerId: id,
       baseUrl: readTrimmedString(raw.baseUrl) || undefined,
       strict: false,
@@ -1799,12 +1905,19 @@ export const PUT = apiHandler(async (request: NextRequest) => {
   const existingModels = parseStoredModels(existingPref?.customModels)
   const normalizedModels = normalizedModelsInput === undefined
     ? undefined
-    : resolveStoredMediaTemplates(resolveStoredLlmProtocols(normalizedModelsInput, existingModels), existingModels)
+    : resolveStoredComfyUIProfiles(
+      resolveStoredMediaTemplates(resolveStoredLlmProtocols(normalizedModelsInput, existingModels), existingModels),
+      existingModels,
+    )
 
   const providerSourceForValidation = normalizedProviders ?? existingProviders
+  const modelsForProviderValidation = normalizedModels ?? existingModels
+  if (normalizedModels !== undefined || normalizedProviders !== undefined) {
+    validateModelProviderConsistency(modelsForProviderValidation, providerSourceForValidation)
+    validateModelProviderTypeSupport(modelsForProviderValidation, providerSourceForValidation)
+    validateComfyUIProviderConfiguration(modelsForProviderValidation, providerSourceForValidation)
+  }
   if (normalizedModels !== undefined) {
-    validateModelProviderConsistency(normalizedModels, providerSourceForValidation)
-    validateModelProviderTypeSupport(normalizedModels, providerSourceForValidation)
     validateCustomPricingCapabilityMappings(normalizedModels)
     if (billingMode !== 'OFF') {
       validateBillableModelPricing(normalizedModels)

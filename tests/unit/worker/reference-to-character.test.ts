@@ -19,8 +19,9 @@ const sharpMock = vi.hoisted(() =>
 const generatorApiMock = vi.hoisted(() => ({
   generateImage: vi.fn<(userId: string, modelId: string, prompt: string, options?: Record<string, unknown>) => Promise<{
     success: boolean
-    imageUrl: string
+    imageUrl?: string
     async: boolean
+    externalId?: string
   }>>(async () => ({
     success: true,
     imageUrl: 'https://example.com/generated.jpg',
@@ -81,6 +82,9 @@ const workersSharedMock = vi.hoisted(() => ({
 
 const workersUtilsMock = vi.hoisted(() => ({
   assertTaskActive: vi.fn(async () => {}),
+  waitExternalResult: vi.fn(async () => ({
+    url: 'https://example.com/polled-generated.jpg',
+  })),
 }))
 
 const promptI18nMock = vi.hoisted(() => ({
@@ -263,5 +267,50 @@ describe('worker reference-to-character', () => {
 
     expect(fontsMock.initializeFonts).toHaveBeenCalledTimes(1)
     expect(fontsMock.createLabelSVG).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses the common externalId poller for an async ComfyUI image result', async () => {
+    const job = buildJob(
+      {
+        referenceImageUrls: ['https://example.com/ref-a.png'],
+        characterName: 'Hero',
+        count: 1,
+      },
+      TASK_TYPE.ASSET_HUB_REFERENCE_TO_CHARACTER,
+    )
+    const externalId = 'COMFY:IMAGE:Y29tZnl1aQ:OQ:cHJvbXB0LTE'
+    generatorApiMock.generateImage.mockResolvedValueOnce({
+      success: true,
+      async: true,
+      externalId,
+    })
+
+    await expect(handleReferenceToCharacterTask(job)).resolves.toEqual(expect.objectContaining({ success: true }))
+
+    expect(workersUtilsMock.waitExternalResult).toHaveBeenCalledWith(job, externalId, 'user-1', {
+      persistTaskExternalId: false,
+    })
+    expect(arkApiMock.fetchWithTimeoutAndRetry).toHaveBeenCalledWith(
+      'https://example.com/polled-generated.jpg',
+      expect.any(Object),
+    )
+  })
+
+  it('propagates an unknown ComfyUI submission so the Worker does not retry it', async () => {
+    const job = buildJob(
+      {
+        referenceImageUrls: ['https://example.com/ref-a.png'],
+        characterName: 'Hero',
+        count: 1,
+      },
+      TASK_TYPE.ASSET_HUB_REFERENCE_TO_CHARACTER,
+    )
+    const submissionError = Object.assign(
+      new Error('COMFYUI_SUBMISSION_UNKNOWN: socket hang up'),
+      { code: 'COMFYUI_SUBMISSION_UNKNOWN', provider: 'comfyui' },
+    )
+    generatorApiMock.generateImage.mockRejectedValueOnce(submissionError)
+
+    await expect(handleReferenceToCharacterTask(job)).rejects.toBe(submissionError)
   })
 })

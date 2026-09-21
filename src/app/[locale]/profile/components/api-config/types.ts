@@ -11,6 +11,7 @@ import type {
     OpenAICompatMediaTemplate,
     OpenAICompatMediaTemplateSource,
 } from '@/lib/openai-compat-media-template'
+import type { ComfyUIProfile } from '@/lib/comfyui/profile'
 
 // 统一提供商接口
 export interface Provider {
@@ -53,6 +54,7 @@ export interface CustomModel {
     compatMediaTemplate?: OpenAICompatMediaTemplate
     compatMediaTemplateCheckedAt?: string
     compatMediaTemplateSource?: OpenAICompatMediaTemplateSource
+    comfyuiProfile?: ComfyUIProfile
     price: number
     priceMin?: number
     priceMax?: number
@@ -196,7 +198,7 @@ export function isPresetComingSoonModelKey(modelKey: string): boolean {
     return PRESET_COMING_SOON_MODEL_KEYS.has(modelKey)
 }
 
-// 预设提供商（API Key 唯一归属于 provider id）
+// 预设提供商（大多数使用 API Key；ComfyUI 使用远端服务地址）
 export const PRESET_PROVIDERS: Omit<Provider, 'apiKey' | 'hasApiKey'>[] = [
     { id: 'ark', name: 'Volcengine Ark' },
     { id: 'google', name: 'Google AI Studio' },
@@ -205,6 +207,7 @@ export const PRESET_PROVIDERS: Omit<Provider, 'apiKey' | 'hasApiKey'>[] = [
     { id: 'minimax', name: 'MiniMax Hailuo', baseUrl: 'https://api.minimaxi.com/v1' },
     { id: 'vidu', name: 'Vidu' },
     { id: 'fal', name: 'FAL' },
+    { id: 'comfyui', name: 'ComfyUI' },
 ]
 
 const ZH_PROVIDER_NAME_MAP: Record<string, string> = {
@@ -213,6 +216,7 @@ const ZH_PROVIDER_NAME_MAP: Record<string, string> = {
     vidu: '生数科技 Vidu',
     bailian: '阿里云百炼',
     siliconflow: '硅基流动',
+    comfyui: 'ComfyUI',
 }
 
 function isZhLocale(locale?: string): boolean {
@@ -230,7 +234,45 @@ export function resolvePresetProviderName(providerId: string, fallbackName: stri
 export function getProviderKey(providerId?: string): string {
     if (!providerId) return ''
     const colonIndex = providerId.indexOf(':')
-    return colonIndex === -1 ? providerId : providerId.slice(0, colonIndex)
+    return (colonIndex === -1 ? providerId : providerId.slice(0, colonIndex)).toLowerCase()
+}
+
+export function isComfyUIProvider(providerId?: string): boolean {
+    return getProviderKey(providerId).toLowerCase() === 'comfyui'
+}
+
+/**
+ * 统一判断服务商是否具备可用连接。ComfyUI 没有 API Key，使用远端 Base URL 作为连接凭据。
+ */
+export function hasProviderConnection(provider: Pick<Provider, 'id' | 'apiKey' | 'baseUrl' | 'hasApiKey'>): boolean {
+    if (isComfyUIProvider(provider.id)) {
+        return hasValidComfyUIBaseUrl(provider.baseUrl)
+    }
+    if (provider.hasApiKey === true) return true
+    return typeof provider.apiKey === 'string' && provider.apiKey.trim().length > 0
+}
+
+export function hasValidComfyUIBaseUrl(baseUrl: string | undefined): boolean {
+    if (typeof baseUrl !== 'string' || !baseUrl.trim()) return false
+    try {
+        const parsed = new URL(baseUrl.trim())
+        const hostname = parsed.hostname.trim().toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '')
+        const isLoopbackOrUnspecified = hostname === 'localhost'
+            || hostname.endsWith('.localhost')
+            || hostname === '0.0.0.0'
+            || hostname === '::'
+            || hostname === '::1'
+            || /^127(?:\.\d{1,3}){3}$/.test(hostname)
+            || /^::ffff:7f[0-9a-f]{2}:[0-9a-f]{1,4}$/.test(hostname)
+        return (parsed.protocol === 'http:' || parsed.protocol === 'https:')
+            && !parsed.username
+            && !parsed.password
+            && !parsed.search
+            && !parsed.hash
+            && !isLoopbackOrUnspecified
+    } catch {
+        return false
+    }
 }
 
 /**
@@ -387,6 +429,17 @@ export const PROVIDER_TUTORIALS: ProviderTutorial[] = [
             {
                 text: 'siliconflow_step1',
                 url: 'https://cloud.siliconflow.cn/account/ak'
+            }
+        ]
+    },
+    {
+        providerId: 'comfyui',
+        steps: [
+            {
+                text: 'comfyui_step1'
+            },
+            {
+                text: 'comfyui_step2'
             }
         ]
     },

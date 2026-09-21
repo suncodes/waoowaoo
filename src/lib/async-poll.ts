@@ -18,7 +18,13 @@ import { logInfo as _ulogInfo, logError as _ulogError } from '@/lib/logging/core
 
 import { queryFalStatus } from './async-submit'
 import { queryGeminiBatchStatus, querySeedanceVideoStatus, queryGoogleVideoStatus } from './async-task-utils'
-import { getProviderConfig, getUserModels } from './api-config'
+import { getComfyUIProviderConfig, getProviderConfig, getUserModels } from './api-config'
+import {
+    buildComfyUIViewUrl,
+    getComfyUIHistory,
+    resolveComfyUIHistoryResult,
+} from './comfyui/client'
+import { parseComfyUIExternalId } from './comfyui/external-id'
 import { buildRenderedTemplateRequest, buildTemplateVariables, normalizeResponseJson, readJsonPath } from './openai-compat-template-runtime'
 import { composeModelKey } from './model-config-contract'
 
@@ -48,12 +54,14 @@ function getErrorMessage(error: unknown): string {
  * 解析 externalId 获取 provider、type 和请求信息
  */
 export function parseExternalId(externalId: string): {
-    provider: 'FAL' | 'ARK' | 'GEMINI' | 'GOOGLE' | 'MINIMAX' | 'VIDU' | 'OPENAI' | 'OCOMPAT' | 'BAILIAN' | 'SILICONFLOW' | 'UNKNOWN'
+    provider: 'FAL' | 'ARK' | 'GEMINI' | 'GOOGLE' | 'MINIMAX' | 'VIDU' | 'OPENAI' | 'OCOMPAT' | 'BAILIAN' | 'SILICONFLOW' | 'COMFY' | 'UNKNOWN'
     type: 'VIDEO' | 'IMAGE' | 'BATCH' | 'UNKNOWN'
     endpoint?: string
     requestId: string
     providerToken?: string
     modelKeyToken?: string
+    providerId?: string
+    outputNodeId?: string
 } {
     // 标准格式：PROVIDER:TYPE:...
     if (externalId.startsWith('FAL:')) {
@@ -210,9 +218,20 @@ export function parseExternalId(externalId: string): {
         }
     }
 
+    if (externalId.startsWith('COMFY:')) {
+        const parsed = parseComfyUIExternalId(externalId)
+        return {
+            provider: 'COMFY',
+            type: parsed.type,
+            requestId: parsed.promptId,
+            providerId: parsed.providerId,
+            outputNodeId: parsed.outputNodeId,
+        }
+    }
+
     throw new Error(
         `无法识别的 externalId 格式: "${externalId}". ` +
-        `支持的格式: FAL:TYPE:endpoint:requestId, ARK:TYPE:requestId, GEMINI:BATCH:batchName, GOOGLE:VIDEO:operationName, MINIMAX:TYPE:taskId, VIDU:TYPE:taskId, OPENAI:VIDEO:providerToken:videoId, OCOMPAT:TYPE:providerToken:modelKeyToken:taskId, BAILIAN:TYPE:requestId, SILICONFLOW:TYPE:requestId`
+        `支持的格式: FAL:TYPE:endpoint:requestId, ARK:TYPE:requestId, GEMINI:BATCH:batchName, GOOGLE:VIDEO:operationName, MINIMAX:TYPE:taskId, VIDU:TYPE:taskId, OPENAI:VIDEO:providerToken:videoId, OCOMPAT:TYPE:providerToken:modelKeyToken:taskId, BAILIAN:TYPE:requestId, SILICONFLOW:TYPE:requestId, COMFY:TYPE:providerToken:outputNodeToken:promptToken`
     )
 }
 
@@ -252,9 +271,48 @@ export async function pollAsyncTask(
             return await pollBailianTask(parsed.requestId, userId)
         case 'SILICONFLOW':
             return await pollSiliconFlowTask(parsed.requestId)
+        case 'COMFY':
+            return await pollComfyUITask({
+                type: parsed.type,
+                promptId: parsed.requestId,
+                providerId: parsed.providerId,
+                outputNodeId: parsed.outputNodeId,
+                userId,
+            })
         default:
             // 🔥 移除 fallback：未知 provider 直接抛出错误
             throw new Error(`未知的 Provider: ${parsed.provider}`)
+    }
+}
+
+async function pollComfyUITask(input: {
+    type: 'VIDEO' | 'IMAGE' | 'BATCH' | 'UNKNOWN'
+    promptId: string
+    providerId?: string
+    outputNodeId?: string
+    userId: string
+}): Promise<PollResult> {
+    if ((input.type !== 'IMAGE' && input.type !== 'VIDEO') || !input.providerId || !input.outputNodeId) {
+        throw new Error('COMFYUI_EXTERNAL_ID_INVALID')
+    }
+
+    const config = await getComfyUIProviderConfig(input.userId, input.providerId)
+    const history = await getComfyUIHistory(config.baseUrl, input.promptId)
+    const result = resolveComfyUIHistoryResult({
+        history,
+        promptId: input.promptId,
+        outputNodeId: input.outputNodeId,
+        mediaType: input.type === 'VIDEO' ? 'video' : 'image',
+    })
+
+    if (result.status === 'pending') return result
+    if (result.status === 'failed') return result
+
+    const resultUrl = buildComfyUIViewUrl(config.baseUrl, result.file)
+    return {
+        status: 'completed',
+        resultUrl,
+        ...(input.type === 'VIDEO' ? { videoUrl: resultUrl } : { imageUrl: resultUrl }),
     }
 }
 

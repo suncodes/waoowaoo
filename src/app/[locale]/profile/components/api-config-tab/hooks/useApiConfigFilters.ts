@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react'
 import type { CustomModel, Provider } from '../../api-config'
-import { PRESET_PROVIDERS, getProviderKey } from '../../api-config'
+import { PRESET_PROVIDERS, getProviderKey, hasProviderConnection } from '../../api-config'
 
 interface UseApiConfigFiltersParams {
   providers: Provider[]
@@ -29,6 +29,7 @@ const MODEL_PROVIDER_KEYS = [
   'minimax',
   'vidu',
   'fal',
+  'comfyui',
   'gemini-compatible',
   'openai-compatible',
 ]
@@ -46,11 +47,8 @@ function isAudioDefaultCandidate(model: CustomModel): boolean {
   return !DEFAULT_AUDIO_EXCLUDED_MODEL_IDS.has(model.modelId)
 }
 
-function hasProviderApiKey(provider: Provider | undefined): boolean {
-  if (!provider) return false
-  if (provider.hasApiKey === true) return true
-  const apiKey = typeof provider.apiKey === 'string' ? provider.apiKey.trim() : ''
-  return apiKey.length > 0
+function hasConfiguredProviderConnection(provider: Provider | undefined): boolean {
+  return provider ? hasProviderConnection(provider) : false
 }
 
 export function useApiConfigFilters({
@@ -105,7 +103,7 @@ export function useApiConfigFilters({
       if (!model.enabled) continue
       if (!isDefaultModelType(model.type)) continue
       const provider = providersById.get(model.provider)
-      if (!hasProviderApiKey(provider)) continue
+      if (!hasConfiguredProviderConnection(provider)) continue
 
       const option: EnabledModelOption = {
         ...model,

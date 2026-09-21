@@ -17,6 +17,8 @@ export function ProviderBaseFields({ provider, t, state }: ProviderBaseFieldsPro
         return 'https://your-api-domain.com'
       case 'openai-compatible':
         return 'https://api.openai.com/v1'
+      case 'comfyui':
+        return 'http://10.0.0.12:8188'
       default:
         return 'http://localhost:8000'
     }
@@ -24,12 +26,13 @@ export function ProviderBaseFields({ provider, t, state }: ProviderBaseFieldsPro
 
   return (
     <>
-      <div className="px-3.5 pt-2.5">
-        <div className="glass-surface-soft flex items-center gap-2.5 rounded-xl px-3 py-2">
-          <span className="w-[64px] shrink-0 whitespace-nowrap text-[12px] font-semibold text-[var(--glass-text-primary)]">
-            {t('apiKeyLabel')}
-          </span>
-          {state.isEditing ? (
+      {!state.isComfyUI && (
+        <div className="px-3.5 pt-2.5">
+          <div className="glass-surface-soft flex items-center gap-2.5 rounded-xl px-3 py-2">
+            <span className="w-[64px] shrink-0 whitespace-nowrap text-[12px] font-semibold text-[var(--glass-text-primary)]">
+              {t('apiKeyLabel')}
+            </span>
+            {state.isEditing ? (
             <div className="flex flex-1 items-center gap-2">
               <input
                 type="text"
@@ -99,9 +102,10 @@ export function ProviderBaseFields({ provider, t, state }: ProviderBaseFieldsPro
                 </button>
               )}
             </div>
-          )}
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {state.keyTestStatus !== 'idle' && (
         <div className="px-3.5 pt-2">
@@ -220,6 +224,11 @@ export function ProviderBaseFields({ provider, t, state }: ProviderBaseFieldsPro
 
       {state.showBaseUrlEdit && (
         <div className="px-3.5 pb-2.5 pt-2">
+          {state.isComfyUI && (
+            <p className="mb-2 text-[11px] leading-relaxed text-[var(--glass-text-tertiary)]">
+              {t('comfyuiRemoteUrlHint')}
+            </p>
+          )}
           <div className="glass-surface-soft flex items-center gap-2.5 rounded-xl px-3 py-2">
             <span className="w-[64px] shrink-0 whitespace-nowrap text-[12px] font-semibold text-[var(--glass-text-tertiary)]">
               {t('baseUrl')}
@@ -236,7 +245,8 @@ export function ProviderBaseFields({ provider, t, state }: ProviderBaseFieldsPro
                 />
                 <button
                   onClick={state.handleSaveUrl}
-                  className="glass-icon-btn-sm"
+                  disabled={state.keyTestStatus === 'testing'}
+                  className="glass-icon-btn-sm disabled:opacity-50"
                   title={t('save')}
                 >
                   <AppIcon name="check" className="h-4 w-4" />

@@ -132,4 +132,47 @@ describe('provider test connection', () => {
       message: 'Network error: socket hang up',
     })
   })
+
+  it('tests a remote ComfyUI connection without requiring an API key', async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({ system: {} }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ KSampler: {} }), { status: 200 }))
+
+    const result = await testProviderConnection({
+      apiType: 'comfyui',
+      baseUrl: 'http://10.0.0.12:8188/comfy',
+    })
+
+    expect(result).toEqual({
+      success: true,
+      steps: [
+        { name: 'systemStats', status: 'pass', message: 'ComfyUI system stats reachable' },
+        { name: 'objectInfo', status: 'pass', message: 'ComfyUI node registry reachable' },
+      ],
+    })
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'http://10.0.0.12:8188/comfy/system_stats',
+      expect.objectContaining({ method: 'GET' }),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'http://10.0.0.12:8188/comfy/object_info',
+      expect.objectContaining({ method: 'GET' }),
+    )
+  })
+
+  it('rejects a loopback ComfyUI address before sending a probe', async () => {
+    const result = await testProviderConnection({
+      apiType: 'comfyui',
+      baseUrl: 'http://localhost:8188',
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.steps[0]).toMatchObject({
+      name: 'systemStats',
+      status: 'fail',
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
 })

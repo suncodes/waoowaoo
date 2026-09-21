@@ -22,6 +22,7 @@ export const USER_ERROR_MESSAGES_ZH: Record<UnifiedErrorCode, string> = {
   GENERATION_TIMEOUT: '生成超时，请重试。',
   VIDEO_API_FORMAT_UNSUPPORTED: '当前视频接口格式暂不支持。',
   GENERATION_FAILED: '生成失败，请稍后重试。',
+  COMFYUI_SUBMISSION_UNKNOWN: 'ComfyUI 提交结果不确定，任务可能已进入队列。为避免重复生成，系统不会自动重试，请稍后检查任务结果。',
   WATCHDOG_TIMEOUT: '任务执行超时，系统已终止该任务。',
   WORKER_EXECUTION_ERROR: '任务执行失败，请稍后重试。',
   INTERNAL_ERROR: '系统内部错误，请稍后重试。',

@@ -3,7 +3,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AppIcon } from '@/components/ui/icons'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
-import { getProviderKey, isPresetComingSoonModel, type CustomModel } from '../types'
+import {
+  getProviderKey,
+  hasProviderConnection,
+  isPresetComingSoonModel,
+  type CustomModel,
+} from '../types'
 import type { UseProviderCardStateResult } from './hooks/useProviderCardState'
 import type {
   ProviderCardModelType,
@@ -62,8 +67,38 @@ const typeLabel = (type: ProviderCardModelType, t: ProviderCardTranslator) => {
 
 const MODEL_TYPES: readonly ProviderCardModelType[] = ['llm', 'image', 'video', 'audio']
 
+function ComfyUIProfileField({
+  value,
+  onChange,
+  t,
+}: {
+  value: string
+  onChange: (value: string) => void
+  t: ProviderCardTranslator
+}) {
+  return (
+    <div className="mt-2.5">
+      <label className="mb-1.5 block text-[12px] font-semibold text-[var(--glass-text-primary)]">
+        {t('comfyuiProfileLabel')}
+      </label>
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={t('comfyuiProfilePlaceholder')}
+        rows={10}
+        spellCheck={false}
+        className="glass-input-base app-scrollbar w-full resize-y px-3 py-2 font-mono text-[11px] leading-relaxed"
+      />
+      <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--glass-text-tertiary)]">
+        {t('comfyuiProfileHint')}
+      </p>
+    </div>
+  )
+}
+
 export function getAddableModelTypesForProvider(providerId: string): ProviderCardModelType[] {
   const providerKey = getProviderKey(providerId)
+  if (providerKey === 'comfyui') return ['image', 'video']
   if (providerKey === 'openai-compatible') return ['llm', 'image', 'video']
   return ['llm', 'image', 'video', 'audio']
 }
@@ -77,7 +112,7 @@ export function shouldShowOpenAICompatVideoHint(
 
 function shouldShowDefaultTabs(providerId: string): boolean {
   const providerKey = getProviderKey(providerId)
-  return providerKey === 'openai-compatible' || providerKey === 'gemini-compatible'
+  return providerKey === 'openai-compatible' || providerKey === 'gemini-compatible' || providerKey === 'comfyui'
 }
 
 export function getVisibleModelTypesForProvider(
@@ -156,10 +191,12 @@ export function ProviderAdvancedFields({
 
   const currentType = activeType ?? visibleTypes[0] ?? null
   const currentModels = currentType ? (state.groupedModels[currentType] ?? []) : []
+  const providerConnected = hasProviderConnection(provider)
   const shouldShowAddButton =
     !!currentType
     && addableModelTypes.has(currentType)
     && state.showAddForm !== currentType
+    && (!state.isComfyUI || providerConnected)
   const defaultAddType: ProviderCardModelType = providerKey === 'openrouter' ? 'llm' : 'image'
   const useTabbedLayout = state.hasModels || shouldShowDefaultTabs(provider.id)
   const shouldShowVideoHint = shouldShowOpenAICompatVideoHint(provider.id, currentType)
@@ -236,6 +273,15 @@ export function ProviderAdvancedFields({
               {state.isModelSavePending ? t('saving') : t('save')}
             </button>
           </div>
+          {state.isComfyUI && (
+            <ComfyUIProfileField
+              value={state.newModel.comfyuiProfileJson || ''}
+              onChange={(comfyuiProfileJson) =>
+                state.setNewModel({ ...state.newModel, comfyuiProfileJson })
+              }
+              t={t}
+            />
+          )}
           {shouldShowVideoHint && (
             <p className="mt-2 text-xs text-[var(--glass-text-tertiary)]">
               {t('openaiCompatVideoOnlyHint')}
@@ -274,7 +320,7 @@ export function ProviderAdvancedFields({
                 onToggleModel={onToggleModel}
                 onDeleteModel={onDeleteModel}
                 onUpdateModel={onUpdateModel}
-                hasApiKey={!!provider.hasApiKey}
+                hasProviderConnection={hasProviderConnection(provider)}
               />
             ))}
           </div>
@@ -349,7 +395,7 @@ interface ModelRowProps {
   onToggleModel: ProviderCardProps['onToggleModel']
   onDeleteModel: ProviderCardProps['onDeleteModel']
   onUpdateModel: ProviderCardProps['onUpdateModel']
-  hasApiKey: boolean
+  hasProviderConnection: boolean
 }
 
 function ModelRow({
@@ -359,13 +405,13 @@ function ModelRow({
   onToggleModel,
   onDeleteModel,
   onUpdateModel,
-  hasApiKey,
+  hasProviderConnection,
 }: ModelRowProps) {
   const priceTexts = getModelPriceTexts(model, t)
   const priceText = priceTexts.join(' / ')
   const hasPriceText = priceText.length > 0
   const isComingSoonModel = isPresetComingSoonModel(model.provider, model.modelId)
-  const toggleDisabled = isComingSoonModel || !hasApiKey
+  const toggleDisabled = isComingSoonModel || !hasProviderConnection
   const rowDisabledClass = model.enabled ? '' : 'opacity-50'
 
   return (
@@ -391,6 +437,15 @@ function ModelRow({
               className="glass-input-base w-full px-3 py-1.5 text-[12px] font-mono"
               placeholder={t('modelActualId')}
             />
+            {state.isComfyUI && (
+              <ComfyUIProfileField
+                value={state.editModel.comfyuiProfileJson || ''}
+                onChange={(comfyuiProfileJson) =>
+                  state.setEditModel({ ...state.editModel, comfyuiProfileJson })
+                }
+                t={t}
+              />
+            )}
             {hasPriceText && (
               <div className="text-xs text-[var(--glass-text-tertiary)]">{priceText}</div>
             )}
@@ -459,7 +514,7 @@ function ModelRow({
               className={`glass-toggle ${toggleDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
               data-active={model.enabled}
               disabled={toggleDisabled}
-              title={isComingSoonModel ? t('comingSoon') : !hasApiKey ? t('configureApiKey') : undefined}
+              title={isComingSoonModel ? t('comingSoon') : !hasProviderConnection ? t('configureProviderConnection') : undefined}
             >
               <div className="glass-toggle-thumb"></div>
             </button>
