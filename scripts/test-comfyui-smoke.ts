@@ -16,7 +16,7 @@
  * 本脚本不会自动重试无法确认结果的提交，避免重复生成。
  */
 
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import {
@@ -30,6 +30,8 @@ import {
 import { parseComfyUIExternalId } from '../src/lib/comfyui/external-id'
 import {
   validateComfyUIProfile,
+  getComfyUIScalarInputMapping,
+  isComfyUICollectionInputMapping,
   type ComfyUIMediaType,
   type ComfyUIProfile,
 } from '../src/lib/comfyui/profile'
@@ -39,7 +41,13 @@ import {
   generateComfyUIVideo,
 } from '../src/lib/comfyui/runtime'
 
-type Scenario = 'text-to-image' | 'image-to-image' | 'text-to-video' | 'image-to-video'
+type Scenario =
+  | 'text-to-image'
+  | 'image-to-image'
+  | 'text-to-video'
+  | 'image-to-video'
+  | 'firstlast-frame-video'
+  | 'reference-audio-video'
 
 type CliOptions = {
   baseUrl: string | null
@@ -48,6 +56,8 @@ type CliOptions = {
   submit: boolean
   prompt: string
   referencePath: string | null
+  lastFrameReferencePath: string | null
+  referenceAudioPaths: string[]
   timeoutSeconds: number
   pollIntervalMs: number
   seed: number
@@ -92,8 +102,10 @@ ComfyUI 真实任务冒烟测试
 
 真实提交参数（必须显式带 --submit）：
   --submit                      允许创建真实 ComfyUI 任务
-  --scenario=<name>             text-to-image（默认）、image-to-image、text-to-video、image-to-video
-  --reference=<path>            image-to-image / image-to-video 必填的本地参考图
+  --scenario=<name>             text-to-image（默认）、image-to-image、text-to-video、image-to-video、firstlast-frame-video、reference-audio-video
+  --reference=<path>            image-to-image / image-to-video / firstlast-frame-video 必填的本地首帧图
+  --last-frame-reference=<path> firstlast-frame-video 必填的本地尾帧图
+  --reference-audio=<path>      reference-audio-video 的本地 mp3/wav；可重复传入，最多 3 条
   --prompt=<text>               测试提示词
   --steps=<number>              仅当 Profile 映射 options.steps 时生效
   --duration=<number>           仅当 Profile 映射 options.duration 时生效
@@ -109,6 +121,8 @@ ComfyUI 真实任务冒烟测试
   npx tsx scripts/test-comfyui-smoke.ts --base-url=http://192.168.9.148:8188 --profile=./comfyui-image-profile.json
   npx tsx scripts/test-comfyui-smoke.ts --base-url=http://192.168.9.148:8188 --profile=./comfyui-image-profile.json --submit --steps=4 --width=512 --height=512
   npx tsx scripts/test-comfyui-smoke.ts --base-url=http://192.168.9.148:8188 --profile=./scripts/comfyui-profiles/minimax-h3-text-to-video.profile.json --submit --scenario=text-to-video --prompt="a fox runs through a snowy forest" --duration=5 --fps=24 --timeout-seconds=900
+  npx tsx scripts/test-comfyui-smoke.ts --base-url=http://192.168.9.148:8188 --profile=./scripts/comfyui-profiles/minimax-h3-image-to-video.profile.json --submit --scenario=firstlast-frame-video --reference=./fixtures/first.png --last-frame-reference=./fixtures/last.png --duration=5 --timeout-seconds=900
+  npx tsx scripts/test-comfyui-smoke.ts --base-url=http://192.168.9.148:8188 --profile=./scripts/comfyui-profiles/minimax-h3-reference-to-video.profile.json --submit --scenario=reference-audio-video --reference-audio=./fixtures/voice-1.wav --reference-audio=./fixtures/voice-2.mp3 --duration=5 --timeout-seconds=900
 `)
 }
 
@@ -124,6 +138,24 @@ function readFlagValue(name: string): string | null {
   if (index === -1) return null
   const next = process.argv[index + 1]?.trim()
   return next && !next.startsWith('--') ? next : null
+}
+
+function readFlagValues(name: string): string[] {
+  const values: string[] = []
+  const equalsPrefix = `--${name}=`
+  for (let index = 0; index < process.argv.length; index += 1) {
+    const argument = process.argv[index]
+    if (argument.startsWith(equalsPrefix)) {
+      const value = argument.slice(equalsPrefix.length).trim()
+      if (value) values.push(value)
+      continue
+    }
+    if (argument === `--${name}`) {
+      const value = process.argv[index + 1]?.trim()
+      if (value && !value.startsWith('--')) values.push(value)
+    }
+  }
+  return values
 }
 
 function readNumberFlag(name: string, options?: { min?: number; max?: number }): number | undefined {
@@ -150,8 +182,14 @@ function readObjectFlag(name: string): Record<string, unknown> {
 
 function parseScenario(value: string | null): Scenario {
   if (value === null || value === 'text-to-image') return 'text-to-image'
-  if (value === 'image-to-image' || value === 'text-to-video' || value === 'image-to-video') return value
-  throw new Error('INVALID_ARGUMENT: --scenario must be text-to-image, image-to-image, text-to-video, or image-to-video')
+  if (
+    value === 'image-to-image'
+    || value === 'text-to-video'
+    || value === 'image-to-video'
+    || value === 'firstlast-frame-video'
+    || value === 'reference-audio-video'
+  ) return value
+  throw new Error('INVALID_ARGUMENT: --scenario must be text-to-image, image-to-image, text-to-video, image-to-video, firstlast-frame-video, or reference-audio-video')
 }
 
 function parseOptions(): CliOptions | null {
@@ -176,6 +214,8 @@ function parseOptions(): CliOptions | null {
     submit: process.argv.includes('--submit'),
     prompt: readFlagValue('prompt') || 'smoke test: a small red cube on a plain white background',
     referencePath: readFlagValue('reference'),
+    lastFrameReferencePath: readFlagValue('last-frame-reference'),
+    referenceAudioPaths: readFlagValues('reference-audio'),
     timeoutSeconds,
     pollIntervalMs,
     seed,
@@ -189,7 +229,12 @@ function parseOptions(): CliOptions | null {
 }
 
 function expectedMediaType(scenario: Scenario): ComfyUIMediaType {
-  return scenario === 'text-to-video' || scenario === 'image-to-video' ? 'video' : 'image'
+  return scenario === 'text-to-video'
+    || scenario === 'image-to-video'
+    || scenario === 'firstlast-frame-video'
+    || scenario === 'reference-audio-video'
+    ? 'video'
+    : 'image'
 }
 
 async function fetchJsonObject(url: string, label: string): Promise<Record<string, unknown>> {
@@ -260,6 +305,15 @@ function validateProfileAgainstObjectInfo(profile: ComfyUIProfile, objectInfo: O
     if (inputNames.size > 0 && !inputNames.has(mapping.inputName)) {
       unknownInputs.push(`${source} -> ${mapping.nodeId}.${mapping.inputName} (${node.class_type})`)
     }
+    if (!isComfyUICollectionInputMapping(mapping)) continue
+    for (const [index, itemMapping] of mapping.itemMappings.entries()) {
+      const itemNode = profile.workflow[itemMapping.nodeId]
+      if (!itemNode || !isRecord(objectInfo[itemNode.class_type])) continue
+      const itemInputNames = getDeclaredInputNames(objectInfo[itemNode.class_type])
+      if (itemInputNames.size > 0 && !itemInputNames.has(itemMapping.inputName)) {
+        unknownInputs.push(`${source}.itemMappings[${index}] -> ${itemMapping.nodeId}.${itemMapping.inputName} (${itemNode.class_type})`)
+      }
+    }
   }
 
   if (missingClasses.size > 0 || unknownInputs.length > 0) {
@@ -310,6 +364,37 @@ async function readReferenceAsDataUrl(referencePath: string): Promise<string> {
     throw new Error(`COMFYUI_REFERENCE_IMAGE_TOO_LARGE: ${resolvedPath}`)
   }
   return `data:${mimeType};base64,${bytes.toString('base64')}`
+}
+
+async function readReferenceAudioAsDataUrl(referencePath: string): Promise<{
+  url: string
+  mimeType: 'audio/mpeg' | 'audio/wav'
+  byteSize: number
+  hash: string
+}> {
+  const resolvedPath = path.resolve(process.cwd(), referencePath)
+  const extension = path.extname(resolvedPath).toLowerCase()
+  const mimeType = extension === '.mp3'
+    ? 'audio/mpeg' as const
+    : extension === '.wav'
+      ? 'audio/wav' as const
+      : null
+  if (!mimeType) {
+    throw new Error('COMFYUI_REFERENCE_AUDIO_TYPE_UNSUPPORTED: use mp3 or wav')
+  }
+  const bytes = await readFile(resolvedPath)
+  if (bytes.byteLength === 0) {
+    throw new Error(`COMFYUI_REFERENCE_AUDIO_EMPTY: ${resolvedPath}`)
+  }
+  if (bytes.byteLength > 15 * 1024 * 1024) {
+    throw new Error(`COMFYUI_REFERENCE_AUDIO_TOO_LARGE: ${resolvedPath}`)
+  }
+  return {
+    url: `data:${mimeType};base64,${bytes.toString('base64')}`,
+    mimeType,
+    byteSize: bytes.byteLength,
+    hash: createHash('sha256').update(bytes).digest('hex').slice(0, 16),
+  }
 }
 
 function detectOutputType(bytes: Uint8Array): string | null {
@@ -484,22 +569,50 @@ async function main(): Promise<void> {
     throw new Error('INVALID_ARGUMENT: --submit requires --profile')
   }
 
-  const requiresReference = options.scenario === 'image-to-image' || options.scenario === 'image-to-video'
+  const requiresReference = options.scenario === 'image-to-image'
+    || options.scenario === 'image-to-video'
+    || options.scenario === 'firstlast-frame-video'
   if (requiresReference && !options.referencePath) {
     throw new Error(`INVALID_ARGUMENT: --scenario=${options.scenario} requires --reference=<local image path>`)
   }
-  if (options.scenario === 'text-to-image' && profile.inputMappings.image?.required) {
+  if (options.scenario === 'firstlast-frame-video' && !options.lastFrameReferencePath) {
+    throw new Error('INVALID_ARGUMENT: --scenario=firstlast-frame-video requires --last-frame-reference=<local image path>')
+  }
+  if (options.scenario === 'reference-audio-video' && (options.referenceAudioPaths.length === 0 || options.referenceAudioPaths.length > 3)) {
+    throw new Error('INVALID_ARGUMENT: --scenario=reference-audio-video requires 1-3 --reference-audio=<local mp3/wav> values')
+  }
+  const imageMapping = getComfyUIScalarInputMapping(profile, 'image')
+  const lastFrameImageMapping = getComfyUIScalarInputMapping(profile, 'lastFrameImage')
+  if (options.scenario === 'text-to-image' && imageMapping?.required) {
     throw new Error('COMFYUI_REFERENCE_IMAGE_REQUIRED: the selected text-to-image Profile requires an image mapping')
   }
-  if (options.scenario === 'image-to-image' && !profile.inputMappings.image) {
+  if (options.scenario === 'image-to-image' && !imageMapping) {
     throw new Error('COMFYUI_IMAGE_MAPPING_REQUIRED: the selected image-to-image Profile does not map image')
   }
-  if (options.scenario === 'text-to-video' && profile.inputMappings.image) {
+  if ((options.scenario === 'text-to-video' || options.scenario === 'reference-audio-video') && imageMapping) {
     throw new Error('COMFYUI_TEXT_TO_VIDEO_IMAGE_MAPPING_UNSUPPORTED: the selected text-to-video Profile maps image')
+  }
+  if (options.scenario === 'firstlast-frame-video' && (!imageMapping || !lastFrameImageMapping)) {
+    throw new Error('COMFYUI_FIRSTLAST_FRAME_MAPPING_REQUIRED: the selected Profile must map image and lastFrameImage')
+  }
+  if (options.scenario === 'reference-audio-video' && !isComfyUICollectionInputMapping(profile.inputMappings.referenceAudios)) {
+    throw new Error('COMFYUI_REFERENCE_AUDIO_MAPPING_REQUIRED: the selected Profile must map referenceAudios')
   }
 
   const referenceDataUrl = options.referencePath
     ? await readReferenceAsDataUrl(options.referencePath)
+    : undefined
+  const lastFrameReferenceDataUrl = options.lastFrameReferencePath
+    ? await readReferenceAsDataUrl(options.lastFrameReferencePath)
+    : undefined
+  const referenceAudios = options.referenceAudioPaths.length > 0
+    ? await Promise.all(options.referenceAudioPaths.map(async (referencePath) => {
+      const audio = await readReferenceAudioAsDataUrl(referencePath)
+      return {
+        ...audio,
+        sourceKind: 'data-url' as const,
+      }
+    }))
     : undefined
   const generated = options.scenario === 'image-to-video'
     ? await generateComfyUIVideo({
@@ -510,6 +623,25 @@ async function main(): Promise<void> {
       prompt: options.prompt,
       options: buildMappedOptions(options),
     })
+    : options.scenario === 'firstlast-frame-video'
+      ? await generateComfyUIVideo({
+        baseUrl,
+        providerId: `comfyui-smoke-${randomUUID()}`,
+        profile,
+        imageUrl: referenceDataUrl!,
+        lastFrameImageUrl: lastFrameReferenceDataUrl!,
+        prompt: options.prompt,
+        options: buildMappedOptions(options),
+      })
+      : options.scenario === 'reference-audio-video'
+        ? await generateComfyUITextToVideo({
+          baseUrl,
+          providerId: `comfyui-smoke-${randomUUID()}`,
+          profile,
+          referenceAudios,
+          prompt: options.prompt,
+          options: buildMappedOptions(options),
+        })
     : options.scenario === 'text-to-video'
       ? await generateComfyUITextToVideo({
         baseUrl,

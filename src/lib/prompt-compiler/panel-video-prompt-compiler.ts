@@ -33,6 +33,11 @@ export interface PanelVideoPromptSpec {
   }
   imagePromptSpec: unknown
   referencePlan: unknown
+  /**
+   * 供应商工作流要求在提示词中显式引用的参考音频槽位说明。
+   * 仅保存名称和槽位号，不包含任何音频内容或可变 data URL。
+   */
+  referenceAudioInstructions: string[]
   durationSec: number | null
   negativeConstraints: string[]
 }
@@ -55,6 +60,7 @@ export interface PanelVideoPromptCompilerContext {
   generationMode: 'normal' | 'firstlastframe'
   customPrompt?: string | null
   lastFrameProvided?: boolean
+  referenceAudioNames?: string[]
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -135,6 +141,23 @@ function buildNegativeConstraints(locale: Locale): string[] {
         '不要混剪或分屏',
         '不要过度镜头抖动',
       ]
+}
+
+function buildReferenceAudioInstructions(params: {
+  names?: string[]
+  locale: Locale
+}): string[] {
+  const names = Array.from(new Set((params.names || [])
+    .map((name) => readString(name))
+    .filter(Boolean)))
+    .slice(0, 3)
+
+  return names.map((name, index) => {
+    const slot = `<Audio ${index + 1}>`
+    return params.locale === 'en'
+      ? `${slot} is the reference audio for “${name}”; use this slot when describing the intended voice and audio performance.`
+      : `${slot} 是“${name}”的参考音频；描述音色、说话方式或音频表现时请引用此槽位。`
+  })
 }
 
 function readLockedReferenceConstraints(params: {
@@ -251,6 +274,10 @@ export function buildPanelVideoPromptSpec(params: {
     referencePlan,
     locale,
   })
+  const referenceAudioInstructions = buildReferenceAudioInstructions({
+    names: params.context.referenceAudioNames,
+    locale,
+  })
   return {
     schemaVersion: CREATIVE_QUALITY_SCHEMA_VERSION,
     panelId: params.context.panel.panelId,
@@ -295,6 +322,7 @@ export function buildPanelVideoPromptSpec(params: {
     visualContract,
     imagePromptSpec: Object.keys(imagePromptSpec).length > 0 ? imagePromptSpec : null,
     referencePlan: Object.keys(referencePlan).length > 0 ? referencePlan : params.context.panel.referencePlan || null,
+    referenceAudioInstructions,
     durationSec,
     negativeConstraints: Array.from(new Set([
       ...buildNegativeConstraints(locale),
@@ -336,6 +364,9 @@ export function compilePanelVideoPrompt(spec: PanelVideoPromptSpec, locale: Loca
       `Environment motion: ${spec.environmentMotion}`,
       `End state: ${spec.endState}`,
       `Continuity: ${spec.continuityConstraints.join('; ')}`,
+      ...(spec.referenceAudioInstructions.length > 0
+        ? [`Reference audio: ${spec.referenceAudioInstructions.join(' ')}`]
+        : []),
       spec.durationSec ? `Duration: about ${spec.durationSec} seconds.` : '',
       `Negative constraints: ${spec.negativeConstraints.join('; ')}.`,
     ])
@@ -352,6 +383,9 @@ export function compilePanelVideoPrompt(spec: PanelVideoPromptSpec, locale: Loca
     `环境运动：${spec.environmentMotion}`,
     `结束状态：${spec.endState}`,
     `连续性约束：${spec.continuityConstraints.join('；')}`,
+    ...(spec.referenceAudioInstructions.length > 0
+      ? [`参考音频：${spec.referenceAudioInstructions.join('；')}`]
+      : []),
     spec.durationSec ? `时长：约 ${spec.durationSec} 秒。` : '',
     `禁止项：${spec.negativeConstraints.join('；')}。`,
   ])
@@ -362,18 +396,25 @@ export function buildPanelVideoGenerationSnapshot(params: {
   modelKey: string
   promptTemplateId: string
   referenceImages: string[]
+  structuredReferences?: unknown
+  /** @deprecated 请改用 structuredReferences，以同时保存稳定音频源和安全摘要。 */
   referenceAudioSummary?: unknown
   promptSpec: PanelVideoPromptSpec
   compiledPrompt: string
   assetVersionHash?: string | null
 }): GenerationSnapshot {
+  const structuredReferences = params.structuredReferences !== undefined
+    ? params.structuredReferences
+    : params.referenceAudioSummary
+      ? { referenceAudioSummary: params.referenceAudioSummary }
+      : undefined
   const specHash = createCreativeQualityHash(params.promptSpec)
   const promptHash = createCreativeQualityHash(params.compiledPrompt)
   const inputHash = createCreativeQualityHash({
     promptTemplateId: params.promptTemplateId,
     promptSpecHash: specHash,
     referenceImages: params.referenceImages,
-    referenceAudioSummary: params.referenceAudioSummary || null,
+    structuredReferences: structuredReferences || null,
     assetVersionHash: params.assetVersionHash || null,
   })
   return {
@@ -388,7 +429,7 @@ export function buildPanelVideoGenerationSnapshot(params: {
     inputHash,
     assetVersionHash: params.assetVersionHash || null,
     referenceImages: Array.from(new Set(params.referenceImages.filter(Boolean))),
-    ...(params.referenceAudioSummary ? { structuredReferences: { referenceAudioSummary: params.referenceAudioSummary } } : {}),
+    ...(structuredReferences !== undefined ? { structuredReferences } : {}),
     promptSpec: params.promptSpec,
     compiledPrompt: params.compiledPrompt,
     createdAt: new Date().toISOString(),

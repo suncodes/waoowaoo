@@ -389,6 +389,56 @@ describe('worker video processor behavior', () => {
     expect(JSON.stringify(artifactPayload)).not.toContain('base64')
   })
 
+  it('VIDEO_PANEL: 显式固定的参考音频不依赖 generateAudio 开关或镜头台词', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+    const referenceAudio = {
+      url: 'data:audio/wav;base64,AAAA',
+      mimeType: 'audio/wav',
+      byteSize: 4,
+      hash: 'audiohash',
+      sourceKind: 'storage',
+    }
+    const prepared = buildPreparedPrompt({
+      artifactId: 'prepared-panel-video-explicit-audio',
+      generationOptions: { generateAudio: false, duration: 4 },
+    })
+    const snapshotWithReferences = prepared.snapshot as typeof prepared.snapshot & {
+      structuredReferences?: unknown
+    }
+    snapshotWithReferences.structuredReferences = {
+      referenceAudioSources: [{
+        sourceId: 'voice-1',
+        name: '旁白音色',
+        url: 'voices/user-1/reference.wav',
+      }],
+      referenceAudioSummary: [{ sourceId: 'voice-1', name: '旁白音色' }],
+    }
+    preparedPromptMock.requirePreparedPrompt.mockResolvedValueOnce(prepared)
+    panelVideoReferenceAudioMock.resolvePanelVideoReferenceAudios.mockResolvedValueOnce({
+      referenceAudios: [referenceAudio],
+      referenceAudioSummary: [{ hash: 'audiohash', sourceKind: 'storage' }],
+    })
+
+    await processor!(buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: { preparedPromptArtifactId: prepared.artifactId },
+    }))
+
+    expect(panelVideoReferenceAudioMock.resolvePanelVideoReferenceAudios).toHaveBeenCalledWith(expect.objectContaining({
+      requestedGenerateAudio: false,
+      speech: null,
+      structuredReferences: snapshotWithReferences.structuredReferences,
+    }))
+    const generationCall = utilsMock.resolveVideoSourceFromGeneration.mock.calls[0]?.[1] as {
+      options?: Record<string, unknown>
+    }
+    expect(generationCall.options).toMatchObject({
+      generateAudio: false,
+      referenceAudios: [referenceAudio],
+    })
+  })
+
   it('LIP_SYNC: 缺少 panel 时显式失败', async () => {
     const processor = workerState.processor
     expect(processor).toBeTruthy()

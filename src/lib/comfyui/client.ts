@@ -20,11 +20,14 @@ export class ComfyUISubmissionUnknownError extends Error {
   }
 }
 
-export interface ComfyUIUploadedImage {
+export interface ComfyUIUploadedInputFile {
   name: string
   subfolder?: string
   type?: string
 }
+
+/** @deprecated 兼容既有图片上传调用；ComfyUI input 上传接口同样承载音频文件。 */
+export type ComfyUIUploadedImage = ComfyUIUploadedInputFile
 
 export interface ComfyUIOutputFile {
   filename: string
@@ -147,7 +150,7 @@ function getPromptValidationError(payload: Record<string, unknown>): string | nu
   return null
 }
 
-function readUploadedImagePath(uploaded: ComfyUIUploadedImage): string {
+function readUploadedInputFilePath(uploaded: ComfyUIUploadedInputFile): string {
   const name = uploaded.name.trim()
   if (!name || name.includes('/') || name.includes('\\') || name === '.' || name === '..') {
     throw createComfyUIError('EXTERNAL_ERROR', 'COMFYUI_UPLOAD_RESPONSE_INVALID')
@@ -162,8 +165,13 @@ function readUploadedImagePath(uploaded: ComfyUIUploadedImage): string {
   return `${segments.join('/')}/${name}`
 }
 
-/** 上传参考图到远端 ComfyUI input 目录，并返回可写入 LoadImage 节点的文件名。 */
-export async function uploadComfyUIImage(input: {
+/**
+ * 上传文件到远端 ComfyUI input 目录，并返回可写入 LoadImage/LoadAudio 节点的文件名。
+ *
+ * ComfyUI 的 `/upload/image` 是 input 文件上传入口，服务端会按文件内容/扩展名
+ * 将其放入 input 目录；接口字段名仍需保持为 `image`，以兼容 ComfyUI 原生 API。
+ */
+export async function uploadComfyUIInputFile(input: {
   baseUrl: string
   bytes: Buffer
   mimeType: string
@@ -171,8 +179,8 @@ export async function uploadComfyUIImage(input: {
 }): Promise<string> {
   const formData = new FormData()
   const imageBytes = Uint8Array.from(input.bytes)
-  const blob = new Blob([imageBytes], { type: input.mimeType || 'image/png' })
-  formData.append('image', blob, input.filename || 'reference.png')
+  const blob = new Blob([imageBytes], { type: input.mimeType || 'application/octet-stream' })
+  formData.append('image', blob, input.filename || 'reference-input')
 
   let response: Response
   try {
@@ -183,27 +191,41 @@ export async function uploadComfyUIImage(input: {
     })
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)
-    throw createComfyUIError('NETWORK_ERROR', `COMFYUI_IMAGE_UPLOAD_FAILED: ${detail}`)
+    throw createComfyUIError('NETWORK_ERROR', `COMFYUI_INPUT_UPLOAD_FAILED: ${detail}`)
   }
 
   const body = await response.text().catch(() => '')
   if (!response.ok) {
     throw createComfyUIError(
       response.status >= 500 ? 'EXTERNAL_ERROR' : 'INVALID_PARAMS',
-      responseErrorMessage('COMFYUI_IMAGE_UPLOAD_FAILED', response.status, body),
+      responseErrorMessage('COMFYUI_INPUT_UPLOAD_FAILED', response.status, body),
       response.status,
     )
   }
 
-  const payload = parseJsonResponse(body, 'COMFYUI_IMAGE_UPLOAD_RESPONSE_INVALID')
+  const payload = parseJsonResponse(body, 'COMFYUI_INPUT_UPLOAD_RESPONSE_INVALID')
   const name = readTrimmedString(payload.name)
   if (!name) {
-    throw createComfyUIError('EXTERNAL_ERROR', 'COMFYUI_IMAGE_UPLOAD_RESPONSE_INVALID')
+    throw createComfyUIError('EXTERNAL_ERROR', 'COMFYUI_INPUT_UPLOAD_RESPONSE_INVALID')
   }
-  return readUploadedImagePath({
+  return readUploadedInputFilePath({
     name,
     subfolder: readTrimmedString(payload.subfolder) || undefined,
     type: readTrimmedString(payload.type) || undefined,
+  })
+}
+
+/** 上传参考图到远端 ComfyUI input 目录，并返回可写入 LoadImage 节点的文件名。 */
+export async function uploadComfyUIImage(input: {
+  baseUrl: string
+  bytes: Buffer
+  mimeType: string
+  filename: string
+}): Promise<string> {
+  return await uploadComfyUIInputFile({
+    ...input,
+    mimeType: input.mimeType || 'image/png',
+    filename: input.filename || 'reference.png',
   })
 }
 

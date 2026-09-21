@@ -3,7 +3,7 @@ import { DEFAULT_VIDEO_RATIO, getStyleReferenceInstruction, joinPromptSegments }
 import { resolveArtStyleForGeneration, type ArtStyleGenerationResult } from '@/lib/art-style-generation'
 import { createCreativeQualityHash } from '@/lib/creative-quality/contracts'
 import { getProjectModelConfig } from '@/lib/config-service'
-import type { CapabilityValue } from '@/lib/model-config-contract'
+import { parseModelKeyStrict, type CapabilityValue } from '@/lib/model-config-contract'
 import { resolveBuiltinCapabilitiesByModelKey } from '@/lib/model-capabilities/lookup'
 import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
 import type { PromptLocale } from '@/lib/prompt-i18n/types'
@@ -51,6 +51,14 @@ import {
   type PanelVisualReferenceSelection,
   type VisualReference,
 } from '@/lib/visual-production/references'
+import {
+  normalizeVideoReferenceAudioIds,
+  resolveVideoReferenceAudioMaxCount,
+  resolveVideoReferenceAudioSources,
+  summarizeVideoReferenceAudioSources,
+  VideoReferenceAudioError,
+  type VideoReferenceAudioSource,
+} from '@/lib/video-reference-audio'
 
 type PromptPreviewLocale = PromptLocale
 type VideoOptionValue = string | number | boolean
@@ -117,7 +125,7 @@ export interface PanelGenerationPromptPreview {
 }
 
 export class PanelPromptPreviewError extends Error {
-  code: 'PANEL_NOT_FOUND' | 'PROJECT_NOT_FOUND'
+  code: 'PANEL_NOT_FOUND' | 'PROJECT_NOT_FOUND' | 'VIDEO_REFERENCE_AUDIO_INVALID'
 
   constructor(code: PanelPromptPreviewError['code'], message: string) {
     super(message)
@@ -736,6 +744,7 @@ export function buildPanelVideoPromptFromResolvedInputs(params: {
   lastFrameProvided?: boolean
   generationOptions?: VideoOptionMap
   includeNativeAudio?: boolean
+  referenceAudioNames?: string[]
   panelSpeech?: {
     speaker: string
     originalContent: string
@@ -765,6 +774,7 @@ export function buildPanelVideoPromptFromResolvedInputs(params: {
       generationMode: params.generationMode,
       customPrompt: params.customPrompt || null,
       lastFrameProvided: params.lastFrameProvided === true,
+      referenceAudioNames: params.referenceAudioNames,
     },
     locale,
   })
@@ -930,6 +940,7 @@ export async function buildPanelVideoGenerationPromptPreview(params: {
   mode: 'video' | 'firstlastframe'
   videoModel?: string | null
   generationOptions?: unknown
+  referenceAudioIds?: unknown
   overrides?: PanelGenerationPromptPreviewOverrides
 }): Promise<PanelGenerationPromptPreview> {
   const panel = await findPanelForPromptPreview(params.projectId, params.locator)
@@ -944,6 +955,35 @@ export async function buildPanelVideoGenerationPromptPreview(params: {
   const modelKey = generationMode === 'firstlastframe'
     ? (firstLastFrame?.flModel?.trim() || params.videoModel?.trim() || modelConfig.videoModel || null)
     : (params.videoModel?.trim() || modelConfig.videoModel || null)
+  let referenceAudioSources: VideoReferenceAudioSource[] = []
+  try {
+    const referenceAudioIds = normalizeVideoReferenceAudioIds(params.referenceAudioIds)
+    if (referenceAudioIds.length > 0) {
+      if (!modelKey) {
+        throw new VideoReferenceAudioError(
+          'VIDEO_REFERENCE_AUDIO_UNSUPPORTED',
+          '请先选择支持参考音频的视频模型。',
+        )
+      }
+      const maxCount = await resolveVideoReferenceAudioMaxCount({
+        userId: params.userId,
+        modelKey,
+      })
+      referenceAudioSources = await resolveVideoReferenceAudioSources({
+        userId: params.userId,
+        referenceAudioIds,
+        maxCount,
+      })
+    }
+  } catch (error) {
+    if (error instanceof VideoReferenceAudioError) {
+      throw new PanelPromptPreviewError('VIDEO_REFERENCE_AUDIO_INVALID', error.message)
+    }
+    throw error
+  }
+  const referenceAudioSummary = summarizeVideoReferenceAudioSources(referenceAudioSources)
+  const parsedVideoModel = modelKey ? parseModelKeyStrict(modelKey) : null
+  const requiresComfyUIAudioTags = parsedVideoModel?.provider.split(':', 1)[0]?.toLowerCase() === 'comfyui'
   const panelForPreview = applyPanelOverrides(panel as PanelForImagePrompt, params.overrides?.panel) as PanelForImagePrompt & PanelForVideoPrompt
   const customPrompt = generationMode === 'firstlastframe'
     ? (
@@ -1028,6 +1068,9 @@ export async function buildPanelVideoGenerationPromptPreview(params: {
     generationOptions: effectiveGenerationOptions,
     includeNativeAudio: requestedGenerateAudio === true,
     panelSpeech,
+    ...(requiresComfyUIAudioTags && referenceAudioSources.length > 0
+      ? { referenceAudioNames: referenceAudioSources.map((source) => source.name) }
+      : {}),
   })
 
   return {
@@ -1046,10 +1089,20 @@ export async function buildPanelVideoGenerationPromptPreview(params: {
       ...(typeof requestedGenerateAudio === 'boolean' ? { generateAudio: requestedGenerateAudio } : {}),
     },
     referenceImages: Array.from(new Set(referenceImages.filter(Boolean))),
+    ...(referenceAudioSources.length > 0
+      ? {
+        structuredReferences: {
+          referenceAudioSources,
+          referenceAudioSummary,
+        },
+      }
+      : {}),
     assetVersionHash: createCreativeQualityHash({
       referenceImages: Array.from(new Set(referenceImages.filter(Boolean))),
       generationMode,
       generationOptions,
+      referenceAudioSources,
+      referenceAudioSummary,
       panelSpeech: panelSpeech
         ? {
           speaker: panelSpeech.speaker,

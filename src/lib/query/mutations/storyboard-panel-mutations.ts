@@ -23,6 +23,7 @@ export interface PanelGenerationPromptPreviewPayload {
     mode: PanelGenerationPromptPreviewMode
     videoModel?: string | null
     generationOptions?: Record<string, PanelGenerationPromptPreviewOptionValue>
+    referenceAudioIds?: string[]
     forceNoReference?: boolean
     overrides?: {
         panel?: {

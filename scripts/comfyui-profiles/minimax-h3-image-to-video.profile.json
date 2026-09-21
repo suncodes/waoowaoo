@@ -38,6 +38,15 @@
         "title": "加载首帧图片（WAOOWAOO）"
       }
     },
+    "142": {
+      "inputs": {
+        "image": "example-last.png"
+      },
+      "class_type": "LoadImage",
+      "_meta": {
+        "title": "加载尾帧图片（WAOOWAOO）"
+      }
+    },
     "140:119": {
       "inputs": {
         "vae_name": "minimax_h3_video_vae_fp16.safetensors"
@@ -235,6 +244,10 @@
         "first_frame": [
           "141",
           0
+        ],
+        "last_frame": [
+          "142",
+          0
         ]
       },
       "class_type": "MiniMaxH3ImageToVideo",
@@ -357,6 +370,11 @@
       "inputName": "image",
       "required": true
     },
+    "lastFrameImage": {
+      "nodeId": "142",
+      "inputName": "image",
+      "required": true
+    },
     "seed": {
       "nodeId": "140:129",
       "inputName": "noise_seed"
@@ -388,4 +406,3 @@
   },
   "outputNodeId": "92"
 }
-

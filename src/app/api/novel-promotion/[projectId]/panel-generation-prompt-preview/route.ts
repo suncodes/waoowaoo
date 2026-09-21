@@ -35,6 +35,9 @@ function mapPromptPreviewError(error: unknown): never {
     if (error.code === 'PANEL_NOT_FOUND' || error.code === 'PROJECT_NOT_FOUND') {
       throw new ApiError('NOT_FOUND')
     }
+    if (error.code === 'VIDEO_REFERENCE_AUDIO_INVALID') {
+      throw new ApiError('INVALID_PARAMS', { code: error.code, message: error.message })
+    }
   }
   if (error instanceof PanelPromptPreparationError || error instanceof PreparedPromptError) {
     throw new ApiError('INVALID_PARAMS', { code: error.code, message: error.message })
@@ -81,6 +84,7 @@ export const POST = apiHandler(async (
       locator,
       videoModel: typeof body.videoModel === 'string' ? body.videoModel : null,
       generationOptions: body.generationOptions,
+      referenceAudioIds: body.referenceAudioIds,
       overrides,
       forceNoReference: body.forceNoReference === true,
     })

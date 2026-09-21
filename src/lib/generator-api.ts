@@ -1,4 +1,6 @@
 import { logInfo as _ulogInfo } from '@/lib/logging/core'
+import type { OutboundAudioReference } from '@/lib/media/outbound-audio'
+import { getComfyUIScalarInputMapping } from '@/lib/comfyui/profile'
 /**
  * 生成器统一入口（增强版）
  * 
@@ -217,6 +219,7 @@ export async function generateVideo(
         aspectRatio?: string     // '16:9' | '9:16'
         generateAudio?: boolean  // 支持原生音频的视频模型可用
         lastFrameImageUrl?: string  // 首尾帧模式的尾帧图片
+        referenceAudios?: OutboundAudioReference[] // 供应商支持时的参考音频
         [key: string]: unknown
     }
 ): Promise<GenerateResult> {
@@ -229,11 +232,12 @@ export async function generateVideo(
             throw new Error(`COMFYUI_PROFILE_INVALID: ${selection.modelKey}`)
         }
         const providerConfig = await getComfyUIProviderConfig(userId, selection.provider)
-        if (!selection.comfyuiProfile.inputMappings.image) {
+        if (!getComfyUIScalarInputMapping(selection.comfyuiProfile, 'image')) {
             return await generateComfyUITextToVideo({
                 baseUrl: providerConfig.baseUrl,
                 providerId: selection.provider,
                 profile: selection.comfyuiProfile,
+                referenceAudios: options?.referenceAudios,
                 prompt: prompt || '',
                 options: {
                     ...providerOptions,
@@ -248,6 +252,8 @@ export async function generateVideo(
             providerId: selection.provider,
             profile: selection.comfyuiProfile,
             imageUrl: imageUrl || '',
+            lastFrameImageUrl: options?.lastFrameImageUrl,
+            referenceAudios: options?.referenceAudios,
             prompt: prompt || '',
             options: {
                 ...providerOptions,

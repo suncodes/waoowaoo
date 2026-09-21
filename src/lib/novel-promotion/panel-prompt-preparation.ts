@@ -19,6 +19,8 @@ import {
 } from './panel-generation-prompt-preview'
 import { assertPanelGenerationRouteAllowed } from '@/lib/visual-production/panel-generation-router'
 import { resolveBuiltinCapabilitiesByModelKey } from '@/lib/model-capabilities/lookup'
+import { getProviderKey, resolveModelSelection } from '@/lib/api-config'
+import { deriveComfyUIProfileCapabilities } from '@/lib/comfyui/capabilities'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { markPanelImagePromptCurrent } from '@/lib/visual-production/panel-prepared-prompt-state'
@@ -59,8 +61,16 @@ function requireModelKey(preview: PanelGenerationPromptPreview) {
   throw new PanelPromptPreparationError('MODEL_REQUIRED', '请先配置生成模型，再固定提示词。')
 }
 
-function assertFirstLastFrameModel(modelKey: string) {
+async function assertFirstLastFrameModel(userId: string, modelKey: string) {
   if (resolveBuiltinCapabilitiesByModelKey('video', modelKey)?.video?.firstlastframe === true) return
+  const selection = await resolveModelSelection(userId, modelKey, 'video')
+  if (
+    getProviderKey(selection.provider).toLowerCase() === 'comfyui'
+    && selection.comfyuiProfile
+    && deriveComfyUIProfileCapabilities(selection.comfyuiProfile)?.video?.firstlastframe === true
+  ) {
+    return
+  }
   throw new PanelPromptPreparationError(
     'FIRSTLASTFRAME_MODEL_UNSUPPORTED',
     '当前模型不支持首尾帧视频，请选择支持首尾帧的模型后再固定提示词。',
@@ -75,6 +85,7 @@ export async function preparePanelGenerationPrompt(params: {
   locator: PanelLocator
   videoModel?: string | null
   generationOptions?: unknown
+  referenceAudioIds?: unknown
   overrides?: PanelGenerationPromptPreviewOverrides
   forceNoReference?: boolean
 }): Promise<{
@@ -145,11 +156,12 @@ export async function preparePanelGenerationPrompt(params: {
     mode: params.mode === 'firstlastframe' ? 'firstlastframe' : 'video',
     videoModel: params.videoModel,
     generationOptions: params.generationOptions,
+    referenceAudioIds: params.referenceAudioIds,
     overrides: params.overrides,
   })
   const generationOptions = toGenerationOptions(preview.generationOptions)
   const modelKey = requireModelKey(preview)
-  if (params.mode === 'firstlastframe') assertFirstLastFrameModel(modelKey)
+  if (params.mode === 'firstlastframe') await assertFirstLastFrameModel(params.userId, modelKey)
   const generationMode = typeof generationOptions.generationMode === 'string'
     ? generationOptions.generationMode
     : (preview.mode === 'firstlastframe' ? 'firstlastframe' : 'normal')
@@ -158,6 +170,7 @@ export async function preparePanelGenerationPrompt(params: {
     modelKey,
     promptTemplateId: preview.promptTemplateId,
     referenceImages: preview.referenceImages,
+    structuredReferences: preview.structuredReferences,
     promptSpec: preview.promptSpec as PanelVideoPromptSpec,
     compiledPrompt: preview.compiledPrompt,
     assetVersionHash: preview.assetVersionHash || null,

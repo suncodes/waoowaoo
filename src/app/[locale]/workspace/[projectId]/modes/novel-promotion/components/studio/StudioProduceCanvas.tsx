@@ -10,7 +10,9 @@ import {
   usePanelGenerationPromptPreview,
   useUpdateProjectPanelImagePrompt,
   useUpdateProjectPanelLink,
+  useGlobalVoices,
 } from '@/lib/query/hooks'
+import type { GlobalVoice } from '@/lib/query/hooks'
 import type { PanelGenerationPromptPreview } from '@/lib/query/mutations/storyboard-panel-mutations'
 import { useVideoFirstLastFrameFlow } from '@/lib/novel-promotion/stages/video-stage-runtime/useVideoFirstLastFrameFlow'
 import { useVideoPromptState, type DirtyPromptEntry } from '@/lib/novel-promotion/stages/video-stage-runtime/useVideoPromptState'
@@ -190,6 +192,20 @@ function translateFirstLastFrameKey(key: string): string {
   return key === 'firstLastFrame.thenTransitionTo' ? '然后自然过渡到' : key
 }
 
+function referenceAudioCapacityForModel(
+  modelKey: string,
+  models: Array<{ value: string; capabilities?: { video?: { referenceAudioMaxCount?: number } } }>,
+): number {
+  const capacity = models.find((model) => model.value === modelKey)?.capabilities?.video?.referenceAudioMaxCount
+  return typeof capacity === 'number' && Number.isInteger(capacity) && capacity > 0
+    ? Math.min(capacity, 3)
+    : 0
+}
+
+function supportsVoiceReference(voice: GlobalVoice): boolean {
+  return Boolean(voice.media?.url || voice.customVoiceUrl)
+}
+
 function EmptyProduce({ onNavigate }: { onNavigate: (route: string) => void }) {
   return (
     <StudioEmptyState
@@ -210,6 +226,8 @@ function ProductionDetailPanel({
   firstLastFrameFlow,
   promptState,
   voiceLineCountForItem,
+  referenceAudioIds,
+  onReferenceAudioIdsChange,
 }: {
   item: ProduceItem
   nextItem: ProduceItem | null
@@ -219,6 +237,8 @@ function ProductionDetailPanel({
   firstLastFrameFlow: FirstLastFrameFlow
   promptState: VideoPromptState
   voiceLineCountForItem: (item: ProduceItem) => number
+  referenceAudioIds: string[]
+  onReferenceAudioIdsChange: (ids: string[]) => void
 }) {
   const runtime = useWorkspaceStageRuntime()
   const { projectId, episodeId } = useWorkspaceProvider()
@@ -239,6 +259,7 @@ function ProductionDetailPanel({
   const [preparedPromptArtifactId, setPreparedPromptArtifactId] = useState<string | null>(null)
   const [preparedPromptOpen, setPreparedPromptOpen] = useState(false)
   const [actualVideoPromptOpen, setActualVideoPromptOpen] = useState(false)
+  const globalVoicesQuery = useGlobalVoices()
   const videoUrl = panelVideoUrl(item.panel)
   const actualVideoPromptSnapshot = useLatestPanelGenerationPromptSnapshot({
     isOpen: actualVideoPromptOpen,
@@ -290,6 +311,22 @@ function ProductionDetailPanel({
     || !linked
     || !firstLastFrameFlow.flModel
     || firstLastFrameFlow.flMissingCapabilityFields.length > 0
+  const activeModel = mode === 'firstlastframe' ? firstLastFrameFlow.flModel : selectedModel
+  const referenceAudioMaxCount = referenceAudioCapacityForModel(activeModel, runtime.userVideoModels)
+  const selectableReferenceVoices = (globalVoicesQuery.data || []).filter(supportsVoiceReference)
+  const selectedReferenceAudioIds = referenceAudioIds.slice(0, referenceAudioMaxCount)
+
+  const updateReferenceAudioSelection = (voiceId: string, checked: boolean) => {
+    const selected = new Set(selectedReferenceAudioIds)
+    if (checked) {
+      if (selected.size >= referenceAudioMaxCount) return
+      selected.add(voiceId)
+    } else {
+      selected.delete(voiceId)
+    }
+    setPreparedPromptArtifactId(null)
+    onReferenceAudioIdsChange(Array.from(selected))
+  }
 
   useEffect(() => {
     setMode(initialMode)
@@ -301,6 +338,11 @@ function ProductionDetailPanel({
     initialModel,
     item.id,
   ])
+
+  useEffect(() => {
+    if (referenceAudioMaxCount < 1 || referenceAudioIds.length <= referenceAudioMaxCount) return
+    onReferenceAudioIdsChange(referenceAudioIds.slice(0, referenceAudioMaxCount))
+  }, [onReferenceAudioIdsChange, referenceAudioIds, referenceAudioMaxCount])
 
   useEffect(() => {
     let cancelled = false
@@ -436,6 +478,7 @@ function ProductionDetailPanel({
         panelIndex: item.panel.panelIndex,
         mode: isFirstLastFrame ? 'firstlastframe' : 'video',
         videoModel: isFirstLastFrame ? firstLastFrameFlow.flModel : selectedModel,
+        ...(selectedReferenceAudioIds.length > 0 ? { referenceAudioIds: selectedReferenceAudioIds } : {}),
         generationOptions: isFirstLastFrame
           ? firstLastFrameFlow.getFlGenerationOptionsForPanel(panelKey)
           : undefined,
@@ -629,6 +672,36 @@ function ProductionDetailPanel({
                 {runtime.userVideoModels.map((model) => <option key={model.value} value={model.value}>{model.label}</option>)}
               </select>
             </label>
+            {referenceAudioMaxCount > 0 ? (
+              <div className="rounded-md border border-white/10 bg-[#0f100e] p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-semibold text-stone-300">参考音频</div>
+                    <div className="mt-1 text-[11px] text-stone-500">从音色库选择最多 {referenceAudioMaxCount} 条；固定提示词后将锁定本次选择。</div>
+                  </div>
+                  <span className="text-xs text-stone-400">{selectedReferenceAudioIds.length}/{referenceAudioMaxCount}</span>
+                </div>
+                {globalVoicesQuery.isLoading ? (
+                  <div className="mt-3 text-xs text-stone-500">正在加载音色库…</div>
+                ) : selectableReferenceVoices.length === 0 ? (
+                  <div className="mt-3 text-xs text-stone-500">音色库中暂无可用的已上传参考音频。</div>
+                ) : (
+                  <div className="mt-3 max-h-44 space-y-1 overflow-y-auto pr-1">
+                    {selectableReferenceVoices.map((voice) => {
+                      const checked = selectedReferenceAudioIds.includes(voice.id)
+                      const disabled = !checked && selectedReferenceAudioIds.length >= referenceAudioMaxCount
+                      return (
+                        <label key={voice.id} className={`flex items-center gap-2 rounded px-2 py-1.5 text-xs ${disabled ? 'cursor-not-allowed opacity-45' : 'cursor-pointer hover:bg-white/[0.05]'}`}>
+                          <input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => updateReferenceAudioSelection(voice.id, event.target.checked)} />
+                          <span className="min-w-0 flex-1 truncate text-stone-200">{voice.name}</span>
+                          <span className="text-[10px] text-stone-500">{voice.language || voice.voiceType}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : null}
             <label className="block text-xs font-semibold text-stone-500">
               视频提示词
               <textarea value={prompt} onChange={(event) => { setPreparedPromptArtifactId(null); promptState.updateLocalPrompt(panelKey, event.target.value, 'videoPrompt') }} onBlur={() => { void saveNormalPrompt() }} rows={6} className="mt-1 w-full resize-y rounded-md border border-white/10 bg-[#0f100e] px-3 py-2 text-sm font-normal leading-6 text-stone-100 outline-none focus:border-[#e8d18a]" placeholder="描述视频运动、镜头节奏、主体动作和画面变化。" />
@@ -783,6 +856,7 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
     normal: {},
     firstlastframe: {},
   })
+  const [referenceAudioIdsByPanel, setReferenceAudioIdsByPanel] = useState<Record<string, string[]>>({})
   const [linkSavingKey, setLinkSavingKey] = useState('')
   const items = useMemo(() => buildProduceItems(taskAwareStoryboards), [taskAwareStoryboards])
   const videoPanels = useMemo(() => toVideoPanels(items), [items])
@@ -883,6 +957,7 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
 
   const prepareBatchPrompts = async (mode: BatchVideoMode) => {
     const targetModel = mode === 'firstlastframe' ? firstLastFrameFlow.flModel : videoModel
+    const batchReferenceAudioMaxCount = referenceAudioCapacityForModel(targetModel, runtime.userVideoModels)
     if (!targetModel.trim()) {
       window.alert(mode === 'firstlastframe' ? '请先配置首尾帧视频模型。' : '请先在设置中配置单图视频模型。')
       return
@@ -908,6 +983,8 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
       for (const item of targets) {
         const index = items.findIndex((candidate) => candidate.id === item.id)
         const nextItem = index >= 0 ? items[index + 1] || null : null
+        const referenceAudioIds = (referenceAudioIdsByPanel[item.panel.id] || [])
+          .slice(0, batchReferenceAudioMaxCount)
         try {
           const result = await batchPromptPreparationMutation.mutateAsync({
             panelId: item.panel.id,
@@ -915,6 +992,7 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
             panelIndex: item.panel.panelIndex,
             mode: mode === 'firstlastframe' ? 'firstlastframe' : 'video',
             videoModel: targetModel,
+            ...(referenceAudioIds.length > 0 ? { referenceAudioIds } : {}),
             generationOptions: mode === 'firstlastframe'
               ? firstLastFrameFlow.getFlGenerationOptionsForPanel(`${item.storyboard.id}-${item.panel.panelIndex}`)
               : undefined,
@@ -1065,6 +1143,13 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
               firstLastFrameFlow={firstLastFrameFlow}
               promptState={promptState}
               voiceLineCountForItem={voiceLineCountForItem}
+              referenceAudioIds={referenceAudioIdsByPanel[selectedItem.panel.id] || []}
+              onReferenceAudioIdsChange={(ids) => {
+                setReferenceAudioIdsByPanel((current) => ({
+                  ...current,
+                  [selectedItem.panel.id]: ids,
+                }))
+              }}
             />
           ) : null}
         </div>

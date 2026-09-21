@@ -425,7 +425,7 @@ export async function resolveVideoSourceFromGeneration(
   params: {
     userId: string
     modelId: string
-    imageUrl: string
+    imageUrl?: string
     options?: {
       prompt?: string
       duration?: number

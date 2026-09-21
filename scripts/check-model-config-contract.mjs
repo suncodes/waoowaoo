@@ -21,6 +21,7 @@ const CAPABILITY_NAMESPACE_ALLOWED_FIELDS = {
     'resolutionOptions',
     'firstlastframe',
     'supportGenerateAudio',
+    'referenceAudioMaxCount',
     'fieldI18n',
   ]),
   audio: new Set(['voiceOptions', 'rateOptions', 'fieldI18n']),
@@ -253,6 +254,14 @@ function validateCapabilities(modelType, capabilities) {
       }
       if (video.firstlastframe !== undefined && typeof video.firstlastframe !== 'boolean') {
         pushIssue(issues, 'capabilities.video.firstlastframe', 'must be boolean')
+      }
+      if (
+        video.referenceAudioMaxCount !== undefined
+        && (!Number.isInteger(video.referenceAudioMaxCount)
+          || video.referenceAudioMaxCount < 1
+          || video.referenceAudioMaxCount > 3)
+      ) {
+        pushIssue(issues, 'capabilities.video.referenceAudioMaxCount', 'must be an integer between 1 and 3')
       }
       validateFieldI18nMap(issues, 'video', video)
     }

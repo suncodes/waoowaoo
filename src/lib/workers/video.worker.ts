@@ -93,9 +93,6 @@ async function generateVideoForPreparedPrompt(
 ): Promise<{ cosKey: string; generationMode: VideoGenerationMode; actualVideoTokens?: number }> {
   const snapshot = attachPreparedPromptToSnapshot(prepared.snapshot, prepared.artifactId)
   const sourceImageUrl = toSignedUrlIfCos(snapshot.referenceImages[0], 3600)
-  if (!sourceImageUrl) {
-    throw new Error(`PREPARED_PROMPT_REFERENCE_MISSING: ${panel.id}`)
-  }
   const generationMode: VideoGenerationMode = prepared.generationMode === 'firstlastframe'
     ? 'firstlastframe'
     : 'normal'
@@ -105,21 +102,33 @@ async function generateVideoForPreparedPrompt(
   if (generationMode === 'firstlastframe' && !lastFrameImageUrl) {
     throw new Error(`PREPARED_PROMPT_LAST_FRAME_MISSING: ${panel.id}`)
   }
+  if (generationMode === 'firstlastframe' && !sourceImageUrl) {
+    throw new Error(`PREPARED_PROMPT_REFERENCE_MISSING: ${panel.id}`)
+  }
   const generationOptions = extractGenerationOptions({ generationOptions: prepared.generationOptions })
   const requestedGenerateAudio = typeof generationOptions.generateAudio === 'boolean'
     ? generationOptions.generateAudio
     : undefined
+  const structuredReferences = snapshot.structuredReferences
+  const hasExplicitReferenceAudios = !!structuredReferences
+    && typeof structuredReferences === 'object'
+    && !Array.isArray(structuredReferences)
+    && Array.isArray((structuredReferences as { referenceAudioSources?: unknown }).referenceAudioSources)
+  let panelSpeechState: Awaited<ReturnType<typeof validatePanelSpeechReadyForVideo>> | null = null
+  if (requestedGenerateAudio || hasExplicitReferenceAudios) {
+    panelSpeechState = await validatePanelSpeechReadyForVideo(panel.id)
+  }
+  if (requestedGenerateAudio && !panelSpeechState?.ready) {
+    throw new Error(`PANEL_SPEECH_NOT_READY: ${panel.id}: ${panelSpeechState?.reasons.join(' | ') || 'unknown'}`)
+  }
   let referenceAudios: Awaited<ReturnType<typeof resolvePanelVideoReferenceAudios>>['referenceAudios'] = []
-  if (requestedGenerateAudio) {
-    const panelSpeechState = await validatePanelSpeechReadyForVideo(panel.id)
-    if (!panelSpeechState.ready) {
-      throw new Error(`PANEL_SPEECH_NOT_READY: ${panel.id}: ${panelSpeechState.reasons.join(' | ')}`)
-    }
+  if (requestedGenerateAudio || hasExplicitReferenceAudios) {
     const resolved = await resolvePanelVideoReferenceAudios({
       job,
       modelKey: snapshot.modelKey,
       requestedGenerateAudio,
-      speech: panelSpeechState.speech,
+      speech: panelSpeechState?.speech || null,
+      structuredReferences: snapshot.structuredReferences,
     })
     referenceAudios = resolved.referenceAudios
   }
@@ -136,7 +145,7 @@ async function generateVideoForPreparedPrompt(
   const generatedVideo = await resolveVideoSourceFromGeneration(job, {
     userId: job.data.userId,
     modelId: snapshot.modelKey,
-    imageUrl: sourceImageUrl,
+    imageUrl: sourceImageUrl || undefined,
     options: {
       prompt: snapshot.compiledPrompt,
       ...(typeof prepared.generationOptions.aspectRatio === 'string'

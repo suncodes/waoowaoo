@@ -2,7 +2,8 @@
  * 获取用户的模型列表
  *
  * 返回用户在个人中心启用的模型，供项目配置下拉框使用。
- * capabilities 仅来自系统内置目录（不信任用户提交的 model.capabilities）。
+ * capabilities 来自系统内置目录，或由已校验的 ComfyUI Profile 安全推导；
+ * 不信任用户提交的 model.capabilities。
  */
 
 import { NextResponse } from 'next/server'
@@ -19,6 +20,8 @@ import {
 import { findBuiltinCapabilities } from '@/lib/model-capabilities/catalog'
 import { findBuiltinPricingCatalogEntry } from '@/lib/model-pricing/catalog'
 import { normalizeComfyUIBaseUrl } from '@/lib/comfyui/client'
+import { deriveComfyUIProfileCapabilities } from '@/lib/comfyui/capabilities'
+import { validateComfyUIProfile } from '@/lib/comfyui/profile'
 import type { VideoPricingTier } from '@/lib/model-pricing/video-tier'
 
 type StoredModelType = UnifiedModelType | string
@@ -29,6 +32,7 @@ interface StoredModel {
   name?: string
   type?: StoredModelType
   provider?: string
+  comfyuiProfile?: unknown
 }
 
 interface StoredProvider {
@@ -238,7 +242,17 @@ export const GET = apiHandler(async () => {
     }
 
     if (provider && modelId) {
-      const capabilities = findBuiltinCapabilities(modelType, provider, modelId)
+      const capabilities = getProviderKey(provider) === 'comfyui'
+        ? (() => {
+          const expectedMediaType = modelType === 'video'
+            ? 'video'
+            : modelType === 'image'
+              ? 'image'
+              : undefined
+          const profile = validateComfyUIProfile(model.comfyuiProfile, { expectedMediaType })
+          return profile.ok ? deriveComfyUIProfileCapabilities(profile.profile) : undefined
+        })()
+        : findBuiltinCapabilities(modelType, provider, modelId)
       if (capabilities) {
         option.capabilities = capabilities
       }

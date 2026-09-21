@@ -4,6 +4,7 @@ import {
   patchComfyUIWorkflow,
   validateComfyUIProfile,
 } from '@/lib/comfyui/profile'
+import { deriveComfyUIProfileCapabilities } from '@/lib/comfyui/capabilities'
 
 function createProfile(mediaType: 'image' | 'video' = 'image') {
   return {
@@ -32,6 +33,41 @@ function createProfile(mediaType: 'image' | 'video' = 'image') {
         ? { image: { nodeId: '2', inputName: 'image', required: true } }
         : {}),
       'options.negativePrompt': { nodeId: '1', inputName: 'negative_prompt' },
+    },
+    outputNodeId: '9',
+  }
+}
+
+function createVideoProfileWithFrameAndAudioMappings() {
+  return {
+    version: 1,
+    mediaType: 'video' as const,
+    workflow: {
+      '1': { class_type: 'CLIPTextEncode', inputs: { text: 'template prompt' } },
+      '3': { class_type: 'LoadImage', inputs: { image: 'first.png' } },
+      '4': { class_type: 'LoadImage', inputs: { image: 'last.png' } },
+      '5': { class_type: 'MiniMaxH3ImageToVideo', inputs: { first_frame: ['3', 0], last_frame: ['4', 0] } },
+      '6': { class_type: 'MiniMaxH3ReferenceToVideo', inputs: { ref_audios: { ref_audio_1: ['7', 0] } } },
+      '7': { class_type: 'LoadAudio', inputs: { audio: 'template-1.mp3' } },
+      '8': { class_type: 'LoadAudio', inputs: { audio: 'template-2.mp3' } },
+      '10': { class_type: 'LoadAudio', inputs: { audio: 'template-3.mp3' } },
+      '9': { class_type: 'SaveVideo', inputs: { video: ['5', 0] } },
+    },
+    inputMappings: {
+      prompt: { nodeId: '1', inputName: 'text', required: true },
+      image: { nodeId: '3', inputName: 'image', required: true },
+      lastFrameImage: { nodeId: '4', inputName: 'image', required: true },
+      referenceAudios: {
+        type: 'collection',
+        nodeId: '6',
+        inputName: 'ref_audios',
+        itemPrefix: 'ref_audio_',
+        itemMappings: [
+          { nodeId: '7', inputName: 'audio' },
+          { nodeId: '8', inputName: 'audio' },
+          { nodeId: '10', inputName: 'audio' },
+        ],
+      },
     },
     outputNodeId: '9',
   }
@@ -94,5 +130,84 @@ describe('ComfyUI profile', () => {
     if (!validated.ok) throw new Error(validated.message)
 
     expect(() => patchComfyUIWorkflow(validated.profile, {})).toThrow(ComfyUIProfileInputError)
+  })
+
+  it('requires a first-frame mapping when a profile maps a last frame', () => {
+    const source = createVideoProfileWithFrameAndAudioMappings()
+    const { image: _image, ...inputMappingsWithoutImage } = source.inputMappings
+    void _image
+    const raw = {
+      ...source,
+      inputMappings: inputMappingsWithoutImage,
+    }
+
+    expect(validateComfyUIProfile(raw)).toMatchObject({
+      ok: false,
+      code: 'COMFYUI_PROFILE_LAST_FRAME_IMAGE_REQUIRES_IMAGE',
+    })
+  })
+
+  it('patches first and last frames plus a dynamic reference-audio collection', () => {
+    const validated = validateComfyUIProfile(createVideoProfileWithFrameAndAudioMappings())
+    if (!validated.ok) throw new Error(validated.message)
+
+    const patched = patchComfyUIWorkflow(validated.profile, {
+      prompt: 'a character crosses the room',
+      image: 'input/first.png',
+      lastFrameImage: 'input/last.png',
+      referenceAudios: ['input/voice-1.mp3', 'input/voice-2.wav'],
+    })
+
+    expect(patched['3']?.inputs.image).toBe('input/first.png')
+    expect(patched['4']?.inputs.image).toBe('input/last.png')
+    expect(patched['7']?.inputs.audio).toBe('input/voice-1.mp3')
+    expect(patched['8']?.inputs.audio).toBe('input/voice-2.wav')
+    expect(patched['6']?.inputs.ref_audios).toEqual({
+      ref_audio_1: ['7', 0],
+      ref_audio_2: ['8', 0],
+    })
+    expect(validated.profile.workflow['6']?.inputs.ref_audios).toEqual({
+      ref_audio_1: ['7', 0],
+    })
+  })
+
+  it('clears template audio links when no reference audio is requested', () => {
+    const validated = validateComfyUIProfile(createVideoProfileWithFrameAndAudioMappings())
+    if (!validated.ok) throw new Error(validated.message)
+
+    const patched = patchComfyUIWorkflow(validated.profile, {
+      prompt: 'a quiet scene',
+      image: 'input/first.png',
+      lastFrameImage: 'input/last.png',
+    })
+
+    expect(patched['6']?.inputs.ref_audios).toBeUndefined()
+  })
+
+  it('rejects reference audio beyond the validated profile capacity', () => {
+    const validated = validateComfyUIProfile(createVideoProfileWithFrameAndAudioMappings())
+    if (!validated.ok) throw new Error(validated.message)
+
+    expect(() => patchComfyUIWorkflow(validated.profile, {
+      prompt: 'a scene',
+      image: 'input/first.png',
+      lastFrameImage: 'input/last.png',
+      referenceAudios: ['1.mp3', '2.mp3', '3.mp3', '4.mp3'],
+    })).toThrow('COMFYUI_PROFILE_COLLECTION_INPUT_EXCEEDS_CAPACITY')
+  })
+
+  it('derives reference-audio capacity without exposing a native-audio switch', () => {
+    const validated = validateComfyUIProfile(createVideoProfileWithFrameAndAudioMappings())
+    if (!validated.ok) throw new Error(validated.message)
+
+    const capabilities = deriveComfyUIProfileCapabilities(validated.profile)
+
+    expect(capabilities?.video).toMatchObject({
+      firstlastframe: true,
+      generationModeOptions: ['firstlastframe'],
+      referenceAudioMaxCount: 3,
+    })
+    expect(capabilities?.video?.generateAudioOptions).toBeUndefined()
+    expect(capabilities?.video?.supportGenerateAudio).toBeUndefined()
   })
 })
