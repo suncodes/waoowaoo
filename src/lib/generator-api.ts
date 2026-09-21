@@ -25,7 +25,11 @@ import {
 } from './model-gateway'
 import { generateBailianAudio, generateBailianImage, generateBailianVideo } from './providers/bailian'
 import { generateSiliconFlowAudio, generateSiliconFlowImage, generateSiliconFlowVideo } from './providers/siliconflow'
-import { generateComfyUIImage, generateComfyUIVideo } from './comfyui/runtime'
+import {
+    generateComfyUIImage,
+    generateComfyUITextToVideo,
+    generateComfyUIVideo,
+} from './comfyui/runtime'
 
 const OFFICIAL_ONLY_PROVIDER_KEYS = new Set(['bailian', 'siliconflow'])
 
@@ -198,13 +202,13 @@ export async function generateImage(
  * 
  * @param userId 用户 ID
  * @param modelKey 模型唯一键（provider::modelId）
- * @param imageUrl 输入图片 URL
+ * @param imageUrl 输入图片 URL；图生视频模型必填，ComfyUI 文生视频模型可省略
  * @param options 生成选项
  */
 export async function generateVideo(
     userId: string,
     modelKey: string,
-    imageUrl: string,
+    imageUrl?: string,
     options?: {
         prompt?: string
         duration?: number
@@ -225,11 +229,25 @@ export async function generateVideo(
             throw new Error(`COMFYUI_PROFILE_INVALID: ${selection.modelKey}`)
         }
         const providerConfig = await getComfyUIProviderConfig(userId, selection.provider)
+        if (!selection.comfyuiProfile.inputMappings.image) {
+            return await generateComfyUITextToVideo({
+                baseUrl: providerConfig.baseUrl,
+                providerId: selection.provider,
+                profile: selection.comfyuiProfile,
+                prompt: prompt || '',
+                options: {
+                    ...providerOptions,
+                    provider: selection.provider,
+                    modelId: selection.modelId,
+                    modelKey: selection.modelKey,
+                },
+            })
+        }
         return await generateComfyUIVideo({
             baseUrl: providerConfig.baseUrl,
             providerId: selection.provider,
             profile: selection.comfyuiProfile,
-            imageUrl,
+            imageUrl: imageUrl || '',
             prompt: prompt || '',
             options: {
                 ...providerOptions,
@@ -238,6 +256,9 @@ export async function generateVideo(
                 modelKey: selection.modelKey,
             },
         })
+    }
+    if (!imageUrl || !imageUrl.trim()) {
+        throw new Error('INVALID_PARAMS: VIDEO_SOURCE_IMAGE_REQUIRED')
     }
     if (providerKey === 'bailian') {
         return await generateBailianVideo({

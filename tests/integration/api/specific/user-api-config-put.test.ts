@@ -97,7 +97,10 @@ function readSavedModelsFromUpsert(): Array<Record<string, unknown>> {
   return parsed as Array<Record<string, unknown>>
 }
 
-function buildComfyUIProfile(mediaType: 'image' | 'video'): Record<string, unknown> {
+function buildComfyUIProfile(
+  mediaType: 'image' | 'video',
+  options?: { imageInput?: boolean },
+): Record<string, unknown> {
   const workflow: Record<string, unknown> = {
     '1': {
       class_type: 'CLIPTextEncode',
@@ -111,7 +114,7 @@ function buildComfyUIProfile(mediaType: 'image' | 'video'): Record<string, unkno
   const inputMappings: Record<string, unknown> = {
     prompt: { nodeId: '1', inputName: 'text', required: true },
   }
-  if (mediaType === 'video') {
+  if (mediaType === 'video' && options?.imageInput !== false) {
     workflow['3'] = {
       class_type: 'LoadImage',
       inputs: { image: '' },
@@ -1365,6 +1368,42 @@ describe('api specific - user api-config PUT provider uniqueness', () => {
       expect.objectContaining({
         modelKey: 'comfyui::flux-dev',
         comfyuiProfile: buildComfyUIProfile('image'),
+      }),
+    ])
+  })
+
+  it('persists a ComfyUI text-to-video profile without an image mapping', async () => {
+    installAuthMocks()
+    mockAuthenticated('user-1')
+    const route = await import('@/app/api/user/api-config/route')
+    const profile = buildComfyUIProfile('video', { imageInput: false })
+
+    const req = buildMockRequest({
+      path: '/api/user/api-config',
+      method: 'PUT',
+      body: {
+        providers: [
+          { id: 'comfyui', name: 'ComfyUI', baseUrl: 'http://10.0.0.12:8188' },
+        ],
+        models: [
+          {
+            type: 'video',
+            provider: 'comfyui',
+            modelId: 'minimax-h3',
+            modelKey: 'comfyui::minimax-h3',
+            name: 'MiniMax H3 文生视频',
+            comfyuiProfile: profile,
+          },
+        ],
+      },
+    })
+
+    const res = await route.PUT(req, routeContext)
+    expect(res.status).toBe(200)
+    expect(readSavedModelsFromUpsert()).toEqual([
+      expect.objectContaining({
+        modelKey: 'comfyui::minimax-h3',
+        comfyuiProfile: profile,
       }),
     ])
   })

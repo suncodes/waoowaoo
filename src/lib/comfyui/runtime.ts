@@ -157,6 +157,9 @@ export async function generateComfyUIVideo(input: {
   if (!input.profile.inputMappings.image) {
     throw new Error('INVALID_PARAMS: COMFYUI_IMAGE_MAPPING_REQUIRED')
   }
+  if (!input.imageUrl.trim()) {
+    throw new Error('INVALID_PARAMS: COMFYUI_REFERENCE_IMAGE_REQUIRED')
+  }
 
   const resource = await loadImageResource(input.imageUrl)
   const uploadedImage = await uploadComfyUIImage({
@@ -172,6 +175,34 @@ export async function generateComfyUIVideo(input: {
     profile: input.profile,
     prompt: input.prompt,
     image: uploadedImage,
+    options: input.options,
+  })
+}
+
+/**
+ * 提交不含图片输入映射的 ComfyUI 文生视频工作流。
+ *
+ * 不上传图片，避免把图生视频输入误注入文生视频工作流。
+ */
+export async function generateComfyUITextToVideo(input: {
+  baseUrl: string
+  providerId: string
+  profile: ComfyUIProfile
+  prompt: string
+  options?: GenerateOptions
+}): Promise<GenerateResult> {
+  if (input.profile.mediaType !== 'video') {
+    throw new Error('INVALID_PARAMS: COMFYUI_PROFILE_MEDIA_TYPE_MISMATCH')
+  }
+  if (input.profile.inputMappings.image) {
+    throw new Error('INVALID_PARAMS: COMFYUI_TEXT_TO_VIDEO_IMAGE_MAPPING_UNSUPPORTED')
+  }
+
+  return await submitComfyUITask({
+    baseUrl: input.baseUrl,
+    providerId: input.providerId,
+    profile: input.profile,
+    prompt: input.prompt,
     options: input.options,
   })
 }

@@ -54,14 +54,11 @@ describe('ComfyUI profile', () => {
     expect(result.profile.workflow['1']?.inputs.text).toBe('template prompt')
   })
 
-  it('requires an image mapping for image-to-video workflows', () => {
+  it('allows a video profile without an image mapping for text-to-video workflows', () => {
     const raw = createProfile('video')
     delete raw.inputMappings.image
 
-    expect(validateComfyUIProfile(raw)).toMatchObject({
-      ok: false,
-      code: 'COMFYUI_PROFILE_IMAGE_MAPPING_REQUIRED',
-    })
+    expect(validateComfyUIProfile(raw)).toMatchObject({ ok: true })
   })
 
   it('rejects a profile whose media type differs from the configured model', () => {

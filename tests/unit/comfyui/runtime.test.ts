@@ -19,7 +19,11 @@ vi.mock('@/lib/comfyui/client', () => ({
   submitComfyUIWorkflow: submitComfyUIWorkflowMock,
 }))
 
-import { generateComfyUIImage, generateComfyUIVideo } from '@/lib/comfyui/runtime'
+import {
+  generateComfyUIImage,
+  generateComfyUITextToVideo,
+  generateComfyUIVideo,
+} from '@/lib/comfyui/runtime'
 
 const imageProfile: ComfyUIProfile = {
   version: 1,
@@ -50,6 +54,21 @@ const videoProfile: ComfyUIProfile = {
   inputMappings: {
     prompt: { nodeId: '1', inputName: 'text', required: true },
     image: { nodeId: '3', inputName: 'image', required: true },
+    'options.fps': { nodeId: '4', inputName: 'fps' },
+  },
+  outputNodeId: '9',
+}
+
+const textToVideoProfile: ComfyUIProfile = {
+  version: 1,
+  mediaType: 'video',
+  workflow: {
+    '1': { class_type: 'CLIPTextEncode', inputs: { text: '' } },
+    '4': { class_type: 'VideoSampler', inputs: { fps: 12 } },
+    '9': { class_type: 'SaveAnimatedWEBP', inputs: { images: ['4', 0] } },
+  },
+  inputMappings: {
+    prompt: { nodeId: '1', inputName: 'text', required: true },
     'options.fps': { nodeId: '4', inputName: 'fps' },
   },
   outputNodeId: '9',
@@ -130,6 +149,44 @@ describe('ComfyUI runtime', () => {
       type: 'VIDEO',
       promptId: 'prompt-123',
     })
+  })
+
+  it('submits a text-to-video workflow without loading or uploading an image', async () => {
+    const result = await generateComfyUITextToVideo({
+      baseUrl: 'http://10.0.0.12:8188/comfy',
+      providerId: 'comfyui',
+      profile: textToVideoProfile,
+      prompt: 'a fox runs through a snowy forest',
+      options: { fps: 24 },
+    })
+
+    expect(loadImageResourceMock).not.toHaveBeenCalled()
+    expect(uploadComfyUIImageMock).not.toHaveBeenCalled()
+    expect(submitComfyUIWorkflowMock).toHaveBeenCalledWith(
+      'http://10.0.0.12:8188/comfy',
+      expect.objectContaining({
+        '1': expect.objectContaining({ inputs: expect.objectContaining({ text: 'a fox runs through a snowy forest' }) }),
+        '4': expect.objectContaining({ inputs: expect.objectContaining({ fps: 24 }) }),
+      }),
+    )
+    expect(parseComfyUIExternalId(result.externalId || '')).toMatchObject({
+      type: 'VIDEO',
+      promptId: 'prompt-123',
+    })
+  })
+
+  it('rejects an image-to-video workflow without a source image before any upload', async () => {
+    await expect(generateComfyUIVideo({
+      baseUrl: 'http://10.0.0.12:8188',
+      providerId: 'comfyui',
+      profile: videoProfile,
+      imageUrl: '  ',
+      prompt: 'make it move',
+    })).rejects.toThrow('COMFYUI_REFERENCE_IMAGE_REQUIRED')
+
+    expect(loadImageResourceMock).not.toHaveBeenCalled()
+    expect(uploadComfyUIImageMock).not.toHaveBeenCalled()
+    expect(submitComfyUIWorkflowMock).not.toHaveBeenCalled()
   })
 
   it('rejects multiple reference images instead of silently dropping them', async () => {

@@ -46,6 +46,7 @@ const generateSiliconFlowVideoMock = vi.hoisted(() => vi.fn(async () => ({ succe
 const generateSiliconFlowAudioMock = vi.hoisted(() => vi.fn(async () => ({ success: true, audioUrl: 'siliconflow-audio' })))
 const generateComfyUIImageMock = vi.hoisted(() => vi.fn(async () => ({ success: true, async: true, externalId: 'COMFY:IMAGE:token' })))
 const generateComfyUIVideoMock = vi.hoisted(() => vi.fn(async () => ({ success: true, async: true, externalId: 'COMFY:VIDEO:token' })))
+const generateComfyUITextToVideoMock = vi.hoisted(() => vi.fn(async () => ({ success: true, async: true, externalId: 'COMFY:VIDEO:token' })))
 
 vi.mock('@/lib/api-config', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api-config')>()
@@ -89,6 +90,7 @@ vi.mock('@/lib/providers/siliconflow', () => ({
 
 vi.mock('@/lib/comfyui/runtime', () => ({
   generateComfyUIImage: generateComfyUIImageMock,
+  generateComfyUITextToVideo: generateComfyUITextToVideoMock,
   generateComfyUIVideo: generateComfyUIVideoMock,
 }))
 
@@ -240,6 +242,20 @@ describe('generator-api gateway routing', () => {
     expect(createVideoGeneratorMock).toHaveBeenCalledWith('fal')
     expect(generateVideoViaOpenAICompatMock).not.toHaveBeenCalled()
     expect(result).toEqual({ success: true, videoUrl: 'official-video' })
+  })
+
+  it('keeps a source image mandatory for non-ComfyUI video providers', async () => {
+    resolveModelSelectionMock.mockResolvedValueOnce({
+      provider: 'fal',
+      modelId: 'kling',
+      modelKey: 'fal::kling',
+      mediaType: 'video',
+    })
+
+    await expect(generateVideo('user-1', 'fal::kling', undefined, { prompt: 'animate' }))
+      .rejects.toThrow('VIDEO_SOURCE_IMAGE_REQUIRED')
+
+    expect(createVideoGeneratorMock).not.toHaveBeenCalled()
   })
 
   it('keeps audio generation on provider generator path', async () => {
@@ -396,6 +412,43 @@ describe('generator-api gateway routing', () => {
       prompt: 'make it move',
       options: expect.objectContaining({ fps: 24, modelId: 'wan-video' }),
     }))
+    expect(result).toEqual({ success: true, async: true, externalId: 'COMFY:VIDEO:token' })
+  })
+
+  it('routes a ComfyUI video profile without an image mapping to text-to-video', async () => {
+    resolveModelSelectionMock.mockResolvedValueOnce({
+      provider: 'comfyui',
+      modelId: 'minimax-h3',
+      modelKey: 'comfyui::minimax-h3',
+      mediaType: 'video',
+      comfyuiProfile: {
+        version: 1,
+        mediaType: 'video',
+        workflow: {
+          '1': { class_type: 'CLIPTextEncode', inputs: { text: '' } },
+          '9': { class_type: 'SaveVideo', inputs: { images: ['1', 0] } },
+        },
+        inputMappings: {
+          prompt: { nodeId: '1', inputName: 'text', required: true },
+        },
+        outputNodeId: '9',
+      },
+    })
+
+    const result = await generateVideo(
+      'user-1',
+      'comfyui::minimax-h3',
+      undefined,
+      { prompt: 'a cinematic city at dusk', duration: 5 },
+    )
+
+    expect(getComfyUIProviderConfigMock).toHaveBeenCalledWith('user-1', 'comfyui')
+    expect(generateComfyUITextToVideoMock).toHaveBeenCalledWith(expect.objectContaining({
+      baseUrl: 'http://10.0.0.12:8188',
+      prompt: 'a cinematic city at dusk',
+      options: expect.objectContaining({ duration: 5, modelId: 'minimax-h3' }),
+    }))
+    expect(generateComfyUIVideoMock).not.toHaveBeenCalled()
     expect(result).toEqual({ success: true, async: true, externalId: 'COMFY:VIDEO:token' })
   })
 })

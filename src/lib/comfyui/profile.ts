@@ -27,6 +27,9 @@ export interface ComfyUIInputMapping {
  * 映射 key 支持：
  * - prompt / seed / width / height / image
  * - options.<key>，用于 steps、cfg、negativePrompt 等工作流专有输入
+ *
+ * 视频 Profile 是否映射 image 决定其输入模式：有 image 映射为图生视频，
+ * 无 image 映射为文生视频。
  */
 export type ComfyUIInputMappings = Record<string, ComfyUIInputMapping>
 
@@ -200,9 +203,6 @@ export function validateComfyUIProfile(
 
   if (!inputMappings.prompt) {
     return fail('COMFYUI_PROFILE_PROMPT_MAPPING_REQUIRED', 'ComfyUI profile must map prompt')
-  }
-  if (mediaType === 'video' && !inputMappings.image) {
-    return fail('COMFYUI_PROFILE_IMAGE_MAPPING_REQUIRED', 'ComfyUI video profile must map image')
   }
 
   try {
