@@ -68,6 +68,8 @@ export interface ModelCapabilityDropdownProps {
     booleanToggles?: CapabilityBooleanToggle[]
     /** Optional: control dropdown placement strategy. Defaults to 'auto'. */
     placementMode?: 'auto' | 'downward'
+    /** Optional: z-index for the Portal panel. Use a value above its parent modal. */
+    portalZIndex?: number
 }
 
 const DEFAULT_PANEL_MAX_HEIGHT = 520
@@ -122,6 +124,7 @@ export function ModelCapabilityDropdown({
     compact = false,
     booleanToggles = [],
     placementMode = 'auto',
+    portalZIndex = 9999,
 }: ModelCapabilityDropdownProps) {
     const t = useTranslations('configModal')
     const tv = useTranslations('video')
@@ -282,8 +285,8 @@ export function ModelCapabilityDropdown({
             {isOpen && createPortal(
                 <div
                     ref={panelRef}
-                    className="glass-surface-modal z-[9999] overflow-hidden flex flex-col rounded-[20px] shadow-[0_8px_32px_rgba(0,0,0,0.1)]"
-                    style={panelStyle}
+                    className="glass-surface-modal overflow-hidden flex flex-col rounded-[20px] shadow-[0_8px_32px_rgba(0,0,0,0.1)]"
+                    style={{ ...panelStyle, zIndex: portalZIndex }}
                 >
                     {/* Model list */}
                     <div className="px-2 pb-2 min-h-0 flex-1 overflow-y-auto app-scrollbar">

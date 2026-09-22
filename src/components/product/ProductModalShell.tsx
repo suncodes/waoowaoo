@@ -16,6 +16,10 @@ interface ProductModalShellProps {
   closeOnBackdrop?: boolean
 }
 
+/** Shared stacking levels for ProductModalShell and its body Portal popovers. */
+export const PRODUCT_MODAL_Z_INDEX = 10000
+export const PRODUCT_MODAL_POPOVER_Z_INDEX = PRODUCT_MODAL_Z_INDEX + 1
+
 const widthClass = {
   md: 'max-w-2xl',
   lg: 'max-w-4xl',
@@ -51,7 +55,8 @@ export default function ProductModalShell({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm sm:p-6"
+      className="fixed inset-0 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm sm:p-6"
+      style={{ zIndex: PRODUCT_MODAL_Z_INDEX }}
       role="dialog"
       aria-modal="true"
       aria-label={title}

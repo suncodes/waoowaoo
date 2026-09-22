@@ -17,7 +17,7 @@ import { filterNormalVideoModelOptions } from '@/lib/model-capabilities/video-mo
 import { RatioSelector, StyleSelector } from './config-modal-selectors'
 import { ModelCapabilityDropdown } from './ModelCapabilityDropdown'
 import { AppIcon } from '@/components/ui/icons'
-import ProductModalShell from '@/components/product/ProductModalShell'
+import ProductModalShell, { PRODUCT_MODAL_POPOVER_Z_INDEX } from '@/components/product/ProductModalShell'
 
 interface ModelOption {
     value: string
@@ -613,6 +613,7 @@ export function SettingsModal({
                                     onModelChange={(v) => handleChange(onAnalysisModelChange)(v)}
                                     capabilityFields={analysisCapabilityFields}
                                     placementMode="downward"
+                                    portalZIndex={PRODUCT_MODAL_POPOVER_Z_INDEX}
                                     capabilityOverrides={selectedAnalysisOverrides}
                                     onCapabilityChange={(field, rawValue, sample) => {
                                         applyCapabilityOverride(analysisModel, field, rawValue, sample)
@@ -629,6 +630,7 @@ export function SettingsModal({
                                     onModelChange={(v) => handleModelChange(v, userModels.image, 'image', onCharacterModelChange)}
                                     capabilityFields={characterCapabilityFields}
                                     placementMode="downward"
+                                    portalZIndex={PRODUCT_MODAL_POPOVER_Z_INDEX}
                                     capabilityOverrides={selectedCharacterOverrides}
                                     onCapabilityChange={(field, rawValue, sample) => {
                                         applyCapabilityOverride(characterModel, field, rawValue, sample)
@@ -644,6 +646,7 @@ export function SettingsModal({
                                     onModelChange={(v) => handleModelChange(v, userModels.image, 'image', onLocationModelChange)}
                                     capabilityFields={locationCapabilityFields}
                                     placementMode="downward"
+                                    portalZIndex={PRODUCT_MODAL_POPOVER_Z_INDEX}
                                     capabilityOverrides={selectedLocationOverrides}
                                     onCapabilityChange={(field, rawValue, sample) => {
                                         applyCapabilityOverride(locationModel, field, rawValue, sample)
@@ -659,6 +662,7 @@ export function SettingsModal({
                                     onModelChange={(v) => handleModelChange(v, userModels.image, 'image', onImageModelChange)}
                                     capabilityFields={storyboardCapabilityFields}
                                     placementMode="downward"
+                                    portalZIndex={PRODUCT_MODAL_POPOVER_Z_INDEX}
                                     capabilityOverrides={selectedStoryboardOverrides}
                                     onCapabilityChange={(field, rawValue, sample) => {
                                         applyCapabilityOverride(imageModel, field, rawValue, sample)
@@ -674,6 +678,7 @@ export function SettingsModal({
                                     onModelChange={(v) => handleModelChange(v, userModels.image, 'image', onEditModelChange)}
                                     capabilityFields={editCapabilityFields}
                                     placementMode="downward"
+                                    portalZIndex={PRODUCT_MODAL_POPOVER_Z_INDEX}
                                     capabilityOverrides={selectedEditOverrides}
                                     onCapabilityChange={(field, rawValue, sample) => {
                                         applyCapabilityOverride(editModel, field, rawValue, sample)
@@ -689,6 +694,7 @@ export function SettingsModal({
                                     onModelChange={(v) => handleModelChange(v, normalVideoModels, 'video', onVideoModelChange)}
                                     capabilityFields={videoCapabilityFields}
                                     placementMode="downward"
+                                    portalZIndex={PRODUCT_MODAL_POPOVER_Z_INDEX}
                                     capabilityOverrides={selectedVideoOverrides}
                                     onCapabilityChange={(field, rawValue, sample) => {
                                         applyCapabilityOverride(videoModel, field, rawValue, sample)
@@ -704,6 +710,7 @@ export function SettingsModal({
                                     onModelChange={(v) => handleModelChange(v, userModels.audio, 'audio', onAudioModelChange)}
                                     capabilityFields={audioCapabilityFields}
                                     placementMode="downward"
+                                    portalZIndex={PRODUCT_MODAL_POPOVER_Z_INDEX}
                                     capabilityOverrides={selectedAudioOverrides}
                                     onCapabilityChange={(field, rawValue, sample) => {
                                         applyCapabilityOverride(audioModel, field, rawValue, sample)
