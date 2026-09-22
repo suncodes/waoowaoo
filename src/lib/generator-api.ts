@@ -1,6 +1,14 @@
 import { logInfo as _ulogInfo } from '@/lib/logging/core'
 import type { OutboundAudioReference } from '@/lib/media/outbound-audio'
-import { getComfyUIScalarInputMapping } from '@/lib/comfyui/profile'
+import {
+    getComfyUIScalarInputMapping,
+    isComfyUIProfileSet,
+} from '@/lib/comfyui/profile'
+import {
+    isComfyUIReferenceAudioDegraded,
+    routeComfyUIVideoProfile,
+    type ComfyUIVideoGenerationMode,
+} from '@/lib/comfyui/video-routing'
 /**
  * 生成器统一入口（增强版）
  * 
@@ -80,6 +88,9 @@ export async function generateImage(
     if (providerKey === 'comfyui') {
         if (!selection.comfyuiProfile) {
             throw new Error(`COMFYUI_PROFILE_INVALID: ${selection.modelKey}`)
+        }
+        if (isComfyUIProfileSet(selection.comfyuiProfile)) {
+            throw new Error(`COMFYUI_PROFILE_MEDIA_TYPE_MISMATCH: ${selection.modelKey}`)
         }
         const providerConfig = await getComfyUIProviderConfig(userId, selection.provider)
         return await generateComfyUIImage({
@@ -226,18 +237,39 @@ export async function generateVideo(
     const selection = await resolveModelSelection(userId, modelKey, 'video')
     _ulogInfo(`[generateVideo] resolved model selection: ${selection.modelKey}`)
     const providerKey = getProviderKey(selection.provider).toLowerCase()
-    const { prompt, ...providerOptions } = options || {}
+    const {
+        prompt,
+        referenceAudios,
+        lastFrameImageUrl,
+        ...providerOptions
+    } = options || {}
     if (providerKey === 'comfyui') {
         if (!selection.comfyuiProfile) {
             throw new Error(`COMFYUI_PROFILE_INVALID: ${selection.modelKey}`)
         }
+        const generationMode: ComfyUIVideoGenerationMode = providerOptions.generationMode === 'firstlastframe'
+            || !!lastFrameImageUrl?.trim()
+            ? 'firstlastframe'
+            : 'normal'
+        const route = routeComfyUIVideoProfile({
+            profile: selection.comfyuiProfile,
+            generationMode,
+            requestedReferenceAudioCount: referenceAudios?.length,
+        })
+        const effectiveReferenceAudios = isComfyUIReferenceAudioDegraded(route.plan)
+            ? undefined
+            : referenceAudios
+        _ulogInfo(
+            `[generateVideo] ComfyUI workflow variant=${route.plan.effectiveVariant}`
+            + (isComfyUIReferenceAudioDegraded(route.plan) ? ' referenceAudios=degraded' : ''),
+        )
         const providerConfig = await getComfyUIProviderConfig(userId, selection.provider)
-        if (!getComfyUIScalarInputMapping(selection.comfyuiProfile, 'image')) {
+        if (!getComfyUIScalarInputMapping(route.profile, 'image')) {
             return await generateComfyUITextToVideo({
                 baseUrl: providerConfig.baseUrl,
                 providerId: selection.provider,
-                profile: selection.comfyuiProfile,
-                referenceAudios: options?.referenceAudios,
+                profile: route.profile,
+                referenceAudios: effectiveReferenceAudios,
                 prompt: prompt || '',
                 options: {
                     ...providerOptions,
@@ -250,10 +282,10 @@ export async function generateVideo(
         return await generateComfyUIVideo({
             baseUrl: providerConfig.baseUrl,
             providerId: selection.provider,
-            profile: selection.comfyuiProfile,
+            profile: route.profile,
             imageUrl: imageUrl || '',
-            lastFrameImageUrl: options?.lastFrameImageUrl,
-            referenceAudios: options?.referenceAudios,
+            lastFrameImageUrl,
+            referenceAudios: effectiveReferenceAudios,
             prompt: prompt || '',
             options: {
                 ...providerOptions,

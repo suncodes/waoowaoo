@@ -60,6 +60,15 @@ export interface PanelGenerationPromptPreview {
     promptSpec: unknown
     generationOptions: Record<string, PanelGenerationPromptPreviewOptionValue>
     referenceImages: string[]
+    executionPlan?: {
+        comfyuiVideoRouting?: {
+            requestedGenerationMode: 'normal' | 'firstlastframe'
+            requestedReferenceAudioCount: number
+            effectiveVariant: string
+            degradedCapabilities?: string[]
+            degradationReason?: string
+        }
+    }
     referenceSelection?: {
         maxReferences: number
         candidateCount: number

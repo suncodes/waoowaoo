@@ -35,6 +35,7 @@ export default function PanelGenerationPromptPreviewModal({
   const [mounted, setMounted] = useState(false)
   const promptSpecText = useMemo(() => stringifyJson(preview?.promptSpec), [preview?.promptSpec])
   const generationOptionsText = useMemo(() => stringifyJson(preview?.generationOptions), [preview?.generationOptions])
+  const executionPlanText = useMemo(() => stringifyJson(preview?.executionPlan), [preview?.executionPlan])
 
   useEffect(() => {
     setMounted(true)
@@ -116,6 +117,13 @@ export default function PanelGenerationPromptPreviewModal({
                 <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-stone-300">Prompt Spec</summary>
                 <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words border-t border-white/10 px-3 py-3 text-xs leading-5 text-stone-300">{promptSpecText}</pre>
               </details>
+
+              {executionPlanText ? (
+                <details className="rounded-md border border-white/10 bg-white/[0.03]">
+                  <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-stone-300">Execution Plan</summary>
+                  <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words border-t border-white/10 px-3 py-3 text-xs leading-5 text-stone-300">{executionPlanText}</pre>
+                </details>
+              ) : null}
             </div>
           ) : null}
         </div>

@@ -43,8 +43,8 @@ import type {
 import { validateOpenAICompatMediaTemplate } from '@/lib/user-api/model-template/validator'
 import { normalizeComfyUIBaseUrl } from '@/lib/comfyui/client'
 import {
-  validateComfyUIProfile,
-  type ComfyUIProfile,
+  validateComfyUIProfileDefinition,
+  type ComfyUIProfileDefinition,
 } from '@/lib/comfyui/profile'
 
 type ApiModeType = 'gemini-sdk' | 'openai-official'
@@ -98,7 +98,7 @@ interface StoredModel {
   compatMediaTemplate?: OpenAICompatMediaTemplate
   compatMediaTemplateCheckedAt?: string
   compatMediaTemplateSource?: OpenAICompatMediaTemplateSource
-  comfyuiProfile?: ComfyUIProfile
+  comfyuiProfile?: ComfyUIProfileDefinition
   // Non-authoritative display field; billing always uses server pricing catalog.
   price: number
   priceMin?: number
@@ -833,9 +833,9 @@ function normalizeStoredModel(raw: unknown, index: number, options?: { strictCus
   }
 
   const comfyuiProfileRaw = raw.comfyuiProfile
-  let comfyuiProfile: ComfyUIProfile | undefined
+  let comfyuiProfile: ComfyUIProfileDefinition | undefined
   if (comfyuiProfileRaw !== undefined && comfyuiProfileRaw !== null) {
-    const validated = validateComfyUIProfile(comfyuiProfileRaw)
+    const validated = validateComfyUIProfileDefinition(comfyuiProfileRaw)
     if (!validated.ok) {
       throw new ApiError('INVALID_PARAMS', {
         code: 'MODEL_COMFYUI_PROFILE_INVALID',
@@ -1030,7 +1030,7 @@ function resolveStoredComfyUIProfiles(
 
     const existingProfile = existingByModelKey.get(model.modelKey)?.comfyuiProfile
     const rawProfile = model.comfyuiProfile ?? existingProfile
-    const validated = validateComfyUIProfile(rawProfile, {
+    const validated = validateComfyUIProfileDefinition(rawProfile, {
       expectedMediaType: model.type,
     })
     if (!validated.ok) {

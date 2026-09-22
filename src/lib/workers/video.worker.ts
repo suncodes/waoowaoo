@@ -22,6 +22,7 @@ import {
   validatePanelSpeechReadyForVideo,
 } from '@/lib/novel-promotion/panel-speech'
 import { resolvePanelVideoReferenceAudios } from './panel-video-reference-audio'
+import { isComfyUIReferenceAudioDegraded } from '@/lib/comfyui/video-routing'
 import {
   attachPreparedPromptToSnapshot,
   requirePreparedPrompt,
@@ -110,7 +111,11 @@ async function generateVideoForPreparedPrompt(
     ? generationOptions.generateAudio
     : undefined
   const structuredReferences = snapshot.structuredReferences
-  const hasExplicitReferenceAudios = !!structuredReferences
+  const referenceAudioDegraded = isComfyUIReferenceAudioDegraded(
+    snapshot.executionPlan?.comfyuiVideoRouting,
+  )
+  const hasExplicitReferenceAudios = !referenceAudioDegraded
+    && !!structuredReferences
     && typeof structuredReferences === 'object'
     && !Array.isArray(structuredReferences)
     && Array.isArray((structuredReferences as { referenceAudioSources?: unknown }).referenceAudioSources)
@@ -122,7 +127,7 @@ async function generateVideoForPreparedPrompt(
     throw new Error(`PANEL_SPEECH_NOT_READY: ${panel.id}: ${panelSpeechState?.reasons.join(' | ') || 'unknown'}`)
   }
   let referenceAudios: Awaited<ReturnType<typeof resolvePanelVideoReferenceAudios>>['referenceAudios'] = []
-  if (requestedGenerateAudio || hasExplicitReferenceAudios) {
+  if (!referenceAudioDegraded && (requestedGenerateAudio || hasExplicitReferenceAudios)) {
     const resolved = await resolvePanelVideoReferenceAudios({
       job,
       modelKey: snapshot.modelKey,

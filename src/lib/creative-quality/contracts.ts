@@ -1,4 +1,5 @@
 import type { PromptPatch, RepairAction } from '@/lib/visual-quality'
+import type { ComfyUIVideoRoutingPlan } from '@/lib/comfyui/video-routing'
 
 export const CREATIVE_QUALITY_SCHEMA_VERSION = 1
 
@@ -59,6 +60,13 @@ export interface GenerationSnapshot {
   assetVersionHash: string | null
   referenceImages: string[]
   structuredReferences?: unknown
+  /**
+   * 固定提示词时已决定的供应商执行路径。
+   * Worker 只执行此计划，不会在任务排队后重新组合工作流或重新解释降级规则。
+   */
+  executionPlan?: {
+    comfyuiVideoRouting?: ComfyUIVideoRoutingPlan
+  }
   bindingPlan?: unknown
   /**
    * Hash of the minimal evidence used to prepare AI-extracted facts.  It is

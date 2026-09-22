@@ -35,7 +35,7 @@ function mapPromptPreviewError(error: unknown): never {
     if (error.code === 'PANEL_NOT_FOUND' || error.code === 'PROJECT_NOT_FOUND') {
       throw new ApiError('NOT_FOUND')
     }
-    if (error.code === 'VIDEO_REFERENCE_AUDIO_INVALID') {
+    if (error.code === 'VIDEO_REFERENCE_AUDIO_INVALID' || error.code === 'COMFYUI_VIDEO_ROUTING_INVALID') {
       throw new ApiError('INVALID_PARAMS', { code: error.code, message: error.message })
     }
   }

@@ -439,6 +439,53 @@ describe('worker video processor behavior', () => {
     })
   })
 
+  it('VIDEO_PANEL: 已固定的 ComfyUI 首尾帧降级计划不会解析或提交参考音频', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+    const prepared = buildPreparedPrompt({
+      artifactId: 'prepared-panel-video-firstlast-degraded-audio',
+      modelKey: 'comfyui::minimax-h3',
+      generationMode: 'firstlastframe',
+      referenceImages: ['cos/frozen-first-frame.png', 'cos/frozen-last-frame.png'],
+    })
+    const snapshot = prepared.snapshot as typeof prepared.snapshot & {
+      structuredReferences?: unknown
+      executionPlan?: unknown
+    }
+    snapshot.structuredReferences = {
+      referenceAudioSources: [{
+        sourceId: 'voice-1',
+        name: '旁白音色',
+        url: 'voices/user-1/reference.wav',
+      }],
+    }
+    snapshot.executionPlan = {
+      comfyuiVideoRouting: {
+        requestedGenerationMode: 'firstlastframe',
+        requestedReferenceAudioCount: 1,
+        effectiveVariant: 'firstLastFrame',
+        degradedCapabilities: ['referenceAudios'],
+        degradationReason: 'COMFYUI_REFERENCE_AUDIO_UNSUPPORTED_WITH_FIRSTLAST',
+      },
+    }
+    preparedPromptMock.requirePreparedPrompt.mockResolvedValueOnce(prepared)
+
+    await processor!(buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: { preparedPromptArtifactId: prepared.artifactId },
+    }))
+
+    expect(panelVideoReferenceAudioMock.resolvePanelVideoReferenceAudios).not.toHaveBeenCalled()
+    const generationCall = utilsMock.resolveVideoSourceFromGeneration.mock.calls[0]?.[1] as {
+      options?: Record<string, unknown>
+    }
+    expect(generationCall.options).toMatchObject({
+      generationMode: 'firstlastframe',
+      lastFrameImageUrl: 'https://signed.example/cos/frozen-last-frame.png',
+    })
+    expect(generationCall.options?.referenceAudios).toBeUndefined()
+  })
+
   it('LIP_SYNC: 缺少 panel 时显式失败', async () => {
     const processor = workerState.processor
     expect(processor).toBeTruthy()

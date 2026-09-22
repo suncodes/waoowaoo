@@ -345,4 +345,24 @@ describe('ComfyUI runtime', () => {
 
     expect(uploadComfyUIInputFileMock).not.toHaveBeenCalled()
   })
+
+  it('submits a first-last-frame workflow without uploading dropped reference audio', async () => {
+    await generateComfyUIVideo({
+      baseUrl: 'http://10.0.0.12:8188',
+      providerId: 'comfyui',
+      profile: firstLastVideoProfile,
+      imageUrl: 'https://storage.example/first.png',
+      lastFrameImageUrl: 'https://storage.example/last.png',
+      prompt: 'connect the first and final pose',
+    })
+
+    expect(uploadComfyUIInputFileMock).not.toHaveBeenCalled()
+    expect(submitComfyUIWorkflowMock).toHaveBeenCalledWith(
+      'http://10.0.0.12:8188',
+      expect.objectContaining({
+        '3': expect.objectContaining({ inputs: expect.objectContaining({ image: 'input/reference.png' }) }),
+        '4': expect.objectContaining({ inputs: expect.objectContaining({ image: 'input/reference.png' }) }),
+      }),
+    )
+  })
 })

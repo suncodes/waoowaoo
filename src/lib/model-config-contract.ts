@@ -45,6 +45,8 @@ export interface VideoCapabilities {
   supportGenerateAudio?: boolean
   /** 可提交给视频模型的独立参考音频数量上限。 */
   referenceAudioMaxCount?: number
+  /** 首尾帧与参考音频可同时提交时的参考音频数量上限。 */
+  firstLastReferenceAudioMaxCount?: number
   fieldI18n?: CapabilityFieldI18nMap
 }
 
@@ -101,6 +103,7 @@ const VIDEO_ALLOWED_FIELDS = new Set<keyof VideoCapabilities>([
   'firstlastframe',
   'supportGenerateAudio',
   'referenceAudioMaxCount',
+  'firstLastReferenceAudioMaxCount',
   'fieldI18n',
 ])
 
@@ -382,6 +385,21 @@ function validateVideoCapabilities(issues: CapabilityValidationIssue[], raw: unk
       code: 'CAPABILITY_FIELD_INVALID',
       field: 'capabilities.video.referenceAudioMaxCount',
       message: 'referenceAudioMaxCount must be an integer between 1 and 3',
+    })
+  }
+
+  const firstLastReferenceAudioMaxCount = raw.firstLastReferenceAudioMaxCount
+  if (
+    firstLastReferenceAudioMaxCount !== undefined
+    && (typeof firstLastReferenceAudioMaxCount !== 'number'
+      || !Number.isInteger(firstLastReferenceAudioMaxCount)
+      || firstLastReferenceAudioMaxCount < 1
+      || firstLastReferenceAudioMaxCount > 3)
+  ) {
+    issues.push({
+      code: 'CAPABILITY_FIELD_INVALID',
+      field: 'capabilities.video.firstLastReferenceAudioMaxCount',
+      message: 'firstLastReferenceAudioMaxCount must be an integer between 1 and 3',
     })
   }
 

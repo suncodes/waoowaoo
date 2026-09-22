@@ -194,9 +194,39 @@ function translateFirstLastFrameKey(key: string): string {
 
 function referenceAudioCapacityForModel(
   modelKey: string,
-  models: Array<{ value: string; capabilities?: { video?: { referenceAudioMaxCount?: number } } }>,
+  models: Array<{
+    value: string
+    capabilities?: {
+      video?: {
+        referenceAudioMaxCount?: number
+        firstLastReferenceAudioMaxCount?: number
+      }
+    }
+  }>,
+  mode: 'normal' | 'firstlastframe' = 'normal',
 ): number {
-  const capacity = models.find((model) => model.value === modelKey)?.capabilities?.video?.referenceAudioMaxCount
+  const videoCapabilities = models.find((model) => model.value === modelKey)?.capabilities?.video
+  const standaloneCapacity = videoCapabilities?.referenceAudioMaxCount
+  const firstLastCapacity = videoCapabilities?.firstLastReferenceAudioMaxCount
+  const normalizedStandaloneCapacity = typeof standaloneCapacity === 'number' && Number.isInteger(standaloneCapacity) && standaloneCapacity > 0
+    ? Math.min(standaloneCapacity, 3)
+    : 0
+  const normalizedFirstLastCapacity = typeof firstLastCapacity === 'number' && Number.isInteger(firstLastCapacity) && firstLastCapacity > 0
+    ? Math.min(firstLastCapacity, 3)
+    : 0
+  return mode === 'firstlastframe'
+    ? Math.max(normalizedStandaloneCapacity, normalizedFirstLastCapacity)
+    : normalizedStandaloneCapacity
+}
+
+function firstLastReferenceAudioCapacityForModel(
+  modelKey: string,
+  models: Array<{
+    value: string
+    capabilities?: { video?: { firstLastReferenceAudioMaxCount?: number } }
+  }>,
+): number {
+  const capacity = models.find((model) => model.value === modelKey)?.capabilities?.video?.firstLastReferenceAudioMaxCount
   return typeof capacity === 'number' && Number.isInteger(capacity) && capacity > 0
     ? Math.min(capacity, 3)
     : 0
@@ -204,6 +234,60 @@ function referenceAudioCapacityForModel(
 
 function supportsVoiceReference(voice: GlobalVoice): boolean {
   return Boolean(voice.media?.url || voice.customVoiceUrl)
+}
+
+function ReferenceAudioSelector({
+  maxCount,
+  selectedIds,
+  voices,
+  loading,
+  onChange,
+  degradationMessage,
+}: {
+  maxCount: number
+  selectedIds: string[]
+  voices: GlobalVoice[]
+  loading: boolean
+  onChange: (voiceId: string, checked: boolean) => void
+  degradationMessage?: string
+}) {
+  if (maxCount < 1) return null
+
+  return (
+    <div className="rounded-md border border-white/10 bg-[#0f100e] p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-xs font-semibold text-stone-300">参考音频</div>
+          <div className="mt-1 text-[11px] text-stone-500">从音色库选择最多 {maxCount} 条；固定提示词后将锁定本次选择。</div>
+        </div>
+        <span className="text-xs text-stone-400">{selectedIds.length}/{maxCount}</span>
+      </div>
+      {degradationMessage ? (
+        <div className="mt-3 rounded border border-amber-400/25 bg-amber-400/10 px-2.5 py-2 text-[11px] leading-5 text-amber-100">
+          {degradationMessage}
+        </div>
+      ) : null}
+      {loading ? (
+        <div className="mt-3 text-xs text-stone-500">正在加载音色库…</div>
+      ) : voices.length === 0 ? (
+        <div className="mt-3 text-xs text-stone-500">音色库中暂无可用的已上传参考音频。</div>
+      ) : (
+        <div className="mt-3 max-h-44 space-y-1 overflow-y-auto pr-1">
+          {voices.map((voice) => {
+            const checked = selectedIds.includes(voice.id)
+            const disabled = !checked && selectedIds.length >= maxCount
+            return (
+              <label key={voice.id} className={`flex items-center gap-2 rounded px-2 py-1.5 text-xs ${disabled ? 'cursor-not-allowed opacity-45' : 'cursor-pointer hover:bg-white/[0.05]'}`}>
+                <input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(voice.id, event.target.checked)} />
+                <span className="min-w-0 flex-1 truncate text-stone-200">{voice.name}</span>
+                <span className="text-[10px] text-stone-500">{voice.language || voice.voiceType}</span>
+              </label>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function EmptyProduce({ onNavigate }: { onNavigate: (route: string) => void }) {
@@ -312,9 +396,25 @@ function ProductionDetailPanel({
     || !firstLastFrameFlow.flModel
     || firstLastFrameFlow.flMissingCapabilityFields.length > 0
   const activeModel = mode === 'firstlastframe' ? firstLastFrameFlow.flModel : selectedModel
-  const referenceAudioMaxCount = referenceAudioCapacityForModel(activeModel, runtime.userVideoModels)
+  const referenceAudioMaxCount = referenceAudioCapacityForModel(
+    activeModel,
+    runtime.userVideoModels,
+    mode,
+  )
+  const firstLastReferenceAudioMaxCount = firstLastReferenceAudioCapacityForModel(
+    activeModel,
+    runtime.userVideoModels,
+  )
   const selectableReferenceVoices = (globalVoicesQuery.data || []).filter(supportsVoiceReference)
   const selectedReferenceAudioIds = referenceAudioIds.slice(0, referenceAudioMaxCount)
+  const referenceAudioDegradationMessage = mode === 'firstlastframe'
+    && selectedReferenceAudioIds.length > 0
+    && (
+      firstLastReferenceAudioMaxCount === 0
+      || selectedReferenceAudioIds.length > firstLastReferenceAudioMaxCount
+    )
+    ? '当前模型的首尾帧工作流不支持所选参考音频。本次会优先保证首尾帧衔接，参考音频不会参与生成。'
+    : undefined
 
   const updateReferenceAudioSelection = (voiceId: string, checked: boolean) => {
     const selected = new Set(selectedReferenceAudioIds)
@@ -672,36 +772,13 @@ function ProductionDetailPanel({
                 {runtime.userVideoModels.map((model) => <option key={model.value} value={model.value}>{model.label}</option>)}
               </select>
             </label>
-            {referenceAudioMaxCount > 0 ? (
-              <div className="rounded-md border border-white/10 bg-[#0f100e] p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-xs font-semibold text-stone-300">参考音频</div>
-                    <div className="mt-1 text-[11px] text-stone-500">从音色库选择最多 {referenceAudioMaxCount} 条；固定提示词后将锁定本次选择。</div>
-                  </div>
-                  <span className="text-xs text-stone-400">{selectedReferenceAudioIds.length}/{referenceAudioMaxCount}</span>
-                </div>
-                {globalVoicesQuery.isLoading ? (
-                  <div className="mt-3 text-xs text-stone-500">正在加载音色库…</div>
-                ) : selectableReferenceVoices.length === 0 ? (
-                  <div className="mt-3 text-xs text-stone-500">音色库中暂无可用的已上传参考音频。</div>
-                ) : (
-                  <div className="mt-3 max-h-44 space-y-1 overflow-y-auto pr-1">
-                    {selectableReferenceVoices.map((voice) => {
-                      const checked = selectedReferenceAudioIds.includes(voice.id)
-                      const disabled = !checked && selectedReferenceAudioIds.length >= referenceAudioMaxCount
-                      return (
-                        <label key={voice.id} className={`flex items-center gap-2 rounded px-2 py-1.5 text-xs ${disabled ? 'cursor-not-allowed opacity-45' : 'cursor-pointer hover:bg-white/[0.05]'}`}>
-                          <input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => updateReferenceAudioSelection(voice.id, event.target.checked)} />
-                          <span className="min-w-0 flex-1 truncate text-stone-200">{voice.name}</span>
-                          <span className="text-[10px] text-stone-500">{voice.language || voice.voiceType}</span>
-                        </label>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            ) : null}
+            <ReferenceAudioSelector
+              maxCount={referenceAudioMaxCount}
+              selectedIds={selectedReferenceAudioIds}
+              voices={selectableReferenceVoices}
+              loading={globalVoicesQuery.isLoading}
+              onChange={updateReferenceAudioSelection}
+            />
             <label className="block text-xs font-semibold text-stone-500">
               视频提示词
               <textarea value={prompt} onChange={(event) => { setPreparedPromptArtifactId(null); promptState.updateLocalPrompt(panelKey, event.target.value, 'videoPrompt') }} onBlur={() => { void saveNormalPrompt() }} rows={6} className="mt-1 w-full resize-y rounded-md border border-white/10 bg-[#0f100e] px-3 py-2 text-sm font-normal leading-6 text-stone-100 outline-none focus:border-[#e8d18a]" placeholder="描述视频运动、镜头节奏、主体动作和画面变化。" />
@@ -759,6 +836,15 @@ function ProductionDetailPanel({
                 ))}
               </div>
             ) : null}
+
+            <ReferenceAudioSelector
+              maxCount={referenceAudioMaxCount}
+              selectedIds={selectedReferenceAudioIds}
+              voices={selectableReferenceVoices}
+              loading={globalVoicesQuery.isLoading}
+              onChange={updateReferenceAudioSelection}
+              degradationMessage={referenceAudioDegradationMessage}
+            />
 
             <label className="block text-xs font-semibold text-stone-500">
               首尾帧提示词
@@ -957,7 +1043,11 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
 
   const prepareBatchPrompts = async (mode: BatchVideoMode) => {
     const targetModel = mode === 'firstlastframe' ? firstLastFrameFlow.flModel : videoModel
-    const batchReferenceAudioMaxCount = referenceAudioCapacityForModel(targetModel, runtime.userVideoModels)
+    const batchReferenceAudioMaxCount = referenceAudioCapacityForModel(
+      targetModel,
+      runtime.userVideoModels,
+      mode,
+    )
     if (!targetModel.trim()) {
       window.alert(mode === 'firstlastframe' ? '请先配置首尾帧视频模型。' : '请先在设置中配置单图视频模型。')
       return
@@ -980,6 +1070,7 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
       if (!await saveDirtyPromptsForBatch(mode)) return
       const artifactIds: Record<string, string> = {}
       const failedNames: string[] = []
+      const referenceAudioDegradedNames: string[] = []
       for (const item of targets) {
         const index = items.findIndex((candidate) => candidate.id === item.id)
         const nextItem = index >= 0 ? items[index + 1] || null : null
@@ -1008,6 +1099,9 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
             } : {}),
           })
           artifactIds[item.panel.id] = result.prepared.artifactId
+          if (result.preview.executionPlan?.comfyuiVideoRouting?.degradedCapabilities?.includes('referenceAudios')) {
+            referenceAudioDegradedNames.push(`镜头 ${item.number}`)
+          }
         } catch {
           failedNames.push(`镜头 ${item.number}`)
         }
@@ -1016,8 +1110,13 @@ export default function StudioProduceCanvas({ model, onNavigate }: StudioProduce
         ...current,
         [mode]: { ...current[mode], ...artifactIds },
       }))
-      if (failedNames.length > 0) {
-        window.alert(`以下镜头提示词固定失败：${failedNames.join('、')}`)
+      if (failedNames.length > 0 || referenceAudioDegradedNames.length > 0) {
+        window.alert([
+          ...(failedNames.length > 0 ? [`以下镜头提示词固定失败：${failedNames.join('、')}`] : []),
+          ...(referenceAudioDegradedNames.length > 0
+            ? [`${referenceAudioDegradedNames.join('、')} 的首尾帧工作流不支持参考音频；本次已固定为优先保证首尾帧衔接，参考音频不会参与生成。`]
+            : []),
+        ].join('\n'))
       }
     } finally {
       setPreparingMode(null)

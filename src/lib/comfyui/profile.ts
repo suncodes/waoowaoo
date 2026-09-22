@@ -62,8 +62,34 @@ export interface ComfyUIProfile {
   outputNodeId: string
 }
 
+/**
+ * 一个视频模型可按请求形态切换多个 API 工作流。
+ *
+ * 每个变体仍是完整、可独立执行的 Profile；不能在运行时拼接节点或
+ * Conditioning。这样可以让一个模型配置同时覆盖文生视频、首尾帧和
+ * 参考音频工作流，同时保持每个工作流的节点图可审计。
+ */
+export type ComfyUIVideoProfileVariant =
+  | 't2v'
+  | 'firstLastFrame'
+  | 'referenceAudio'
+  | 'firstLastReferenceAudio'
+
+export interface ComfyUIProfileSet {
+  version: typeof COMFYUI_PROFILE_VERSION
+  mediaType: 'video'
+  variants: Partial<Record<ComfyUIVideoProfileVariant, ComfyUIProfile>>
+}
+
+/** 兼容历史单 Profile，以及新的视频多工作流 Profile Set。 */
+export type ComfyUIProfileDefinition = ComfyUIProfile | ComfyUIProfileSet
+
 export type ComfyUIProfileValidationResult =
   | { ok: true; profile: ComfyUIProfile }
+  | { ok: false; code: string; message: string }
+
+export type ComfyUIProfileDefinitionValidationResult =
+  | { ok: true; profile: ComfyUIProfileDefinition }
   | { ok: false; code: string; message: string }
 
 type ComfyUIMappingValidationResult =
@@ -106,6 +132,10 @@ function isSafeObjectKey(value: string): boolean {
 }
 
 function fail(code: string, message: string): ComfyUIProfileValidationResult {
+  return { ok: false, code, message }
+}
+
+function definitionFail(code: string, message: string): ComfyUIProfileDefinitionValidationResult {
   return { ok: false, code, message }
 }
 
@@ -365,6 +395,170 @@ export function validateComfyUIProfile(
     }
   } catch {
     return fail('COMFYUI_PROFILE_INVALID', 'ComfyUI profile must be JSON serializable')
+  }
+}
+
+function hasOwn(value: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key)
+}
+
+function validateVideoProfileVariant(
+  variant: ComfyUIVideoProfileVariant,
+  profile: ComfyUIProfile,
+): ComfyUIProfileDefinitionValidationResult | null {
+  const imageMapping = getComfyUIScalarInputMapping(profile, 'image')
+  const lastFrameMapping = getComfyUIScalarInputMapping(profile, 'lastFrameImage')
+  const referenceAudioMapping = profile.inputMappings.referenceAudios
+  const hasReferenceAudioMapping = isComfyUICollectionInputMapping(referenceAudioMapping)
+
+  if (variant === 't2v') {
+    if (imageMapping || lastFrameMapping || hasReferenceAudioMapping) {
+      return definitionFail(
+        'COMFYUI_PROFILE_SET_T2V_INVALID',
+        'ComfyUI Profile Set variant t2v must not map image, lastFrameImage, or referenceAudios',
+      )
+    }
+    return null
+  }
+
+  if (variant === 'firstLastFrame') {
+    if (!imageMapping || !lastFrameMapping) {
+      return definitionFail(
+        'COMFYUI_PROFILE_SET_FIRSTLAST_INVALID',
+        'ComfyUI Profile Set variant firstLastFrame must map image and lastFrameImage',
+      )
+    }
+    if (hasReferenceAudioMapping) {
+      return definitionFail(
+        'COMFYUI_PROFILE_SET_FIRSTLAST_AUDIO_INVALID',
+        'ComfyUI Profile Set variant firstLastFrame must not map referenceAudios; use firstLastReferenceAudio instead',
+      )
+    }
+    return null
+  }
+
+  if (variant === 'referenceAudio') {
+    if (!hasReferenceAudioMapping) {
+      return definitionFail(
+        'COMFYUI_PROFILE_SET_REFERENCE_AUDIO_INVALID',
+        'ComfyUI Profile Set variant referenceAudio must map referenceAudios',
+      )
+    }
+    if (lastFrameMapping) {
+      return definitionFail(
+        'COMFYUI_PROFILE_SET_REFERENCE_AUDIO_FIRSTLAST_INVALID',
+        'ComfyUI Profile Set variant referenceAudio must not map lastFrameImage; use firstLastReferenceAudio instead',
+      )
+    }
+    return null
+  }
+
+  if (!imageMapping || !lastFrameMapping || !hasReferenceAudioMapping) {
+    return definitionFail(
+      'COMFYUI_PROFILE_SET_FIRSTLAST_REFERENCE_AUDIO_INVALID',
+      'ComfyUI Profile Set variant firstLastReferenceAudio must map image, lastFrameImage, and referenceAudios',
+    )
+  }
+  return null
+}
+
+/** 判断已校验定义是否是视频多工作流 Profile Set。 */
+export function isComfyUIProfileSet(value: unknown): value is ComfyUIProfileSet {
+  return isRecord(value)
+    && hasOwn(value, 'variants')
+    && !hasOwn(value, 'workflow')
+}
+
+export function getComfyUIProfileSetVariant(
+  profile: ComfyUIProfileSet,
+  variant: ComfyUIVideoProfileVariant,
+): ComfyUIProfile | undefined {
+  return profile.variants[variant]
+}
+
+/**
+ * 校验模型配置中保存的 Profile 定义。
+ *
+ * 单 Profile 保持历史格式不变；只要顶层出现 variants，就按 Profile Set
+ * 处理。Profile Set 目前仅服务视频模型，避免在图像工作流中引入没有明确
+ * 路由语义的变体。
+ */
+export function validateComfyUIProfileDefinition(
+  raw: unknown,
+  options?: { expectedMediaType?: ComfyUIMediaType },
+): ComfyUIProfileDefinitionValidationResult {
+  if (!isRecord(raw) || !hasOwn(raw, 'variants')) {
+    const validated = validateComfyUIProfile(raw, options)
+    return validated.ok
+      ? { ok: true, profile: validated.profile }
+      : validated
+  }
+
+  const byteLength = getJsonByteLength(raw)
+  if (byteLength === null) {
+    return definitionFail('COMFYUI_PROFILE_INVALID', 'ComfyUI profile must be JSON serializable')
+  }
+  if (byteLength > MAX_COMFYUI_PROFILE_BYTES) {
+    return definitionFail(
+      'COMFYUI_PROFILE_TOO_LARGE',
+      `ComfyUI profile must not exceed ${MAX_COMFYUI_PROFILE_BYTES} bytes`,
+    )
+  }
+  if (raw.version !== COMFYUI_PROFILE_VERSION) {
+    return definitionFail('COMFYUI_PROFILE_VERSION_INVALID', `ComfyUI profile version must be ${COMFYUI_PROFILE_VERSION}`)
+  }
+  if (raw.mediaType !== 'video') {
+    return definitionFail('COMFYUI_PROFILE_SET_MEDIA_TYPE_INVALID', 'ComfyUI Profile Set mediaType must be video')
+  }
+  if (options?.expectedMediaType && options.expectedMediaType !== 'video') {
+    return definitionFail(
+      'COMFYUI_PROFILE_MEDIA_TYPE_MISMATCH',
+      `ComfyUI profile mediaType must be ${options.expectedMediaType}`,
+    )
+  }
+  if (!isRecord(raw.variants)) {
+    return definitionFail('COMFYUI_PROFILE_SET_VARIANTS_INVALID', 'ComfyUI Profile Set variants must be an object')
+  }
+
+  const variantEntries = Object.entries(raw.variants)
+  if (variantEntries.length === 0) {
+    return definitionFail('COMFYUI_PROFILE_SET_VARIANTS_EMPTY', 'ComfyUI Profile Set must include at least one variant')
+  }
+
+  const allowedVariants = new Set<ComfyUIVideoProfileVariant>([
+    't2v',
+    'firstLastFrame',
+    'referenceAudio',
+    'firstLastReferenceAudio',
+  ])
+  const variants: Partial<Record<ComfyUIVideoProfileVariant, ComfyUIProfile>> = {}
+  for (const [variantKey, rawVariant] of variantEntries) {
+    if (!allowedVariants.has(variantKey as ComfyUIVideoProfileVariant)) {
+      return definitionFail(
+        'COMFYUI_PROFILE_SET_VARIANT_UNSUPPORTED',
+        `Unsupported ComfyUI Profile Set variant: ${variantKey}`,
+      )
+    }
+    const variant = variantKey as ComfyUIVideoProfileVariant
+    const validated = validateComfyUIProfile(rawVariant, { expectedMediaType: 'video' })
+    if (!validated.ok) {
+      return definitionFail(
+        'COMFYUI_PROFILE_SET_VARIANT_INVALID',
+        `ComfyUI Profile Set variant ${variant} is invalid: ${validated.message}`,
+      )
+    }
+    const contractError = validateVideoProfileVariant(variant, validated.profile)
+    if (contractError) return contractError
+    variants[variant] = validated.profile
+  }
+
+  return {
+    ok: true,
+    profile: {
+      version: COMFYUI_PROFILE_VERSION,
+      mediaType: 'video',
+      variants,
+    },
   }
 }
 

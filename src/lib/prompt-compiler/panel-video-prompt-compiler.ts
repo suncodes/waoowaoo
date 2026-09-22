@@ -397,6 +397,7 @@ export function buildPanelVideoGenerationSnapshot(params: {
   promptTemplateId: string
   referenceImages: string[]
   structuredReferences?: unknown
+  executionPlan?: GenerationSnapshot['executionPlan']
   /** @deprecated 请改用 structuredReferences，以同时保存稳定音频源和安全摘要。 */
   referenceAudioSummary?: unknown
   promptSpec: PanelVideoPromptSpec
@@ -415,6 +416,7 @@ export function buildPanelVideoGenerationSnapshot(params: {
     promptSpecHash: specHash,
     referenceImages: params.referenceImages,
     structuredReferences: structuredReferences || null,
+    executionPlan: params.executionPlan || null,
     assetVersionHash: params.assetVersionHash || null,
   })
   return {
@@ -430,6 +432,7 @@ export function buildPanelVideoGenerationSnapshot(params: {
     assetVersionHash: params.assetVersionHash || null,
     referenceImages: Array.from(new Set(params.referenceImages.filter(Boolean))),
     ...(structuredReferences !== undefined ? { structuredReferences } : {}),
+    ...(params.executionPlan !== undefined ? { executionPlan: params.executionPlan } : {}),
     promptSpec: params.promptSpec,
     compiledPrompt: params.compiledPrompt,
     createdAt: new Date().toISOString(),

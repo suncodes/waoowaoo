@@ -171,6 +171,7 @@ export async function preparePanelGenerationPrompt(params: {
     promptTemplateId: preview.promptTemplateId,
     referenceImages: preview.referenceImages,
     structuredReferences: preview.structuredReferences,
+    executionPlan: preview.executionPlan,
     promptSpec: preview.promptSpec as PanelVideoPromptSpec,
     compiledPrompt: preview.compiledPrompt,
     assetVersionHash: preview.assetVersionHash || null,

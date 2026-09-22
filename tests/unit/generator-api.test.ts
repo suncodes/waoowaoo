@@ -451,4 +451,65 @@ describe('generator-api gateway routing', () => {
     expect(generateComfyUIVideoMock).not.toHaveBeenCalled()
     expect(result).toEqual({ success: true, async: true, externalId: 'COMFY:VIDEO:token' })
   })
+
+  it('routes a ComfyUI Profile Set first-last-frame request to its dedicated workflow and drops incompatible reference audio', async () => {
+    resolveModelSelectionMock.mockResolvedValueOnce({
+      provider: 'comfyui',
+      modelId: 'minimax-h3',
+      modelKey: 'comfyui::minimax-h3',
+      mediaType: 'video',
+      comfyuiProfile: {
+        version: 1,
+        mediaType: 'video',
+        variants: {
+          firstLastFrame: {
+            version: 1,
+            mediaType: 'video',
+            workflow: {
+              '1': { class_type: 'CLIPTextEncode', inputs: { text: '' } },
+              '3': { class_type: 'LoadImage', inputs: { image: '' } },
+              '4': { class_type: 'LoadImage', inputs: { image: '' } },
+              '9': { class_type: 'SaveVideo', inputs: { video: ['3', 0] } },
+            },
+            inputMappings: {
+              prompt: { nodeId: '1', inputName: 'text', required: true },
+              image: { nodeId: '3', inputName: 'image', required: true },
+              lastFrameImage: { nodeId: '4', inputName: 'image', required: true },
+            },
+            outputNodeId: '9',
+          },
+        },
+      },
+    })
+    const referenceAudio = {
+      url: 'data:audio/mpeg;base64,SUQz',
+      mimeType: 'audio/mpeg' as const,
+      byteSize: 3,
+      hash: 'abc12345',
+      sourceKind: 'data-url' as const,
+    }
+
+    await generateVideo(
+      'user-1',
+      'comfyui::minimax-h3',
+      'https://storage.example/first.png',
+      {
+        prompt: 'walk into the final pose',
+        generationMode: 'firstlastframe',
+        lastFrameImageUrl: 'https://storage.example/last.png',
+        referenceAudios: [referenceAudio],
+      },
+    )
+
+    expect(generateComfyUIVideoMock).toHaveBeenCalledWith(expect.objectContaining({
+      profile: expect.objectContaining({
+        inputMappings: expect.objectContaining({
+          lastFrameImage: expect.any(Object),
+        }),
+      }),
+      lastFrameImageUrl: 'https://storage.example/last.png',
+      referenceAudios: undefined,
+    }))
+    expect(generateComfyUITextToVideoMock).not.toHaveBeenCalled()
+  })
 })

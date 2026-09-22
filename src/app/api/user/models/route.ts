@@ -21,7 +21,7 @@ import { findBuiltinCapabilities } from '@/lib/model-capabilities/catalog'
 import { findBuiltinPricingCatalogEntry } from '@/lib/model-pricing/catalog'
 import { normalizeComfyUIBaseUrl } from '@/lib/comfyui/client'
 import { deriveComfyUIProfileCapabilities } from '@/lib/comfyui/capabilities'
-import { validateComfyUIProfile } from '@/lib/comfyui/profile'
+import { validateComfyUIProfileDefinition } from '@/lib/comfyui/profile'
 import type { VideoPricingTier } from '@/lib/model-pricing/video-tier'
 
 type StoredModelType = UnifiedModelType | string
@@ -249,7 +249,7 @@ export const GET = apiHandler(async () => {
             : modelType === 'image'
               ? 'image'
               : undefined
-          const profile = validateComfyUIProfile(model.comfyuiProfile, { expectedMediaType })
+          const profile = validateComfyUIProfileDefinition(model.comfyuiProfile, { expectedMediaType })
           return profile.ok ? deriveComfyUIProfileCapabilities(profile.profile) : undefined
         })()
         : findBuiltinCapabilities(modelType, provider, modelId)

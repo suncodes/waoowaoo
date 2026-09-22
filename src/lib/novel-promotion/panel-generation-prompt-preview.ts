@@ -4,6 +4,13 @@ import { resolveArtStyleForGeneration, type ArtStyleGenerationResult } from '@/l
 import { createCreativeQualityHash } from '@/lib/creative-quality/contracts'
 import { getProjectModelConfig } from '@/lib/config-service'
 import { parseModelKeyStrict, type CapabilityValue } from '@/lib/model-config-contract'
+import { getProviderKey, resolveModelSelection } from '@/lib/api-config'
+import {
+  ComfyUIVideoRoutingError,
+  isComfyUIReferenceAudioDegraded,
+  routeComfyUIVideoProfile,
+  type ComfyUIVideoRoutingPlan,
+} from '@/lib/comfyui/video-routing'
 import { resolveBuiltinCapabilitiesByModelKey } from '@/lib/model-capabilities/lookup'
 import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
 import type { PromptLocale } from '@/lib/prompt-i18n/types'
@@ -119,13 +126,16 @@ export interface PanelGenerationPromptPreview {
   bindingPlan?: unknown
   referencePlan?: unknown
   generationRouteDecision?: unknown
+  executionPlan?: {
+    comfyuiVideoRouting?: ComfyUIVideoRoutingPlan
+  }
   assetVersionHash?: string | null
   promptOptimization?: GenerationPromptOptimization | null
   warnings: string[]
 }
 
 export class PanelPromptPreviewError extends Error {
-  code: 'PANEL_NOT_FOUND' | 'PROJECT_NOT_FOUND' | 'VIDEO_REFERENCE_AUDIO_INVALID'
+  code: 'PANEL_NOT_FOUND' | 'PROJECT_NOT_FOUND' | 'VIDEO_REFERENCE_AUDIO_INVALID' | 'COMFYUI_VIDEO_ROUTING_INVALID'
 
   constructor(code: PanelPromptPreviewError['code'], message: string) {
     super(message)
@@ -796,6 +806,17 @@ export function buildPanelVideoPromptFromResolvedInputs(params: {
   }
 }
 
+/**
+ * 路由阶段只需要知道用户是否请求了参考音频，不读取或校验音色库资产。
+ * 若首尾帧工作流需要降级，后续不会再解析这些 ID，避免无效音频阻断本次
+ * 首尾帧生成。
+ */
+function countRequestedReferenceAudioIdsForRouting(value: unknown): number {
+  if (value === undefined || value === null) return 0
+  if (!Array.isArray(value)) return 1
+  return value.filter((item) => typeof item === 'string' && item.trim()).length
+}
+
 export async function buildPanelImageGenerationPromptPreview(params: {
   projectId: string
   userId: string
@@ -955,9 +976,40 @@ export async function buildPanelVideoGenerationPromptPreview(params: {
   const modelKey = generationMode === 'firstlastframe'
     ? (firstLastFrame?.flModel?.trim() || params.videoModel?.trim() || modelConfig.videoModel || null)
     : (params.videoModel?.trim() || modelConfig.videoModel || null)
+  const warnings: string[] = []
+  const parsedVideoModel = modelKey ? parseModelKeyStrict(modelKey) : null
+  const requestedReferenceAudioCount = countRequestedReferenceAudioIdsForRouting(params.referenceAudioIds)
+  let comfyuiVideoRouting: ComfyUIVideoRoutingPlan | undefined
+  try {
+    if (parsedVideoModel && getProviderKey(parsedVideoModel.provider).toLowerCase() === 'comfyui') {
+      const selection = await resolveModelSelection(params.userId, modelKey!, 'video')
+      if (!selection.comfyuiProfile) {
+        throw new ComfyUIVideoRoutingError(
+          'COMFYUI_VIDEO_VARIANT_REQUIRED',
+          '当前 ComfyUI 模型缺少已验证的工作流配置。',
+        )
+      }
+      comfyuiVideoRouting = routeComfyUIVideoProfile({
+        profile: selection.comfyuiProfile,
+        generationMode,
+        requestedReferenceAudioCount,
+      }).plan
+      if (isComfyUIReferenceAudioDegraded(comfyuiVideoRouting)) {
+        warnings.push('当前 ComfyUI 的首尾帧工作流不支持参考音频。本次将优先保证首尾帧衔接，所选参考音频不会参与生成。')
+      }
+    }
+  } catch (error) {
+    if (error instanceof ComfyUIVideoRoutingError) {
+      throw new PanelPromptPreviewError('COMFYUI_VIDEO_ROUTING_INVALID', error.message)
+    }
+    throw error
+  }
+
   let referenceAudioSources: VideoReferenceAudioSource[] = []
   try {
-    const referenceAudioIds = normalizeVideoReferenceAudioIds(params.referenceAudioIds)
+    const referenceAudioIds = isComfyUIReferenceAudioDegraded(comfyuiVideoRouting)
+      ? []
+      : normalizeVideoReferenceAudioIds(params.referenceAudioIds)
     if (referenceAudioIds.length > 0) {
       if (!modelKey) {
         throw new VideoReferenceAudioError(
@@ -982,8 +1034,8 @@ export async function buildPanelVideoGenerationPromptPreview(params: {
     throw error
   }
   const referenceAudioSummary = summarizeVideoReferenceAudioSources(referenceAudioSources)
-  const parsedVideoModel = modelKey ? parseModelKeyStrict(modelKey) : null
-  const requiresComfyUIAudioTags = parsedVideoModel?.provider.split(':', 1)[0]?.toLowerCase() === 'comfyui'
+  const requiresComfyUIAudioTags = getProviderKey(parsedVideoModel?.provider).toLowerCase() === 'comfyui'
+    && !isComfyUIReferenceAudioDegraded(comfyuiVideoRouting)
   const panelForPreview = applyPanelOverrides(panel as PanelForImagePrompt, params.overrides?.panel) as PanelForImagePrompt & PanelForVideoPrompt
   const customPrompt = generationMode === 'firstlastframe'
     ? (
@@ -992,7 +1044,6 @@ export async function buildPanelVideoGenerationPromptPreview(params: {
         || null
       )
     : null
-  const warnings: string[] = []
   const referenceImages: string[] = []
   const sourceImageUrl = normalizeReferenceImage(panelForPreview.imageUrl || null)
   if (sourceImageUrl) {
@@ -1072,6 +1123,9 @@ export async function buildPanelVideoGenerationPromptPreview(params: {
       ? { referenceAudioNames: referenceAudioSources.map((source) => source.name) }
       : {}),
   })
+  const executionPlan = comfyuiVideoRouting
+    ? { comfyuiVideoRouting }
+    : undefined
 
   return {
     mode: generationMode === 'firstlastframe' ? 'firstlastframe' : 'video',
@@ -1089,6 +1143,7 @@ export async function buildPanelVideoGenerationPromptPreview(params: {
       ...(typeof requestedGenerateAudio === 'boolean' ? { generateAudio: requestedGenerateAudio } : {}),
     },
     referenceImages: Array.from(new Set(referenceImages.filter(Boolean))),
+    ...(executionPlan ? { executionPlan } : {}),
     ...(referenceAudioSources.length > 0
       ? {
         structuredReferences: {
@@ -1101,6 +1156,7 @@ export async function buildPanelVideoGenerationPromptPreview(params: {
       referenceImages: Array.from(new Set(referenceImages.filter(Boolean))),
       generationMode,
       generationOptions,
+      executionPlan: executionPlan || null,
       referenceAudioSources,
       referenceAudioSummary,
       panelSpeech: panelSpeech

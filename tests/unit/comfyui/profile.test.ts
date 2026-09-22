@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   ComfyUIProfileInputError,
   patchComfyUIWorkflow,
+  validateComfyUIProfileDefinition,
   validateComfyUIProfile,
 } from '@/lib/comfyui/profile'
 import { deriveComfyUIProfileCapabilities } from '@/lib/comfyui/capabilities'
+import { routeComfyUIVideoProfile } from '@/lib/comfyui/video-routing'
 
 function createProfile(mediaType: 'image' | 'video' = 'image') {
   return {
@@ -70,6 +72,33 @@ function createVideoProfileWithFrameAndAudioMappings() {
       },
     },
     outputNodeId: '9',
+  }
+}
+
+function createTextToVideoProfile() {
+  const profile = createProfile('video')
+  delete profile.inputMappings.image
+  return profile
+}
+
+function createFirstLastFrameProfile() {
+  const profile = createVideoProfileWithFrameAndAudioMappings()
+  const { referenceAudios: _referenceAudios, ...inputMappings } = profile.inputMappings
+  void _referenceAudios
+  return {
+    ...profile,
+    inputMappings,
+  }
+}
+
+function createReferenceAudioProfile() {
+  const profile = createVideoProfileWithFrameAndAudioMappings()
+  const { image: _image, lastFrameImage: _lastFrameImage, ...inputMappings } = profile.inputMappings
+  void _image
+  void _lastFrameImage
+  return {
+    ...profile,
+    inputMappings,
   }
 }
 
@@ -209,5 +238,90 @@ describe('ComfyUI profile', () => {
     })
     expect(capabilities?.video?.generateAudioOptions).toBeUndefined()
     expect(capabilities?.video?.supportGenerateAudio).toBeUndefined()
+  })
+
+  it('validates a video Profile Set and keeps all variants independently executable', () => {
+    const result = validateComfyUIProfileDefinition({
+      version: 1,
+      mediaType: 'video',
+      variants: {
+        t2v: createTextToVideoProfile(),
+        firstLastFrame: createFirstLastFrameProfile(),
+        referenceAudio: createReferenceAudioProfile(),
+      },
+    }, { expectedMediaType: 'video' })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error(result.message)
+    expect(deriveComfyUIProfileCapabilities(result.profile)?.video).toMatchObject({
+      firstlastframe: true,
+      generationModeOptions: ['normal', 'firstlastframe'],
+      referenceAudioMaxCount: 3,
+    })
+    expect(deriveComfyUIProfileCapabilities(result.profile)?.video?.firstLastReferenceAudioMaxCount).toBeUndefined()
+  })
+
+  it('rejects an invalid Profile Set first-last-frame variant with reference audio mapping', () => {
+    expect(validateComfyUIProfileDefinition({
+      version: 1,
+      mediaType: 'video',
+      variants: {
+        firstLastFrame: createVideoProfileWithFrameAndAudioMappings(),
+      },
+    })).toMatchObject({
+      ok: false,
+      code: 'COMFYUI_PROFILE_SET_FIRSTLAST_AUDIO_INVALID',
+    })
+  })
+
+  it('routes a first-last-frame request with reference audio to firstLastFrame and records degradation', () => {
+    const validated = validateComfyUIProfileDefinition({
+      version: 1,
+      mediaType: 'video',
+      variants: {
+        t2v: createTextToVideoProfile(),
+        firstLastFrame: createFirstLastFrameProfile(),
+        referenceAudio: createReferenceAudioProfile(),
+      },
+    })
+    if (!validated.ok) throw new Error(validated.message)
+
+    const route = routeComfyUIVideoProfile({
+      profile: validated.profile,
+      generationMode: 'firstlastframe',
+      requestedReferenceAudioCount: 1,
+    })
+
+    expect(route.plan).toEqual({
+      requestedGenerationMode: 'firstlastframe',
+      requestedReferenceAudioCount: 1,
+      effectiveVariant: 'firstLastFrame',
+      degradedCapabilities: ['referenceAudios'],
+      degradationReason: 'COMFYUI_REFERENCE_AUDIO_UNSUPPORTED_WITH_FIRSTLAST',
+    })
+    expect(route.profile.inputMappings.referenceAudios).toBeUndefined()
+  })
+
+  it('uses a real combined Profile Set variant instead of degrading reference audio', () => {
+    const validated = validateComfyUIProfileDefinition({
+      version: 1,
+      mediaType: 'video',
+      variants: {
+        firstLastFrame: createFirstLastFrameProfile(),
+        firstLastReferenceAudio: createVideoProfileWithFrameAndAudioMappings(),
+      },
+    })
+    if (!validated.ok) throw new Error(validated.message)
+
+    const route = routeComfyUIVideoProfile({
+      profile: validated.profile,
+      generationMode: 'firstlastframe',
+      requestedReferenceAudioCount: 2,
+    })
+
+    expect(route.plan).toMatchObject({
+      effectiveVariant: 'firstLastReferenceAudio',
+    })
+    expect(route.plan.degradedCapabilities).toBeUndefined()
   })
 })

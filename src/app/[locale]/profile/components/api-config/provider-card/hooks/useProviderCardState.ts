@@ -21,7 +21,10 @@ import type {
 import { VERIFIABLE_PROVIDER_KEYS } from '../types'
 import type { CustomModel } from '../../types'
 import { apiFetch } from '@/lib/api-fetch'
-import { validateComfyUIProfile, type ComfyUIProfile } from '@/lib/comfyui/profile'
+import {
+  validateComfyUIProfileDefinition,
+  type ComfyUIProfileDefinition,
+} from '@/lib/comfyui/profile'
 import {
   useAssistantChat,
   type AssistantDraftModel,
@@ -114,13 +117,13 @@ function getConnectionTestFailureStep(providerKey: string): KeyTestStep['name'] 
 export function parseComfyUIProfileForm(
   rawProfile: string | undefined,
   mediaType: 'image' | 'video',
-): { ok: true; profile: ComfyUIProfile } | { ok: false } {
+): { ok: true; profile: ComfyUIProfileDefinition } | { ok: false } {
   const source = rawProfile?.trim()
   if (!source) return { ok: false }
 
   try {
     const parsed = JSON.parse(source) as unknown
-    const validated = validateComfyUIProfile(parsed, { expectedMediaType: mediaType })
+    const validated = validateComfyUIProfileDefinition(parsed, { expectedMediaType: mediaType })
     if (!validated.ok) return { ok: false }
     return { ok: true, profile: validated.profile }
   } catch {
@@ -667,7 +670,7 @@ export function useProviderCardState({
       return
     }
 
-    let comfyuiProfile: ComfyUIProfile | undefined
+    let comfyuiProfile: ComfyUIProfileDefinition | undefined
     if (isComfyUI) {
       if (originalModel?.type !== 'image' && originalModel?.type !== 'video') {
         alert(t('comfyuiOnlyImageVideo'))
@@ -744,7 +747,7 @@ export function useProviderCardState({
         ? `${newModel.name} (Batch)`
         : newModel.name
 
-    let comfyuiProfile: ComfyUIProfile | undefined
+    let comfyuiProfile: ComfyUIProfileDefinition | undefined
     if (isComfyUI) {
       if (type !== 'image' && type !== 'video') {
         alert(t('comfyuiOnlyImageVideo'))

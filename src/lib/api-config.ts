@@ -21,8 +21,8 @@ import type {
 import { validateOpenAICompatMediaTemplate } from './user-api/model-template/validator'
 import { normalizeComfyUIBaseUrl } from './comfyui/client'
 import {
-  validateComfyUIProfile,
-  type ComfyUIProfile,
+  validateComfyUIProfileDefinition,
+  type ComfyUIProfileDefinition,
 } from './comfyui/profile'
 
 export interface CustomModel {
@@ -36,7 +36,7 @@ export interface CustomModel {
   compatMediaTemplate?: OpenAICompatMediaTemplate
   compatMediaTemplateCheckedAt?: string
   compatMediaTemplateSource?: OpenAICompatMediaTemplateSource
-  comfyuiProfile?: ComfyUIProfile
+  comfyuiProfile?: ComfyUIProfileDefinition
   // Non-authoritative display field; billing uses unified server pricing catalog.
   price: number
 }
@@ -50,7 +50,7 @@ export interface ModelSelection {
   mediaType: ModelMediaType
   llmProtocol?: 'responses' | 'chat-completions'
   compatMediaTemplate?: OpenAICompatMediaTemplate
-  comfyuiProfile?: ComfyUIProfile
+  comfyuiProfile?: ComfyUIProfileDefinition
 }
 
 type GatewayRouteType = 'official' | 'openai-compat'
@@ -253,12 +253,12 @@ function normalizeStoredModel(raw: unknown, index: number): CustomModel {
 
   const providerKey = getProviderKey(provider).toLowerCase()
   const comfyuiProfileRaw = raw.comfyuiProfile
-  let comfyuiProfile: ComfyUIProfile | undefined
+  let comfyuiProfile: ComfyUIProfileDefinition | undefined
   if (providerKey === 'comfyui') {
     if (raw.type !== 'image' && raw.type !== 'video') {
       throw new Error(`COMFYUI_MODEL_TYPE_UNSUPPORTED: models[${index}].type`)
     }
-    const validated = validateComfyUIProfile(comfyuiProfileRaw, {
+    const validated = validateComfyUIProfileDefinition(comfyuiProfileRaw, {
       expectedMediaType: raw.type,
     })
     if (!validated.ok) {
@@ -349,11 +349,11 @@ export function getProviderKey(providerId?: string): string {
 function resolveComfyUIProfileForSelection(
   model: CustomModel,
   mediaType: ModelMediaType,
-): ComfyUIProfile {
+): ComfyUIProfileDefinition {
   if (mediaType !== 'image' && mediaType !== 'video') {
     throw new Error(`COMFYUI_MODEL_TYPE_UNSUPPORTED: ${mediaType}`)
   }
-  const validated = validateComfyUIProfile(model.comfyuiProfile, {
+  const validated = validateComfyUIProfileDefinition(model.comfyuiProfile, {
     expectedMediaType: mediaType,
   })
   if (!validated.ok) {

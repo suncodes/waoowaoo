@@ -141,6 +141,7 @@ function normalizeSnapshot(value: unknown, kind: PreparedPromptKind): Generation
     assetVersionHash: readStringOrNull(record.assetVersionHash),
     referenceImages: readStringArray(record.referenceImages),
     ...(record.structuredReferences !== undefined ? { structuredReferences: record.structuredReferences } : {}),
+    ...(record.executionPlan !== undefined ? { executionPlan: record.executionPlan as GenerationSnapshot['executionPlan'] } : {}),
     ...(record.bindingPlan !== undefined ? { bindingPlan: record.bindingPlan } : {}),
     ...(readStringOrNull(record.preparationHash) ? { preparationHash: readStringOrNull(record.preparationHash)! } : {}),
     ...(record.optimization !== undefined ? { optimization: record.optimization as GenerationSnapshot['optimization'] } : {}),

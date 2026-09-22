@@ -11,7 +11,7 @@ import type {
     OpenAICompatMediaTemplate,
     OpenAICompatMediaTemplateSource,
 } from '@/lib/openai-compat-media-template'
-import type { ComfyUIProfile } from '@/lib/comfyui/profile'
+import type { ComfyUIProfileDefinition } from '@/lib/comfyui/profile'
 
 // 统一提供商接口
 export interface Provider {
@@ -54,7 +54,7 @@ export interface CustomModel {
     compatMediaTemplate?: OpenAICompatMediaTemplate
     compatMediaTemplateCheckedAt?: string
     compatMediaTemplateSource?: OpenAICompatMediaTemplateSource
-    comfyuiProfile?: ComfyUIProfile
+    comfyuiProfile?: ComfyUIProfileDefinition
     price: number
     priceMin?: number
     priceMax?: number
